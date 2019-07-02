@@ -1,0 +1,7 @@
+This project is released under dual license.
+
+The kernel driver (kmod/muser.[ch]) is released as GPL-2.0 or BSD-3-CLAUSE.
+
+The remaining source code is released as BSD-3-CLAUSE.
+
+Each source file in the repository reflects the above.
