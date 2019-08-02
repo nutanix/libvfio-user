@@ -478,8 +478,8 @@ static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
     unsigned long addr;
     unsigned long len = cmd->mmap.request.len;
     unsigned long pgoff = cmd->mmap.request.pgoff;
+    int err = 0;
 
-    region = lm_get_region(lm_ctx, pgoff, len, &pgoff);
     if (region < 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
         err = region;
@@ -492,15 +492,16 @@ static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
         goto out;
     }
 
-    addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, pgoff, len);
-
-    if ((void *)addr == MAP_FAILED) {
-        lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
-	    err = -errno;
-        goto out;
-    }
-
-    cmd->mmap.response.addr = addr;
+    if (lm_ctx->pci_info.reg_info[region].map) {
+        addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, pgoff, len);
+        if ((void *)addr == MAP_FAILED) {
+            lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
+	        err = -errno;
+            goto out;
+        }
+        cmd->mmap.response.addr = addr;
+    } else
+        err = -ENOTSUP;
 
 out:
     if (err) {
@@ -509,6 +510,7 @@ out:
         cmd->err = err;
         err = -1;
     }
+
     return err;
 }
 
