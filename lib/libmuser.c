@@ -89,7 +89,6 @@ struct lm_ctx {
 };
 MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
 
-#define LM_CTX_SIZE(irqs) (sizeof(lm_ctx_t) + sizeof(int) * irqs)
 #define LM2VFIO_IRQT(type) (type - 1)
 
 void lm_log(const lm_ctx_t * const ctx, const lm_log_lvl_t lvl,
@@ -339,25 +338,96 @@ static long dev_get_irqinfo(lm_ctx_t * lm_ctx, struct vfio_irq_info *irq_info)
     return 0;
 }
 
-static long
-dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *reg_info)
+/*
+ * Populate the sparse mmap capability information to vfio-client.
+ * kernel/muser constructs the response for VFIO_DEVICE_GET_REGION_INFO
+ * accommodating sparse mmap information.
+ * Sparse mmap information stays after struct vfio_region_info and cap_offest
+ * points accordingly.
+ */
+static int
+dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
+                        struct vfio_region_info *vfio_reg)
 {
+    struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
+    struct lm_sparse_mmap_areas *mmap_areas;
+    int nr_mmap_areas, i;
+    size_t size;
+    ssize_t ret;
+
+    if (!lm_reg->mmap_areas)
+        return -EINVAL;
+
+    nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
+    size = sizeof(*sparse) + (nr_mmap_areas * sizeof(*sparse->areas));
+
+    /*
+     * If vfio_reg does not have enough space to accommodate  sparse info then
+     * set the argsz with the expected size and return. Vfio client will call
+     * back after reallocating the vfio_reg
+     */
+
+    if (vfio_reg->argsz < size + sizeof(*vfio_reg)) {
+        vfio_reg->argsz = size + sizeof(*vfio_reg);
+        vfio_reg->cap_offset = 0;
+        return 0;
+    }
+
+    lm_log(lm_ctx, LM_DBG, "%s: size %llu, nr_mmap_areas %u\n", __func__, size,
+           nr_mmap_areas);
+    sparse = calloc(1, size);
+    if (!sparse)
+        return -ENOMEM;
+    sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
+    sparse->header.version = 1;
+    sparse->header.next = 0;
+    sparse->nr_areas = nr_mmap_areas;
+
+    mmap_areas = lm_reg->mmap_areas;
+    for (i = 0; i < nr_mmap_areas; i++) {
+        sparse->areas[i].offset = mmap_areas->areas[i].start;
+        sparse->areas[i].size = mmap_areas->areas[i].size;
+    }
+
+    /* write the sparse mmap cap info to vfio-client user pages */
+    ret = write(lm_ctx->fd, sparse, size);
+    if (ret != size) {
+        free(sparse);
+        return -EIO;
+    }
+
+    vfio_reg->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
+    vfio_reg->cap_offset = sizeof(*vfio_reg);
+
+    free(sparse);
+    return 0;
+}
+
+static long
+dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
+{
+    lm_reg_info_t *lm_reg;
+    int err;
+
     assert(lm_ctx != NULL);
-    assert(reg_info != NULL);
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
+    assert(vfio_reg != NULL);
+    lm_reg = &lm_ctx->pci_info.reg_info[vfio_reg->index];
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
-    if ((reg_info->argsz < sizeof(struct vfio_region_info)) ||
-        (reg_info->index >= LM_DEV_NUM_REGS)) {
+    if ((vfio_reg->argsz < sizeof(struct vfio_region_info)) ||
+        (vfio_reg->index >= LM_DEV_NUM_REGS)) {
         return -EINVAL;
     }
 
-    reg_info->offset = pci_info->reg_info[reg_info->index].offset;
-    reg_info->flags = pci_info->reg_info[reg_info->index].flags;
-    reg_info->size = pci_info->reg_info[reg_info->index].size;
+    vfio_reg->offset = lm_reg->offset;
+    vfio_reg->flags = lm_reg->flags;
+    vfio_reg->size = lm_reg->size;
 
-    lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", reg_info->index);
-    dump_buffer(lm_ctx, "", (unsigned char *)reg_info, sizeof *reg_info);
+    if (lm_reg->mmap_areas)
+        err = dev_get_sparse_mmap_cap(lm_ctx, lm_reg, vfio_reg);
+
+    lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", vfio_reg->index);
+    dump_buffer(lm_ctx, "", (unsigned char *)vfio_reg, sizeof *vfio_reg);
 
     return 0;
 }
@@ -478,8 +548,8 @@ static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
     unsigned long addr;
     unsigned long len = cmd->mmap.request.len;
     unsigned long pgoff = cmd->mmap.request.pgoff;
-    int err = 0;
 
+    region = lm_get_region(lm_ctx, pgoff, len, &pgoff);
     if (region < 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
         err = region;
@@ -920,6 +990,39 @@ init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
 
     hdr->ss.vid = hdr->id.vid;
     hdr->ss.sid = hdr->id.did;
+
+}
+
+static int copy_sparse_mmap_areas(lm_reg_info_t *dst, lm_reg_info_t *src)
+{
+    struct lm_sparse_mmap_areas *mmap_areas;
+    int nr_mmap_areas;
+    size_t size;
+    int i;
+
+    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
+        if (!src[i].mmap_areas)
+            continue;
+
+        nr_mmap_areas = src[i].mmap_areas->nr_mmap_areas;
+        size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct lm_mmap_area));
+        mmap_areas = calloc(1, size);
+        if (!mmap_areas)
+            return -ENOMEM;
+
+        memcpy(mmap_areas, src[i].mmap_areas, size);
+        dst[i].mmap_areas = mmap_areas;
+    }
+
+    return 0;
+}
+
+static void free_sparse_mmap_areas(lm_reg_info_t *reg_info)
+{
+    int i;
+
+    for (i = 0; i < LM_DEV_NUM_REGS; i++)
+        free(reg_info[i].mmap_areas);
 }
 
 static int
@@ -951,14 +1054,14 @@ lm_ctx_t *
 lm_ctx_create(lm_dev_info_t * const dev_info)
 {
     lm_ctx_t *lm_ctx = NULL;
-    uint32_t max_ivs = 0;
+    uint32_t max_ivs = 0, nr_mmap_areas = 0;
     uint32_t i;
     int err = 0;
-    size_t size;
+    size_t size = 0;
 
     if (dev_info == NULL) {
-        err = EINVAL;
-        goto out;
+        errno = EINVAL;
+        return NULL;
     }
 
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
@@ -967,13 +1070,16 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         }
     }
 
-    lm_ctx = calloc(1, LM_CTX_SIZE(max_ivs));
-    if (lm_ctx == NULL) {
-        err = errno;
-        goto out;
-    }
+    size += sizeof(int) * max_ivs;
+    lm_ctx = calloc(1, sizeof(lm_ctx_t) + size);
+    if (lm_ctx == NULL)
+        return NULL;
 
     memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
+    err = copy_sparse_mmap_areas(lm_ctx->pci_info.reg_info,
+                                 dev_info->pci_info.reg_info);
+    if (err)
+	    goto out;
 
     lm_ctx->fd = dev_attach(dev_info->uuid);
     if (lm_ctx->fd == -1) {
@@ -1030,6 +1136,7 @@ out:
     if (err) {
         if (lm_ctx) {
             dev_detach(lm_ctx->fd);
+            free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
             free(lm_ctx->pci_config_space);
             free(lm_ctx);
             lm_ctx = NULL;

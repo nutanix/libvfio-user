@@ -241,6 +241,16 @@ _Static_assert(sizeof(struct lm_pci_config_space) == 0x100,
 #define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
 #define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
+struct lm_mmap_area {
+	uint64_t start;
+	uint64_t size;
+};
+
+struct lm_sparse_mmap_areas {
+    int nr_mmap_areas;
+    struct lm_mmap_area areas[];
+};
+
 typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
                                       loff_t offset, const bool is_write);
 
@@ -252,6 +262,7 @@ struct lm_reg_info {
     uint64_t            offset;
     lm_region_access_t  *fn;
     lm_map_region_t     *map;
+    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
 };
 
 enum {

@@ -1313,6 +1313,53 @@ static int bounce_out(void __user *arg, size_t argsz, struct mudev_cmd *mucmd)
 	return 0;
 }
 
+/*
+ * copy from server(ubuf) to vfio-client pages(mucmd.pg_map)
+ * skip seek bytes from destination before copying.
+ *
+ * @page_map: map representing vfio-client pages
+ * @ubuf    : user buffer to copy from
+ * @bufsz   : size of ubuf
+ * @seek    : bytes to be skip from page_map before copy
+ */
+int bounce_in_seek(struct page_map *page_map, void __user *ubuf, size_t bufsz,
+		   size_t seek)
+{
+	unsigned long to_copy = 0;
+	void __user *from = ubuf;
+	void *to;
+	size_t total, offset, pgoff;
+	int pgnr, i, ret;
+
+	if (page_map->len < bufsz)
+		return -ENOSPC;
+
+	pgnr = NR_PAGES(seek) - 1;
+	pgoff = seek & ~PAGE_SIZE;
+	offset = page_map->offset;
+
+	if (!pgnr)
+		offset += pgoff;
+	else
+		offset = pgoff;
+
+	total = bufsz;
+	for (i = pgnr; i < page_map->nr_pages; i++) {
+		to = page_to_virt(page_map->pages[i]) + offset;
+		from += to_copy;
+		to_copy = min(total, PAGE_SIZE - offset);
+
+		ret =  muser_copyin(to, from, to_copy);
+		if (ret)
+			return ret;
+
+		total -= to_copy;
+		offset = 0;
+	}
+
+	return 0;
+}
+
 /* copy from server(uaddr) to vfio-client pages(mucmd.pg_map) */
 static int bounce_in(struct mudev_cmd *mucmd, void __user *uaddr)
 {
@@ -1669,6 +1716,7 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 	struct muser_dev *mudev = filp->private_data;
 	struct mudev_cmd *mucmd = mudev->mucmd_pending;
 	struct muser_cmd muser_cmd;
+	unsigned int seek;
 	int ret;
 
 	if (!mucmd || !mudev) {
@@ -1681,20 +1729,42 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 		return -EFAULT;
 	}
 
-	ret = muser_copyin(&muser_cmd, (void __user *)buf,
-			   sizeof(struct muser_cmd));
-	if (ret)
-		return ret;
+	switch (mucmd->type) {
+	case MUSER_READ:
+		ret = muser_copyin(&muser_cmd, (void __user *)buf,
+				   sizeof(struct muser_cmd));
+		if (ret)
+			return ret;
 
-	if (mucmd->type != muser_cmd.type) {
-		muser_dbg("bad command %d", muser_cmd.type);
+		/*
+		 * TODO: libmuser must not encapsulate buf in muser_cmd instead
+		 * it must just call write() with buf.
+		 */
+
+		if (mucmd->type != muser_cmd.type) {
+			muser_dbg("bad command %d", muser_cmd.type);
+			return -EINVAL;
+		}
+
+		ret = bounce_in(mucmd, muser_cmd.rw.buf);
+		if (ret)
+			return ret;
+		break;
+	case MUSER_IOCTL:
+		/*
+		 * copy the sparse mmap cap information after the
+		 * struct vfio_region_info.
+		 */
+		seek = sizeof(struct vfio_region_info);
+		ret = bounce_in_seek(&mucmd->pg_map, (void __user *)buf, bufsz,
+				     seek);
+		if (ret)
+			return ret;
+		mucmd->pg_map.len -= seek;
+		break;
+	default:
 		return -EINVAL;
 	}
-
-	WARN_ON(muser_cmd.type != MUSER_READ);
-	ret = bounce_in(mucmd, muser_cmd.rw.buf);
-	if (ret)
-		return ret;
 
 	return bufsz;
 }
