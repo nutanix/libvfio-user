@@ -99,11 +99,27 @@ pci_group_id(const char *uuid)
     return group_id;
 }
 
+void print_sparse_mmap_info(struct vfio_region_info *reg)
+{
+	struct vfio_region_info_cap_sparse_mmap *sparse;
+
+	printf("argsz %u, cap_off %u\n", reg->argsz, reg->cap_offset);
+	if (reg->cap_offset) {
+		sparse = (struct vfio_region_info_cap_sparse_mmap *)
+                  ((void *)reg + reg->cap_offset);
+		printf("cap_hdr: id %u version %u\n", sparse->header.id,
+               sparse->header.version);
+		printf("sparse: nr_areas %u, off 0x%llx size 0x%llx\n", sparse->nr_areas,
+               sparse->areas[0].offset, sparse->areas[0].size);
+	}
+}
+
 int
 main(int argc, char * argv[])
 {
     int vfio_ctr_fd, vfio_grp_fd, vfio_dev_fd;
     char *grp_path;
+    size_t size = 0;
     int i;
     int err;
 
@@ -180,27 +196,38 @@ main(int argc, char * argv[])
     assert(dev_info.num_regions <= VFIO_PCI_NUM_REGIONS);
 
     // Fetch region information for this device.
-    struct vfio_region_info reg_info[VFIO_PCI_NUM_REGIONS];
+    struct vfio_region_info *reg_info[VFIO_PCI_NUM_REGIONS] = {0};
+    struct vfio_region_info *reg;
     printf("* Fetching information for %u regions\n", dev_info.num_regions);
     for (i = 0; i < (int)dev_info.num_regions; i++) {
-        memset(&reg_info[i], 0, sizeof(reg_info[i]));
-        reg_info[i].argsz = sizeof(reg_info[i]);
-        reg_info[i].index = i;
-        err = ioctl(vfio_dev_fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info[i]);
+	    size = sizeof(struct vfio_region_info);
+	    reg = calloc(1, size);
+        assert(reg != NULL);
+        reg->argsz = size;
+        reg->index = i;
+retry:
+        err = ioctl(vfio_dev_fd, VFIO_DEVICE_GET_REGION_INFO, reg);
         if (err != 0) {
             // This region doesn't exist or isn't accessible.
             printf("** %d: Region info unavailable\n", i);
-            memset(&reg_info[i], 0, sizeof(reg_info[i]));
+            memset(reg, 0, size);
         } else {
             printf("** %d: argsz=0x%X, flags=0x%X, index=0x%X, "
                           "size=0x%llX, offset=0x%llX\n",
                    i,
-                   reg_info[i].argsz,
-                   reg_info[i].flags,
-                   reg_info[i].index,
-                   reg_info[i].size,
-                   reg_info[i].offset);
+                   reg->argsz,
+                   reg->flags,
+                   reg->index,
+                   reg->size,
+                   reg->offset);
+	        if (reg->argsz > size) {
+		        size = reg->argsz;
+		        reg = realloc(reg, reg->argsz);
+		        goto retry;
+	        }
+	        print_sparse_mmap_info(reg);
         }
+	    reg_info[i] = reg;
     }
 
     // Fetch irq information for this device.
@@ -210,7 +237,7 @@ main(int argc, char * argv[])
         memset(&irq_info[i], 0, sizeof(irq_info[i]));
         irq_info[i].argsz = sizeof(irq_info[i]);
         irq_info[i].index = i;
-        err = ioctl(vfio_dev_fd, VFIO_DEVICE_GET_IRQ_INFO, &irq_info[i]);
+        err = ioctl(vfio_dev_fd, VFIO_DEVICE_GET_IRQ_INFO, irq_info[i]);
         if (err != 0) {
             // This irq doesn't exist or isn't accessible.
             printf("** %d: Irq info unavailable\n", i);
@@ -226,8 +253,11 @@ main(int argc, char * argv[])
     }
 
     // Test.
-    err = test_read(vfio_dev_fd, reg_info[VFIO_PCI_CONFIG_REGION_INDEX].offset);
+    err = test_read(vfio_dev_fd, reg_info[VFIO_PCI_CONFIG_REGION_INDEX]->offset);
     assert(!err);
+    for (i = 0; i < (int)dev_info.num_regions; i++) {
+        free(reg_info[i]);
+    }
 
     return 0;
 }
