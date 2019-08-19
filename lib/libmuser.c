@@ -559,34 +559,16 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
      */
     switch (idx) {
     case LM_DEV_BAR0_REG_IDX ... LM_DEV_BAR5_REG_IDX:
-        if (pci_info->bar_fn)
-            return pci_info->bar_fn(lm_ctx->pvt, idx, buf, count, offset, is_write);
-        break;
+        ret = pci_info->bar_fn(lm_ctx->pvt, idx, buf, count, offset, is_write);
     case LM_DEV_ROM_REG_IDX:
-        if (pci_info->rom_fn)
-            return pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
-        break;
+        ret = pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
     case LM_DEV_CFG_REG_IDX:
-        if (pci_info->pci_config_fn)
-            return pci_info->pci_config_fn(lm_ctx->pvt, buf, count, offset,
-                                           is_write);
-        break;
+        ret = pci_info->pci_config_fn(lm_ctx->pvt, buf, count, offset,
+                                      is_write);
     case LM_DEV_VGA_REG_IDX:
-        if (pci_info->vga_fn)
-            return pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
-        break;
+        ret = pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
     default:
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
-        return ret;
-    }
-
-    if (is_write && lm_ctx->fops.write) {
-        ret = lm_ctx->fops.write(lm_ctx->pvt, idx, buf, count, pos);
-    } else if (lm_ctx->fops.read) {
-		ret = lm_ctx->fops.read(lm_ctx->pvt, idx, buf, count, pos);
-    } else {
-        lm_log(lm_ctx, LM_ERR, "no R/W callback, region %d, %x@%lx\n",
-               idx, count, pos);
     }
 
     return ret;
@@ -890,6 +872,12 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     size_t size;
 
     if (dev_info == NULL) {
+        err = EINVAL;
+        goto out;
+    }
+
+    if (!dev_info->pci_info.bar_fn || !dev_info->pci_info.rom_fn ||
+        !dev_info->pci_info.pci_config_fn || !dev_info->pci_info.vga_fn) {
         err = EINVAL;
         goto out;
     }

@@ -59,6 +59,7 @@ typedef enum {
     LM_DBG
 } lm_log_lvl_t;
 
+/* TODO these could go in pci_regs.h */
 #define PCI_CONFIG_SPACE_SIZEOF 0x100
 #define PCI_EXTENDED_CONFIG_SPACE_SIZEOF 0x1000
 

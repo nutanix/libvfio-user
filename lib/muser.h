@@ -42,16 +42,13 @@
 /**
  * lm_fops_t - driver callbacks
  *
- * @read:  read device configuration space
- * @write: write device configuration space
  * @mmap:  mmap device configuration space
  * @reset: reset the device
+ *
+ * Reading from and writing to the configuration space is implemented by
+ * region-specific callbacks in lm_pci_info_t.
  */
 typedef struct {
-    ssize_t (*read) (void *pvt, const int index, char *buf, size_t count,
-                     loff_t pos);
-    ssize_t (*write) (void *pvt, const int index, char *buf, size_t count,
-                      loff_t pos);
     unsigned long (*mmap) (void *pvt, unsigned long pgoff);
     int (*reset) (void *pvt);
 } lm_fops_t;
@@ -74,7 +71,7 @@ typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
 
-    /* Optional PCI region access callbacks. */
+    /* PCI region access callbacks. */
     lm_bar_access_t	    *bar_fn;
     lm_non_bar_access_t *rom_fn;
     lm_non_bar_access_t *pci_config_fn;
