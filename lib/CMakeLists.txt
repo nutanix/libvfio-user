@@ -32,15 +32,16 @@ add_library(muser SHARED
     ../kmod/muser.h
     muser.h
     pci.h
-    pmcap.h
-    msicap.h
-    pxcap.h
     common.h
     dma.h
     dma.c
     libmuser.c
     libmuser_pci.c)
-set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;pmcap.h;msicap.h;pxcap.h")
+set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h")
+set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 install(TARGETS muser
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/muser)
+    PUBLIC_HEADER DESTINATION ${MUSER_HEADERS_DIR})
+install(DIRECTORY "caps"
+        DESTINATION ${MUSER_HEADERS_DIR}
+        FILES_MATCHING PATTERN "*.h")
