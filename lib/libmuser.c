@@ -554,19 +554,26 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
     }
 
     /*
-     *  TODO we should check at device registration time that all necessary
-     *  callbacks are there in order to avoid having to check at runtime
+     * Checking whether a callback exists might sound expensive however this is
+     * not performance critical. This works well when we don't expect a region
+     * to be used, so the user of the library can simply leave the callback
+     * NULL in lm_ctx_create.
      */
     switch (idx) {
     case LM_DEV_BAR0_REG_IDX ... LM_DEV_BAR5_REG_IDX:
-        ret = pci_info->bar_fn(lm_ctx->pvt, idx, buf, count, offset, is_write);
+        if (pci_info->bar_fn)
+            return pci_info->bar_fn(lm_ctx->pvt, idx, buf, count, offset,
+                is_write);
     case LM_DEV_ROM_REG_IDX:
-        ret = pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
+        if (pci_info->rom_fn)
+            return pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
     case LM_DEV_CFG_REG_IDX:
-        ret = pci_info->pci_config_fn(lm_ctx->pvt, buf, count, offset,
-                                      is_write);
+        if (pci_info->pci_config_fn)
+            return pci_info->pci_config_fn(lm_ctx->pvt, buf, count, offset,
+                                          is_write);
     case LM_DEV_VGA_REG_IDX:
-        ret = pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
+        if (pci_info->vga_fn)
+            return pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
     default:
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
     }
@@ -865,19 +872,13 @@ init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
 lm_ctx_t *
 lm_ctx_create(lm_dev_info_t * const dev_info)
 {
-    lm_ctx_t *lm_ctx;
+    lm_ctx_t *lm_ctx = NULL;
     uint32_t max_ivs = 0;
     uint32_t i;
     int err = 0;
     size_t size;
 
     if (dev_info == NULL) {
-        err = EINVAL;
-        goto out;
-    }
-
-    if (!dev_info->pci_info.bar_fn || !dev_info->pci_info.rom_fn ||
-        !dev_info->pci_info.pci_config_fn || !dev_info->pci_info.vga_fn) {
         err = EINVAL;
         goto out;
     }
