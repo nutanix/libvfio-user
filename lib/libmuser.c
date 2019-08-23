@@ -493,6 +493,9 @@ post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
         /* FIXME shouldn't we still reply to the kernel in case of error? */
         lm_log(lm_ctx, LM_ERR, "%s: bad fops read: %d/%d, %s\n",
                __func__, ret, cmd->rw.count, strerror(errno));
+#ifdef LM_CRASH_ON_BAD_READ
+        abort();
+#endif
         return ret;
     }
 
