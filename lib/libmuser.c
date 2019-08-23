@@ -983,7 +983,8 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         goto out;
     }
 
-    init_pci_hdr(&lm_ctx->pci_config_space->hdr, &dev_info->id, &dev_info->cc);
+    init_pci_hdr(&lm_ctx->pci_config_space->hdr, &dev_info->pci_info.id,
+        &dev_info->pci_info.cc);
     for (i = 0; i < ARRAY_SIZE(lm_ctx->pci_config_space->hdr.bars); i++) {
         if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
             lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;

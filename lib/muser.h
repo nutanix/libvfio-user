@@ -72,6 +72,9 @@ typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
 
+    lm_pci_hdr_id_t     id;
+    lm_pci_hdr_cc_t     cc;
+
     /* PCI region access callbacks. */
     lm_bar_access_t	    *bar_fn;
     lm_non_bar_access_t *rom_fn;
@@ -125,8 +128,6 @@ typedef struct {
     lm_log_fn_t		*log;
     lm_log_lvl_t	log_lvl;
     lm_fops_t		fops;
-    lm_pci_hdr_id_t	id;
-    lm_pci_hdr_cc_t	cc;
     lm_pci_info_t	pci_info;
 
     /*
