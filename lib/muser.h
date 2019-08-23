@@ -51,33 +51,12 @@ typedef struct {
     unsigned long (*mmap) (void *pvt, unsigned long pgoff);
 } lm_fops_t;
 
-
-/**
- * Callback function signatures for each regions.
- *
- * @lm_bar_access_t:     typedef for BAR access function.
- * @lm_non_bar_access_t: typedef for non-BAR(rom, pci config,
- *			 vga) access functions.
- */
-typedef ssize_t (lm_bar_access_t) (void *pvt, const int region_index,
-                                   char * const buf, size_t count,
-                                   loff_t offset, const bool is_write);
-typedef ssize_t (lm_non_bar_access_t) (void *pvt, char * const buf,
-                                       size_t count, loff_t offset,
-                                       const bool is_write);
-
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
 
     lm_pci_hdr_id_t     id;
     lm_pci_hdr_cc_t     cc;
-
-    /* PCI region access callbacks. */
-    lm_bar_access_t	    *bar_fn;
-    lm_non_bar_access_t *rom_fn;
-    lm_non_bar_access_t *pci_config_fn;
-    lm_non_bar_access_t *vga_fn;
 } lm_pci_info_t;
 
 /**

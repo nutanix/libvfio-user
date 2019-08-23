@@ -241,10 +241,14 @@ _Static_assert(sizeof(struct lm_pci_config_space) == 0x100,
 #define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
 #define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
+typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
+                                      loff_t offset, const bool is_write);
+
 struct lm_reg_info {
-    uint32_t flags;
-    uint32_t size;
-    uint64_t offset;
+    uint32_t            flags;
+    uint32_t            size;
+    uint64_t            offset;
+    lm_region_access_t  *fn;
 };
 
 enum {

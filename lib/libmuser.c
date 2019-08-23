@@ -542,7 +542,7 @@ lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos, const size_t count,
 static ssize_t
 handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
                                loff_t pos, bool is_write,
-                               lm_non_bar_access_t *pci_config_fn)
+                               lm_region_access_t *pci_config_fn)
 {
     int r1, r2 = 0;
 
@@ -569,7 +569,6 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
 {
     int idx;
     loff_t offset;
-    int ret = -EINVAL;
     lm_pci_info_t *pci_info;
 
     assert(lm_ctx != NULL);
@@ -583,31 +582,26 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
         return idx;
     }
 
+    if (idx < 0 || idx >= LM_DEV_NUM_REGS) {
+        lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
+        return -EINVAL;
+    } 
+    if (idx == LM_DEV_CFG_REG_IDX) {
+        return handle_pci_config_space_access(lm_ctx, buf, count, offset,
+                                              is_write, pci_info->reg_info[idx].fn);
+    }
     /*
      * Checking whether a callback exists might sound expensive however this
      * code is not performance critical. This works well when we don't expect a
      * region to be used, so the user of the library can simply leave the
      * callback NULL in lm_ctx_create.
      */
-    switch (idx) {
-    case LM_DEV_BAR0_REG_IDX ... LM_DEV_BAR5_REG_IDX:
-        if (pci_info->bar_fn)
-            return pci_info->bar_fn(lm_ctx->pvt, idx, buf, count, offset,
-                is_write);
-    case LM_DEV_ROM_REG_IDX:
-        if (pci_info->rom_fn)
-            return pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
-    case LM_DEV_CFG_REG_IDX:
-        return handle_pci_config_space_access(lm_ctx, buf, count, offset,
-                                              is_write, pci_info->pci_config_fn);
-    case LM_DEV_VGA_REG_IDX:
-        if (pci_info->vga_fn)
-            return pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
-    default:
-        lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
+    if (pci_info->reg_info[idx].fn) {
+        return pci_info->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
+                                          is_write);
     }
 
-    return ret;
+    return -EINVAL;
 }
 
 /*
@@ -1006,11 +1000,6 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
 
     lm_ctx->log = dev_info->log;
     lm_ctx->log_lvl = dev_info->log_lvl;
-
-    lm_ctx->pci_info.bar_fn = dev_info->pci_info.bar_fn;
-    lm_ctx->pci_info.rom_fn = dev_info->pci_info.rom_fn;
-    lm_ctx->pci_info.pci_config_fn = dev_info->pci_info.pci_config_fn;
-    lm_ctx->pci_info.vga_fn = dev_info->pci_info.vga_fn;
 
     err = lm_caps_init(lm_ctx, dev_info->caps, dev_info->nr_caps);
 
