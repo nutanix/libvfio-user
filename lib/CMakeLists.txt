@@ -36,7 +36,9 @@ add_library(muser SHARED
     dma.h
     dma.c
     libmuser.c
-    libmuser_pci.c)
+    libmuser_pci.c
+    cap.c
+    cap.h)
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h")
 set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 install(TARGETS muser

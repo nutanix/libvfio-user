@@ -49,6 +49,7 @@
 #include "../kmod/muser.h"
 #include "muser.h"
 #include "dma.h"
+#include "cap.h"
 
 typedef enum {
     IRQ_NONE = 0,
@@ -83,6 +84,7 @@ struct lm_ctx {
     lm_log_fn_t			    *log;
     lm_pci_info_t           pci_info;
     lm_pci_config_space_t	*pci_config_space;
+    struct caps             *caps;
     lm_irqs_t			    irqs; /* XXX must be last */
 };
 MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
@@ -537,6 +539,30 @@ lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos, const size_t count,
 }
 
 static ssize_t
+handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
+                               loff_t pos, bool is_write,
+                               lm_non_bar_access_t *pci_config_fn)
+{
+    int r1, r2 = 0;
+
+    r1 = cap_maybe_access(lm_ctx->caps, lm_ctx->pvt, buf, count, pos, is_write);
+    if (r1 < 0) {
+        lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%ld\n", count, pos);
+        return r1;
+    }
+    buf += r1;
+    pos += r1;
+    count -= r1;
+    if (pci_config_fn && count > 0) {
+        r2 = pci_config_fn(lm_ctx->pvt, buf, count, pos, is_write);
+        if (r2 < 0) {
+            return r2;
+        }
+    }
+    return r1 + r2;
+}
+
+static ssize_t
 do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
           const bool is_write)
 {
@@ -571,9 +597,8 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
         if (pci_info->rom_fn)
             return pci_info->rom_fn(lm_ctx->pvt, buf, count, offset, is_write);
     case LM_DEV_CFG_REG_IDX:
-        if (pci_info->pci_config_fn)
-            return pci_info->pci_config_fn(lm_ctx->pvt, buf, count, offset,
-                                          is_write);
+        return handle_pci_config_space_access(lm_ctx, buf, count, offset,
+                                              is_write, pci_info->pci_config_fn);
     case LM_DEV_VGA_REG_IDX:
         if (pci_info->vga_fn)
             return pci_info->vga_fn(lm_ctx->pvt, buf, count, offset, is_write);
@@ -876,6 +901,31 @@ init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
     hdr->ss.sid = hdr->id.did;
 }
 
+static int
+lm_caps_init(lm_ctx_t *lm_ctx, lm_cap_t *caps, int nr_caps)
+{
+    int err;
+
+    assert(lm_ctx);
+    assert(caps);
+
+    if (!nr_caps) {
+        return 0;
+    }
+
+    lm_ctx->caps = caps_create(caps, nr_caps);
+    if (!lm_ctx->caps) {
+        err = errno;
+        lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %m\n");
+        return err;
+    }
+
+    lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
+    lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF; 
+
+    return 0;
+}
+
 lm_ctx_t *
 lm_ctx_create(lm_dev_info_t * const dev_info)
 {
@@ -958,6 +1008,8 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     lm_ctx->pci_info.rom_fn = dev_info->pci_info.rom_fn;
     lm_ctx->pci_info.pci_config_fn = dev_info->pci_info.pci_config_fn;
     lm_ctx->pci_info.vga_fn = dev_info->pci_info.vga_fn;
+
+    err = lm_caps_init(lm_ctx, dev_info->caps, dev_info->nr_caps);
 
 out:
     if (err) {
