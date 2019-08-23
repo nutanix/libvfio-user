@@ -59,9 +59,12 @@ typedef enum {
     LM_DBG
 } lm_log_lvl_t;
 
-/* TODO these could go in pci_regs.h */
-#define PCI_CONFIG_SPACE_SIZEOF 0x100
-#define PCI_EXTENDED_CONFIG_SPACE_SIZEOF 0x1000
+/*
+ * These are already defined in include/uapi/linux/pci_regs.h, however that
+ * file doesn't seem to installed.
+ */
+#define PCI_CFG_SPACE_SIZE      256
+#define PCI_CFG_SPACE_EXP_SIZE  4096
 
 enum {
     LM_DEV_BAR0_REG_IDX,
@@ -213,14 +216,14 @@ typedef union {
 _Static_assert(sizeof(lm_pci_hdr_t) == 0x40, "bad PCI header size");
 
 typedef struct {
-    uint8_t raw[PCI_CONFIG_SPACE_SIZEOF - PCI_STD_HEADER_SIZEOF];
+    uint8_t raw[PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF];
 } __attribute__ ((packed)) lm_pci_non_std_config_space_t;
 _Static_assert(sizeof(lm_pci_non_std_config_space_t) == 0xc0,
                "bad non-standard PCI configuration space size");
 
 struct lm_pci_config_space {
     union {
-        uint8_t raw[PCI_CONFIG_SPACE_SIZEOF];
+        uint8_t raw[PCI_CFG_SPACE_SIZE];
         struct {
             lm_pci_hdr_t hdr;
             lm_pci_non_std_config_space_t non_std;

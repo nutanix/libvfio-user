@@ -916,11 +916,11 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
 
     lm_ctx->extended = dev_info->extended;
     if (lm_ctx->extended) {
-        size = PCI_EXTENDED_CONFIG_SPACE_SIZEOF;
+        size = PCI_CFG_SPACE_EXP_SIZE;
     } else {
-        size = PCI_CONFIG_SPACE_SIZEOF;
+        size = PCI_CFG_SPACE_SIZE;
     }
-    lm_ctx->pci_config_space = calloc(PCI_EXTENDED_CONFIG_SPACE_SIZEOF, 1);
+    lm_ctx->pci_config_space = calloc(PCI_CFG_SPACE_EXP_SIZE, 1);
     if (!lm_ctx->pci_config_space) {
         err = errno;
         goto out;
