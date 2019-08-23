@@ -43,14 +43,12 @@
  * lm_fops_t - driver callbacks
  *
  * @mmap:  mmap device configuration space
- * @reset: reset the device
  *
  * Reading from and writing to the configuration space is implemented by
  * region-specific callbacks in lm_pci_info_t.
  */
 typedef struct {
     unsigned long (*mmap) (void *pvt, unsigned long pgoff);
-    int (*reset) (void *pvt);
 } lm_fops_t;
 
 
@@ -129,6 +127,9 @@ typedef struct {
     lm_log_lvl_t	log_lvl;
     lm_fops_t		fops;
     lm_pci_info_t	pci_info;
+
+    /* device reset callback, optional */
+    int (*reset)    (void *pvt);
 
     /*
      * PCI capabilities. The user needs to only define the ID and size of each

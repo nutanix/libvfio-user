@@ -80,6 +80,7 @@ struct lm_ctx {
     int				        fd;
     bool                    extended;
     lm_fops_t			    fops;
+    int (*reset)            (void *pvt);
     lm_log_lvl_t		    log_lvl;
     lm_log_fn_t			    *log;
     lm_pci_info_t           pci_info;
@@ -398,8 +399,8 @@ do_muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
         err = dev_set_irqs(lm_ctx, &cmd_ioctl->data.irq_set, data);
         break;
     case VFIO_DEVICE_RESET:
-        if (lm_ctx->fops.reset) {
-            return lm_ctx->fops.reset(lm_ctx->pvt);
+        if (lm_ctx->reset) {
+            return lm_ctx->reset(lm_ctx->pvt);
         }
     }
 
@@ -992,6 +993,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     }
 
     lm_ctx->fops = dev_info->fops;
+    lm_ctx->reset = dev_info->reset;
     lm_ctx->pvt = dev_info->pvt;
 
     for (i = 0; i < max_ivs; i++) {
