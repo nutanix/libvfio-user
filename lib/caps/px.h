@@ -36,14 +36,14 @@ struct pxid {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxid) == 0x2, "bad PXID size");
 
-struct pxcap {
+struct pxcaps {
     unsigned int ver:4;
     unsigned int dpt:4;
     unsigned int si:1;
     unsigned int imn:5;
     unsigned int res1:2;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxcap) == 0x2, "bad PXCAP size");
+_Static_assert(sizeof(struct pxcaps) == 0x2, "bad PXCAPS size");
 
 struct pxdcap {
     unsigned int mps:3;
@@ -124,10 +124,9 @@ struct pxdc2 {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
 
-/* TODO name conflicts with PXCAP */
-struct PCI_Express_Capability {
+struct pxcap {
     struct pxid pxid;
-    struct pxcap pxcap;
+    struct pxcaps pxcaps;
     struct pxdcap pxdcap;
     union pxdc pxdc;
     struct pxds pxds;
@@ -138,7 +137,8 @@ struct PCI_Express_Capability {
     struct pxdcap2 pxdcap2;
     struct pxdc2 pxdc2;
 } __attribute__((packed));
-_Static_assert(sizeof(struct PCI_Express_Capability) == 0x2a,
+_Static_assert(sizeof(struct pxcap) == 0x2a,
 		"bad PCI Express Capability size");
+/* TODO should this be the same as PCI_CAP_EXP_ENDPOINT_SIZEOF_V2 ? */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
