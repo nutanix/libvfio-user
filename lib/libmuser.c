@@ -557,10 +557,10 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
     }
 
     /*
-     * Checking whether a callback exists might sound expensive however this is
-     * not performance critical. This works well when we don't expect a region
-     * to be used, so the user of the library can simply leave the callback
-     * NULL in lm_ctx_create.
+     * Checking whether a callback exists might sound expensive however this
+     * code is not performance critical. This works well when we don't expect a
+     * region to be used, so the user of the library can simply leave the
+     * callback NULL in lm_ctx_create.
      */
     switch (idx) {
     case LM_DEV_BAR0_REG_IDX ... LM_DEV_BAR5_REG_IDX:
@@ -599,6 +599,10 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
 
     while (count) {
         size_t size;
+        /*
+         * Limit accesses to qword and enforce alignment. Figure out whether
+         * the PCI spec requires this.
+         */
         if (count >= 8 && !(*ppos % 8)) {
            size = 8;
         } else if (count >= 4 && !(*ppos % 4)) {
