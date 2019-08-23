@@ -65,6 +65,6 @@ struct pmcap {
     struct pc pc;
     struct pmcs pmcs;
 } __attribute__((packed))  __attribute__ ((aligned(8)));
-_Static_assert(sizeof(struct pmcap) == 0x8, "bad PC size");
+_Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad PC size");
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
