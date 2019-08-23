@@ -124,6 +124,11 @@ struct pxdc2 {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
 
+/*
+ * TODO the definition of this struct varies, check PCI Express 2.1
+ * specification. Maybe we should only define the idividual registers but not
+ * the whole struct.
+ */
 struct pxcap {
     struct pxid pxid;
     struct pxcaps pxcaps;
@@ -139,6 +144,5 @@ struct pxcap {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxcap) == 0x2a,
 		"bad PCI Express Capability size");
-/* TODO should this be the same as PCI_CAP_EXP_ENDPOINT_SIZEOF_V2 ? */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
