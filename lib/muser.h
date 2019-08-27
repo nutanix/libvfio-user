@@ -163,8 +163,20 @@ typedef ssize_t (lm_cap_access_t) (void *pvt, const uint8_t id,
                                    loff_t offset, const bool is_write);
 
 typedef struct {
+
+    /*
+     * Capability ID, as defined by the PCI spec.
+     */
     uint8_t id;
+
+    /*
+     * Size, in bytes, of the capability.
+     */
     size_t size;
+
+    /*
+     * Function to call back when the capability gets read or written.
+     */
     lm_cap_access_t *fn;
 } lm_cap_t;
 
