@@ -146,7 +146,7 @@ typedef void (lm_log_fn_t) (void *pvt, const char *const msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
- * will not be called when the ID and next fields are accessed, these are
+ * callback is not called when the ID and next fields are accessed, these are
  * hanlded by the library.
  *
  * pvt: private pointer
