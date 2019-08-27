@@ -135,8 +135,9 @@ int lm_ctx_drive(lm_ctx_t * lm_ctx);
 
 
 /**
- * Creates mapping of BAR's into the callers vmem. It should be called from
- * lm_fops_t->mmap.
+ * Allocates memory that can be presented as device memory in the guest (e.g.
+ * when serving a region map call).  This is the only reliable way to allocate
+ * memory for this purpose
  *
  * Arguments:
  * @lm_ctx: libmuser context to create mapping from.
