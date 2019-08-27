@@ -87,10 +87,31 @@ typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long pgoff,
                                          unsigned long len);
 
 typedef struct  {
+
+    /*
+     * Region flags, see LM_REG_FLAG_XXX above.
+     */
     uint32_t            flags;
+
+    /*
+     * Size of the region.
+     */
     uint32_t            size;
+
+    /*
+     * Region offset.
+     */
     uint64_t            offset;
+
+    /*
+     * Callback function that is called when the region is read or written.
+     */
     lm_region_access_t  *fn;
+
+    /*
+     * Callback function that is called when the region is memory mapped.
+     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
+     */
     lm_map_region_t     *map;
     struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
 } lm_reg_info_t;
