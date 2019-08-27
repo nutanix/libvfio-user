@@ -48,7 +48,6 @@ typedef struct {
 } dma_scattergather_t;
 
 typedef struct lm_ctx lm_ctx_t;
-typedef struct lm_reg_info lm_reg_info_t;
 typedef struct lm_pci_config_space lm_pci_config_space_t;
 
 typedef enum {
@@ -93,14 +92,14 @@ typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
 typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long pgoff,
                                          unsigned long len);
 
-struct lm_reg_info {
+typedef struct  {
     uint32_t            flags;
     uint32_t            size;
     uint64_t            offset;
     lm_region_access_t  *fn;
     lm_map_region_t     *map;
     struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
-};
+} lm_reg_info_t;
 
 enum {
     LM_DEV_INTX_IRQ_IDX,
