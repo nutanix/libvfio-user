@@ -157,8 +157,6 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 
 int lm_ctx_run(lm_ctx_t * const ctx);
 
-uint8_t *lm_get_pci_non_std_config_space(lm_ctx_t * const lm_ctx);
-
 /**
  * Adds a PCI capability. There is no need to supply the actually capability
  * as reading from and written to the capability results in the callback being
@@ -185,6 +183,11 @@ lm_unmap_sg(lm_ctx_t * const ctx, const dma_scattergather_t * sg,
 int
 lm_get_region(lm_ctx_t * const ctx, const loff_t pos,
               const size_t count, loff_t * const off);
+
+/*
+ * Advanced.
+ */
+uint8_t *lm_get_pci_non_std_config_space(lm_ctx_t * const lm_ctx);
 
 #ifdef DEBUG
 void
