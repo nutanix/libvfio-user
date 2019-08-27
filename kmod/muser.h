@@ -47,8 +47,13 @@ struct muser_cmd_ioctl {
 
 union muser_cmd_mmap {
 	struct {
-		unsigned long start;
-		unsigned long end;
+		union {
+			struct {
+				unsigned long start;
+				unsigned long end;
+			};
+			unsigned long len;
+		};
 		unsigned long flags;
 		unsigned long pgoff;
 	} request;

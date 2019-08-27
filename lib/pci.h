@@ -244,11 +244,14 @@ _Static_assert(sizeof(struct lm_pci_config_space) == 0x100,
 typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
                                       loff_t offset, const bool is_write);
 
+typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long pgoff,
+                                         unsigned long len);
 struct lm_reg_info {
     uint32_t            flags;
     uint32_t            size;
     uint64_t            offset;
     lm_region_access_t  *fn;
+    lm_map_region_t     *map;
 };
 
 enum {

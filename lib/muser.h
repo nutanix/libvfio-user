@@ -39,18 +39,6 @@
 
 #include "pci.h"
 
-/**
- * lm_fops_t - driver callbacks
- *
- * @mmap:  mmap device configuration space
- *
- * Reading from and writing to the configuration space is implemented by
- * region-specific callbacks in lm_pci_info_t.
- */
-typedef struct {
-    unsigned long (*mmap) (void *pvt, unsigned long pgoff);
-} lm_fops_t;
-
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
@@ -104,7 +92,6 @@ typedef struct {
     int			    nr_dma_regions;
     lm_log_fn_t		*log;
     lm_log_lvl_t	log_lvl;
-    lm_fops_t		fops;
     lm_pci_info_t	pci_info;
 
     /* device reset callback, optional */
@@ -190,6 +177,10 @@ void
 lm_unmap_sg(lm_ctx_t * const ctx, const dma_scattergather_t * sg,
             struct iovec *iov, int cnt);
 
+/**
+ * Returns the PCI region given the position in the PCI configuration space.
+ * Sets @off relative to the region.
+ */
 int
 lm_get_region(lm_ctx_t * const ctx, const loff_t pos,
               const size_t count, loff_t * const off);

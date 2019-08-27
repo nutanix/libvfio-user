@@ -1252,8 +1252,7 @@ static int muser_mmap(struct mdev_device *const mdev,
 
 	mucmd.type = MUSER_MMAP;
 	mucmd.muser_cmd.type = MUSER_MMAP;
-	mucmd.muser_cmd.mmap.request.start = vma->vm_start;
-	mucmd.muser_cmd.mmap.request.end = vma->vm_end;
+	mucmd.muser_cmd.mmap.request.len = vma->vm_end - vma->vm_start;
 	mucmd.muser_cmd.mmap.request.pgoff = vma->vm_pgoff;
 	mucmd.mmap_len = vma->vm_end - vma->vm_start;
 

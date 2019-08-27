@@ -79,7 +79,6 @@ struct lm_ctx {
     dma_controller_t		*dma;
     int				        fd;
     bool                    extended;
-    lm_fops_t			    fops;
     int (*reset)            (void *pvt);
     lm_log_lvl_t		    log_lvl;
     lm_log_fn_t			    *log;
@@ -470,22 +469,47 @@ static int muser_dma_map(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
     return 0;
 }
 
+/*
+ * Callback that is executed when device memory is to be memory mapped.
+ */
 static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
 {
+    int region, err = 0;
     unsigned long addr;
-    unsigned long start = cmd->mmap.request.start;
-    unsigned long end = cmd->mmap.request.end;
+    unsigned long len = cmd->mmap.request.len;
     unsigned long pgoff = cmd->mmap.request.pgoff;
 
-    addr = lm_ctx->fops.mmap(lm_ctx->pvt, pgoff);
-    cmd->mmap.response.addr = addr;
-
-    if ((void *)addr == MAP_FAILED) {
-	    cmd->err = -1;
-        return -1;
+    region = lm_get_region(lm_ctx, pgoff, len, &pgoff);
+    if (region < 0) {
+        lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
+        err = region;
+        goto out;
     }
 
-    return 0;
+    if (!lm_ctx->pci_info.reg_info[region].map) {
+        lm_log(lm_ctx, LM_ERR, "region not mmapable\n");
+        err = -EINVAL;
+        goto out;
+    }
+
+    addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, pgoff, len);
+
+    if ((void *)addr == MAP_FAILED) {
+        lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
+	    err = -errno;
+        goto out;
+    }
+
+    cmd->mmap.response.addr = addr;
+
+out:
+    if (err) {
+        lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %x@%lx: %s\n",
+               len, pgoff, strerror(-errno));
+        cmd->err = err;
+        err = -1;
+    }
+    return err;
 }
 
 static int
@@ -986,7 +1010,6 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         }
     }
 
-    lm_ctx->fops = dev_info->fops;
     lm_ctx->reset = dev_info->reset;
     lm_ctx->pvt = dev_info->pvt;
 
