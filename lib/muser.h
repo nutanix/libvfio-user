@@ -158,13 +158,6 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 
 int lm_ctx_run(lm_ctx_t * const ctx);
 
-/**
- * Adds a PCI capability. There is no need to supply the actually capability
- * as reading from and written to the capability results in the callback being
- * called.
- */
-int lm_cap_add(lm_ctx_t *ctx, uint8_t id, size_t size);
-
 /* FIXME map guest memory in the library */
 int lm_addr_to_sg(lm_ctx_t * const ctx, dma_addr_t dma_addr, uint32_t len,
                   dma_scattergather_t * sg, int max_sg);
