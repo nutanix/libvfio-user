@@ -979,12 +979,10 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         goto out;
     }
 
-    if (dev_info->nr_dma_regions > 0) {
-        lm_ctx->dma = dma_controller_create(dev_info->nr_dma_regions);
-        if (lm_ctx->dma == NULL) {
-            err = errno;
-            goto out;
-        }
+    lm_ctx->dma = dma_controller_create(LM_DMA_REGIONS);
+    if (lm_ctx->dma == NULL) {
+        err = errno;
+        goto out;
     }
 
     lm_ctx->pci_info.irq_count[LM_DEV_ERR_IRQ_IDX] = 1;

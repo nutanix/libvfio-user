@@ -192,7 +192,7 @@ dma_controller_add_region(lm_ctx_t * const lm_ctx, dma_controller_t * dma,
 
     if (dma->nregions == dma->max_regions) {
         idx = dma->max_regions;
-        lm_log(lm_ctx, LM_ERR, "reached maxed regions\n");
+        lm_log(lm_ctx, LM_ERR, "reached maxed regions, recompile with higher number of DMA regions\n");
         goto err;
     }
 

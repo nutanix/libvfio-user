@@ -39,6 +39,8 @@
 
 #include "pci.h"
 
+#define LM_DMA_REGIONS  0x10
+
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
@@ -89,7 +91,6 @@ typedef struct {
      * whether an extended PCI configuration space should be created
      */
     bool            extended;
-    int			    nr_dma_regions;
     lm_log_fn_t		*log;
     lm_log_lvl_t	log_lvl;
     lm_pci_info_t	pci_info;
