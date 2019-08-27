@@ -39,9 +39,6 @@
 
 #include "pci.h"
 
-struct lm_ctx;
-typedef struct lm_ctx lm_ctx_t;
-
 typedef uint64_t dma_addr_t;
 
 typedef struct {
