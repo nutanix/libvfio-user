@@ -48,6 +48,7 @@
 
 #include "../kmod/muser.h"
 #include "muser.h"
+#include "muser_priv.h"
 #include "dma.h"
 #include "cap.h"
 

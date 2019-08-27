@@ -111,16 +111,6 @@ lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
 
 lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
 
-/*
- * TODO the rest of these functions don't need to be public, put them in a
- * private header file so libmuser.c can use them.
- * TODO replace the "muser" prefix
- */
-int
-muser_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
-                     loff_t * const pos, const bool write,
-                     unsigned char *const buf);
-
 #define LM_DMA_REGIONS  0x10
 
 typedef struct {

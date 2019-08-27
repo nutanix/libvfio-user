@@ -31,6 +31,7 @@
 add_library(muser SHARED
     ../kmod/muser.h
     muser.h
+    muser_priv.h
     pci.h
     common.h
     dma.h
