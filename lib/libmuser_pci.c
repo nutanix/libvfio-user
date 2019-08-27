@@ -40,6 +40,7 @@
 #include <linux/vfio.h>
 
 #include "muser.h"
+#include "muser_priv.h"
 #include "pci.h"
 #include "common.h"
 

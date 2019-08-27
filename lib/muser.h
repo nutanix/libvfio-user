@@ -130,8 +130,6 @@ enum {
  */
 lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
 
-lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
-
 #define LM_DMA_REGIONS  0x10
 
 typedef struct {
