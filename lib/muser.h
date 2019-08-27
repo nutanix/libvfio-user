@@ -50,12 +50,6 @@ typedef struct {
 typedef struct lm_ctx lm_ctx_t;
 typedef struct lm_pci_config_space lm_pci_config_space_t;
 
-typedef enum {
-    LM_ERR,
-    LM_INF,
-    LM_DBG
-} lm_log_lvl_t;
-
 enum {
     LM_DEV_BAR0_REG_IDX,
     LM_DEV_BAR1_REG_IDX,
@@ -136,6 +130,12 @@ typedef struct {
     lm_pci_hdr_id_t     id;
     lm_pci_hdr_cc_t     cc;
 } lm_pci_info_t;
+
+typedef enum {
+    LM_ERR,
+    LM_INF,
+    LM_DBG
+} lm_log_lvl_t;
 
 /**
  *  Callback function signature for log function
