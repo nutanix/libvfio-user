@@ -39,6 +39,98 @@
 
 #include "pci.h"
 
+struct lm_ctx;
+typedef struct lm_ctx lm_ctx_t;
+
+typedef uint64_t dma_addr_t;
+
+typedef struct {
+    int region;
+    int length;
+    uint64_t offset;
+} dma_scattergather_t;
+
+typedef struct lm_ctx lm_ctx_t;
+typedef struct lm_reg_info lm_reg_info_t;
+typedef struct lm_pci_config_space lm_pci_config_space_t;
+
+typedef enum {
+    LM_ERR,
+    LM_INF,
+    LM_DBG
+} lm_log_lvl_t;
+
+enum {
+    LM_DEV_BAR0_REG_IDX,
+    LM_DEV_BAR1_REG_IDX,
+    LM_DEV_BAR2_REG_IDX,
+    LM_DEV_BAR3_REG_IDX,
+    LM_DEV_BAR4_REG_IDX,
+    LM_DEV_BAR5_REG_IDX,
+    LM_DEV_ROM_REG_IDX,
+    LM_DEV_CFG_REG_IDX,
+    LM_DEV_VGA_REG_IDX,
+    LM_DEV_NUM_REGS = 9
+};
+
+// Region flags.
+#define LM_REG_FLAG_READ    (1 << 0)
+#define LM_REG_FLAG_WRITE   (1 << 1)
+#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
+#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+
+struct lm_mmap_area {
+	uint64_t start;
+	uint64_t size;
+};
+
+struct lm_sparse_mmap_areas {
+    int nr_mmap_areas;
+    struct lm_mmap_area areas[];
+};
+
+typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
+                                      loff_t offset, const bool is_write);
+
+typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long pgoff,
+                                         unsigned long len);
+
+struct lm_reg_info {
+    uint32_t            flags;
+    uint32_t            size;
+    uint64_t            offset;
+    lm_region_access_t  *fn;
+    lm_map_region_t     *map;
+    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+};
+
+enum {
+    LM_DEV_INTX_IRQ_IDX,
+    LM_DEV_MSI_IRQ_IDX,
+    LM_DEV_MSIX_IRQ_IDX,
+    LM_DEV_ERR_IRQ_IDX,
+    LM_DEV_REQ_IRQ_IDX,
+    LM_DEV_NUM_IRQS = 5
+};
+
+/*
+ * Returns a pointer to the non-standard part of the PCI configuration space.
+ */
+lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
+
+lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
+
+/*
+ * TODO the rest of these functions don't need to be public, put them in a
+ * private header file so libmuser.c can use them.
+ * TODO replace the "muser" prefix
+ */
+int
+muser_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
+                     loff_t * const pos, const bool write,
+                     unsigned char *const buf);
+
 #define LM_DMA_REGIONS  0x10
 
 typedef struct {
