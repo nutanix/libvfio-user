@@ -149,12 +149,14 @@ typedef void (lm_log_fn_t) (void *pvt, const char *const msg);
  * callback is not called when the ID and next fields are accessed, these are
  * hanlded by the library.
  *
- * pvt: private pointer
- * id: capability ID being accessed
- * buf: pointer to data being read or written
- * count: number of bytes being read or written
- * offset: offset within the capability
- * is_write: whether the capability is read or written
+ * @pvt: private pointer
+ * @id: capability ID being accessed
+ * @buf: pointer to data being read or written
+ * @count: number of bytes being read or written
+ * @offset: offset within the capability
+ * @is_write: whether the capability is read or written
+ *
+ * @returns the number of bytes read or written
  */
 typedef ssize_t (lm_cap_access_t) (void *pvt, const uint8_t id,
                                    char * const buf, size_t count,
