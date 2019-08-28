@@ -1,3 +1,6 @@
+#ifndef __CAP_H__
+#define __CAP_H__
+
 #include "muser.h"
 
 struct caps;
@@ -23,3 +26,5 @@ cap_maybe_access(struct caps *caps, void *pvt, char *buf, size_t count,
                  loff_t offset, bool is_write);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
+
+#endif /* __CAP_H__ */
