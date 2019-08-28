@@ -134,9 +134,21 @@ lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
 
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
+
+    /*
+     * Per-region information. Only supported regions need to be defined,
+     * unsupported regions should be left to 0.
+     */
     lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
 
+    /*
+     * Device and vendor ID.
+     */
     lm_pci_hdr_id_t     id;
+
+    /*
+     * Class code.
+     */ 
     lm_pci_hdr_cc_t     cc;
 } lm_pci_info_t;
 
@@ -147,7 +159,7 @@ typedef enum {
 } lm_log_lvl_t;
 
 /**
- *  Callback function signature for log function
+ * Callback function signature for log function
  *
  * @lm_log_fn_t: typedef for log function.
  */
@@ -174,12 +186,13 @@ typedef ssize_t (lm_cap_access_t) (void *pvt, const uint8_t id,
 typedef struct {
 
     /*
-     * Capability ID, as defined by the PCI spec.
+     * Capability ID, as defined by the PCI specification. Also defined as
+     * PCI_CAP_ID_XXX in linux/pci_regs.h.
      */
     uint8_t id;
 
     /*
-     * Size, in bytes, of the capability.
+     * Size of the capability.
      */
     size_t size;
 
@@ -197,16 +210,35 @@ typedef struct {
  */
 typedef struct {
     char            *uuid;
-    void		    *pvt;
+
     /*
-     * whether an extended PCI configuration space should be created
+     * Private data passed to various lm_XXX functions.
+     */
+    void		    *pvt;
+
+    /*
+     * Whether an extended PCI configuration space should be created.
      */
     bool            extended;
+
+    /*
+     * Function to call for logging. Optional.
+     */
     lm_log_fn_t		*log;
+
+    /*
+     * Log level. Messages above this level are not logged. Optional
+     */
     lm_log_lvl_t	log_lvl;
+
+    /*
+     * PCI configuration.
+     */
     lm_pci_info_t	pci_info;
 
-    /* device reset callback, optional */
+    /*
+     * Function that is called when the guest resets the device. Optional.
+     */
     int (*reset)    (void *pvt);
 
     /*
@@ -215,6 +247,10 @@ typedef struct {
      * capability is accessed the appropriate callback function is called.
      */
     lm_cap_t        caps[LM_MAX_CAPS];
+
+    /*
+     * Number of capabilities in above array.
+     */
     int             nr_caps;
     
 } lm_dev_info_t;
@@ -224,6 +260,8 @@ typedef struct {
  *
  * Arguments:
  * @dev_info: device information used to create the context.
+ *
+ * @returns the lm_ctx to be used or NULL on eror (sets errno).
  */
 lm_ctx_t *lm_ctx_create(lm_dev_info_t * dev_info);
 
@@ -241,6 +279,8 @@ void lm_ctx_destroy(lm_ctx_t * lm_ctx);
  *
  * Arguments:
  * @lm_ctx: libmuser context to drive.
+ *
+ * @returns 0 on success, -errno on failure.
  */
 
 int lm_ctx_drive(lm_ctx_t * lm_ctx);
@@ -249,10 +289,12 @@ int lm_ctx_drive(lm_ctx_t * lm_ctx);
 /**
  * Allocates memory that can be presented as device memory in the guest (e.g.
  * when serving a region map call).  This is the only reliable way to allocate
- * memory for this purpose
+ * memory for this purpose.
  *
  * Arguments:
  * @lm_ctx: libmuser context to create mapping from.
+ *
+ * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
 void *lm_mmap(lm_ctx_t * lm_ctx, size_t length, off_t offset);
 
@@ -267,34 +309,44 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 
 /* Helper functions */
 
-int lm_ctx_run(lm_ctx_t * const ctx);
-
 /**
  * Converts a guest physical address to a dma_scattergather_t element which can
  * be later passed on to lm_map_sg to memory map the GPA. It is the caller's
  * responsibility to unmap it by calling lm_unmap_sg.
+ *
+ * @lm_ctx: libmuser context
+ * @dma_addr: the guest physical address
+ * @len: length
+ * @sg: array that receives the segments to be mapped
+ * @max_sg: number of elements in above array.
  */
-int lm_addr_to_sg(lm_ctx_t * const ctx, dma_addr_t dma_addr, uint32_t len,
+int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
                   dma_scattergather_t * sg, int max_sg);
 
 int
-lm_map_sg(lm_ctx_t * const ctx, int prot, const dma_scattergather_t * sg,
+lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_scattergather_t * sg,
           struct iovec *iov, int cnt);
 
 void
-lm_unmap_sg(lm_ctx_t * const ctx, const dma_scattergather_t * sg,
+lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_scattergather_t * sg,
             struct iovec *iov, int cnt);
 
 /**
  * Returns the PCI region given the position in the PCI configuration space.
  * Sets @off relative to the region.
+ *
+ * Returns 0 on success, -errno on failure.
  */
 int
 lm_get_region(lm_ctx_t * const ctx, const loff_t pos,
               const size_t count, loff_t * const off);
 
 /*
- * Advanced.
+ * Advanced stuff.
+ */
+
+/**
+ * Returns the non-standard part of the PCI configuragion space.
  */
 uint8_t *lm_get_pci_non_std_config_space(lm_ctx_t * const lm_ctx);
 
