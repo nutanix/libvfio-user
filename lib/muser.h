@@ -79,11 +79,48 @@ struct lm_sparse_mmap_areas {
     struct lm_mmap_area areas[];
 };
 
+/**
+ * Prototype for region access callback. When a region is accessed, libmuser
+ * calls the previously registered callback with the following arguments:
+ *
+ * @pvt: private data originally set in dev_info
+ * @buf: buffer containing the data to be written or data to be read into
+ * @count: number of bytes being read or written
+ * @offset: byte offset within the region
+ * @is_write: whether or not this is a write
+ *
+ * @returns the number of bytes read or written, or a negative integer on error
+ */
 typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
                                       loff_t offset, const bool is_write);
 
-typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long pgoff,
+/** 
+ * Prototype for memory access callback. The program MUST first map device
+ * memory in its own virtual address space using lm_mmap, do any additional
+ * work required, and finally return that memory. When a region is memory
+ * mapped, libmuser calls previously register callback with the following
+ * arguments:
+ *
+ * @pvt: private data originally set in dev_info
+ * @off: offset of memory area being memory mapped
+ * @len: length of memory area being memory mapped
+ *
+ * @returns the memory address returned by lm_mmap, or MAP_FAILED on failure
+ */
+typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
                                          unsigned long len);
+
+/**
+ * Creates a mapping of a device region into the caller's virtual memory. It
+ * must be called by lm_map_region_t.
+ *
+ * @lm_ctx: the libmuser context to create mapping from
+ * @offset: offset of the region being mapped
+ * @length: size of the region being mapped 
+ *
+ * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
+ */
+void *lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length);
 
 typedef struct  {
 
@@ -186,7 +223,7 @@ typedef struct {
 
     /*
      * Capability ID, as defined by the PCI specification. Also defined as
-     * PCI_CAP_ID_XXX in linux/pci_regs.h.
+     * PCI_CAP_ID_XXX in <linux/pci_regs.h>.
      */
     uint8_t id;
 
@@ -257,52 +294,37 @@ typedef struct {
 /**
  * Creates libmuser context.
  *
- * Arguments:
  * @dev_info: device information used to create the context.
  *
- * @returns the lm_ctx to be used or NULL on eror (sets errno).
+ * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
 lm_ctx_t *lm_ctx_create(lm_dev_info_t * dev_info);
 
 /**
  * Destroys libmuser context.
  *
- * Arguments:
- * @lm_ctx: libmuser context to destroy.
+ * @lm_ctx: the libmuser context to destroy
  */
 void lm_ctx_destroy(lm_ctx_t * lm_ctx);
 
 /**
  * Once the lm_ctx is configured lm_ctx_drive() drives it. This function waits
- * for commands comming from muser.ko and then processes it..
+ * for commands comming from muser.ko and then processes it.
  *
- * Arguments:
- * @lm_ctx: libmuser context to drive.
+ * @lm_ctx: the libmuser context to drive
  *
  * @returns 0 on success, -errno on failure.
  */
 
 int lm_ctx_drive(lm_ctx_t * lm_ctx);
 
-
 /**
- * Allocates memory that can be presented as device memory in the guest (e.g.
- * when serving a region map call).  This is the only reliable way to allocate
- * memory for this purpose.
+ * Triggers an interrupt.
  *
- * Arguments:
- * @lm_ctx: libmuser context to create mapping from.
+ * @lm_ctx: the libmuser context to trigger interrupt
+ * @vector: vector to tirgger interrupt on
  *
- * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
- */
-void *lm_mmap(lm_ctx_t * lm_ctx, size_t length, off_t offset);
-
-/**
- * Trigger interrupt.
- *
- * Arguments:
- * @lm_ctx: libmuser context to trigger interrupt.
- * @vector: vector to tirgger interrupt on.
+ * @returns sizeof(eventfd_t) on success, or -1 on failure. Sets errno.
  */
 int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 
@@ -313,31 +335,73 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
  * be later passed on to lm_map_sg to memory map the GPA. It is the caller's
  * responsibility to unmap it by calling lm_unmap_sg.
  *
- * @lm_ctx: libmuser context
+ */
+
+/**
+ * Takes a guest physical address and returns a list of scatter/gather entries
+ * than can be individually mapped in the program's virtual memory.  A single
+ * linear guest physical address span may need to be split into multiple
+ * scatter/gather regions due to limitations of how memory can be mapped.
+ *
+ * @lm_ctx: the libmuser context
  * @dma_addr: the guest physical address
- * @len: length
- * @sg: array that receives the segments to be mapped
- * @max_sg: number of elements in above array.
+ * @len: size of memory to be mapped
+ * @sg: array that receives the scatter/gather entries to be mapped
+ * @max_sg: maximum number of elements in above array
+ *
+ * @returns the number of scatter/gather entries created on success, and on
+ * failure:
+ *  -1:     if the GPA address span is invalid, or
+ *  -x -1:  if @max_sg is too small, where x is the number of scatter/gather
+ *          entries necessary to complete this request.
  */
 int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
                   dma_scattergather_t * sg, int max_sg);
 
+/**
+ * Maps a list scatter/gather entries from the guest's physical address space
+ * to the program's virtual memory. It is the caller's responsibility to remove
+ * the mappings by calling lm_unmap_sg.
+ *
+ * @lm_ctx: the libmuser context
+ * @prot: protection flags, defined as PROT_XXX in <sys/mman.h>
+ * @sg: array of scatter/gather entries returned by lm_addr_to_sg
+ * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
+ *       mapping
+ * @cnt: number of scatter/gather entries to map
+ *
+ * @returns 0 on success, -1 on failure
+ */
 int
 lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_scattergather_t * sg,
           struct iovec *iov, int cnt);
 
+/**
+ * Unmaps a list scatter/gather entries (previously mapped by lm_map_sg) from
+ * the program's virtual memory.
+ *
+ * @lm_ctx: the libmuser context
+ * @sg: array of scatter/gather entries to unmap
+ * @iov: array of iovec structures for each scatter/gather entry
+ * @cnt: number of scatter/gather entries to unmap
+ */
 void
 lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_scattergather_t * sg,
             struct iovec *iov, int cnt);
 
 /**
- * Returns the PCI region given the position in the PCI configuration space.
- * Sets @off relative to the region.
+ * Returns the PCI region given the position and size of an address span in the
+ * PCI configuration space.
  *
- * Returns 0 on success, -errno on failure.
+ * @lm_ctx: the libmuser context
+ * @pos: offset of the address span
+ * @count: size of the address span
+ * @off: output parameter that receives the relative offset within the region.
+ *
+ * Returns the PCI region (LM_DEV_XXX_REG_IDX), or -1 on error. Sets errno.
  */
 int
-lm_get_region(lm_ctx_t * const ctx, const loff_t pos,
+lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos,
               const size_t count, loff_t * const off);
 
 /*

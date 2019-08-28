@@ -930,7 +930,7 @@ dev_attach(const char *uuid)
 }
 
 void *
-lm_mmap(lm_ctx_t * lm_ctx, size_t length, off_t offset)
+lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length)
 {
     off_t lm_off;
 
@@ -959,6 +959,7 @@ lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
         return -1;
     }
 
+    /* FIXME shouldn't we return 0 on success instead the number of bytes written? */
     return eventfd_write(lm_ctx->irqs.efds[vector], val);
 }
 
