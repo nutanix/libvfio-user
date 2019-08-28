@@ -187,7 +187,7 @@ typedef struct {
 _Static_assert(sizeof(lm_pci_non_std_config_space_t) == 0xc0,
                "bad non-standard PCI configuration space size");
 
-struct lm_pci_config_space {
+typedef struct {
     union {
         uint8_t raw[PCI_CFG_SPACE_SIZE];
         struct {
@@ -196,8 +196,8 @@ struct lm_pci_config_space {
         } __attribute__ ((packed));
     } __attribute__ ((packed));
     uint8_t extended[];
-} __attribute__ ((packed));
-_Static_assert(sizeof(struct lm_pci_config_space) == 0x100,
+} __attribute__ ((packed)) lm_pci_config_space_t;
+_Static_assert(sizeof(lm_pci_config_space_t) == 0x100,
                "bad PCI configuration space size");
 
 #endif                          /* LIBMUSER_PCI_H */

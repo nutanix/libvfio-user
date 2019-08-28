@@ -48,7 +48,6 @@ typedef struct {
 } dma_scattergather_t;
 
 typedef struct lm_ctx lm_ctx_t;
-typedef struct lm_pci_config_space lm_pci_config_space_t;
 
 enum {
     LM_DEV_BAR0_REG_IDX,
