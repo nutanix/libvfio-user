@@ -519,9 +519,10 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 				ret = -ENOMEM;
 				goto free_pg;
 			}
+			new_pgs[i] = cur_pgidx;
 		}
 
-		addr = vma->vm_start + (cur_pgidx << PAGE_SHIFT);
+		addr = vma->vm_start + (i << PAGE_SHIFT);
 		ret = vm_insert_page(vma, addr, pg);
 		if (unlikely(ret))
 			goto free_pg;
