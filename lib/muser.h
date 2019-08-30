@@ -309,7 +309,7 @@ void lm_ctx_destroy(lm_ctx_t * lm_ctx);
 
 /**
  * Once the lm_ctx is configured lm_ctx_drive() drives it. This function waits
- * for commands comming from muser.ko and then processes it.
+ * for commands coming from muser.ko and then processes it.
  *
  * @lm_ctx: the libmuser context to drive
  *
@@ -322,7 +322,7 @@ int lm_ctx_drive(lm_ctx_t * lm_ctx);
  * Triggers an interrupt.
  *
  * @lm_ctx: the libmuser context to trigger interrupt
- * @vector: vector to tirgger interrupt on
+ * @vector: vector to trigger interrupt on
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
