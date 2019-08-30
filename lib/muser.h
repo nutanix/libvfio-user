@@ -356,7 +356,7 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
  *          entries necessary to complete this request.
  */
 int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
-                  dma_scattergather_t * sg, int max_sg);
+                  dma_scattergather_t *sg, int max_sg);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
