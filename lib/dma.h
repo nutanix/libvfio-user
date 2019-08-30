@@ -43,7 +43,7 @@
  *   is registered with the DMA controllers at a unique, non-overlapping
  *   linear span of the DMA address space.
  * - To perform DMA, the application should first build a scatter-gather
- *   list (sglist) of dma_scattergather_t from DMA addresses. Then the sglist
+ *   list (sglist) of dma_sg_t from DMA addresses. Then the sglist
  *   can be mapped using dma_map_sg() into the process's virtual address space
  *   as an iovec for direct access, and unmapped using dma_unmap_sg() when done.
  * - dma_map_addr() and dma_unmap_addr() helper functions are provided
@@ -120,7 +120,7 @@ int dma_controller_remove_region(dma_controller_t * dma, dma_addr_t dma_addr,
 // Helper for dma_addr_to_sg() slow path.
 int _dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
                        dma_addr_t dma_addr, uint32_t len,
-                       dma_scattergather_t * sg, int max_sg);
+                       dma_sg_t * sg, int max_sg);
 
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
  * A single linear dma address span may need to be split into multiple
@@ -136,7 +136,7 @@ int _dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
 static inline int
 dma_addr_to_sg(lm_ctx_t * const ctx, const dma_controller_t * dma,
                dma_addr_t dma_addr, uint32_t len,
-               dma_scattergather_t * sg, int max_sg)
+               dma_sg_t * sg, int max_sg)
 {
     static __thread int region_hint;
     int cnt;
@@ -168,7 +168,7 @@ void dma_unmap_region(dma_memory_region_t * region,
 
 static inline int
 dma_map_sg(dma_controller_t * dma, int prot,
-           const dma_scattergather_t * sg, struct iovec *iov, int cnt)
+           const dma_sg_t * sg, struct iovec *iov, int cnt)
 {
     int i;
 
@@ -192,7 +192,7 @@ dma_map_sg(dma_controller_t * dma, int prot,
 
 static inline void
 dma_unmap_sg(dma_controller_t * dma,
-             const dma_scattergather_t * sg, struct iovec *iov, int cnt)
+             const dma_sg_t * sg, struct iovec *iov, int cnt)
 {
     int i;
 
@@ -208,7 +208,7 @@ static inline void *
 dma_map_addr(lm_ctx_t * const ctx, dma_controller_t * dma, int prot,
              dma_addr_t dma_addr, uint32_t len)
 {
-    dma_scattergather_t sg;
+    dma_sg_t sg;
     struct iovec iov;
 
     if (dma_addr_to_sg(ctx, dma, dma_addr, len, &sg, 1) == 1 &&
@@ -223,7 +223,7 @@ static inline void
 dma_unmap_addr(lm_ctx_t * const ctx, dma_controller_t * dma,
                dma_addr_t dma_addr, uint32_t len, void *addr)
 {
-    dma_scattergather_t sg;
+    dma_sg_t sg;
     struct iovec iov = {
         .iov_base = addr,
         .iov_len = len,

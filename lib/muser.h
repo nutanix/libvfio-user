@@ -45,7 +45,7 @@ typedef struct {
     int region;
     int length;
     uint64_t offset;
-} dma_scattergather_t;
+} dma_sg_t;
 
 typedef struct lm_ctx lm_ctx_t;
 
@@ -331,7 +331,7 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 /* Helper functions */
 
 /**
- * Converts a guest physical address to a dma_scattergather_t element which can
+ * Converts a guest physical address to a dma_sg_t element which can
  * be later passed on to lm_map_sg to memory map the GPA. It is the caller's
  * responsibility to unmap it by calling lm_unmap_sg.
  *
@@ -356,7 +356,7 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
  *          entries necessary to complete this request.
  */
 int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
-                  dma_scattergather_t *sg, int max_sg);
+                  dma_sg_t *sg, int max_sg);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
@@ -373,7 +373,7 @@ int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * @returns 0 on success, -1 on failure
  */
 int
-lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_scattergather_t * sg,
+lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_sg_t * sg,
           struct iovec *iov, int cnt);
 
 /**
@@ -386,7 +386,7 @@ lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_scattergather_t * sg,
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_scattergather_t * sg,
+lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
             struct iovec *iov, int cnt);
 
 /**

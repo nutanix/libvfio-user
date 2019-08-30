@@ -281,7 +281,7 @@ dma_unmap_region(dma_memory_region_t * region, void *virt_addr, size_t len)
 int
 _dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
                    dma_addr_t dma_addr, uint32_t len,
-                   dma_scattergather_t * sg, int max_sg)
+                   dma_sg_t * sg, int max_sg)
 {
     int idx;
     int cnt = 0;
