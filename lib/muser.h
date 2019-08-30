@@ -324,7 +324,7 @@ int lm_ctx_drive(lm_ctx_t * lm_ctx);
  * @lm_ctx: the libmuser context to trigger interrupt
  * @vector: vector to tirgger interrupt on
  *
- * @returns sizeof(eventfd_t) on success, or -1 on failure. Sets errno.
+ * @returns 0 on success, or -1 on failure. Sets errno.
  */
 int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
 

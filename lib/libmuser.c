@@ -959,7 +959,6 @@ lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
         return -1;
     }
 
-    /* FIXME shouldn't we return 0 on success instead the number of bytes written? */
     return eventfd_write(lm_ctx->irqs.efds[vector], val);
 }
 
