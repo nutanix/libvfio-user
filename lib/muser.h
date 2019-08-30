@@ -49,19 +49,6 @@ typedef struct {
 
 typedef struct lm_ctx lm_ctx_t;
 
-enum {
-    LM_DEV_BAR0_REG_IDX,
-    LM_DEV_BAR1_REG_IDX,
-    LM_DEV_BAR2_REG_IDX,
-    LM_DEV_BAR3_REG_IDX,
-    LM_DEV_BAR4_REG_IDX,
-    LM_DEV_BAR5_REG_IDX,
-    LM_DEV_ROM_REG_IDX,
-    LM_DEV_CFG_REG_IDX,
-    LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS = 9
-};
-
 // Region flags.
 #define LM_REG_FLAG_READ    (1 << 0)
 #define LM_REG_FLAG_WRITE   (1 << 1)
@@ -159,6 +146,19 @@ enum {
     LM_DEV_ERR_IRQ_IDX,
     LM_DEV_REQ_IRQ_IDX,
     LM_DEV_NUM_IRQS = 5
+};
+
+enum {
+    LM_DEV_BAR0_REG_IDX,
+    LM_DEV_BAR1_REG_IDX,
+    LM_DEV_BAR2_REG_IDX,
+    LM_DEV_BAR3_REG_IDX,
+    LM_DEV_BAR4_REG_IDX,
+    LM_DEV_BAR5_REG_IDX,
+    LM_DEV_ROM_REG_IDX,
+    LM_DEV_CFG_REG_IDX,
+    LM_DEV_VGA_REG_IDX,
+    LM_DEV_NUM_REGS = 9
 };
 
 /*
