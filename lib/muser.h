@@ -161,13 +161,6 @@ enum {
     LM_DEV_NUM_REGS = 9
 };
 
-/*
- * Returns a pointer to the non-standard part of the PCI configuration space.
- */
-lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
-
-#define LM_DMA_REGIONS  0x10
-
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
 
@@ -187,6 +180,13 @@ typedef struct {
      */ 
     lm_pci_hdr_cc_t     cc;
 } lm_pci_info_t;
+
+/*
+ * Returns a pointer to the non-standard part of the PCI configuration space.
+ */
+lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
+
+#define LM_DMA_REGIONS  0x10
 
 typedef enum {
     LM_ERR,
