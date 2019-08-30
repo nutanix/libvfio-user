@@ -351,9 +351,9 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector);
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
- *  -1:     if the GPA address span is invalid, or
- *  -x -1:  if @max_sg is too small, where x is the number of scatter/gather
- *          entries necessary to complete this request.
+ *  -1:         if the GPA address span is invalid, or
+ *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
+ *              entries necessary to complete this request.
  */
 int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
                   dma_sg_t *sg, int max_sg);
