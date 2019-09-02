@@ -586,8 +586,7 @@ out:
 }
 
 static int
-post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
-              char *const data, const size_t offset, ssize_t ret)
+post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd, ssize_t ret)
 {
     if (ret != cmd->rw.count) {
         /* FIXME shouldn't we still reply to the kernel in case of error? */
@@ -599,17 +598,10 @@ post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
         return ret;
     }
 
-    /*
-     * TODO the kernel will first copy the command and then will use the .buf
-     * pointer to copy the data. Does it make sense to use writev in order to
-     * get rid of the .buf member? THe 1st element of the iovec will be the
-     * command and the 2nd the data.
-     */
-    cmd->rw.buf = data;
-    ret = write(lm_ctx->fd, cmd, sizeof(*cmd));
-    if ((int)ret != sizeof(*cmd)) {
+    ret = write(lm_ctx->fd, cmd->rw.buf, cmd->rw.count);
+    if ((int)ret != cmd->rw.count) {
         lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %d/%d, %s\n",
-               __func__, ret, sizeof(*cmd), strerror(errno));
+               __func__, ret, cmd->rw.count, strerror(errno));
     }
     return ret;
 }
@@ -790,8 +782,9 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
     ret = lm_access(lm_ctx, data + count, cmd->rw.count, &cmd->rw.pos,
                     is_write);
     if (!is_write) {
-        err = post_read(lm_ctx, cmd, data, count, ret);
-        dump_buffer(lm_ctx, "buffer read", data, cmd->rw.count);
+        cmd->rw.buf = data;
+        err = post_read(lm_ctx, cmd, ret);
+        dump_buffer(lm_ctx, "buffer read", cmd->rw.buf, cmd->rw.count);
     }
 
 out:

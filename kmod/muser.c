@@ -1716,7 +1716,6 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 {
 	struct muser_dev *mudev = filp->private_data;
 	struct mudev_cmd *mucmd = mudev->mucmd_pending;
-	struct muser_cmd muser_cmd;
 	unsigned int seek;
 	int ret;
 
@@ -1732,22 +1731,7 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 
 	switch (mucmd->type) {
 	case MUSER_READ:
-		ret = muser_copyin(&muser_cmd, (void __user *)buf,
-				   sizeof(struct muser_cmd));
-		if (ret)
-			return ret;
-
-		/*
-		 * TODO: libmuser must not encapsulate buf in muser_cmd instead
-		 * it must just call write() with buf.
-		 */
-
-		if (mucmd->type != muser_cmd.type) {
-			muser_dbg("bad command %d", muser_cmd.type);
-			return -EINVAL;
-		}
-
-		ret = bounce_in(mucmd, muser_cmd.rw.buf);
+		ret = bounce_in(mucmd, (void __user *)buf);
 		if (ret)
 			return ret;
 		break;
