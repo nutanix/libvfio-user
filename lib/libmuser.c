@@ -690,6 +690,8 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
                                           is_write);
     }
 
+    lm_log(lm_ctx, LM_ERR, "no callback for region %d\n", idx);
+
     return -EINVAL;
 }
 
