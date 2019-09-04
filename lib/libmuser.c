@@ -1231,12 +1231,13 @@ lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
 }
 
 int
-lm_ctx_run(lm_ctx_t * const lm_ctx)
+lm_ctx_run(lm_dev_info_t * const dev_info)
 {
-    int ret = lm_ctx_drive(lm_ctx);
-
-    lm_ctx_destroy(lm_ctx);
-    return ret;
+    lm_ctx_t *lm_ctx = lm_ctx_create(dev_info);
+    if (lm_ctx) {
+        return lm_ctx_drive(lm_ctx);
+    }
+    return -1;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

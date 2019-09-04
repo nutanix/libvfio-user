@@ -247,7 +247,7 @@ typedef struct {
 
 /**
  * Device information structure, used to create the lm_ctx.
- * To be filled and passed to lm_ctx_run()
+ * To be filled and passed to lm_ctx_create()
  */
 typedef struct {
     char            *uuid;
@@ -322,6 +322,15 @@ void lm_ctx_destroy(lm_ctx_t * lm_ctx);
  */
 
 int lm_ctx_drive(lm_ctx_t * lm_ctx);
+
+/**
+ * Creates and runs an lm_ctx.
+ *
+ * @dev_info: device information used to create the context
+ *
+ * @returns 0 on success, -1 on failure. Sets errno.
+ */
+int lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
  * Triggers an interrupt.
