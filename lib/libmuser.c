@@ -1076,6 +1076,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     uint32_t i;
     int err = 0;
     size_t size = 0;
+    static const lm_reg_info_t zero_reg_info = { 0 };
 
     if (dev_info == NULL) {
         errno = EINVAL;
@@ -1094,6 +1095,17 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         return NULL;
 
     memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
+
+    if (!memcmp(&lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX], &zero_reg_info,
+        sizeof zero_reg_info))
+    {
+        static const lm_reg_info_t default_cfg_reg_info = {
+            .flags = LM_REG_FLAG_RW,
+            .size = 0x100
+        };
+        lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX] = default_cfg_reg_info;
+    }
+
     err = copy_sparse_mmap_areas(lm_ctx->pci_info.reg_info,
                                  dev_info->pci_info.reg_info);
     if (err)
