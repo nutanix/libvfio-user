@@ -725,8 +725,8 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
         }
         ret = do_access(lm_ctx, buf, size, *ppos, is_write);
         if (ret <= 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to %s %lx@%llx: %s\n",
-                   is_write ? "write" : "read", *ppos, size, strerror(-ret));
+            lm_log(lm_ctx, LM_ERR, "failed to %s %llx@%lx: %s\n",
+                   is_write ? "write" : "read", size, *ppos, strerror(-ret));
             return -EFAULT;
 	    }
         count -= size;
