@@ -988,18 +988,16 @@ lm_ctx_destroy(lm_ctx_t * lm_ctx)
 
 static void
 init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
-    const lm_pci_hdr_cc_t * const cc)
+    const lm_pci_hdr_cc_t * const cc, const lm_pci_hdr_ss_t *ss)
 {
     assert(hdr);
     assert(id);
     assert(cc);
+    assert(ss);
 
     hdr->id = *id;
     hdr->cc = *cc;
-
-    hdr->ss.vid = hdr->id.vid;
-    hdr->ss.sid = hdr->id.did;
-
+    hdr->ss = *ss;
 }
 
 static int copy_sparse_mmap_areas(lm_reg_info_t *dst, lm_reg_info_t *src)
@@ -1118,7 +1116,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     }
 
     init_pci_hdr(&lm_ctx->pci_config_space->hdr, &dev_info->pci_info.id,
-        &dev_info->pci_info.cc);
+        &dev_info->pci_info.cc, &dev_info->pci_info.ss)
     for (i = 0; i < ARRAY_SIZE(lm_ctx->pci_config_space->hdr.bars); i++) {
         if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
             lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;

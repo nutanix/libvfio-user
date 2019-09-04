@@ -176,6 +176,11 @@ typedef struct {
     lm_pci_hdr_id_t     id;
 
     /*
+     * Subsystem vendor and device ID.
+     */
+    lm_pci_hdr_ss_t     ss;
+
+    /*
      * Class code.
      */ 
     lm_pci_hdr_cc_t     cc;
