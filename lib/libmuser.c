@@ -144,6 +144,7 @@ static long irqs_disable(lm_ctx_t * lm_ctx, uint32_t index)
         return 0;
     }
 
+    lm_log(lm_ctx, LM_DBG, "failed to disable IRQs\n");
     return -EINVAL;
 }
 
@@ -159,7 +160,9 @@ static int irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                return -errno;
+                ret = -errno;
+                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to none: %m\n");
+                return ret;
             }
         }
     }
@@ -183,7 +186,9 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                return -errno;
+                ret = -errno;
+                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to bool: %m\n");
+                return ret;
             }
         }
     }
@@ -255,6 +260,7 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 
     // Ensure index is within bounds.
     if (irq_set->index >= LM_DEV_NUM_IRQS) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ index %d\n", irq_set->index);
         return -EINVAL;
     }
 
@@ -264,33 +270,39 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
     if ((a_type != VFIO_IRQ_SET_ACTION_MASK) &&
         (a_type != VFIO_IRQ_SET_ACTION_UNMASK) &&
         (a_type != VFIO_IRQ_SET_ACTION_TRIGGER)) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ action mask %d\n", a_type);
         return -EINVAL;
     }
     // Only one of NONE/BOOL/EVENTFD is valid.
     if ((d_type != VFIO_IRQ_SET_DATA_NONE) &&
         (d_type != VFIO_IRQ_SET_DATA_BOOL) &&
         (d_type != VFIO_IRQ_SET_DATA_EVENTFD)) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ data %d\n", d_type);
         return -EINVAL;
     }
     // Ensure irq_set's start and count are within bounds.
     if ((irq_set->start >= pci_info->irq_count[irq_set->index]) ||
         (irq_set->start + irq_set->count > pci_info->irq_count[irq_set->index])) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ start/count\n");
         return -EINVAL;
     }
     // Only TRIGGER is valid for ERR/REQ.
     if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
          (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&
         (a_type != VFIO_IRQ_SET_ACTION_TRIGGER)) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ trigger w/o ERR/REQ\n");
         return -EINVAL;
     }
     // count == 0 is only valid with ACTION_TRIGGER and DATA_NONE.
     if ((irq_set->count == 0) && ((a_type != VFIO_IRQ_SET_ACTION_TRIGGER) ||
                                   (d_type != VFIO_IRQ_SET_DATA_NONE))) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ count %d\n");
         return -EINVAL;
     }
     // If IRQs are set, ensure index matches what's enabled for the device.
     if ((irq_set->count != 0) && (lm_ctx->irqs.type != IRQ_NONE) &&
         (irq_set->index != LM2VFIO_IRQT(lm_ctx->irqs.type))) {
+        lm_log(lm_ctx, LM_DBG, "bad IRQ index\n");
         return -EINVAL;
     }
 
@@ -330,6 +342,7 @@ static long dev_get_irqinfo(lm_ctx_t * lm_ctx, struct vfio_irq_info *irq_info)
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info->argsz < sizeof(struct vfio_irq_info)) ||
         (irq_info->index >= LM_DEV_NUM_IRQS)) {
+        lm_log(lm_ctx, LM_DBG, "bad irq_info\n");
         return -EINVAL;
     }
 
