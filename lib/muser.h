@@ -122,11 +122,6 @@ typedef struct  {
     uint32_t            size;
 
     /*
-     * Region offset.
-     */
-    uint64_t            offset;
-
-    /*
      * Callback function that is called when the region is read or written.
      */
     lm_region_access_t  *fn;

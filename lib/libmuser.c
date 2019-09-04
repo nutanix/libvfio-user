@@ -417,6 +417,12 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     return 0;
 }
 
+uint64_t
+region_offset(const uint32_t region)
+{
+    return (uint64_t)region << 40;
+}
+
 static long
 dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
 {
@@ -433,7 +439,7 @@ dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
         return -EINVAL;
     }
 
-    vfio_reg->offset = lm_reg->offset;
+    vfio_reg->offset = region_offset(vfio_reg->index);
     vfio_reg->flags = lm_reg->flags;
     vfio_reg->size = lm_reg->size;
 
@@ -633,9 +639,10 @@ lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos, const size_t count,
 
     for (i = 0; i < LM_DEV_NUM_REGS; i++) {
         const lm_reg_info_t * const reg_info = &pci_info->reg_info[i];
-        if (pos >= reg_info->offset) {
-            if (pos - reg_info->offset + count <= reg_info->size) {
-                *off = pos - reg_info->offset;
+        const uint64_t _region_offset = region_offset(i);
+        if (pos >= _region_offset) {
+            if (pos - _region_offset + count <= reg_info->size) {
+                *off = pos - _region_offset;
                 return i;
             }
         }
