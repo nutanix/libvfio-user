@@ -226,6 +226,7 @@ muser_pci_hdr_write(lm_ctx_t * const lm_ctx, const uint16_t offset,
         break;
     case PCI_INTERRUPT_LINE:
         pci->hdr.intr.iline = buf[0];
+        lm_log(lm_ctx, LM_DBG, "ILINE=%0x\n", pci->hdr.intr.iline);
         break;
     case PCI_LATENCY_TIMER:
         pci->hdr.mlt = (uint8_t)buf[0];
