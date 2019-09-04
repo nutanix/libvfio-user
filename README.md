@@ -99,7 +99,7 @@ Running QEMU
 
 To pass the device to QEMU add the following options:
 
-		-device vfio-pci,sysfsdev=/sys/bus/mdev/devices/00000000-0000-0000-0000-000000000000
+		-device vfio-pci,sysfsdev=/sys/bus/mdev/devices/<UUID>
 		-object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=mem,share=yes,size=1073741824 -numa node,nodeid=0,cpus=0,memdev=ram-node0
 
 Guest RAM must be shared (share=yes) otherwise libmuser won't be able to do DMA
@@ -107,6 +107,42 @@ transfers from/to it. If you're not using QEMU then any memory that must be
 accessed by libmuser must be allocate MAP_SHARED. Registering memory for DMA
 that has not been allocated with MAP_SHARED is ignored and any attempts to
 access that memory will result in an error.
+
+Example
+=======
+
+samples/gpio-pci-idio-16.c implements a tiny part of the PCI-IDIO-16 GPIO
+(https://www.accesio.com/?p=/pci/pci_idio_16.html). In this sample it's a simple
+device that toggles the input every 3 times it's read.
+
+Running gpio-pci-idio-16
+------------------------
+
+First, follow the instructions to build and load muser.
+
+Then, start the gpio-pci-idio-16 device emulation:
+
+	# echo 00000000-0000-0000-0000-000000000000 > /sys/class/muser/muser/mdev_supported_types/muser-1/create
+	# build/dbg/samples/gpio-pci-idio-16 00000000-0000-0000-0000-000000000000
+
+Finally, start the VM adding the command line explained earlier and then
+execute:
+
+	# insmod gpio-pci-idio-16.ko
+	# cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
+	# for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
+	0
+	0
+	0
+	1
+	1
+	1
+	0
+	0
+	0
+	1
+	1
+	1
 
 
 Future Work

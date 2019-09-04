@@ -30,3 +30,6 @@
 
 add_executable(test_read test_read.c)
 add_executable(test_mmap test_mmap.c)
+
+add_executable(gpio-pci-idio-16 gpio-pci-idio-16.c)
+target_link_libraries(gpio-pci-idio-16 muser)
