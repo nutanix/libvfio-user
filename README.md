@@ -120,29 +120,29 @@ Running gpio-pci-idio-16
 
 1. First, follow the instructions to build and load muser.
 2. Then, start the gpio-pci-idio-16 device emulation:
-
-	# echo 00000000-0000-0000-0000-000000000000 > /sys/class/muser/muser/mdev_supported_types/muser-1/create
-	# build/dbg/samples/gpio-pci-idio-16 00000000-0000-0000-0000-000000000000
-
+```
+# echo 00000000-0000-0000-0000-000000000000 > /sys/class/muser/muser/mdev_supported_types/muser-1/create
+# build/dbg/samples/gpio-pci-idio-16 00000000-0000-0000-0000-000000000000
+```
 3. Finally, start the VM adding the command line explained earlier and then
 execute:
-
-	# insmod gpio-pci-idio-16.ko
-	# cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
-	# for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
-	0
-	0
-	0
-	1
-	1
-	1
-	0
-	0
-	0
-	1
-	1
-	1
-
+```
+# insmod gpio-pci-idio-16.ko
+# cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
+# for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
+0
+0
+0
+1
+1
+1
+0
+0
+0
+1
+1
+1
+```
 
 Future Work
 ===========
