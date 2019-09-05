@@ -60,11 +60,11 @@ typedef enum {
 } irq_type_t;
 
 typedef struct {
-    irq_type_t  type;		/* irq type this device is using */
-    int		    err_efd;	/* eventfd for irq err */
-    int		    req_efd;	/* eventfd for irq req */
-    uint32_t	max_ivs;	/* maximum number of ivs supported */
-    int		    efds[0];	/* XXX must be last */
+    irq_type_t  type;       /* irq type this device is using */
+    int         err_efd;    /* eventfd for irq err */
+    int         req_efd;    /* eventfd for irq req */
+    uint32_t    max_ivs;    /* maximum number of ivs supported */
+    int         efds[0];    /* XXX must be last */
 } lm_irqs_t;
 
 /*
@@ -76,24 +76,24 @@ typedef struct {
         #t " " #m " must be last member in " #s)
 
 struct lm_ctx {
-    void			        *pvt;
-    dma_controller_t		*dma;
-    int				        fd;
+    void                    *pvt;
+    dma_controller_t        *dma;
+    int                     fd;
     bool                    extended;
     int (*reset)            (void *pvt);
-    lm_log_lvl_t		    log_lvl;
-    lm_log_fn_t			    *log;
+    lm_log_lvl_t            log_lvl;
+    lm_log_fn_t             *log;
     lm_pci_info_t           pci_info;
-    lm_pci_config_space_t	*pci_config_space;
+    lm_pci_config_space_t   *pci_config_space;
     struct caps             *caps;
-    lm_irqs_t			    irqs; /* XXX must be last */
+    lm_irqs_t               irqs; /* XXX must be last */
 };
 MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
 
 #define LM2VFIO_IRQT(type) (type - 1)
 
 void lm_log(const lm_ctx_t * const ctx, const lm_log_lvl_t lvl,
-	    const char *const fmt, ...)
+        const char *const fmt, ...)
 {
     va_list ap;
     char buf[BUFSIZ];
@@ -741,7 +741,7 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
             lm_log(lm_ctx, LM_ERR, "failed to %s %llx@%lx: %s\n",
                    is_write ? "write" : "read", size, *ppos, strerror(-ret));
             return -EFAULT;
-	    }
+        }
         count -= size;
         done += size;
         *ppos += size;
@@ -1100,7 +1100,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     err = copy_sparse_mmap_areas(lm_ctx->pci_info.reg_info,
                                  dev_info->pci_info.reg_info);
     if (err)
-	    goto out;
+        goto out;
 
     lm_ctx->fd = dev_attach(dev_info->uuid);
     if (lm_ctx->fd == -1) {

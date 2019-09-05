@@ -57,8 +57,8 @@ typedef struct lm_ctx lm_ctx_t;
 #define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
 struct lm_mmap_area {
-	uint64_t start;
-	uint64_t size;
+    uint64_t start;
+    uint64_t size;
 };
 
 struct lm_sparse_mmap_areas {
@@ -163,7 +163,7 @@ typedef struct {
      * Per-region information. Only supported regions need to be defined,
      * unsupported regions should be left to 0.
      */
-    lm_reg_info_t	    reg_info[LM_DEV_NUM_REGS];
+    lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
 
     /*
      * Device and vendor ID.
@@ -250,7 +250,7 @@ typedef struct {
     /*
      * Private data passed to various lm_XXX functions.
      */
-    void		    *pvt;
+    void            *pvt;
 
     /*
      * Whether an extended PCI configuration space should be created.
@@ -260,17 +260,17 @@ typedef struct {
     /*
      * Function to call for logging. Optional.
      */
-    lm_log_fn_t		*log;
+    lm_log_fn_t     *log;
 
     /*
      * Log level. Messages above this level are not logged. Optional
      */
-    lm_log_lvl_t	log_lvl;
+    lm_log_lvl_t    log_lvl;
 
     /*
      * PCI configuration.
      */
-    lm_pci_info_t	pci_info;
+    lm_pci_info_t   pci_info;
 
     /*
      * Function that is called when the guest resets the device. Optional.

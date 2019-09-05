@@ -496,25 +496,24 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 	WARN_ON(mudev == NULL);
 	nr_pages = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 
-	/* array to track new allocated pages, to be free'd
-	 * in case of failure */
-	new_pgs = kmalloc(nr_pages * sizeof(*new_pgs), GFP_KERNEL);
-	if (!new_pgs)
+	/* array to track new alloc'd pages, to be free'd in case of failure */
+	new_pgs = kmalloc_array(nr_pages, sizeof(*new_pgs), GFP_KERNEL);
+	if (new_pgs == NULL)
 		return -ENOMEM;
 
 	cur_pgidx = vma->vm_pgoff & ~(BIT(63 - PAGE_SHIFT));
 	end_pgidx = cur_pgidx + nr_pages;
 
-	muser_info("mmap_dev: end 0x%lX - start 0x%lX (%lX), off = 0x%lX",
+	muser_info("mmap_dev: end 0x%lX - start 0x%lX (0x%lX), off = 0x%lX",
 		   vma->vm_end, vma->vm_start, vma->vm_end - vma->vm_start,
 		   cur_pgidx);
 
 	mutex_lock(&mudev->dev_lock);
 	for (i = 0; cur_pgidx < end_pgidx; cur_pgidx++, i++) {
 		pg = radix_tree_lookup(&mudev->devmem_tree, cur_pgidx);
-		if (!pg) {
+		if (pg == NULL) {
 			pg = mudev_page_alloc(mudev, cur_pgidx);
-			if (!pg) {
+			if (pg == NULL) {
 				i--;
 				ret = -ENOMEM;
 				goto free_pg;
@@ -524,16 +523,16 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 
 		addr = vma->vm_start + (i << PAGE_SHIFT);
 		ret = vm_insert_page(vma, addr, pg);
-		if (unlikely(ret))
+		if (unlikely(ret != 0))
 			goto free_pg;
 	}
-
 	mutex_unlock(&mudev->dev_lock);
+
 	kfree(new_pgs);
 	return 0;
 
 free_pg:
-	for ( ;i >= 0; i--)
+	for ( ; i >= 0; i--)
 		__mudev_page_free(mudev, new_pgs[i]);
 	mutex_unlock(&mudev->dev_lock);
 	kfree(new_pgs);
@@ -547,13 +546,13 @@ static int libmuser_mmap_dma(struct file *f, struct vm_area_struct *vma)
 	struct vfio_dma_mapping *dma_map;
 	struct muser_dev *mudev = f->private_data;
 
-	BUG_ON(!mudev);
+	BUG_ON(mudev == NULL);
 
-	muser_info("mmap_dma: end 0x%lX - start 0x%lX (%lX), off = 0x%lX",
+	muser_info("mmap_dma: end 0x%lX - start 0x%lX (0x%lX), off = 0x%lX",
 		   vma->vm_end, vma->vm_start, vma->vm_end - vma->vm_start,
 		   vma->vm_pgoff);
 
-	if (unlikely(!mudev->dma_map)) {
+	if (unlikely(mudev->dma_map == NULL)) {
 		muser_dbg("no pending DMA map operation");
 		return -EINVAL;
 	}
@@ -561,14 +560,14 @@ static int libmuser_mmap_dma(struct file *f, struct vm_area_struct *vma)
 	dma_map = mudev->dma_map;
 	length = round_up(dma_map->length, PAGE_SIZE);
 	if (unlikely(vma->vm_end - vma->vm_start != length)) {
-		muser_dbg("expected mmap of %lx bytes, got %lx instead",
+		muser_dbg("expected mmap of 0x%lx bytes, got 0x%lx instead",
 			  vma->vm_end - vma->vm_start, length);
 		return -EINVAL;
 	}
 
 	err = vm_insert_pages(vma, dma_map->pages, NR_PAGES(dma_map->length));
 	if (unlikely(err)) {
-		muser_dbg("DMA region insert failed (%lu pages: %lx-%lx): %d",
+		muser_dbg("vm_insert_pages failed (%lu pages: 0x%lx-0x%lx): %d",
 			  NR_PAGES(dma_map->length), vma->vm_start,
 			  vma->vm_end, err);
 		return err;
@@ -626,7 +625,7 @@ static int muser_process_dma_unmap(struct muser_dev *mudev,
 }
 
 static int put_dma_map(struct muser_dev *mudev,
-			 struct vfio_dma_mapping *dma_map, int nr_pages)
+		       struct vfio_dma_mapping *dma_map, int nr_pages)
 {
 	unsigned long off, iova_pfn;
 	int i, ret;
@@ -1123,7 +1122,7 @@ static unsigned int get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
 }
 
 static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
-			     unsigned long arg)
+				 unsigned long arg)
 {
 	unsigned int minsz;
 	unsigned int argsz;
@@ -1186,16 +1185,6 @@ static long muser_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	muser_dbg("mdev=%p, cmd=%u, arg=0x%lX\n", mdev, cmd, arg);
 
 	if (cmd == VFIO_DEVICE_RESET) {
-		/*
-		 * Qemu-vfio(check vfio_pci_reset()) takes care of
-		 * enabling/disabling Interrupts.
-		 *
-		 * FIXME:
-		 * No need to block pci config access as only one
-		 * mdev_parent_ops is allowed to execute at a time.
-		 *
-		 * Returning -EAGAIN if client tries to send multiple resets.
-		 */
 		if (!device_trylock(mudev->dev))
 			return -EAGAIN;
 	} else {

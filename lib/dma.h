@@ -236,6 +236,6 @@ dma_unmap_addr(lm_ctx_t * const ctx, dma_controller_t * dma,
     dma_unmap_sg(dma, &sg, &iov, 1);
 }
 
-#endif                          /* DMA_DMA_H */
+#endif /* DMA_DMA_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
