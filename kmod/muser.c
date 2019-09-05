@@ -599,8 +599,8 @@ static int muser_process_dma_request(struct muser_dev *mudev,
 			.type = type,
 			.mmap = {
 				.request = {
-					.start = dma_map->iova,
-					.end = dma_map->iova + dma_map->length,
+					.addr = dma_map->iova,
+					.len = dma_map->length,
 					.flags = flags}
 			}
 		}
@@ -610,7 +610,7 @@ static int muser_process_dma_request(struct muser_dev *mudev,
 	if (unlikely(err))
 		return err;
 
-	return mucmd.muser_cmd.mmap.response.addr;
+	return mucmd.muser_cmd.mmap.response;
 }
 
 static int muser_process_dma_map(struct muser_dev *mudev, int flags)
@@ -710,21 +710,21 @@ static int has_anonymous_pages(struct vfio_dma_mapping *dma_map)
 }
 
 static int muser_iommu_dma_map(struct muser_dev *mudev,
-				struct vfio_iommu_type1_dma_map *map)
+			       struct vfio_iommu_type1_dma_map *map)
 {
 	struct vfio_dma_mapping *dma_map;
 	int ret;
 
 	/* TODO: support multiple DMA map operations in parallel */
 	mutex_lock(&mudev->dev_lock);
-	if (mudev->dma_map) {
+	if (mudev->dma_map != NULL) {
 		mutex_unlock(&mudev->dev_lock);
 		muser_dbg("another DMA map operation is ongoing");
 		return -EBUSY;
 	}
 
 	dma_map = kmalloc(sizeof(struct vfio_dma_mapping), GFP_KERNEL);
-	if (!dma_map) {
+	if (dma_map == NULL) {
 		mutex_unlock(&mudev->dev_lock);
 		return -ENOMEM;
 	}
@@ -818,7 +818,7 @@ out:
  * is called?
  */
 static int muser_iommu_notifier(struct notifier_block *nb, unsigned long action,
-		void *data)
+				void *data)
 {
 	struct muser_dev *mudev;
 	int err;
@@ -1252,10 +1252,11 @@ static int muser_mmap(struct mdev_device *const mdev,
 	}
 
 	mucmd.type = MUSER_MMAP;
-	mucmd.muser_cmd.type = MUSER_MMAP;
-	mucmd.muser_cmd.mmap.request.len = vma->vm_end - vma->vm_start;
-	mucmd.muser_cmd.mmap.request.pgoff = vma->vm_pgoff;
 	mucmd.mmap_len = vma->vm_end - vma->vm_start;
+
+	mucmd.muser_cmd.type = MUSER_MMAP;
+	mucmd.muser_cmd.mmap.request.addr = vma->vm_pgoff;
+	mucmd.muser_cmd.mmap.request.len = vma->vm_end - vma->vm_start;
 
 	/* Process mudev_cmd in server context. */
 	err = muser_process_cmd(mudev, &mucmd);
@@ -1449,7 +1450,7 @@ static inline int maybe_install_fds(struct mudev_cmd *mucmd)
 static inline int mmap_done(struct mudev_cmd * const mucmd)
 {
 	struct muser_cmd *cmd = &mucmd->muser_cmd;
-	char __user *addr = (char __user *) cmd->mmap.response.addr;
+	char __user *addr = (char __user *) cmd->mmap.response;
 	int ret;
 
 	if (cmd->err < 0)

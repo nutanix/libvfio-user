@@ -8,8 +8,8 @@
  *
  */
 
-#ifndef _LINUX_MUSER_H
-#define _LINUX_MUSER_H
+#ifndef _UAPI_LINUX_MUSER_H
+#define _UAPI_LINUX_MUSER_H
 
 #ifndef __KERNEL__
 #include <sys/types.h>
@@ -47,19 +47,11 @@ struct muser_cmd_ioctl {
 
 union muser_cmd_mmap {
 	struct {
-		union {
-			struct {
-				unsigned long start;
-				unsigned long end;
-			};
-			unsigned long len;
-		};
+		unsigned long addr; /* iova for DMA_MAP, offset for MMAP */
+		unsigned long len;
 		unsigned long flags;
-		unsigned long pgoff;
 	} request;
-	struct {
-		unsigned long addr;
-	} response;
+	unsigned long response;
 };
 
 struct muser_cmd {
@@ -76,4 +68,4 @@ struct muser_cmd {
 #define MUSER_DEV_CMD_WAIT	_IOW('M', 1, struct muser_cmd)
 #define MUSER_DEV_CMD_DONE	_IOW('M', 2, struct muser_cmd)
 
-#endif /* _LINUX_MUSER_H */
+#endif /* _UAPI_LINUX_MUSER_H */

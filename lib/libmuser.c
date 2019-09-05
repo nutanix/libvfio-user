@@ -511,25 +511,25 @@ static int muser_dma_unmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
-    lm_log(lm_ctx, LM_INF, "removing DMA region %lx-%lx\n",
-           cmd->mmap.request.start, cmd->mmap.request.end);
+    lm_log(lm_ctx, LM_INF, "removing DMA region %#lx@%#lx\n",
+           cmd->mmap.request.len, cmd->mmap.request.addr);
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
-        cmd->mmap.response.addr = -1;
+        cmd->mmap.response = -1;
         return -1;
     }
 
     err = dma_controller_remove_region(lm_ctx->dma,
-                                       cmd->mmap.request.start,
-                                       cmd->mmap.request.end -
-                                       cmd->mmap.request.start, lm_ctx->fd);
+                                       cmd->mmap.request.addr,
+                                       cmd->mmap.request.len,
+                                       lm_ctx->fd);
     if (err != 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %lx-%lx: %s\n",
-               cmd->mmap.request.start, cmd->mmap.request.end, strerror(err));
+        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx@%#lx: %s\n",
+               cmd->mmap.request.len, cmd->mmap.request.addr, strerror(err));
     }
 
-    cmd->mmap.response.addr = err;
+    cmd->mmap.response = err;
 
     return err;
 }
@@ -538,76 +538,66 @@ static int muser_dma_map(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
-    lm_log(lm_ctx, LM_INF, "adding DMA region %lx-%lx\n",
-           cmd->mmap.request.start, cmd->mmap.request.end);
+    lm_log(lm_ctx, LM_INF, "adding DMA region %#lx@%#lx\n",
+           cmd->mmap.request.len, cmd->mmap.request.addr);
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
-        cmd->mmap.response.addr = -1;
+        cmd->mmap.response = -1;
         return -1;
     }
 
-    if (cmd->mmap.request.start >= cmd->mmap.request.end) {
-        lm_log(lm_ctx, LM_ERR, "bad DMA region %lx-%lx\n",
-               cmd->mmap.request.start, cmd->mmap.request.end);
-        cmd->mmap.response.addr = -1;
-        return -1;
-    }
     err = dma_controller_add_region(lm_ctx, lm_ctx->dma,
-                                    cmd->mmap.request.start,
-                                    cmd->mmap.request.end -
-                                    cmd->mmap.request.start, lm_ctx->fd, 0);
+                                    cmd->mmap.request.addr,
+                                    cmd->mmap.request.len,
+                                    lm_ctx->fd, 0);
     if (err < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %lx-%lx: %d\n",
-               cmd->mmap.request.start, cmd->mmap.request.end, err);
-        cmd->mmap.response.addr = -1;
+        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %#lx@%#lx: %d\n",
+               cmd->mmap.request.len, cmd->mmap.request.addr, err);
+        cmd->mmap.response = -1;
         return -1;
     }
 
-    // TODO: Are we just abusing response.addr as a rc?
-    cmd->mmap.response.addr = 0;
+    cmd->mmap.response = 0;
 
     return 0;
 }
 
 /*
- * Callback that is executed when device memory is to be memory mapped.
+ * Callback that is executed when device memory is to be mmap'd.
  */
 static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
 {
     int region, err = 0;
     unsigned long addr;
     unsigned long len = cmd->mmap.request.len;
-    unsigned long pgoff = cmd->mmap.request.pgoff;
+    unsigned long offset = cmd->mmap.request.addr;
 
-    region = lm_get_region(pgoff, len, &pgoff);
+    region = lm_get_region(offset, len, &offset);
     if (region < 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
         err = region;
         goto out;
     }
 
-    if (!lm_ctx->pci_info.reg_info[region].map) {
+    if (lm_ctx->pci_info.reg_info[region].map == NULL) {
         lm_log(lm_ctx, LM_ERR, "region not mmapable\n");
-        err = -EINVAL;
+        err = -ENOTSUP;
         goto out;
     }
 
-    if (lm_ctx->pci_info.reg_info[region].map) {
-        addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, pgoff, len);
-        if ((void *)addr == MAP_FAILED) {
-            lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
-	        err = -errno;
-            goto out;
-        }
-        cmd->mmap.response.addr = addr;
-    } else
-        err = -ENOTSUP;
+    addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, offset, len);
+    if ((void *)addr == MAP_FAILED) {
+        err = -errno;
+        lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
+        goto out;
+    }
+    cmd->mmap.response = addr;
 
 out:
-    if (err) {
-        lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %x@%lx: %s\n",
-               len, pgoff, strerror(-errno));
+    if (err != 0) {
+        lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %#x@%#lx: %s\n",
+               len, offset, strerror(-errno));
         cmd->err = err;
         err = -1;
     }
