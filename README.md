@@ -1,28 +1,33 @@
-Mediated User space device
-==========================
+Mediated Userspace Device
+=========================
 
 Overview
 --------
 
-muser is a framework that allows mediated device drivers to be implemented in
-user space. The device driver can by a completely virtual one without driving
-an actual device of that type. This can greatly simplify the initial
-development and prototyping of kernel drivers as no kernel code needs to be
-written, and failures result in the user space process crashing in the worst
-case. The mediated device can be passed to a virtual machine for proper
-testing. Device drivers are typically implemented entirely in kernel space for
-various reasons, however in early development stages it's acceptable to do it
-in user space.
+MUSER is a framework that allows PCI devices to be implemented in userspace. It
+leverages the Linux kernel VFIO/MDEV infrastructure, allowing such devices to
+be easily accessed via standard VFIO interfaces and subsequently virtual
+machines. These can be completely virtual and not backed by any real hardware.
+This provides interesting benefits, including:
 
-muser is implemented by a small kernel module, muser.ko, that registers itself
-with mdev. Every request is forwarded to a user space application via a small,
-custom ioctl interface on a control device. The application must be externally
-provided and needs to contain the actual device implementation by using the API
-of libmuser. See src/samples on how to build such an application.  Currently
-there is a one, single-threaded application instance per device, however the
-application can employ any form of concurrency needed. In the future we plan to
-make libmuser multi-threaded.  The application can be implemented in whatever
-way is convenient, e.g. as a Python script using bindings, on the cloud, etc.
+* Simplification of the initial development of kernel drivers for new devices
+* Easy plumbing to hypervisors that support VFIO device pass-through
+* Performance benefits as a single process can poll multiple drivers
+
+MUSER is implemented by two components: a loadable kernel module (muser.ko) and
+a userspace library (libmuser). The LKM registers itself with MDEV and relay
+VFIO requests to libmuser via a custom ioctl-based interface. The library, in
+turn, abstracts most of the complexity around representing the device.
+Applications using libmuser provide a description of the device (eg. region and
+irq information) and as set of callbacks which are invoked by libmuser when
+those regions are accessed. See src/samples on how to build such an
+application.
+
+Currently there is a one, single-threaded application instance per device,
+however the application can employ any form of concurrency needed. In the
+future we plan to make libmuser multi-threaded. The application can be
+implemented in whatever way is convenient, e.g. as a Python script using
+bindings, on the cloud, etc.
 
 
 Memory Mapping the Device
