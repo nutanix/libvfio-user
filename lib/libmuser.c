@@ -1103,7 +1103,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     {
         static const lm_reg_info_t default_cfg_reg_info = {
             .flags = LM_REG_FLAG_RW,
-            .size = 0x100
+            .size = PCI_CFG_SPACE_SIZE
         };
         lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX] = default_cfg_reg_info;
     }
