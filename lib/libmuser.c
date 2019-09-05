@@ -493,7 +493,7 @@ do_muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
         if (lm_ctx->reset) {
             return lm_ctx->reset(lm_ctx->pvt);
         }
-        lm_log(lm_ctx, LM_DBG, "reset called but not reset function preset\n");
+        lm_log(lm_ctx, LM_DBG, "reset called but not reset function present\n");
         break;
     }
 
