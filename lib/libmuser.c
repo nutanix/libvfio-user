@@ -417,10 +417,12 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     return 0;
 }
 
+#define LM_REGION_SHIFT 40
+
 uint64_t
 region_offset(const uint32_t region)
 {
-    return (uint64_t)region << 40;
+    return (uint64_t)region << LM_REGION_SHIFT;
 }
 
 static long
