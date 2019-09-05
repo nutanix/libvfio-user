@@ -118,14 +118,13 @@ device that toggles the input every 3 times it's read.
 Running gpio-pci-idio-16
 ------------------------
 
-First, follow the instructions to build and load muser.
-
-Then, start the gpio-pci-idio-16 device emulation:
+1. First, follow the instructions to build and load muser.
+2. Then, start the gpio-pci-idio-16 device emulation:
 
 	# echo 00000000-0000-0000-0000-000000000000 > /sys/class/muser/muser/mdev_supported_types/muser-1/create
 	# build/dbg/samples/gpio-pci-idio-16 00000000-0000-0000-0000-000000000000
 
-Finally, start the VM adding the command line explained earlier and then
+3. Finally, start the VM adding the command line explained earlier and then
 execute:
 
 	# insmod gpio-pci-idio-16.ko
