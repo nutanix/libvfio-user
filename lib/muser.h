@@ -402,16 +402,14 @@ lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
  * Returns the PCI region given the position and size of an address span in the
  * PCI configuration space.
  *
- * @lm_ctx: the libmuser context
  * @pos: offset of the address span
  * @count: size of the address span
  * @off: output parameter that receives the relative offset within the region.
  *
- * Returns the PCI region (LM_DEV_XXX_REG_IDX), or -1 on error. Sets errno.
+ * Returns the PCI region (LM_DEV_XXX_REG_IDX), or -errno on error.
  */
 int
-lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos,
-              const size_t count, loff_t * const off);
+lm_get_region(const loff_t pos, const size_t count, loff_t * const off);
 
 /*
  * Advanced stuff.

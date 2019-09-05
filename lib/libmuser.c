@@ -418,11 +418,18 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
 }
 
 #define LM_REGION_SHIFT 40
+#define LM_REGION_MASK  ((1ULL << LM_REGION_SHIFT) - 1)
 
 uint64_t
-region_offset(const uint32_t region)
+region_to_offset(const uint32_t region)
 {
     return (uint64_t)region << LM_REGION_SHIFT;
+}
+
+uint32_t
+offset_to_region(const uint64_t offset)
+{
+    return (offset >> LM_REGION_SHIFT) & LM_REGION_MASK;
 }
 
 static long
@@ -441,7 +448,7 @@ dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
         return -EINVAL;
     }
 
-    vfio_reg->offset = region_offset(vfio_reg->index);
+    vfio_reg->offset = region_to_offset(vfio_reg->index);
     vfio_reg->flags = lm_reg->flags;
     vfio_reg->size = lm_reg->size;
 
@@ -573,7 +580,7 @@ static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
     unsigned long len = cmd->mmap.request.len;
     unsigned long pgoff = cmd->mmap.request.pgoff;
 
-    region = lm_get_region(lm_ctx, pgoff, len, &pgoff);
+    region = lm_get_region(pgoff, len, &pgoff);
     if (region < 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
         err = region;
@@ -630,26 +637,18 @@ post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd, ssize_t ret)
 }
 
 int
-lm_get_region(lm_ctx_t * const lm_ctx, const loff_t pos, const size_t count,
-              loff_t * const off)
+lm_get_region(const loff_t pos, const size_t count, loff_t * const off)
 {
-    assert(lm_ctx);
+    int r;
+
     assert(off);
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
 
-    int i;
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        const lm_reg_info_t * const reg_info = &pci_info->reg_info[i];
-        const uint64_t _region_offset = region_offset(i);
-        if (pos >= _region_offset) {
-            if (pos - _region_offset + count <= reg_info->size) {
-                *off = pos - _region_offset;
-                return i;
-            }
-        }
+    r = offset_to_region(pos);
+    if (offset_to_region(pos + count) != r) {
+        return -ENOENT; 
     }
-    return -ENOENT;
+    *off = pos - region_to_offset(r);
+    return r;
 }
 
 static ssize_t
@@ -689,7 +688,7 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
     assert(count > 0);
 
     pci_info = &lm_ctx->pci_info;
-    idx = lm_get_region(lm_ctx, pos, count, &offset);
+    idx = lm_get_region(pos, count, &offset);
     if (idx < 0) {
         lm_log(lm_ctx, LM_ERR, "invalid region %d\n", idx);
         return idx;

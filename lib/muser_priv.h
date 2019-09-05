@@ -7,5 +7,5 @@ muser_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
 
 lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
 
-uint64_t region_offset(const uint32_t region);
+uint64_t region_to_offset(const uint32_t region);
 
