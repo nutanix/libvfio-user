@@ -84,18 +84,12 @@ Reload the relevant kernel modules:
 	drivers/vfio/mdev/mdev.ko
 	drivers/vfio/mdev/vfio_mdev.ko
 
-Build the kernel module:
+To build and install the library run:
 
-	cd src/kmod
-	make
+	make && make install
 
-Build the library:
-
-	mkdir build
-	cd build
-	cmake ..
-	make
-	make install
+To specify an alternative kernel directory set the KDIR environment variable
+accordingly.
 
 Finally build your program and link it to libmuser.so.
 
