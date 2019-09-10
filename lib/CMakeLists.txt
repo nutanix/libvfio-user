@@ -48,3 +48,16 @@ install(TARGETS muser
 install(DIRECTORY "caps"
         DESTINATION ${MUSER_HEADERS_DIR}
         FILES_MATCHING PATTERN "*.h")
+
+if (DEFINED ENV{PYTHON_BINDINGS})
+
+        add_custom_target(python_bindings_build ALL
+                COMMAND python setup.py build -b ${CMAKE_BINARY_DIR}
+                DEPENDS python_bindings.c setup.py
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib
+                SOURCES python_bindings.c setup.py)
+        # execute_process seems to only execute a single command, e.g. it can't
+        # handle two commands joined by &&
+        install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/lib/python_bindings_install.sh ${CMAKE_SOURCE_DIR})")
+
+endif()

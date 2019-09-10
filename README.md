@@ -90,6 +90,8 @@ To build and install the library run:
 
 To specify an alternative kernel directory set the KDIR environment variable
 accordingly.
+To enable Python bindings set the PYTHON_BINDINGS environment variable to a
+non-empty string.
 
 Finally build your program and link it to libmuser.so.
 
