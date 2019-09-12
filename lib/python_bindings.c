@@ -61,35 +61,29 @@ region_access_wrap(void *pvt, char * const buf, size_t count, loff_t offset,
     PyObject *result = NULL;
     uint64_t _buf = { 0 };
 
-    if (region_access_callbacks[region] == NULL)
-    {
+    if (region_access_callbacks[region] == NULL) {
         fprintf(stderr, "FIXME no callback for region %d\n", region);
         return -1;
     }
 
-    if (is_write)
-    {
+    if (is_write) {
         memcpy(&_buf, buf, count);
     }
 
     /* FIXME not sure about type of count and offset */
     arglist = Py_BuildValue("IKIKi", pvt, _buf, count, offset, is_write);
-    if (arglist == NULL)
-    {
+    if (arglist == NULL) {
         fprintf(stderr, "FIXME failed to build func args\n");
         return -1;
     }
     result = PyEval_CallObject(region_access_callbacks[region], arglist);
     Py_DECREF(arglist);
-    if (result == NULL)
-    {
+    if (result == NULL) {
         fprintf(stderr, "FIXME failed to call fn for region %d\n", region);
         return -1;
     }
-    if (!is_write)
-    {
-        if (handle_read(buf, result, count))
-        {
+    if (!is_write) {
+        if (handle_read(buf, result, count)) {
             return -1;
         }
     }
@@ -144,8 +138,7 @@ static void _log_fn(void *pvt, const char *const msg)
     arglist = Py_BuildValue("(s)", msg);
     result = PyEval_CallObject(log_fn, arglist);
     Py_DECREF(arglist);
-    if (result != NULL)
-    {
+    if (result != NULL) {
         Py_DECREF(result);
     }
 }
@@ -180,35 +173,27 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
                                      &dev_info.pci_info.irq_count[1],
                                      &dev_info.pci_info.irq_count[2],
                                      &dev_info.pci_info.irq_count[3],
-                                     &dev_info.pci_info.irq_count[4]))
-    {
+                                     &dev_info.pci_info.irq_count[4])) {
         return NULL;
     }
 
-    for (i = 0; i < LM_DEV_NUM_REGS; i++)
-    {
+    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
         int j;
         uint32_t flags = 0;
 
-        if (i == LM_DEV_CFG_REG_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri))
-        {
+        if (i == LM_DEV_CFG_REG_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
             continue;
         }
 
-        if (_ri[i].perm != NULL)
-        {
-            for (j = 0; j < strlen(_ri[i].perm); j++)
-            {
-                if (_ri[i].perm[j] == 'r')
-                {
+        if (_ri[i].perm != NULL) {
+            for (j = 0; j < strlen(_ri[i].perm); j++) {
+                if (_ri[i].perm[j] == 'r') {
                     flags |= LM_REG_FLAG_READ;
                 }
-                else if (_ri[i].perm[j] == 'w')
-                {
+                else if (_ri[i].perm[j] == 'w') {
                     flags |= LM_REG_FLAG_WRITE;
                 }
-                else
-                {
+                else {
                     /* FIXME shouldn't print to stderr */
                     fprintf(stderr, "bad permission '%c'\n", _ri[i].perm[j]);
                     return NULL;
@@ -221,10 +206,8 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
         dev_info.pci_info.reg_info[i].fn = region_access_wraps[i];
     }
 
-    if (log_fn != NULL)
-    {
-        if (!PyCallable_Check(log_fn))
-        {
+    if (log_fn != NULL) {
+        if (!PyCallable_Check(log_fn)) { 
             return NULL;
         }
         dev_info.log = _log_fn;
