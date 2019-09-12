@@ -30,9 +30,10 @@
  *
  */
 
-#include <Python.h>
-#include "muser.h"
 #include <assert.h>
+#include <Python.h>
+
+#include "muser.h"
 
 static PyObject *region_access_callbacks[LM_DEV_NUM_REGS] = { 0 };
 
