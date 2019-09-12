@@ -35,7 +35,7 @@
 
 #include "muser.h"
 
-static PyObject *region_access_callbacks[LM_DEV_NUM_REGS] = { 0 };
+static PyObject *region_access_callbacks[LM_DEV_NUM_REGS];
 
 static int
 handle_read(char *dst, PyObject *result, int count)
@@ -131,7 +131,7 @@ struct _region_info {
     PyObject *fn;
 };
 
-static const struct _region_info _0_ri = { 0 };
+static const struct _region_info _0_ri;
 
 static PyObject *log_fn = NULL;
 static lm_log_lvl_t log_lvl = LM_ERR;
