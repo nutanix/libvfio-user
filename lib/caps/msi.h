@@ -31,8 +31,8 @@
  */
 
 struct mid {
-    unsigned int next:8;
     unsigned int cid:8;
+    unsigned int next:8;
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mid) == 0x2, "bad MID size");
 
