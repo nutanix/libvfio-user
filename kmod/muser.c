@@ -1160,6 +1160,13 @@ static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 		unsigned int flags = mucmd->muser_cmd.ioctl.data.irq_set.flags;
 
 		switch ((flags & VFIO_IRQ_SET_DATA_TYPE_MASK)) {
+		case VFIO_IRQ_SET_DATA_NONE:
+			/* FIXME */
+			muser_warn("ignore DATA_NONE index=%d start=%d count=%d",
+			           mucmd->muser_cmd.ioctl.data.irq_set.index,
+			           mucmd->muser_cmd.ioctl.data.irq_set.start,
+			           mucmd->muser_cmd.ioctl.data.irq_set.count);
+			break;
 		case VFIO_IRQ_SET_DATA_EVENTFD:
 			/* Lookup eventfds and bounce references to mucmd. */
 			err = bounce_fds(mucmd, (void __user *) (arg + minsz),
@@ -1432,7 +1439,15 @@ static inline int maybe_install_fds(struct mudev_cmd *mucmd)
 
 	if ((mucmd->muser_cmd.type == MUSER_IOCTL) &&
 	    (mucmd->muser_cmd.ioctl.vfio_cmd == VFIO_DEVICE_SET_IRQS)) {
+		ret = -EINVAL;
 		switch ((flags & VFIO_IRQ_SET_DATA_TYPE_MASK)) {
+		case VFIO_IRQ_SET_DATA_NONE:
+			/* FIXME */
+			muser_warn("ignore DATA_NONE index=%d start=%d count=%d",
+			           mucmd->muser_cmd.ioctl.data.irq_set.index,
+			           mucmd->muser_cmd.ioctl.data.irq_set.start,
+			           mucmd->muser_cmd.ioctl.data.irq_set.count);
+			break;
 		case VFIO_IRQ_SET_DATA_EVENTFD:
 			ret = install_fds(mucmd);
 			if (unlikely(ret))
