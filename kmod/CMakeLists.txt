@@ -32,6 +32,7 @@
 # TODO can we copy all source files with a wildcard?
 configure_file(muser.c ${CMAKE_CURRENT_BINARY_DIR}/muser.c COPYONLY)
 configure_file(muser.h ${CMAKE_CURRENT_BINARY_DIR}/muser.h COPYONLY)
+# FIXME need to pass "CFLAGS_muser.o := -DDEBUG" for debug builds
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/Kbuild "obj-m := muser.o")
 
 # Build module using kernel's Makefile.
