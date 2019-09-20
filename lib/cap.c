@@ -158,7 +158,7 @@ cap_maybe_access(struct caps *caps, void *pvt, char *buf, size_t count,
     cap = cap_find(caps->caps, caps->nr_caps, offset, count);
 
     if (!cap) {
-        return -EINVAL;
+        return 0;
     }
 
     if (cap_header_is_accessed(cap, offset)) {
