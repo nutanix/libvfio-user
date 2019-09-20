@@ -966,6 +966,10 @@ pin_pages(struct mudev_cmd *mucmd, char __user *buf, size_t count,
 void dump_buffer(unsigned char const *const buf, uint32_t count)
 {
 #if defined(DEBUG)
+	/* 
+	 * TODO would be nice to add an option to print_hex_dump to hide
+	 * repeated lines, e.g. like od(1)
+	 */
 	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_NONE, 4, 1, buf, count,
 		       false);
 #endif
