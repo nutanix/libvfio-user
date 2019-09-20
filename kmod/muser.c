@@ -975,8 +975,8 @@ void dump_buffer(unsigned char const *const buf, uint32_t count)
 #endif
 }
 
-ssize_t muser_read(struct mdev_device *mdev, char __user *buf, size_t count,
-		loff_t *ppos)
+static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
+                          size_t count, loff_t *ppos)
 {
 	struct muser_dev *mudev = mdev_get_drvdata(mdev);
 	struct mudev_cmd mucmd = { 0 };
