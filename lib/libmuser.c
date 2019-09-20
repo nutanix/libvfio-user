@@ -628,22 +628,13 @@ out:
  * ret), or a negative number on error.
  */
 static int
-post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd, ssize_t ret)
+post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
+          const ssize_t count)
 {
-    if (ret != cmd->rw.count) {
-        /* FIXME shouldn't we still reply to the kernel in case of error? */
-        lm_log(lm_ctx, LM_ERR, "%s: bad read: %d/%d, %s\n",
-               __func__, ret, cmd->rw.count, strerror(errno));
-#ifdef LM_CRASH_ON_BAD_READ
-        abort();
-#endif
-        return ret;
-    }
-
-    ret = write(lm_ctx->fd, cmd->rw.buf, cmd->rw.count);
-    if ((int)ret != cmd->rw.count) {
-        lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %d/%d, %s\n",
-               __func__, ret, cmd->rw.count, strerror(errno));
+    ssize_t ret = write(lm_ctx->fd, cmd->rw.buf, count);
+    if (ret != count) {
+        lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %lu/%lu, %s\n",
+               __func__, ret, count, strerror(errno));
     }
     return ret;
 }
@@ -765,7 +756,13 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
         if (ret <= 0) {
             lm_log(lm_ctx, LM_ERR, "failed to %s %llx@%lx: %s\n",
                    is_write ? "write" : "read", size, *ppos, strerror(-ret));
+            /*
+             * TODO if ret < 0 then it might contain a legitimate error code, why replace it with EFAULT?
+             */
             return -EFAULT;
+        }
+        if (ret != size) {
+            lm_log(lm_ctx, LM_DBG, "bad read %d != %d\n", ret, size);
         }
         count -= size;
         done += size;
@@ -825,13 +822,21 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
         dump_buffer(lm_ctx, "buffer write", data, cmd->rw.count);
 #endif
     }
+
+    /*
+     * count is how much has been processed by muser_pci_hdr_access,
+     * cmd->rw.count is how much there's left to be processed by lm_access
+     */
     count -= cmd->rw.count;
     ret = lm_access(lm_ctx, data + count, cmd->rw.count, &cmd->rw.pos,
                     is_write);
-    if (!is_write) {
+    if (!is_write && ret >= 0) {
+        ret += count;
         cmd->rw.buf = data;
         err = post_read(lm_ctx, cmd, ret);
-        dump_buffer(lm_ctx, "buffer read", cmd->rw.buf, cmd->rw.count);
+        if (!LM_TERSE_LOGGING && err == ret) {
+            dump_buffer(lm_ctx, "buffer read", cmd->rw.buf, ret);
+        }
     }
 
 out:
