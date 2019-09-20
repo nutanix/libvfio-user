@@ -1001,16 +1001,28 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 	muser_dbg("R %lx@%llx", mucmd.muser_cmd.rw.count,
 		  mucmd.muser_cmd.rw.pos);
 
-	/* Process mudev_cmd in libmuser context. */
+	/* Process mudev_cmd in libmuser context. TODO move into function */
 	err = muser_process_cmd(mudev, &mucmd);
-	if (err != 0)
-		count = -1;
+	if (unlikely(err != 0))
+		_count = err;
+	else
+		_count = mucmd.muser_cmd.err;
+	
+	if (_count < 0)
+		muser_dbg("failed to process read: %d, %d\n", err,
+		          mucmd.muser_cmd.err);
+
 	*ppos = mucmd.muser_cmd.rw.pos;
+
+	if (_count > 0) {
+		muser_dbg("received 0x%lx bytes from user space (0x%lx)",
+		          _count, mucmd.muser_cmd.rw.count);
+		dump_buffer(buf, _count);
+	}
 
 	unpin_pages(&mucmd.pg_map);
 
-	dump_buffer(buf, count);
-	return count;
+	return _count;
 }
 
 ssize_t muser_write(struct mdev_device *mdev, const char __user *buf,
