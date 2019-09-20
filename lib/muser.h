@@ -39,6 +39,17 @@
 
 #include "pci.h"
 
+/*
+ * Influential enviroment variables:
+ *
+ * LM_TERSE_LOGGING: define to make libmuser log only erroneous PCI accesses.
+ *                   (this should really be done with a more fine grained debug
+ *                    level)
+ */
+#ifndef LM_TERSE_LOGGING
+#define LM_TERSE_LOGGING 0
+#endif
+
 typedef uint64_t dma_addr_t;
 
 typedef struct {

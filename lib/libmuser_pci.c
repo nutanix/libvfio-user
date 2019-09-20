@@ -249,7 +249,9 @@ muser_pci_hdr_write(lm_ctx_t * const lm_ctx, const uint16_t offset,
         ret = -EINVAL;
     }
 
+#ifndef LM_TERSE_LOGGING
     dump_buffer(lm_ctx, "PCI header", pci->hdr.raw, 0xff);
+#endif
 
     return ret;
 }

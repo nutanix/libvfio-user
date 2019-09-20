@@ -793,8 +793,10 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
         return -1;
     }
 
+#ifndef LM_TERSE_LOGGING
     lm_log(lm_ctx, LM_DBG, "%s %x@%lx\n", is_write ? "W" : "R", cmd->rw.count,
            cmd->rw.pos);
+#endif
 
     /* copy data to be written from kernel to user space */
     if (is_write) {
@@ -809,7 +811,9 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
             goto out;
         }
         err = 0;
+#ifndef LM_TERSE_LOGGING
         dump_buffer(lm_ctx, "buffer write", data, cmd->rw.count);
+#endif
     }
 
     count = cmd->rw.count;
@@ -817,6 +821,9 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
                                     is_write, data);
     if (cmd->err) {
         lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %d\n", cmd->err);
+#ifndef LM_TERSE_LOGGING
+        dump_buffer(lm_ctx, "buffer write", data, cmd->rw.count);
+#endif
     }
     count -= cmd->rw.count;
     ret = lm_access(lm_ctx, data + count, cmd->rw.count, &cmd->rw.pos,
