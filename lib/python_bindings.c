@@ -30,7 +30,6 @@
  *
  */
 
-#include <assert.h>
 #include <Python.h>
 
 #include "muser.h"
