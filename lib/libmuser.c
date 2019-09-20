@@ -605,6 +605,10 @@ out:
     return err;
 }
 
+/*
+ * Returns the number of bytes comminicated to the kernel (may be less than
+ * ret), or a negative number on error.
+ */
 static int
 post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd, ssize_t ret)
 {
@@ -709,6 +713,9 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
 }
 
 /*
+ * Returns the number of bytes processed on success or a negative number on
+ * error.
+ *
  * TODO function name same lm_access_t, fix
  */
 ssize_t

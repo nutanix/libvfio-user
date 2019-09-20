@@ -18,6 +18,9 @@ struct caps {
     int             nr_caps;
 };
 
+/*
+ * Tells whether a capability is being accessed.
+ */
 static bool
 cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
 {
@@ -53,6 +56,10 @@ cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
     return true;
 }
 
+/*
+ * Returns the PCI capability that is contained withint the specified region
+ * (offset + count).
+ */
 static struct cap*
 cap_find(struct cap *caps, int nr_caps, loff_t offset, size_t count)
 {
