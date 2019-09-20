@@ -92,7 +92,7 @@ region_access_wrap(void *pvt, char * const buf, size_t count, loff_t offset,
 
 #define REGION_WRAP(region) \
     static ssize_t                                                      \
-    r_ ## region ## _wrap(void *p, char * const b, size_t c, loff_t o,  \
+    r_##region##_wrap(void *p, char * const b, size_t c, loff_t o,  \
                           const bool w)                                 \
     {                                                                   \
         return region_access_wrap(p, b, c, o, w, region);               \
