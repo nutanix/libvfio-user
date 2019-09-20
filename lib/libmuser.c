@@ -110,6 +110,19 @@ void lm_log(const lm_ctx_t * const ctx, const lm_log_lvl_t lvl,
     ctx->log(ctx->pvt, buf);
 }
 
+static const char * const
+vfio_irq_idx_to_str(const int index) {
+    static const char * const s[] = {
+        [VFIO_PCI_INTX_IRQ_INDEX] = "INTx",
+        [VFIO_PCI_MSI_IRQ_INDEX] = "MSI",
+        [VFIO_PCI_MSIX_IRQ_INDEX] = "MSI-X",
+        [VFIO_PCI_ERR_IRQ_INDEX] = "ERR",
+        [VFIO_PCI_REQ_IRQ_INDEX] = "REQ"
+    };
+    /* FIXME need to validate index */
+    return s[index];
+}
+
 static long irqs_disable(lm_ctx_t * lm_ctx, uint32_t index)
 {
     int *irq_efd = NULL;
@@ -122,6 +135,7 @@ static long irqs_disable(lm_ctx_t * lm_ctx, uint32_t index)
     case VFIO_PCI_INTX_IRQ_INDEX:
     case VFIO_PCI_MSI_IRQ_INDEX:
     case VFIO_PCI_MSIX_IRQ_INDEX:
+        lm_log(lm_ctx, LM_DBG, "disabling IRQ %s\n", vfio_irq_idx_to_str(index));
         lm_ctx->irqs.type = IRQ_NONE;
         for (i = 0; i < lm_ctx->irqs.max_ivs; i++) {
             if (lm_ctx->irqs.efds[i] >= 0) {
@@ -213,6 +227,7 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
         if (*d32 >= 0) {
             lm_ctx->irqs.efds[i] = *d32;
         }
+        lm_log(lm_ctx, LM_DBG, "event fd[%d]=%d\n", i, lm_ctx->irqs.efds[i]);
     }
 
     return 0;
@@ -229,6 +244,9 @@ irqs_trigger(lm_ctx_t * lm_ctx, struct vfio_irq_set *irq_set, void *data)
     if (irq_set->count == 0) {
         return irqs_disable(lm_ctx, irq_set->index);
     }
+
+    lm_log(lm_ctx, LM_DBG, "setting IRQ %s flags=0x%x\n",
+           vfio_irq_idx_to_str(irq_set->index), irq_set->flags);
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
     case VFIO_IRQ_SET_DATA_NONE:
@@ -965,11 +983,14 @@ lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
     eventfd_t val = 1;
 
     if ((lm_ctx == NULL) || (vector >= lm_ctx->irqs.max_ivs)) {
+        lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", vector,
+               lm_ctx->irqs.max_ivs);
         errno = EINVAL;
         return -1;
     }
 
     if (lm_ctx->irqs.efds[vector] == -1) {
+        lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", vector);
         errno = ENOENT;
         return -1;
     }
