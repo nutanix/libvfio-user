@@ -127,7 +127,7 @@ struct _region_info {
 
 static const struct _region_info _0_ri;
 
-static PyObject *log_fn = NULL;
+static PyObject *log_fn;
 static lm_log_lvl_t log_lvl = LM_ERR;
 
 static void _log_fn(void *pvt, const char *const msg)
