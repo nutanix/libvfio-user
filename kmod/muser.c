@@ -1549,8 +1549,13 @@ static long libmuser_unl_ioctl(struct file *filep,
 		case MUSER_MMAP:
 			ret = mmap_done(mucmd);
 			break;
-		case MUSER_WRITE:
 		case MUSER_READ:
+			if (mucmd->muser_cmd.err < 0) {
+				muser_alert("read failed: %d",
+			        mucmd->muser_cmd.err);
+			}
+			break;
+		case MUSER_WRITE:
 		case MUSER_DMA_MMAP:
 		case MUSER_DMA_MUNMAP:
 			break;
