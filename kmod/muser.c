@@ -984,7 +984,7 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 
 	WARN_ON(mudev == NULL);
 
-	/* Setup mucmd and ping pages of the calling context. */
+	/* Setup mucmd and pin pages of the calling context. */
 	mucmd.type = MUSER_READ;
 	err = pin_pages(&mucmd, buf, count, 1);
 	if (err != 0)
