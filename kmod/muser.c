@@ -981,14 +981,17 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 	struct muser_dev *mudev = mdev_get_drvdata(mdev);
 	struct mudev_cmd mucmd = { 0 };
 	int err;
+	ssize_t _count;
 
 	WARN_ON(mudev == NULL);
 
 	/* Setup mucmd and pin pages of the calling context. */
 	mucmd.type = MUSER_READ;
 	err = pin_pages(&mucmd, buf, count, 1);
-	if (err != 0)
+	if (err != 0) {
+		muser_dbg("failed to pin pages: %d", err);
 		return err;
+	}
 
 	/* Setup muser_cmd for server context. */
 	mucmd.muser_cmd.type = MUSER_READ;
@@ -1162,10 +1165,12 @@ static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 			err = bounce_fds(mucmd, (void __user *) (arg + minsz),
 					 argsz - minsz);
 			if (err) {
-				muser_dbg("failed to bounce fds: %d\n", err);
+				muser_dbg("failed to bounce fds: %d", err);
 				return err;
 			}
 			break;
+		default:
+			muser_warn("ignore flags=0x%x", flags);
 		}
 	}
 
@@ -1433,6 +1438,8 @@ static inline int maybe_install_fds(struct mudev_cmd *mucmd)
 			if (unlikely(ret))
 				muser_dbg("failed to install fds: %ld", ret);
 			break;
+		default:
+			muser_warn("bad flags=0x%x", flags);
 		/* TODO: SET_DATA_BOOL */
 		}
 	}
@@ -1725,11 +1732,14 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 
 	switch (mucmd->type) {
 	case MUSER_READ:
+		muser_dbg("received data from libmuser");
+		dump_buffer(buf, bufsz);
 		ret = bounce_in(mucmd, (void __user *)buf);
 		if (ret)
 			return ret;
 		break;
 	case MUSER_IOCTL:
+		muser_dbg("received sparse mmap from libmuser");
 		/*
 		 * copy the sparse mmap cap information after the
 		 * struct vfio_region_info.
@@ -1742,6 +1752,7 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 		mucmd->pg_map.len -= seek;
 		break;
 	default:
+		muser_dbg("bad command 0x%x", mucmd->type);
 		return -EINVAL;
 	}
 
