@@ -116,7 +116,8 @@ static ssize_t (*region_access_wraps[LM_DEV_NUM_REGS])(void*, char * const, size
                                                      r_5_wrap,
                                                      r_6_wrap,
                                                      r_7_wrap,
-                                                     r_8_wrap};
+                                                     r_8_wrap
+};
 
 struct _region_info {
     char *perm;
@@ -188,11 +189,9 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
             for (j = 0; j < strlen(_ri[i].perm); j++) {
                 if (_ri[i].perm[j] == 'r') {
                     flags |= LM_REG_FLAG_READ;
-                }
-                else if (_ri[i].perm[j] == 'w') {
+                } else if (_ri[i].perm[j] == 'w') {
                     flags |= LM_REG_FLAG_WRITE;
-                }
-                else {
+                } else {
                     /* FIXME shouldn't print to stderr */
                     fprintf(stderr, "bad permission '%c'\n", _ri[i].perm[j]);
                     return NULL;
