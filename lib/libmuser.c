@@ -1074,6 +1074,10 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         return NULL;
     }
 
+    /*
+     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
+     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
+     */
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
         if (max_ivs < dev_info->pci_info.irq_count[i]) {
             max_ivs = dev_info->pci_info.irq_count[i];
