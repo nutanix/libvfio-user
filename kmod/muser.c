@@ -1459,6 +1459,7 @@ static inline int maybe_install_fds(struct mudev_cmd *mucmd)
 			           mucmd->muser_cmd.ioctl.data.irq_set.index,
 			           mucmd->muser_cmd.ioctl.data.irq_set.start,
 			           mucmd->muser_cmd.ioctl.data.irq_set.count);
+			ret = 0;
 			break;
 		case VFIO_IRQ_SET_DATA_EVENTFD:
 			ret = install_fds(mucmd);
