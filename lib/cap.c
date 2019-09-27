@@ -57,7 +57,7 @@ cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
 }
 
 /*
- * Returns the PCI capability that is contained withint the specified region
+ * Returns the PCI capability that is contained within the specified region
  * (offset + count).
  */
 static struct cap*

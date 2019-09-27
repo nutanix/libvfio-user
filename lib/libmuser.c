@@ -624,7 +624,7 @@ out:
 }
 
 /*
- * Returns the number of bytes comminicated to the kernel (may be less than
+ * Returns the number of bytes communicated to the kernel (may be less than
  * ret), or a negative number on error.
  */
 static int
@@ -663,7 +663,8 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
 
     r1 = cap_maybe_access(lm_ctx->caps, lm_ctx->pvt, buf, count, pos, is_write);
     if (r1 < 0) {
-        lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@0x%x\n", count, pos);
+        lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
+               pos);
         return r1;
     }
     buf += r1;
