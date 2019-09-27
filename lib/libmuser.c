@@ -1015,8 +1015,6 @@ lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
     } else if (vector == LM_DEV_MSIX_IRQ_IDX) {
         /*
          * FIXME must check that MSI-X capability exists during creation time
-         */
-        /*
          * FIXME need to check that MSI-X is enabled and that it's not masked.
          * Currently that's not possible because libmuser doesn't care about
          * the internals of a capability.
