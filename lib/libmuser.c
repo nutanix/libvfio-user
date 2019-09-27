@@ -781,7 +781,7 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
     char *data;
     int err;
     unsigned int i;
-    size_t count = 0;
+    size_t count = 0, _count;
     ssize_t ret;
 
     /* TODO how big do we expect count to be? Can we use alloca(3) instead? */
@@ -814,13 +814,13 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
 #endif
     }
 
-    count = cmd->rw.count;
-    cmd->err = muser_pci_hdr_access(lm_ctx, &cmd->rw.count, &cmd->rw.pos,
+    count = _count = cmd->rw.count;
+    cmd->err = muser_pci_hdr_access(lm_ctx, &_count, &cmd->rw.pos,
                                     is_write, data);
     if (cmd->err) {
         lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %d\n", cmd->err);
 #ifndef LM_TERSE_LOGGING
-        dump_buffer(lm_ctx, "buffer write", data, cmd->rw.count);
+        dump_buffer(lm_ctx, "buffer write", data, _count);
 #endif
     }
 
@@ -828,8 +828,8 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
      * count is how much has been processed by muser_pci_hdr_access,
      * cmd->rw.count is how much there's left to be processed by lm_access
      */
-    count -= cmd->rw.count;
-    ret = lm_access(lm_ctx, data + count, cmd->rw.count, &cmd->rw.pos,
+    count -= _count;
+    ret = lm_access(lm_ctx, data + count, _count, &cmd->rw.pos,
                     is_write);
     if (!is_write && ret >= 0) {
         ret += count;
