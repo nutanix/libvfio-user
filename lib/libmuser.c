@@ -826,7 +826,7 @@ muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
 
     /*
      * count is how much has been processed by muser_pci_hdr_access,
-     * cmd->rw.count is how much there's left to be processed by lm_access
+     * _count is how much there's left to be processed by lm_access
      */
     count -= _count;
     ret = lm_access(lm_ctx, data + count, _count, &cmd->rw.pos,
