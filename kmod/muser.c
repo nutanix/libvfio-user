@@ -504,9 +504,9 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 	cur_pgidx = vma->vm_pgoff & ~(BIT(63 - PAGE_SHIFT));
 	end_pgidx = cur_pgidx + nr_pages;
 
-	muser_info("mmap_dev: end 0x%lX - start 0x%lX (0x%lX), off = 0x%lX",
-		   vma->vm_end, vma->vm_start, vma->vm_end - vma->vm_start,
-		   cur_pgidx);
+	muser_dbg("mmap_dev: end 0x%lX - start 0x%lX (0x%lX), off = 0x%lX",
+		  vma->vm_end, vma->vm_start, vma->vm_end - vma->vm_start,
+		  cur_pgidx);
 
 	mutex_lock(&mudev->dev_lock);
 	for (i = 0; cur_pgidx < end_pgidx; cur_pgidx++, i++) {
