@@ -61,8 +61,9 @@ test_read(int vfio_dev_fd, off_t offset)
     int i;
 
     memset(buf, 0, sizeof(buf));
-    printf("* Reading %zd bytes\n", sizeof(buf));
+    printf("* Reading %zd bytes at %#zx\n", sizeof(buf), offset);
     bytes = pread(vfio_dev_fd, buf, sizeof(buf), offset);
+    printf("** bytes = %zd\n", bytes);
     assert(bytes == sizeof(buf));
     printf("** Read %zd bytes\n", bytes);
 
