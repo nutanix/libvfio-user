@@ -884,11 +884,10 @@ int muser_open(struct mdev_device *mdev)
 		muser_dbg("failed to register notifier: %d", err);
 		err2 = dma_unmap_all(mudev, false);
 		if (unlikely(err2))
-			muser_dbg("failed to DMA unmap all regions: %d",
-					err2);
-		err2 =
-		    vfio_unregister_notifier(mdev_dev(mdev), VFIO_IOMMU_NOTIFY,
-					     &mudev->iommu_notifier);
+			muser_dbg("failed to DMA unmap all regions: %d", err2);
+		err2 = vfio_unregister_notifier(mdev_dev(mdev),
+						VFIO_IOMMU_NOTIFY,
+						&mudev->iommu_notifier);
 		if (unlikely(err2))
 			muser_info("failed to unregister notifier: %d", err);
 
@@ -906,7 +905,7 @@ static int dma_unmap_all(struct muser_dev *mudev, bool skip_user)
 	mutex_lock(&mudev->dev_lock);
 	while (!list_empty(&mudev->dma_list)) {
 		dma_map = list_first_entry(&mudev->dma_list,
-					     struct vfio_dma_mapping, entry);
+					   struct vfio_dma_mapping, entry);
 		list_move(&dma_map->entry, &head);
 	}
 	mutex_unlock(&mudev->dev_lock);
@@ -915,7 +914,7 @@ static int dma_unmap_all(struct muser_dev *mudev, bool skip_user)
 		int err;
 
 		dma_map = list_first_entry(&head, struct vfio_dma_mapping,
-					     entry);
+					   entry);
 		list_del(&dma_map->entry);
 		if (!skip_user) {
 			err = muser_process_dma_unmap(mudev, dma_map);

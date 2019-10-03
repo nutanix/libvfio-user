@@ -708,10 +708,12 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
         return -EINVAL;
     } 
+
     if (idx == LM_DEV_CFG_REG_IDX) {
         return handle_pci_config_space_access(lm_ctx, buf, count, offset,
                                               is_write, pci_info->reg_info[idx].fn);
     }
+
     /*
      * Checking whether a callback exists might sound expensive however this
      * code is not performance critical. This works well when we don't expect a
@@ -1152,8 +1154,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
 
     if (!memcmp(&lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX], &zero_reg_info,
-        sizeof zero_reg_info))
-    {
+                sizeof zero_reg_info)) {
         static const lm_reg_info_t default_cfg_reg_info = {
             .flags = LM_REG_FLAG_RW,
             .size = PCI_CFG_SPACE_SIZE,
@@ -1194,9 +1195,12 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         goto out;
     }
 
-    init_pci_hdr(&lm_ctx->pci_config_space->hdr, &dev_info->pci_info.id,
-        &dev_info->pci_info.cc, &dev_info->pci_info.ss,
-        dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX]);
+    init_pci_hdr(&lm_ctx->pci_config_space->hdr,
+                 &dev_info->pci_info.id,
+                 &dev_info->pci_info.cc,
+                 &dev_info->pci_info.ss,
+                 dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX]);
+
     for (i = 0; i < ARRAY_SIZE(lm_ctx->pci_config_space->hdr.bars); i++) {
         if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
             lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
