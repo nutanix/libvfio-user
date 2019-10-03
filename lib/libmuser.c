@@ -387,7 +387,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     size_t size;
     ssize_t ret;
 
-    if (!lm_reg->mmap_areas)
+    if (lm_reg->mmap_areas == NULL)
         return -EINVAL;
 
     nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
@@ -408,7 +408,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     lm_log(lm_ctx, LM_DBG, "%s: size %llu, nr_mmap_areas %u\n", __func__, size,
            nr_mmap_areas);
     sparse = calloc(1, size);
-    if (!sparse)
+    if (sparse == NULL)
         return -ENOMEM;
     sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
     sparse->header.version = 1;
@@ -470,7 +470,7 @@ dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
     vfio_reg->flags = lm_reg->flags;
     vfio_reg->size = lm_reg->size;
 
-    if (lm_reg->mmap_areas)
+    if (lm_reg->mmap_areas != NULL)
         err = dev_get_sparse_mmap_cap(lm_ctx, lm_reg, vfio_reg);
 
     lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", vfio_reg->index);
@@ -515,7 +515,7 @@ do_muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
         err = dev_set_irqs(lm_ctx, &cmd_ioctl->data.irq_set, data);
         break;
     case VFIO_DEVICE_RESET:
-        if (lm_ctx->reset) {
+        if (lm_ctx->reset != NULL) {
             return lm_ctx->reset(lm_ctx->pvt);
         }
         lm_log(lm_ctx, LM_DBG, "reset called but not reset function present\n");
@@ -676,7 +676,7 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
     buf += r1;
     pos += r1;
     count -= r1;
-    if (pci_config_fn && count > 0) {
+    if (pci_config_fn != NULL && count > 0) {
         r2 = pci_config_fn(lm_ctx->pvt, buf, count, pos, is_write);
         if (r2 < 0) {
             return r2;
@@ -720,7 +720,7 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
      * region to be used, so the user of the library can simply leave the
      * callback NULL in lm_ctx_create.
      */
-    if (pci_info->reg_info[idx].fn) {
+    if (pci_info->reg_info[idx].fn != NULL) {
         return pci_info->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
                                           is_write);
     }
@@ -1190,7 +1190,7 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
         size = PCI_CFG_SPACE_SIZE;
     }
     lm_ctx->pci_config_space = calloc(PCI_CFG_SPACE_EXP_SIZE, 1);
-    if (!lm_ctx->pci_config_space) {
+    if (lm_ctx->pci_config_space == NULL) {
         err = errno;
         goto out;
     }
