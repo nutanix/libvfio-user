@@ -655,6 +655,12 @@ lm_get_region(const loff_t pos, const size_t count, loff_t * const off)
 }
 
 static ssize_t
+noop_cb(void *pvt, char * const buf, size_t count,
+	loff_t offset, const bool is_write) {
+	return count;
+}
+
+static ssize_t
 handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
                                loff_t pos, bool is_write,
                                lm_region_access_t *pci_config_fn)
@@ -1150,7 +1156,8 @@ lm_ctx_create(lm_dev_info_t * const dev_info)
     {
         static const lm_reg_info_t default_cfg_reg_info = {
             .flags = LM_REG_FLAG_RW,
-            .size = PCI_CFG_SPACE_SIZE
+            .size = PCI_CFG_SPACE_SIZE,
+            .fn = noop_cb
         };
         lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX] = default_cfg_reg_info;
     }
