@@ -116,10 +116,10 @@ vfio_irq_idx_to_str(int index) {
         [VFIO_PCI_INTX_IRQ_INDEX] = "INTx",
         [VFIO_PCI_MSI_IRQ_INDEX]  = "MSI",
         [VFIO_PCI_MSIX_IRQ_INDEX] = "MSI-X",
-        [VFIO_PCI_ERR_IRQ_INDEX]  = "ERR",
-        [VFIO_PCI_REQ_IRQ_INDEX]  = "REQ"
     };
-    /* FIXME need to validate index */
+
+    assert(index < LM_DEV_NUM_IRQS);
+
     return s[index];
 }
 
@@ -1187,9 +1187,6 @@ lm_ctx_create(lm_dev_info_t *dev_info)
         err = errno;
         goto out;
     }
-
-    lm_ctx->pci_info.irq_count[LM_DEV_ERR_IRQ_IDX] = 1;
-    lm_ctx->pci_info.irq_count[LM_DEV_REQ_IRQ_IDX] = 1;
 
     lm_ctx->extended = dev_info->extended;
     if (lm_ctx->extended) {

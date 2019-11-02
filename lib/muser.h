@@ -149,9 +149,7 @@ enum {
     LM_DEV_INTX_IRQ_IDX,
     LM_DEV_MSI_IRQ_IDX,
     LM_DEV_MSIX_IRQ_IDX,
-    LM_DEV_ERR_IRQ_IDX,
-    LM_DEV_REQ_IRQ_IDX,
-    LM_DEV_NUM_IRQS = 5
+    LM_DEV_NUM_IRQS = 3
 };
 
 enum {
