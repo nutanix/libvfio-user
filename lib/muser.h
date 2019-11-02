@@ -439,11 +439,9 @@ lm_get_region(loff_t pos, size_t count, loff_t *off);
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
 
-#ifdef DEBUG
 void
 dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
             const unsigned char *buf, uint32_t count);
-#endif
 
 #endif /* LIB_MUSER_H */
 
