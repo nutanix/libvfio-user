@@ -92,38 +92,39 @@ MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
 
 #define LM2VFIO_IRQT(type) (type - 1)
 
-void lm_log(const lm_ctx_t * const ctx, const lm_log_lvl_t lvl,
-        const char *const fmt, ...)
+void
+lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...)
 {
     va_list ap;
     char buf[BUFSIZ];
 
-    assert(ctx);
+    assert(lm_ctx != NULL);
 
-    if (!ctx->log || lvl > ctx->log_lvl || !fmt) {
+    if (lm_ctx->log == NULL || lvl > lm_ctx->log_lvl || fmt == NULL) {
         return;
     }
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    ctx->log(ctx->pvt, buf);
+    lm_ctx->log(lm_ctx->pvt, buf);
 }
 
-static const char * const
-vfio_irq_idx_to_str(const int index) {
-    static const char * const s[] = {
+static const char *
+vfio_irq_idx_to_str(int index) {
+    static const char *s[] = {
         [VFIO_PCI_INTX_IRQ_INDEX] = "INTx",
-        [VFIO_PCI_MSI_IRQ_INDEX] = "MSI",
+        [VFIO_PCI_MSI_IRQ_INDEX]  = "MSI",
         [VFIO_PCI_MSIX_IRQ_INDEX] = "MSI-X",
-        [VFIO_PCI_ERR_IRQ_INDEX] = "ERR",
-        [VFIO_PCI_REQ_IRQ_INDEX] = "REQ"
+        [VFIO_PCI_ERR_IRQ_INDEX]  = "ERR",
+        [VFIO_PCI_REQ_IRQ_INDEX]  = "REQ"
     };
     /* FIXME need to validate index */
     return s[index];
 }
 
-static long irqs_disable(lm_ctx_t * lm_ctx, uint32_t index)
+static long
+irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
 {
     int *irq_efd = NULL;
     uint32_t i;
@@ -162,7 +163,8 @@ static long irqs_disable(lm_ctx_t * lm_ctx, uint32_t index)
     return -EINVAL;
 }
 
-static int irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
+static int
+irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 {
     int efd, i;
     long ret;
@@ -193,6 +195,7 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
     eventfd_t val;
 
     assert(data != NULL);
+
     for (i = irq_set->start, d8 = data; i < irq_set->start + irq_set->count;
          i++, d8++) {
         efd = lm_ctx->irqs.efds[i];
@@ -234,7 +237,7 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
 }
 
 static long
-irqs_trigger(lm_ctx_t * lm_ctx, struct vfio_irq_set *irq_set, void *data)
+irqs_trigger(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     int err = 0;
 
@@ -328,7 +331,7 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 }
 
 static long
-dev_set_irqs(lm_ctx_t * lm_ctx, struct vfio_irq_set *irq_set, void *data)
+dev_set_irqs(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     long ret;
 
@@ -351,7 +354,8 @@ dev_set_irqs(lm_ctx_t * lm_ctx, struct vfio_irq_set *irq_set, void *data)
     return irqs_trigger(lm_ctx, irq_set, data);
 }
 
-static long dev_get_irqinfo(lm_ctx_t * lm_ctx, struct vfio_irq_info *irq_info)
+static long
+dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
 {
     assert(lm_ctx != NULL);
     assert(irq_info != NULL);
@@ -439,19 +443,19 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
 #define LM_REGION_MASK  ((1ULL << LM_REGION_SHIFT) - 1)
 
 uint64_t
-region_to_offset(const uint32_t region)
+region_to_offset(uint32_t region)
 {
     return (uint64_t)region << LM_REGION_SHIFT;
 }
 
 uint32_t
-offset_to_region(const uint64_t offset)
+offset_to_region(uint64_t offset)
 {
     return (offset >> LM_REGION_SHIFT) & LM_REGION_MASK;
 }
 
 static long
-dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
+dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
 {
     lm_reg_info_t *lm_reg;
     int err;
@@ -479,7 +483,8 @@ dev_get_reginfo(lm_ctx_t * lm_ctx, struct vfio_region_info *vfio_reg)
     return 0;
 }
 
-static long dev_get_info(struct vfio_device_info *dev_info)
+static long
+dev_get_info(struct vfio_device_info *dev_info)
 {
     assert(dev_info != NULL);
 
@@ -496,7 +501,7 @@ static long dev_get_info(struct vfio_device_info *dev_info)
 }
 
 static long
-do_muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
+do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
 {
     int err = -ENOTSUP;
 
@@ -525,7 +530,8 @@ do_muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
     return err;
 }
 
-static int muser_dma_unmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
+static int
+muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
@@ -552,7 +558,8 @@ static int muser_dma_unmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
     return err;
 }
 
-static int muser_dma_map(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
+static int
+muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
@@ -584,7 +591,8 @@ static int muser_dma_map(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
 /*
  * Callback that is executed when device memory is to be mmap'd.
  */
-static int muser_mmap(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
+static int
+muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int region, err = 0;
     unsigned long addr;
@@ -628,35 +636,36 @@ out:
  * ret), or a negative number on error.
  */
 static int
-post_read(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
-          const ssize_t count)
+post_read(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, ssize_t count)
 {
     ssize_t ret = write(lm_ctx->fd, cmd->rw.buf, count);
+
     if (ret != count) {
         lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %lu/%lu, %s\n",
                __func__, ret, count, strerror(errno));
     }
+
     return ret;
 }
 
 int
-lm_get_region(const loff_t pos, const size_t count, loff_t * const off)
+lm_get_region(loff_t pos, size_t count, loff_t *off)
 {
     int r;
 
-    assert(off);
+    assert(off != NULL);
 
     r = offset_to_region(pos);
     if (offset_to_region(pos + count) != r) {
         return -ENOENT;
     }
     *off = pos - region_to_offset(r);
+
     return r;
 }
 
 static ssize_t
-noop_cb(void *pvt, char * const buf, size_t count,
-	loff_t offset, const bool is_write) {
+noop_cb(void *pvt, char *buf, size_t count, loff_t offset, bool is_write) {
 	return count;
 }
 
@@ -686,8 +695,7 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
 }
 
 static ssize_t
-do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
-          const bool is_write)
+do_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t pos, bool is_write)
 {
     int idx;
     loff_t offset;
@@ -737,8 +745,8 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
  * TODO function name same lm_access_t, fix
  */
 ssize_t
-lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
-          loff_t * const ppos, const bool is_write)
+lm_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t *ppos,
+          bool is_write)
 {
     unsigned int done = 0;
     int ret;
@@ -782,8 +790,7 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
 }
 
 static inline int
-muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
-             const bool is_write)
+muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
 {
     char *data;
     int err;
@@ -854,7 +861,7 @@ out:
 }
 
 static int
-muser_ioctl(lm_ctx_t * lm_ctx, struct muser_cmd *cmd)
+muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     void *data = NULL;
     size_t size = 0;
@@ -899,7 +906,8 @@ out:
     return ret;
 }
 
-static int drive_loop(lm_ctx_t *lm_ctx)
+static int
+drive_loop(lm_ctx_t *lm_ctx)
 {
     struct muser_cmd cmd = { 0 };
     int err;
@@ -946,9 +954,8 @@ static int drive_loop(lm_ctx_t *lm_ctx)
 }
 
 int
-lm_ctx_drive(lm_ctx_t * lm_ctx)
+lm_ctx_drive(lm_ctx_t *lm_ctx)
 {
-
     if (lm_ctx == NULL) {
         errno = EINVAL;
         return -1;
@@ -983,7 +990,7 @@ dev_attach(const char *uuid)
 }
 
 void *
-lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length)
+lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
 {
     off_t lm_off;
 
@@ -998,7 +1005,7 @@ lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length)
 }
 
 int
-lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
+lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
 {
     eventfd_t val = 1;
 
@@ -1032,7 +1039,7 @@ lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t vector)
 }
 
 void
-lm_ctx_destroy(lm_ctx_t * lm_ctx)
+lm_ctx_destroy(lm_ctx_t *lm_ctx)
 {
     if (lm_ctx == NULL) {
         return;
@@ -1048,9 +1055,9 @@ lm_ctx_destroy(lm_ctx_t * lm_ctx)
 }
 
 static void
-init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
-    const lm_pci_hdr_cc_t * const cc, const lm_pci_hdr_ss_t *ss,
-    bool ipin)
+init_pci_hdr(lm_pci_hdr_t *hdr, const lm_pci_hdr_id_t *id,
+             const lm_pci_hdr_cc_t *cc, const lm_pci_hdr_ss_t *ss,
+             bool ipin)
 {
     assert(hdr);
     assert(id);
@@ -1063,7 +1070,8 @@ init_pci_hdr(lm_pci_hdr_t * const hdr, const lm_pci_hdr_id_t * const id,
     hdr->intr.ipin = ipin;
 }
 
-static int copy_sparse_mmap_areas(lm_reg_info_t *dst, lm_reg_info_t *src)
+static int
+copy_sparse_mmap_areas(lm_reg_info_t *dst, lm_reg_info_t *src)
 {
     struct lm_sparse_mmap_areas *mmap_areas;
     int nr_mmap_areas;
@@ -1087,7 +1095,8 @@ static int copy_sparse_mmap_areas(lm_reg_info_t *dst, lm_reg_info_t *src)
     return 0;
 }
 
-static void free_sparse_mmap_areas(lm_reg_info_t *reg_info)
+static void
+free_sparse_mmap_areas(lm_reg_info_t *reg_info)
 {
     int i;
 
@@ -1121,7 +1130,7 @@ lm_caps_init(lm_ctx_t *lm_ctx, lm_cap_t *caps, int nr_caps)
 }
 
 lm_ctx_t *
-lm_ctx_create(lm_dev_info_t * const dev_info)
+lm_ctx_create(lm_dev_info_t *dev_info)
 {
     lm_ctx_t *lm_ctx = NULL;
     uint32_t max_ivs = 0, nr_mmap_areas = 0;
@@ -1237,8 +1246,8 @@ out:
 }
 
 void
-dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
-            unsigned char const *const buf, const uint32_t count)
+dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
+            const unsigned char *buf, uint32_t count)
 {
 #ifdef DEBUG
     int i;
@@ -1267,7 +1276,7 @@ dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
  * Returns a pointer to the standard part of the PCI configuration space.
  */
 inline lm_pci_config_space_t *
-lm_get_pci_config_space(lm_ctx_t * const lm_ctx)
+lm_get_pci_config_space(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
     return lm_ctx->pci_config_space;
@@ -1277,42 +1286,41 @@ lm_get_pci_config_space(lm_ctx_t * const lm_ctx)
  * Returns a pointer to the non-standard part of the PCI configuration space.
  */
 inline uint8_t *
-lm_get_pci_non_std_config_space(lm_ctx_t * const lm_ctx)
+lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
-    return (uint8_t *) & lm_ctx->pci_config_space->non_std;
+    return (uint8_t *)&lm_ctx->pci_config_space->non_std;
 }
 
 inline lm_reg_info_t *
-lm_get_region_info(lm_ctx_t * const lm_ctx)
+lm_get_region_info(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
     return lm_ctx->pci_info.reg_info;
 }
 
 inline int
-lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr,
-              uint32_t len, dma_sg_t * sg, int max_sg)
+lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr,
+              uint32_t len, dma_sg_t *sg, int max_sg)
 {
     return dma_addr_to_sg(lm_ctx, lm_ctx->dma, dma_addr, len, sg, max_sg);
 }
 
 inline int
-lm_map_sg(lm_ctx_t * const lm_ctx, int prot,
-          const dma_sg_t * sg, struct iovec *iov, int cnt)
+lm_map_sg(lm_ctx_t *lm_ctx, int prot,
+          const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     return dma_map_sg(lm_ctx->dma, prot, sg, iov, cnt);
 }
 
 inline void
-lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
-            struct iovec *iov, int cnt)
+lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     return dma_unmap_sg(lm_ctx->dma, sg, iov, cnt);
 }
 
 int
-lm_ctx_run(lm_dev_info_t * const dev_info)
+lm_ctx_run(lm_dev_info_t *dev_info)
 {
     int ret;
 

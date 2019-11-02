@@ -43,7 +43,7 @@ struct caps;
  * Returns <0 on error, 0 if no capabilities are to be added, and >0 if all
  * capabilities have been added.
  */
-struct caps*
+struct caps *
 caps_create(lm_cap_t *caps, int nr_caps);
 
 /*

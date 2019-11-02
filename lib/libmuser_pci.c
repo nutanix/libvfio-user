@@ -45,8 +45,7 @@
 #include "common.h"
 
 static inline void
-muser_pci_hdr_write_bar(lm_ctx_t * const lm_ctx, const uint16_t bar_index,
-                        const char *const buf)
+muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
     uint32_t *bar;
@@ -81,8 +80,8 @@ muser_pci_hdr_write_bar(lm_ctx_t * const lm_ctx, const uint16_t bar_index,
 #define BAR_INDEX(offset) ((offset - PCI_BASE_ADDRESS_0) >> 2)
 
 static int
-handle_command_write(lm_ctx_t * const ctx, lm_pci_config_space_t * const pci,
-                   const char * const buf, const size_t count)
+handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
+                     const char *buf, size_t count)
 {
     uint16_t v;
 
@@ -172,8 +171,8 @@ handle_command_write(lm_ctx_t * const ctx, lm_pci_config_space_t * const pci,
 }
 
 static int
-handle_erom_write(lm_ctx_t * const ctx, lm_pci_config_space_t * const pci,
-                  const char *const buf, const size_t count)
+handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
+                  const char *buf, size_t count)
 {
     uint32_t v;
 
@@ -201,8 +200,8 @@ handle_erom_write(lm_ctx_t * const ctx, lm_pci_config_space_t * const pci,
 }
 
 static inline int
-muser_pci_hdr_write(lm_ctx_t * const lm_ctx, const uint16_t offset,
-                    const char *const buf, const size_t count)
+muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
+                    const char *buf, size_t count)
 {
     uint32_t *bar;
     lm_pci_config_space_t *pci;
@@ -264,9 +263,9 @@ muser_pci_hdr_write(lm_ctx_t * const lm_ctx, const uint16_t offset,
  * @count: output parameter that receives the number of bytes read/written
  */
 static inline int
-muser_do_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
-                        loff_t * const pos, const bool is_write,
-                        unsigned char *const buf)
+muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
+                        loff_t *pos, bool is_write,
+                        unsigned char *buf)
 {
     size_t _count;
     loff_t _pos;
@@ -291,16 +290,16 @@ muser_do_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
 }
 
 static inline bool
-muser_is_pci_hdr_access(const lm_reg_info_t * const reg_info, const loff_t pos)
+muser_is_pci_hdr_access(const lm_reg_info_t *reg_info, loff_t pos)
 {
     const off_t off = (loff_t) region_to_offset(LM_DEV_CFG_REG_IDX);
     return pos - off >= 0 && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 
 int
-muser_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
-                     loff_t * const pos, const bool is_write,
-                     unsigned char *const buf)
+muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
+                     loff_t *pos, bool is_write,
+                     unsigned char *buf)
 {
     assert(lm_ctx);
     assert(count);

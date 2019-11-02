@@ -36,12 +36,13 @@
 #include "muser.h"
 
 int
-muser_pci_hdr_access(lm_ctx_t * const lm_ctx, size_t * const count,
-                     loff_t * const pos, const bool write,
-                     unsigned char *const buf);
+muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
+                     loff_t *pos, bool write, unsigned char *buf);
 
-lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
+lm_reg_info_t *
+lm_get_region_info(lm_ctx_t *lm_ctx);
 
-uint64_t region_to_offset(const uint32_t region);
+uint64_t
+region_to_offset(uint32_t region);
 
 #endif /* MUSER_PRIV_H */

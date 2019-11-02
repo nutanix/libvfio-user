@@ -46,8 +46,8 @@ struct cap {
 };
 
 struct caps {
-    struct cap   caps[LM_MAX_CAPS];
-    int             nr_caps;
+    struct cap  caps[LM_MAX_CAPS];
+    int         nr_caps;
 };
 
 /*
@@ -92,7 +92,7 @@ cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
  * Returns the PCI capability that is contained within the specified region
  * (offset + count).
  */
-static struct cap*
+static struct cap *
 cap_find(struct cap *caps, int nr_caps, loff_t offset, size_t count)
 {
     struct cap *cap;
@@ -208,7 +208,7 @@ cap_is_valid(uint8_t id)
     return id >= PCI_CAP_ID_PM && id <= PCI_CAP_ID_MAX;
 }
 
-struct caps*
+struct caps *
 caps_create(lm_cap_t *lm_caps, int nr_caps)
 {
     uint8_t prev_end;
@@ -242,6 +242,7 @@ caps_create(lm_cap_t *lm_caps, int nr_caps)
         caps->caps[i].end = prev_end = caps->caps[i].start + lm_caps[i].size - 1;
     }
     caps->nr_caps = nr_caps;
+
 out:
     if (err) {
         free(caps);

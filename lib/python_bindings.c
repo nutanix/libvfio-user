@@ -53,8 +53,8 @@ handle_read(char *dst, PyObject *result, int count)
  * FIXME need a way to provide private pointer.
  */
 static ssize_t
-region_access_wrap(void *pvt, char * const buf, size_t count, loff_t offset,
-     const bool is_write, int region)
+region_access_wrap(void *pvt, char *buf, size_t count, loff_t offset,
+                   bool is_write, int region)
 {
     PyObject *arglist;
     PyObject *result = NULL;
@@ -131,7 +131,8 @@ static const struct _region_info _0_ri;
 static PyObject *log_fn;
 static lm_log_lvl_t log_lvl = LM_ERR;
 
-static void _log_fn(void *pvt, const char *const msg)
+static void
+_log_fn(void *pvt, const char *msg)
 {
     PyObject *arglist;
     PyObject *result = NULL;

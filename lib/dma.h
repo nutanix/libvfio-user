@@ -100,8 +100,11 @@ typedef struct {
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
-dma_controller_t *dma_controller_create(int max_regions);
-void dma_controller_destroy(lm_ctx_t * const ctx, dma_controller_t * dma);
+dma_controller_t *
+dma_controller_create(int max_regions);
+
+void
+dma_controller_destroy(lm_ctx_t *ctx, dma_controller_t *dma);
 
 /* Registers a new memory region.
  * Returns:
@@ -110,17 +113,20 @@ void dma_controller_destroy(lm_ctx_t * const ctx, dma_controller_t * dma);
  *   where this region would have been mapped to if the call could succeed
  *   (e.g. due to conflict with existing region).
  */
-int dma_controller_add_region(lm_ctx_t * const ctx, dma_controller_t * dma,
-                              dma_addr_t dma_addr, size_t size,
-                              int fd, off_t offset);
+int
+dma_controller_add_region(lm_ctx_t *ctx, dma_controller_t *dma,
+                          dma_addr_t dma_addr, size_t size,
+                          int fd, off_t offset);
 
-int dma_controller_remove_region(dma_controller_t * dma, dma_addr_t dma_addr,
-                                 size_t size, int fd);
+int
+dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
+                             size_t size, int fd);
 
 // Helper for dma_addr_to_sg() slow path.
-int _dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
-                       dma_addr_t dma_addr, uint32_t len,
-                       dma_sg_t * sg, int max_sg);
+int
+_dma_addr_sg_split(lm_ctx_t *ctx, const dma_controller_t *dma,
+                   dma_addr_t dma_addr, uint32_t len,
+                   dma_sg_t *sg, int max_sg);
 
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
  * A single linear dma address span may need to be split into multiple
@@ -134,9 +140,9 @@ int _dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
  *     necessary to complete this request.
  */
 static inline int
-dma_addr_to_sg(lm_ctx_t * const ctx, const dma_controller_t * dma,
+dma_addr_to_sg(lm_ctx_t *ctx, const dma_controller_t *dma,
                dma_addr_t dma_addr, uint32_t len,
-               dma_sg_t * sg, int max_sg)
+               dma_sg_t *sg, int max_sg)
 {
     static __thread int region_hint;
     int cnt;
@@ -160,15 +166,16 @@ dma_addr_to_sg(lm_ctx_t * const ctx, const dma_controller_t * dma,
     return cnt;
 }
 
-void *dma_map_region(dma_memory_region_t * region, int prot,
-                     size_t offset, size_t len);
+void *
+dma_map_region(dma_memory_region_t *region, int prot,
+               size_t offset, size_t len);
 
-void dma_unmap_region(dma_memory_region_t * region,
-                      void *virt_addr, size_t len);
+void
+dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);
 
 static inline int
-dma_map_sg(dma_controller_t * dma, int prot,
-           const dma_sg_t * sg, struct iovec *iov, int cnt)
+dma_map_sg(dma_controller_t *dma, int prot,
+           const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     int i;
 
@@ -191,8 +198,8 @@ dma_map_sg(dma_controller_t * dma, int prot,
 }
 
 static inline void
-dma_unmap_sg(dma_controller_t * dma,
-             const dma_sg_t * sg, struct iovec *iov, int cnt)
+dma_unmap_sg(dma_controller_t *dma,
+             const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     int i;
 
@@ -205,7 +212,7 @@ dma_unmap_sg(dma_controller_t * dma,
 }
 
 static inline void *
-dma_map_addr(lm_ctx_t * const ctx, dma_controller_t * dma, int prot,
+dma_map_addr(lm_ctx_t *ctx, dma_controller_t *dma, int prot,
              dma_addr_t dma_addr, uint32_t len)
 {
     dma_sg_t sg;
@@ -220,7 +227,7 @@ dma_map_addr(lm_ctx_t * const ctx, dma_controller_t * dma, int prot,
 }
 
 static inline void
-dma_unmap_addr(lm_ctx_t * const ctx, dma_controller_t * dma,
+dma_unmap_addr(lm_ctx_t *ctx, dma_controller_t *dma,
                dma_addr_t dma_addr, uint32_t len, void *addr)
 {
     dma_sg_t sg;

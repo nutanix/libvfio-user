@@ -89,8 +89,8 @@ struct lm_sparse_mmap_areas {
  *
  * @returns the number of bytes read or written, or a negative integer on error
  */
-typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
-                                      loff_t offset, const bool is_write);
+typedef ssize_t (lm_region_access_t) (void *pvt, char *buf, size_t count,
+                                      loff_t offset, bool is_write);
 
 /**
  * Prototype for memory access callback. The program MUST first map device
@@ -195,7 +195,7 @@ typedef struct {
 /*
  * Returns a pointer to the non-standard part of the PCI configuration space.
  */
-lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t * const lm_ctx);
+lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
 
 #define LM_DMA_REGIONS  0x10
 
@@ -210,7 +210,7 @@ typedef enum {
  *
  * @lm_log_fn_t: typedef for log function.
  */
-typedef void (lm_log_fn_t) (void *pvt, const char *const msg);
+typedef void (lm_log_fn_t) (void *pvt, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
@@ -226,9 +226,9 @@ typedef void (lm_log_fn_t) (void *pvt, const char *const msg);
  *
  * @returns the number of bytes read or written
  */
-typedef ssize_t (lm_cap_access_t) (void *pvt, const uint8_t id,
-                                   char * const buf, size_t count,
-                                   loff_t offset, const bool is_write);
+typedef ssize_t (lm_cap_access_t) (void *pvt, uint8_t id,
+                                   char *buf, size_t count,
+                                   loff_t offset, bool is_write);
 
 typedef struct {
 
@@ -308,14 +308,16 @@ typedef struct {
  *
  * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
-lm_ctx_t *lm_ctx_create(lm_dev_info_t * dev_info);
+lm_ctx_t *
+lm_ctx_create(lm_dev_info_t *dev_info);
 
 /**
  * Destroys libmuser context.
  *
  * @lm_ctx: the libmuser context to destroy
  */
-void lm_ctx_destroy(lm_ctx_t * lm_ctx);
+void
+lm_ctx_destroy(lm_ctx_t *lm_ctx);
 
 /**
  * Once the lm_ctx is configured lm_ctx_drive() drives it. This function waits
@@ -325,7 +327,8 @@ void lm_ctx_destroy(lm_ctx_t * lm_ctx);
  *
  * @returns 0 on success, -errno on failure.
  */
-int lm_ctx_drive(lm_ctx_t * lm_ctx);
+int
+lm_ctx_drive(lm_ctx_t *lm_ctx);
 
 /**
  * Creates and runs an lm_ctx.
@@ -334,7 +337,8 @@ int lm_ctx_drive(lm_ctx_t * lm_ctx);
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */
-int lm_ctx_run(lm_dev_info_t *dev_info);
+int
+lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
  * Triggers an interrupt.
@@ -347,7 +351,8 @@ int lm_ctx_run(lm_dev_info_t *dev_info);
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
-int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t subindex);
+int
+lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
 
 /* Helper functions */
 
@@ -376,8 +381,9 @@ int lm_irq_trigger(lm_ctx_t * lm_ctx, uint32_t subindex);
  *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
  *              entries necessary to complete this request.
  */
-int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
-                  dma_sg_t *sg, int max_sg);
+int
+lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
+              dma_sg_t *sg, int max_sg);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
@@ -394,7 +400,7 @@ int lm_addr_to_sg(lm_ctx_t * const lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * @returns 0 on success, -1 on failure
  */
 int
-lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_sg_t * sg,
+lm_map_sg(lm_ctx_t *lm_ctx, int prot, const dma_sg_t *sg,
           struct iovec *iov, int cnt);
 
 /**
@@ -407,7 +413,7 @@ lm_map_sg(lm_ctx_t * const lm_ctx, int prot, const dma_sg_t * sg,
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
+lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
             struct iovec *iov, int cnt);
 
 /**
@@ -421,7 +427,7 @@ lm_unmap_sg(lm_ctx_t * const lm_ctx, const dma_sg_t * sg,
  * Returns the PCI region (LM_DEV_XXX_REG_IDX), or -errno on error.
  */
 int
-lm_get_region(const loff_t pos, const size_t count, loff_t * const off);
+lm_get_region(loff_t pos, size_t count, loff_t *off);
 
 /*
  * Advanced stuff.
@@ -430,12 +436,13 @@ lm_get_region(const loff_t pos, const size_t count, loff_t * const off);
 /**
  * Returns the non-standard part of the PCI configuragion space.
  */
-uint8_t *lm_get_pci_non_std_config_space(lm_ctx_t * const lm_ctx);
+uint8_t *
+lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
 
 #ifdef DEBUG
 void
-dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
-            unsigned char const *const buf, const uint32_t count);
+dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
+            const unsigned char *buf, uint32_t count);
 #endif
 
 #endif /* LIB_MUSER_H */
