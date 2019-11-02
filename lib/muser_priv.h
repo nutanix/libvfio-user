@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef MUSER_PRIV_H
+#define MUSER_PRIV_H
+
 #include "muser.h"
 
 int
@@ -41,3 +44,4 @@ lm_reg_info_t *lm_get_region_info(lm_ctx_t * const lm_ctx);
 
 uint64_t region_to_offset(const uint32_t region);
 
+#endif /* MUSER_PRIV_H */

@@ -54,7 +54,6 @@ void lm_log(lm_ctx_t const *const lm_ctx, const lm_log_lvl_t lvl,
 void dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
                  unsigned char const *const buf, uint32_t count);
 
-
-#endif                          /* __COMMON_H__ */
+#endif /* __COMMON_H__ */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

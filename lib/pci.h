@@ -199,6 +199,6 @@ typedef struct {
 _Static_assert(sizeof(lm_pci_config_space_t) == 0x100,
                "bad PCI configuration space size");
 
-#endif                          /* LIBMUSER_PCI_H */
+#endif /* LIBMUSER_PCI_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

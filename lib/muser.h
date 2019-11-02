@@ -438,6 +438,6 @@ dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
             unsigned char const *const buf, const uint32_t count);
 #endif
 
-#endif                          /* LIB_MUSER_H */
+#endif /* LIB_MUSER_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
