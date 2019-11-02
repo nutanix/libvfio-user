@@ -448,9 +448,9 @@ static int vm_insert_pages(struct vm_area_struct *const vma,
 		err = vm_insert_page(vma, vma->vm_start + i * PAGE_SIZE,
 				     pages[i]);
 		if (unlikely(err)) {
-			muser_dbg("count=%d, anon=%d, slab=%d, type=%d",
+			muser_dbg("count=%d, anon=%d, slab=%d",
 				  page_count(pages[i]), PageAnon(pages[i]),
-				  PageSlab(pages[i]), page_has_type(pages[i]));
+				  PageSlab(pages[i]));
 			muser_dbg("failed to insert page at %lx: %d",
 				  vma->vm_start + i * PAGE_SIZE, err);
 			unmap_kernel_range((unsigned long)vma->vm_start,
