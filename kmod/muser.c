@@ -441,7 +441,6 @@ static void unpin_pages(struct page_map *const pg_map)
 	pg_map->pages = NULL;
 }
 
-
 static int vm_insert_pages(struct vm_area_struct *const vma,
 			   struct page *const pages[], const int nr_pages)
 {
@@ -1006,7 +1005,7 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 		_count = err;
 	else
 		_count = mucmd.muser_cmd.err;
-	
+
 	if (_count < 0)
 		muser_dbg("failed to process read: %d, %d\n", err,
 		          mucmd.muser_cmd.err);

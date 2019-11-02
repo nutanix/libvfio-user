@@ -92,7 +92,7 @@ struct lm_sparse_mmap_areas {
 typedef ssize_t (lm_region_access_t) (void *pvt, char * const buf, size_t count,
                                       loff_t offset, const bool is_write);
 
-/** 
+/**
  * Prototype for memory access callback. The program MUST first map device
  * memory in its own virtual address space using lm_mmap, do any additional
  * work required, and finally return that memory. When a region is memory
@@ -114,7 +114,7 @@ typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
  *
  * @lm_ctx: the libmuser context to create mapping from
  * @offset: offset of the region being mapped
- * @length: size of the region being mapped 
+ * @length: size of the region being mapped
  *
  * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
@@ -188,7 +188,7 @@ typedef struct {
 
     /*
      * Class code.
-     */ 
+     */
     lm_pci_hdr_cc_t     cc;
 } lm_pci_info_t;
 
@@ -299,7 +299,6 @@ typedef struct {
      * Number of capabilities in above array.
      */
     int             nr_caps;
-    
 } lm_dev_info_t;
 
 /**
@@ -326,7 +325,6 @@ void lm_ctx_destroy(lm_ctx_t * lm_ctx);
  *
  * @returns 0 on success, -errno on failure.
  */
-
 int lm_ctx_drive(lm_ctx_t * lm_ctx);
 
 /**

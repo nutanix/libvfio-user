@@ -648,7 +648,7 @@ lm_get_region(const loff_t pos, const size_t count, loff_t * const off)
 
     r = offset_to_region(pos);
     if (offset_to_region(pos + count) != r) {
-        return -ENOENT; 
+        return -ENOENT;
     }
     *off = pos - region_to_offset(r);
     return r;
@@ -707,7 +707,7 @@ do_access(lm_ctx_t * const lm_ctx, char * const buf, size_t count, loff_t pos,
     if (idx < 0 || idx >= LM_DEV_NUM_REGS) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
         return -EINVAL;
-    } 
+    }
 
     if (idx == LM_DEV_CFG_REG_IDX) {
         return handle_pci_config_space_access(lm_ctx, buf, count, offset,
@@ -780,7 +780,6 @@ lm_access(lm_ctx_t * const lm_ctx, char *buf, size_t count,
     }
     return done;
 }
-
 
 static inline int
 muser_access(lm_ctx_t * const lm_ctx, struct muser_cmd *const cmd,
@@ -1116,7 +1115,7 @@ lm_caps_init(lm_ctx_t *lm_ctx, lm_cap_t *caps, int nr_caps)
     }
 
     lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
-    lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF; 
+    lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
 
     return 0;
 }

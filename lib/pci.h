@@ -35,7 +35,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
 #include <linux/pci_regs.h>
 
 /*
