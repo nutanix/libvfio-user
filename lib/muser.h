@@ -215,7 +215,7 @@ typedef void (lm_log_fn_t) (void *pvt, const char *const msg);
 /**
  * Callback function that gets called when a capability is accessed. The
  * callback is not called when the ID and next fields are accessed, these are
- * hanlded by the library.
+ * handled by the library.
  *
  * @pvt: private pointer
  * @id: capability ID being accessed
@@ -341,8 +341,8 @@ int lm_ctx_run(lm_dev_info_t *dev_info);
 /**
  * Triggers an interrupt.
  *
- * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller needs
- * only specify to the sub-index.
+ * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
+ * needs to specify the sub-index.
  *
  * @lm_ctx: the libmuser context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
