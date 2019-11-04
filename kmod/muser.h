@@ -32,7 +32,6 @@ enum muser_cmd_type {
 struct muser_cmd_rw {
 	size_t count;
 	loff_t pos;
-	char *buf;		/* only used for write */
 };
 
 struct muser_cmd_ioctl {
