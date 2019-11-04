@@ -32,7 +32,6 @@ enum muser_cmd_type {
 struct muser_cmd_rw {
 	size_t count;
 	loff_t pos;
-	char *buf;		/* only used for write */
 };
 
 struct muser_cmd_ioctl {
@@ -65,7 +64,7 @@ struct muser_cmd {
 };
 
 /* ioctl cmds valid for /dev/muser/<uuid> */
-#define MUSER_DEV_CMD_WAIT	_IOW('M', 1, struct muser_cmd)
+#define MUSER_DEV_CMD_WAIT	_IOR('M', 1, struct muser_cmd)
 #define MUSER_DEV_CMD_DONE	_IOW('M', 2, struct muser_cmd)
 
 #endif /* _UAPI_LINUX_MUSER_H */

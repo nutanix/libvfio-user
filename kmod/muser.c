@@ -38,13 +38,13 @@
 #define MIN(a, b) ((a) < (b) ? (a):(b))
 
 static struct muser {
-	struct class *class;
-	struct list_head dev_list;
-	struct idr dev_idr;
-	struct cdev muser_cdev;
-	dev_t muser_devt;
-	struct device dev;
-	struct mutex muser_lock;
+	struct class		*class;
+	struct list_head	dev_list;
+	struct idr		dev_idr;
+	struct cdev		muser_cdev;
+	dev_t			muser_devt;
+	struct device		dev;
+	struct mutex		muser_lock;
 } muser;
 
 #define muser_log(func, fmt, ...) \
@@ -62,10 +62,10 @@ static struct muser {
  * they seem to serve the same purpose, fix.
  */
 struct page_map {
-	struct page **pages;
-	int nr_pages;
-	size_t len;
-	int offset;
+	struct page	**pages;
+	int		nr_pages;
+	size_t		len;
+	int		offset;
 };
 
 struct vfio_dma_mapping {
@@ -80,42 +80,42 @@ struct vfio_dma_mapping {
  * of them in a union?
  */
 struct mudev_cmd {
-	enum muser_cmd_type type;	/* copy of muser_cmd.type */
-	struct muser_cmd muser_cmd;
-	struct page_map pg_map;
-	struct file **fds;
-	int *data_fds;
+	enum muser_cmd_type	type;	/* copy of muser_cmd.type */
+	struct muser_cmd	muser_cmd;
+	struct page_map		pg_map;
+	struct file		**fds;
+	int			*data_fds;
 	/*
 	 * When libmuser completes an mmap call, we need to know the length
 	 * in order to pass it to do_pin_pages.
 	 */
-	unsigned long mmap_len;
-	struct list_head entry;
+	unsigned long		mmap_len;
+	struct list_head	entry;
 };
 
-// FIXME: Reorganise the members of this struct.
+/*
+ * TODO:
+ * Reorganise the members of this struct muser_dev
+ * mucmd_pending should be per filep context
+ * muser_dev should have a list of filep contexts instead of srv_opened
+ */
 struct muser_dev {
-	guid_t uuid;
-	int minor;
-	struct device *dev;
-	struct list_head dlist_entry;
-	struct list_head cmd_list;
-	// FIXME: mucmd_pending should be per filep context.
-	struct mudev_cmd *mucmd_pending;
-	// FIXME: muser_dev should have a list of filep contexts instead of
-	// srv_opened
-	atomic_t srv_opened;
-	atomic_t mdev_opened;
-	struct mutex dev_lock;
-	struct mdev_device *mdev;
-	wait_queue_head_t user_wait_q;
-	struct semaphore sem;
-	struct notifier_block iommu_notifier;
-
+	guid_t			uuid;
+	int			minor;
+	struct device		*dev;
+	struct list_head	dlist_entry;
+	struct list_head	cmd_list;
+	struct mudev_cmd	*mucmd_pending;
+	atomic_t		srv_opened;
+	atomic_t		mdev_opened;
+	struct mutex		dev_lock;
+	struct mdev_device	*mdev;
+	wait_queue_head_t	user_wait_q;
+	struct semaphore	sem;
+	struct notifier_block	iommu_notifier;
 	struct vfio_dma_mapping *dma_map;	/* Current DMA operation */
-	struct list_head dma_list;		/* list of dma mappings */
-
-	struct radix_tree_root devmem_tree;	/* Device memory */
+	struct list_head	dma_list;	/* list of dma mappings */
+	struct radix_tree_root	devmem_tree;	/* Device memory */
 };
 
 /* function prototypes */
@@ -302,7 +302,6 @@ static ssize_t name_show(struct kobject *kobj, struct device *dev, char *buf)
 {
 	return sprintf(buf, "muser\n");
 }
-
 MDEV_TYPE_ATTR_RO(name);
 
 static ssize_t device_api_show(struct kobject *kobj, struct device *dev,
@@ -310,7 +309,6 @@ static ssize_t device_api_show(struct kobject *kobj, struct device *dev,
 {
 	return sprintf(buf, "%s\n", VFIO_DEVICE_API_PCI_STRING);
 }
-
 MDEV_TYPE_ATTR_RO(device_api);
 
 static struct attribute *mdev_types_attrs[] = {
@@ -348,9 +346,8 @@ static int muser_process_cmd(struct muser_dev *mudev, struct mudev_cmd *mucmd)
 	 * Timeouts can happen if:
 	 * 1. No server has attached to mudev
 	 * 2. Processing of cmd takes more time than timeout
-	 */
-	/*
-	 * TODO: Maybe use a while loop instead of goto
+	 *
+	 * Maybe use a while loop instead of goto
 	 */
 retry:
 	err = down_timeout(&mudev->sem, msecs_to_jiffies(5000));
@@ -964,7 +961,7 @@ pin_pages(struct mudev_cmd *mucmd, char __user *buf, size_t count,
 void dump_buffer(unsigned char const *const buf, uint32_t count)
 {
 #if defined(DEBUG)
-	/* 
+	/*
 	 * TODO would be nice to add an option to print_hex_dump to hide
 	 * repeated lines, e.g. like od(1)
 	 */
@@ -999,7 +996,9 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 	muser_dbg("R %lx@%llx", mucmd.muser_cmd.rw.count,
 		  mucmd.muser_cmd.rw.pos);
 
-	/* Process mudev_cmd in libmuser context. TODO move into function */
+	/* TODO: move following into function */
+
+	/* Process mudev_cmd in libmuser context */
 	err = muser_process_cmd(mudev, &mucmd);
 	if (unlikely(err != 0))
 		_count = err;
@@ -1056,13 +1055,13 @@ ssize_t muser_write(struct mdev_device *mdev, const char __user *buf,
 
 	if (mucmd.muser_cmd.err)
 		muser_info("PCI config write %ld@0x%llx not handled: %d",
-			_count, _pos, mucmd.muser_cmd.err);
+			   _count, _pos, mucmd.muser_cmd.err);
 
 	return count;
 }
 
-static int
-bounce_fds(struct mudev_cmd *mucmd, void __user *data, int user_data_size)
+static int bounce_fds(struct mudev_cmd *mucmd, void __user *data,
+		      int user_data_size)
 {
 	int count = mucmd->muser_cmd.ioctl.data.irq_set.count;
 	int data_size = count * sizeof(int32_t);
@@ -1135,6 +1134,7 @@ static unsigned int get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
 	case VFIO_DEVICE_SET_IRQS:
 		return mucmd->muser_cmd.ioctl.data.irq_set.argsz;
 	}
+
 	return -1;
 }
 

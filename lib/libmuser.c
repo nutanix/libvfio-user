@@ -636,10 +636,11 @@ out:
  * ret), or a negative number on error.
  */
 static int
-post_read(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, ssize_t count)
+post_read(lm_ctx_t *lm_ctx, char *rwbuf, ssize_t count)
 {
-    ssize_t ret = write(lm_ctx->fd, cmd->rw.buf, count);
+    ssize_t ret;
 
+    ret = write(lm_ctx->fd, rwbuf, count);
     if (ret != count) {
         lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %lu/%lu, %s\n",
                __func__, ret, count, strerror(errno));
@@ -792,15 +793,15 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t *ppos,
 static inline int
 muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
 {
-    char *data;
+    char *rwbuf;
     int err;
     unsigned int i;
     size_t count = 0, _count;
     ssize_t ret;
 
     /* TODO how big do we expect count to be? Can we use alloca(3) instead? */
-    data = calloc(1, cmd->rw.count);
-    if (data == NULL) {
+    rwbuf = calloc(1, cmd->rw.count);
+    if (rwbuf == NULL) {
         lm_log(lm_ctx, LM_ERR, "failed to allocate memory\n");
         return -1;
     }
@@ -812,7 +813,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
 
     /* copy data to be written from kernel to user space */
     if (is_write) {
-        err = read(lm_ctx->fd, data, cmd->rw.count);
+        err = read(lm_ctx->fd, rwbuf, cmd->rw.count);
         /*
          * FIXME this is wrong, we should be checking for
          * err != cmd->rw.count
@@ -824,17 +825,17 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
         }
         err = 0;
 #ifndef LM_TERSE_LOGGING
-        dump_buffer(lm_ctx, "buffer write", data, cmd->rw.count);
+        dump_buffer(lm_ctx, "buffer write", rwbuf, cmd->rw.count);
 #endif
     }
 
     count = _count = cmd->rw.count;
     cmd->err = muser_pci_hdr_access(lm_ctx, &_count, &cmd->rw.pos,
-                                    is_write, data);
+                                    is_write, rwbuf);
     if (cmd->err) {
         lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %d\n", cmd->err);
 #ifndef LM_TERSE_LOGGING
-        dump_buffer(lm_ctx, "buffer write", data, _count);
+        dump_buffer(lm_ctx, "buffer write", rwbuf, _count);
 #endif
     }
 
@@ -843,19 +844,18 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
      * _count is how much there's left to be processed by lm_access
      */
     count -= _count;
-    ret = lm_access(lm_ctx, data + count, _count, &cmd->rw.pos,
+    ret = lm_access(lm_ctx, rwbuf + count, _count, &cmd->rw.pos,
                     is_write);
     if (!is_write && ret >= 0) {
         ret += count;
-        cmd->rw.buf = data;
-        err = post_read(lm_ctx, cmd, ret);
+        err = post_read(lm_ctx, rwbuf, ret);
         if (!LM_TERSE_LOGGING && err == ret) {
-            dump_buffer(lm_ctx, "buffer read", cmd->rw.buf, ret);
+            dump_buffer(lm_ctx, "buffer read", rwbuf, ret);
         }
     }
 
 out:
-    free(data);
+    free(rwbuf);
 
     return err;
 }
