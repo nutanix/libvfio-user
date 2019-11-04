@@ -44,7 +44,7 @@ struct caps;
  * capabilities have been added.
  */
 struct caps *
-caps_create(lm_cap_t *caps, int nr_caps);
+caps_create(const lm_cap_t *caps, int nr_caps);
 
 /*
  * Conditionally accesses the PCI capabilities. Returns:
