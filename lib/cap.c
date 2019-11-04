@@ -206,7 +206,7 @@ cap_is_valid(uint8_t id)
 }
 
 struct caps *
-caps_create(lm_cap_t *lm_caps, int nr_caps)
+caps_create(const lm_cap_t *lm_caps, int nr_caps)
 {
     uint8_t prev_end;
     int i, err = 0;

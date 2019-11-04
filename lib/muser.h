@@ -307,7 +307,7 @@ typedef struct {
  * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
 lm_ctx_t *
-lm_ctx_create(lm_dev_info_t *dev_info);
+lm_ctx_create(const lm_dev_info_t *dev_info);
 
 /**
  * Destroys libmuser context.
