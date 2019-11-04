@@ -45,6 +45,7 @@
 #include <stddef.h>
 #include <sys/mman.h>
 #include <stdarg.h>
+#include <linux/vfio.h>
 
 #include "../kmod/muser.h"
 #include "muser.h"
