@@ -52,9 +52,9 @@ handle_read(char *dst, PyObject *result, int count)
  *
  * FIXME need a way to provide private pointer.
  */
-static ssize_t 
-region_access_wrap(void *pvt, char * const buf, size_t count, loff_t offset,
-     const bool is_write, int region)
+static ssize_t
+region_access_wrap(void *pvt, char *buf, size_t count, loff_t offset,
+                   bool is_write, int region)
 {
     PyObject *arglist;
     PyObject *result = NULL;
@@ -107,16 +107,17 @@ REGION_WRAP(6)
 REGION_WRAP(7)
 REGION_WRAP(8)
 
-static ssize_t (*region_access_wraps[LM_DEV_NUM_REGS])(void*, char * const, size_t, loff_t, const bool) = {
-                                                     r_0_wrap,
-                                                     r_1_wrap,
-                                                     r_2_wrap,
-                                                     r_3_wrap,
-                                                     r_4_wrap,
-                                                     r_5_wrap,
-                                                     r_6_wrap,
-                                                     r_7_wrap,
-                                                     r_8_wrap
+static ssize_t (*region_access_wraps[LM_DEV_NUM_REGS])(void *, char *, size_t,
+                                                       loff_t, bool) = {
+    r_0_wrap,
+    r_1_wrap,
+    r_2_wrap,
+    r_3_wrap,
+    r_4_wrap,
+    r_5_wrap,
+    r_6_wrap,
+    r_7_wrap,
+    r_8_wrap
 };
 
 struct _region_info {
@@ -130,7 +131,8 @@ static const struct _region_info _0_ri;
 static PyObject *log_fn;
 static lm_log_lvl_t log_lvl = LM_ERR;
 
-static void _log_fn(void *pvt, const char *const msg)
+static void
+_log_fn(void *pvt, const char *msg)
 {
     PyObject *arglist;
     PyObject *result = NULL;
@@ -155,25 +157,30 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
     int i;
     struct _region_info _ri[LM_DEV_NUM_REGS] = { 0 };
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "HHs|Oi(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)IIIII", kwlist,
-                                     &dev_info.pci_info.id.vid,
-                                     &dev_info.pci_info.id.did,
-                                     &dev_info.uuid,
-                                     &log_fn, &log_lvl,
-                                     &_ri[0].perm, &_ri[0].size, &_ri[0].fn,
-                                     &_ri[1].perm, &_ri[1].size, &_ri[1].fn,
-                                     &_ri[2].perm, &_ri[2].size, &_ri[2].fn,
-                                     &_ri[3].perm, &_ri[3].size, &_ri[3].fn,
-                                     &_ri[4].perm, &_ri[4].size, &_ri[4].fn,
-                                     &_ri[5].perm, &_ri[5].size, &_ri[5].fn,
-                                     &_ri[6].perm, &_ri[6].size, &_ri[6].fn,
-                                     &_ri[7].perm, &_ri[7].size, &_ri[7].fn,
-                                     &_ri[8].perm, &_ri[8].size, &_ri[8].fn,
-                                     &dev_info.pci_info.irq_count[0],
-                                     &dev_info.pci_info.irq_count[1],
-                                     &dev_info.pci_info.irq_count[2],
-                                     &dev_info.pci_info.irq_count[3],
-                                     &dev_info.pci_info.irq_count[4])) {
+    if (!PyArg_ParseTupleAndKeywords(
+            args,
+            kwargs,
+            "HHs|Oi(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)(sIO)IIIII",
+            kwlist,
+            &dev_info.pci_info.id.vid,
+            &dev_info.pci_info.id.did,
+            &dev_info.uuid,
+            &log_fn,
+            &log_lvl,
+            &_ri[0].perm, &_ri[0].size, &_ri[0].fn,
+            &_ri[1].perm, &_ri[1].size, &_ri[1].fn,
+            &_ri[2].perm, &_ri[2].size, &_ri[2].fn,
+            &_ri[3].perm, &_ri[3].size, &_ri[3].fn,
+            &_ri[4].perm, &_ri[4].size, &_ri[4].fn,
+            &_ri[5].perm, &_ri[5].size, &_ri[5].fn,
+            &_ri[6].perm, &_ri[6].size, &_ri[6].fn,
+            &_ri[7].perm, &_ri[7].size, &_ri[7].fn,
+            &_ri[8].perm, &_ri[8].size, &_ri[8].fn,
+            &dev_info.pci_info.irq_count[0],
+            &dev_info.pci_info.irq_count[1],
+            &dev_info.pci_info.irq_count[2],
+            &dev_info.pci_info.irq_count[3],
+            &dev_info.pci_info.irq_count[4])) {
         return NULL;
     }
 
@@ -205,7 +212,7 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     if (log_fn != NULL) {
-        if (!PyCallable_Check(log_fn)) { 
+        if (!PyCallable_Check(log_fn)) {
             return NULL;
         }
         dev_info.log = _log_fn;
@@ -217,14 +224,18 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyMethodDef LibmuserMethods[] = {
-    {"run",  (PyCFunction)libmuser_run, METH_VARARGS | METH_KEYWORDS, "runs a device"},
-    {NULL, NULL, 0, NULL}
+    { "run",
+      (PyCFunction)libmuser_run,
+      METH_VARARGS | METH_KEYWORDS,
+      "runs a device"
+    },
+    { NULL, NULL, 0, NULL }
 };
 
 PyMODINIT_FUNC
 initmuser(void)
 {
-    (void) Py_InitModule("muser", LibmuserMethods);
+    (void)Py_InitModule("muser", LibmuserMethods);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

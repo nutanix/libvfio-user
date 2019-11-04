@@ -13,7 +13,7 @@
  *      * Neither the name of Nutanix nor the names of its contributors may be
  *        used to endorse or promote products derived from this software without
  *        specific prior written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -25,7 +25,7 @@
  *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  *  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
  *  DAMAGE.
- * 
+ *
  */
 
 #include <sys/types.h>
@@ -85,7 +85,7 @@ dma_controller_create(int max_regions)
 }
 
 static void
-_dma_controller_do_remove_region(dma_memory_region_t * const region)
+_dma_controller_do_remove_region(dma_memory_region_t *region)
 {
     assert(region);
 #if DMA_MAP_FAST_IMPL
@@ -96,7 +96,7 @@ _dma_controller_do_remove_region(dma_memory_region_t * const region)
 
 /* FIXME not thread safe */
 int
-dma_controller_remove_region(dma_controller_t * dma, dma_addr_t dma_addr,
+dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
                              size_t size, int fd)
 {
     int idx;
@@ -120,8 +120,7 @@ dma_controller_remove_region(dma_controller_t * dma, dma_addr_t dma_addr,
 }
 
 static inline void
-dma_controller_remove_regions(lm_ctx_t * const ctx,
-                              dma_controller_t * const dma)
+dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
 {
     int i;
 
@@ -138,14 +137,14 @@ dma_controller_remove_regions(lm_ctx_t * const ctx,
 }
 
 void
-dma_controller_destroy(lm_ctx_t * const ctx, dma_controller_t * dma)
+dma_controller_destroy(lm_ctx_t *lm_ctx, dma_controller_t *dma)
 {
-    dma_controller_remove_regions(ctx, dma);
+    dma_controller_remove_regions(lm_ctx, dma);
     free(dma);
 }
 
 int
-dma_controller_add_region(lm_ctx_t * const lm_ctx, dma_controller_t * dma,
+dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
                           int fd, off_t offset)
 {
@@ -237,7 +236,7 @@ err:
 }
 
 static inline void
-mmap_round(size_t * offset, size_t * size, size_t page_size)
+mmap_round(size_t *offset, size_t *size, size_t page_size)
 {
     size_t offset_orig = *offset;
     *offset = ROUND_DOWN(offset_orig, page_size);
@@ -245,8 +244,7 @@ mmap_round(size_t * offset, size_t * size, size_t page_size)
 }
 
 void *
-dma_map_region(dma_memory_region_t * region, int prot,
-               size_t offset, size_t len)
+dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
 {
     size_t mmap_offset, mmap_size = len;
     char *mmap_base;
@@ -272,16 +270,16 @@ dma_map_region(dma_memory_region_t * region, int prot,
 }
 
 void
-dma_unmap_region(dma_memory_region_t * region, void *virt_addr, size_t len)
+dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
 {
-    mmap_round((size_t *) & virt_addr, &len, region->page_size);
+    mmap_round((size_t *)&virt_addr, &len, region->page_size);
     munmap(virt_addr, len);
 }
 
 int
-_dma_addr_sg_split(lm_ctx_t * const ctx, const dma_controller_t * dma,
+_dma_addr_sg_split(lm_ctx_t *lm_ctx, const dma_controller_t *dma,
                    dma_addr_t dma_addr, uint32_t len,
-                   dma_sg_t * sg, int max_sg)
+                   dma_sg_t *sg, int max_sg)
 {
     int idx;
     int cnt = 0;

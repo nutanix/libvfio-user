@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef LM_PCI_CAP_PX_H
+#define LM_PCI_CAP_PX_H
+
 struct pxid {
     unsigned int cid:8;
     unsigned int next:8;
@@ -144,5 +147,7 @@ struct pxcap {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxcap) == 0x2a,
 		"bad PCI Express Capability size");
+
+#endif /* LM_PCI_CAP_PX_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -48,13 +48,13 @@
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
 
-void lm_log(lm_ctx_t const *const lm_ctx, const lm_log_lvl_t lvl,
-            char const *const fmt, ...);
+void
+lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
 
-void dump_buffer(lm_ctx_t const *const lm_ctx, char const *const prefix,
-                 unsigned char const *const buf, uint32_t count);
+void
+dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
+            const unsigned char *buf, uint32_t count);
 
-
-#endif                          /* __COMMON_H__ */
+#endif /* __COMMON_H__ */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef LM_PCI_CAP_MSIX_H
+#define LM_PCI_CAP_MSIX_H
+
 #include <linux/pci_regs.h>
 
 struct mxid {
@@ -66,5 +69,7 @@ struct msixcap {
 	struct mpba mpba;
 } __attribute__ ((packed)) __attribute__ ((aligned(4)));
 _Static_assert(sizeof(struct msixcap) == PCI_CAP_MSIX_SIZEOF, "bad MSI-X size");
+
+#endif /* LM_CAP_MSIX_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

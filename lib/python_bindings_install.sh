@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # Copyright (c) 2019 Nutanix Inc. All rights reserved.
 #
@@ -15,7 +16,7 @@
 #     * Neither the name of Nutanix nor the names of its contributors may be
 #       used to endorse or promote products derived from this software without
 #       specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -27,7 +28,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-#!/bin/bash
 
 # 'python setup.py install' expects to find a directory named 'build' with
 # subdirectories 'lib.linux-x86_64-2.7' and 'temp.linux-x86_64-2.7'. If not,

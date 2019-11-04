@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef LM_PCI_CAP_PM_H
+#define LM_PCI_CAP_PM_H
+
 struct pid {
     unsigned int cid:8;
     unsigned int next:8;
@@ -44,7 +47,7 @@ struct pc {
     unsigned int auxc:3;
     unsigned int d1s:1;
     unsigned int d2s:1;
-    unsigned int psup:5;    
+    unsigned int psup:5;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
 
@@ -66,5 +69,7 @@ struct pmcap {
     struct pmcs pmcs;
 } __attribute__((packed))  __attribute__ ((aligned(8)));
 _Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad PC size");
+
+#endif /* LM_CAP_PM_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

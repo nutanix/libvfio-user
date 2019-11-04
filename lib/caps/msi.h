@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef LM_PCI_CAP_MSI_H
+#define LM_PCI_CAP_MSI_H
+
 struct mid {
     unsigned int cid:8;
     unsigned int next:8;
@@ -63,5 +66,7 @@ struct msicap {
     uint32_t mpend;
 }  __attribute__ ((packed));
 _Static_assert(sizeof(struct msicap) == 0x18, "bad MSICAP size");
+
+#endif /* LM_CAP_MSI_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
