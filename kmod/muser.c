@@ -798,7 +798,7 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 	len = dma_map->length;
 	err = muser_process_dma_unmap(mudev, dma_map);
 	if (unlikely(err))
-		muser_dbg("failed to request PCI server to munmap: %d", err);
+		muser_dbg("failed to request libmuser to munmap: %d", err);
 
 	err = put_dma_map(mudev, dma_map, NR_PAGES(len));
 	if (unlikely(err)) {
@@ -814,7 +814,7 @@ out:
 
 /*
  * FIXME There can be multiple DMA map calls per device. If each of these calls
- * are serialised (this can be enforced by muser), then we tell PCI server to
+ * are serialised (this can be enforced by muser), then we tell libmuser to
  * mmap the control device. Do we need to distinguish between the different
  * DMA map calls at this stage if we can enforce only one outstanding DMA map
  * call? What happens when the DMA map happens too early, before GET_DEVICE_FD
@@ -880,7 +880,7 @@ int muser_open(struct mdev_device *mdev)
 		int err2;
 		/*
 		 * TODO we might have triggered some notifiers which will have
-		 * caused PCI server to mmap. If open fails then PCI server dies
+		 * caused libmuser to mmap. If open fails then libmuser dies
 		 * therefore things get automatically cleaned up (e.g.
 		 * vfio_unpin etc.)?
 		 */
