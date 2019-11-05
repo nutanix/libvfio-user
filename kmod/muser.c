@@ -28,7 +28,7 @@
 #include <linux/pagemap.h>
 #include <asm-generic/mman-common.h>
 #include <linux/device.h>
-#include <linux/uaccess.h>
+#include <linux/version.h>
 
 #include "muser.h"
 
@@ -379,16 +379,24 @@ retry:
 
 int muser_create(struct kobject *kobj, struct mdev_device *mdev)
 {
-	const guid_t *uuid = mdev_uuid(mdev);
-
-	return muser_create_dev(uuid, mdev);
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	const uuid_le uuid = mdev_uuid(mdev);
+	return muser_create_dev(&uuid, mdev);
+#else
+	return muser_create_dev(mdev_uuid(mdev), mdev);
+#endif
 }
 
 int muser_remove(struct mdev_device *mdev)
 {
-	const guid_t *uuid = mdev_uuid(mdev);
-
-	return muser_remove_dev(uuid);
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	const uuid_le uuid = mdev_uuid(mdev);
+	return muser_remove_dev(&uuid);
+#else
+	return muser_remove_dev(mdev_uuid(mdev));
+#endif
 }
 
 static int do_pin_pages(char __user *buf, const size_t count,
@@ -1688,7 +1696,12 @@ static ssize_t libmuser_read(struct file *filp, char __user *buf,
 		return -EINVAL;
 	}
 
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	if (!access_ok(VERIFY_WRITE, buf, bufsz)) {
+#else
 	if (!access_ok(buf, bufsz)) {
+#endif
 		muser_dbg("bad permissions");
 		return -EFAULT;
 	}
@@ -1755,8 +1768,12 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 		muser_dbg("bad arguments");
 		return -EINVAL;
 	}
-
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	if (!access_ok(VERIFY_READ, buf, bufsz)) {
+#else
 	if (!access_ok(buf, bufsz)) {
+#endif
 		muser_dbg("bad permissions");
 		return -EFAULT;
 	}
