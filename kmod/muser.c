@@ -817,8 +817,7 @@ out:
  * are serialised (this can be enforced by muser), then we tell libmuser to
  * mmap the control device. Do we need to distinguish between the different
  * DMA map calls at this stage if we can enforce only one outstanding DMA map
- * call? What happens when the DMA map happens too early, before GET_DEVICE_FD
- * is called?
+ * call?
  */
 static int muser_iommu_notifier(struct notifier_block *nb, unsigned long action,
 				void *data)
