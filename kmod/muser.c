@@ -613,7 +613,7 @@ static int muser_process_dma_request(struct muser_dev *mudev,
 	if (unlikely(err))
 		return err;
 
-	return mucmd.muser_cmd.mmap.response;
+	return mucmd.muser_cmd.err;
 }
 
 static int muser_process_dma_map(struct muser_dev *mudev, int flags)
@@ -697,7 +697,7 @@ err:
 	return ret;
 }
 
-static int has_anonymous_pages(struct vfio_dma_mapping *dma_map)
+static bool has_anonymous_pages(struct vfio_dma_mapping *dma_map)
 {
 	int i, nr_pages = NR_PAGES(dma_map->length);
 
@@ -705,11 +705,11 @@ static int has_anonymous_pages(struct vfio_dma_mapping *dma_map)
 		if (PageAnon(dma_map->pages[i])) {
 			muser_dbg("ignore IOVA=%lx, page(s) not shared",
 				  dma_map->iova);
-			return 1;
+			return true;
 		}
 	}
 
-	return 0;
+	return false;
 }
 
 static int muser_iommu_dma_map(struct muser_dev *mudev,
@@ -1114,7 +1114,7 @@ err:
 	return ret;
 }
 
-static unsigned int get_minsz(unsigned int cmd)
+static ssize_t get_minsz(unsigned int cmd)
 {
 	switch (cmd) {
 	case VFIO_DEVICE_GET_INFO:
@@ -1126,10 +1126,10 @@ static unsigned int get_minsz(unsigned int cmd)
 	case VFIO_DEVICE_SET_IRQS:
 		return offsetofend(struct vfio_irq_set, count);
 	}
-	return -1;
+	return -EOPNOTSUPP;
 }
 
-static unsigned int get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
+static ssize_t get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
 {
 	switch (cmd) {
 	case VFIO_DEVICE_GET_INFO:
@@ -1142,20 +1142,19 @@ static unsigned int get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
 		return mucmd->muser_cmd.ioctl.data.irq_set.argsz;
 	}
 
-	return -1;
+	return -EOPNOTSUPP;
 }
 
 static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 				 unsigned long arg)
 {
-	unsigned int minsz;
-	unsigned int argsz;
+	ssize_t argsz, minsz;
 	int err;
 
 	/* Determine smallest argsz we need for this command. */
 	minsz = get_minsz(cmd);
-	if (minsz == -1)
-		return -EOPNOTSUPP;
+	if (minsz < 0)
+		return minsz;
 
 	/* Copy caller-provided arg. */
 	err = muser_copyin(&mucmd->muser_cmd.ioctl.data, (void __user *)arg,
@@ -1165,8 +1164,8 @@ static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 
 	/* Fetch argsz provided by caller. */
 	argsz = get_argsz(cmd, mucmd);
-	if (argsz == -1)
-		return -EINVAL;
+	if (argsz < 0)
+		return argsz;
 
 	/* Ensure provided size is at least the minimum required. */
 	if (argsz < minsz)
@@ -1486,24 +1485,23 @@ static inline int mmap_done(struct mudev_cmd * const mucmd)
 	char __user *addr = (char __user *) cmd->mmap.response;
 	int ret;
 
-	if (cmd->err < 0)
-		return -1;
 	ret = do_pin_pages(addr, mucmd->mmap_len, 1, &mucmd->pg_map);
 	if (ret) {
 		muser_alert("failed to pin pages: %d", ret);
 		mucmd->pg_map.pages = NULL;
 		mucmd->pg_map.nr_pages = 0;
 	}
+
 	return ret;
 }
 
-static long libmuser_unl_ioctl(struct file *filep,
-				     unsigned int cmd, unsigned long arg)
+static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
+			       unsigned long arg)
 {
 	struct muser_dev *mudev = filep->private_data;
 	struct mudev_cmd *mucmd;
 	unsigned long offset;
-	long ret = -EINVAL;
+	int ret = -EINVAL, mucmd_err;
 
 	WARN_ON(mudev == NULL);
 	switch (cmd) {
@@ -1512,7 +1510,7 @@ static long libmuser_unl_ioctl(struct file *filep,
 		ret = wait_event_interruptible(mudev->user_wait_q,
 					       !list_empty(&mudev->cmd_list));
 		if (unlikely(ret)) {
-			muser_dbg("failed to wait for user space: %ld", ret);
+			muser_dbg("failed to wait for user space: %d", ret);
 			goto out;
 		}
 
@@ -1545,7 +1543,7 @@ static long libmuser_unl_ioctl(struct file *filep,
 		/* This is only called when a command is pending. */
 		if (mudev->mucmd_pending == NULL) {
 			muser_dbg("done but no command pending");
-			return -1;
+			return -EINVAL;
 		}
 
 		/* Fetch (and clear) the pending command. */
@@ -1558,6 +1556,7 @@ static long libmuser_unl_ioctl(struct file *filep,
 		if (ret)
 			goto out;
 
+		mucmd_err = mucmd->muser_cmd.err;
 		switch (mucmd->type) {
 		case MUSER_IOCTL:
 			offset = offsetof(struct muser_cmd, ioctl);
@@ -1565,13 +1564,12 @@ static long libmuser_unl_ioctl(struct file *filep,
 			ret = bounce_in(mucmd, (void __user *)(arg + offset));
 			break;
 		case MUSER_MMAP:
-			ret = mmap_done(mucmd);
+			if (!mucmd_err)
+				ret = mmap_done(mucmd);
 			break;
 		case MUSER_READ:
-			if (mucmd->muser_cmd.err < 0) {
-				muser_alert("read failed: %d",
-			        mucmd->muser_cmd.err);
-			}
+			if (mucmd_err < 0)
+				muser_alert("read failed: %d", mucmd_err);
 			break;
 		case MUSER_WRITE:
 		case MUSER_DMA_MMAP:
@@ -1589,7 +1587,7 @@ static long libmuser_unl_ioctl(struct file *filep,
 
 	default:
 		muser_info("bad ioctl 0x%x", cmd);
-		return -1;
+		return -EINVAL;
 	}
 
 out:

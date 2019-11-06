@@ -540,8 +540,7 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
-        cmd->mmap.response = -1;
-        return -1;
+        return -EINVAL;
     }
 
     err = dma_controller_remove_region(lm_ctx->dma,
@@ -552,8 +551,6 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx@%#lx: %s\n",
                cmd->mmap.request.len, cmd->mmap.request.addr, strerror(err));
     }
-
-    cmd->mmap.response = err;
 
     return err;
 }
@@ -568,8 +565,7 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
-        cmd->mmap.response = -1;
-        return -1;
+        return -EINVAL;
     }
 
     err = dma_controller_add_region(lm_ctx, lm_ctx->dma,
@@ -579,11 +575,8 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     if (err < 0) {
         lm_log(lm_ctx, LM_ERR, "failed to add DMA region %#lx@%#lx: %d\n",
                cmd->mmap.request.len, cmd->mmap.request.addr, err);
-        cmd->mmap.response = -1;
-        return -1;
+        return err;
     }
-
-    cmd->mmap.response = 0;
 
     return 0;
 }
@@ -624,8 +617,6 @@ out:
     if (err != 0) {
         lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %#x@%#lx: %s\n",
                len, offset, strerror(-errno));
-        cmd->err = err;
-        err = -1;
     }
 
     return err;
