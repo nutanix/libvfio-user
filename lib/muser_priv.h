@@ -37,7 +37,7 @@
 
 int
 muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
-                     loff_t *pos, bool write, unsigned char *buf);
+                     loff_t *pos, bool write, char *buf);
 
 lm_reg_info_t *
 lm_get_region_info(lm_ctx_t *lm_ctx);

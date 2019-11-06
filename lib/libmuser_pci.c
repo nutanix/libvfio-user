@@ -190,7 +190,7 @@ handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     } else if (v == 0) {
         lm_log(ctx, LM_INF, "cleared EROM\n");
         pci->hdr.erom = 0;
-    } else if (v == ~PCI_ROM_ADDRESS_ENABLE) {
+    } else if (v == (uint32_t)~PCI_ROM_ADDRESS_ENABLE) {
         lm_log(ctx, LM_INF, "EROM disable ignored\n");
     } else {
         lm_log(ctx, LM_ERR, "bad write to EROM 0x%x bytes\n", v);
@@ -203,7 +203,6 @@ static inline int
 muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
                     const char *buf, size_t count)
 {
-    uint32_t *bar;
     lm_pci_config_space_t *pci;
     int ret = 0;
 
@@ -265,7 +264,7 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
 static inline int
 muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
                         loff_t *pos, bool is_write,
-                        unsigned char *buf)
+                        char *buf)
 {
     size_t _count;
     loff_t _pos;
@@ -290,7 +289,7 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
 }
 
 static inline bool
-muser_is_pci_hdr_access(const lm_reg_info_t *reg_info, loff_t pos)
+muser_is_pci_hdr_access(loff_t pos)
 {
     const off_t off = (loff_t) region_to_offset(LM_DEV_CFG_REG_IDX);
     return pos - off >= 0 && pos - off < PCI_STD_HEADER_SIZEOF;
@@ -299,13 +298,13 @@ muser_is_pci_hdr_access(const lm_reg_info_t *reg_info, loff_t pos)
 int
 muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
                      loff_t *pos, bool is_write,
-                     unsigned char *buf)
+                     char *buf)
 {
     assert(lm_ctx);
     assert(count);
     assert(pos);
 
-    if (!muser_is_pci_hdr_access(lm_get_region_info(lm_ctx), *pos)) {
+    if (!muser_is_pci_hdr_access(*pos)) {
         return 0;
     }
     return muser_do_pci_hdr_access(lm_ctx, count, pos, is_write, buf);

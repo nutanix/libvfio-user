@@ -124,7 +124,7 @@ dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
 
 // Helper for dma_addr_to_sg() slow path.
 int
-_dma_addr_sg_split(lm_ctx_t *ctx, const dma_controller_t *dma,
+_dma_addr_sg_split(const dma_controller_t *dma,
                    dma_addr_t dma_addr, uint32_t len,
                    dma_sg_t *sg, int max_sg);
 
@@ -140,7 +140,7 @@ _dma_addr_sg_split(lm_ctx_t *ctx, const dma_controller_t *dma,
  *     necessary to complete this request.
  */
 static inline int
-dma_addr_to_sg(lm_ctx_t *ctx, const dma_controller_t *dma,
+dma_addr_to_sg(const dma_controller_t *dma,
                dma_addr_t dma_addr, uint32_t len,
                dma_sg_t *sg, int max_sg)
 {
@@ -159,7 +159,7 @@ dma_addr_to_sg(lm_ctx_t *ctx, const dma_controller_t *dma,
         return 1;
     }
     // Slow path: search through regions.
-    cnt = _dma_addr_sg_split(ctx, dma, dma_addr, len, sg, max_sg);
+    cnt = _dma_addr_sg_split(dma, dma_addr, len, sg, max_sg);
     if (likely(cnt > 0)) {
         region_hint = sg->region;
     }
@@ -174,7 +174,12 @@ void
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);
 
 static inline int
-dma_map_sg(dma_controller_t *dma, int prot,
+dma_map_sg(dma_controller_t *dma,
+#if DMA_MAP_FAST_IMPL
+           int prot __attribute__((unused)),
+#else
+           int prot,
+#endif
            const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     int i;
@@ -212,13 +217,13 @@ dma_unmap_sg(dma_controller_t *dma,
 }
 
 static inline void *
-dma_map_addr(lm_ctx_t *ctx, dma_controller_t *dma, int prot,
+dma_map_addr(dma_controller_t *dma, int prot,
              dma_addr_t dma_addr, uint32_t len)
 {
     dma_sg_t sg;
     struct iovec iov;
 
-    if (dma_addr_to_sg(ctx, dma, dma_addr, len, &sg, 1) == 1 &&
+    if (dma_addr_to_sg(dma, dma_addr, len, &sg, 1) == 1 &&
         dma_map_sg(dma, prot, &sg, &iov, 1) == 0) {
         return iov.iov_base;
     }
@@ -227,7 +232,7 @@ dma_map_addr(lm_ctx_t *ctx, dma_controller_t *dma, int prot,
 }
 
 static inline void
-dma_unmap_addr(lm_ctx_t *ctx, dma_controller_t *dma,
+dma_unmap_addr(dma_controller_t *dma,
                dma_addr_t dma_addr, uint32_t len, void *addr)
 {
     dma_sg_t sg;
@@ -237,7 +242,7 @@ dma_unmap_addr(lm_ctx_t *ctx, dma_controller_t *dma,
     };
     int r;
 
-    r = dma_addr_to_sg(ctx, dma, dma_addr, len, &sg, 1);
+    r = dma_addr_to_sg(dma, dma_addr, len, &sg, 1);
     assert(r == 1);
 
     dma_unmap_sg(dma, &sg, &iov, 1);

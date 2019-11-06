@@ -96,7 +96,6 @@ static struct cap *
 cap_find(struct cap *caps, int nr_caps, loff_t offset, size_t count)
 {
     struct cap *cap;
-    bool found = false;
 
     cap = caps;
     while (cap < caps + nr_caps) {
@@ -154,7 +153,7 @@ cap_header_access(struct caps *caps, struct cap *cap, char *buf,
     }
     if (offset == cap->start + 1 && count > 0) { /* next */
 
-        if ((cap - caps->caps) / sizeof *cap == caps->nr_caps - 1) {
+        if ((cap - caps->caps) / sizeof *cap == (size_t)(caps->nr_caps - 1)) {
             buf[n++] = 0;
         } else {
             buf[n++] = (cap + 1)->start;
@@ -170,9 +169,7 @@ ssize_t
 cap_maybe_access(struct caps *caps, void *pvt, char *buf, size_t count,
                  loff_t offset, bool is_write)
 {
-    bool found;
     struct cap *cap;
-    int n;
 
     if (!caps) {
         return 0;
