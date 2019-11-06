@@ -166,11 +166,12 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
 static int
 irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 {
-    int efd, i;
+    int efd;
+    __u32 i;
     long ret;
     eventfd_t val;
 
-    for (i = irq_set->start; i < irq_set->start + irq_set->count; i++) {
+    for (i = irq_set->start; i < (irq_set->start + irq_set->count); i++) {
         efd = lm_ctx->irqs.efds[i];
         if (efd >= 0) {
             val = 1;
@@ -190,13 +191,14 @@ static int
 irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     uint8_t *d8;
-    int efd, i;
+    int efd;
+    __u32 i;
     long ret;
     eventfd_t val;
 
     assert(data != NULL);
 
-    for (i = irq_set->start, d8 = data; i < irq_set->start + irq_set->count;
+    for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
         efd = lm_ctx->irqs.efds[i];
         if (efd >= 0 && *d8 == 1) {
@@ -217,10 +219,11 @@ static int
 irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     int32_t *d32;
-    int efd, i;
+    int efd;
+    __u32 i;
 
     assert(data != NULL);
-    for (i = irq_set->start, d32 = data; i < irq_set->start + irq_set->count;
+    for (i = irq_set->start, d32 = data; i < (irq_set->start + irq_set->count);
          i++, d32++) {
         efd = lm_ctx->irqs.efds[i];
         if (efd >= 0) {
@@ -427,7 +430,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
 
     /* write the sparse mmap cap info to vfio-client user pages */
     ret = write(lm_ctx->fd, sparse, size);
-    if (ret != size) {
+    if (ret != (ssize_t)size) {
         free(sparse);
         return -EIO;
     }
@@ -474,11 +477,15 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
     vfio_reg->flags = lm_reg->flags;
     vfio_reg->size = lm_reg->size;
 
-    if (lm_reg->mmap_areas != NULL)
+    if (lm_reg->mmap_areas != NULL) {
         err = dev_get_sparse_mmap_cap(lm_ctx, lm_reg, vfio_reg);
+        if (err) {
+            return err;
+        }
+    }
 
     lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", vfio_reg->index);
-    dump_buffer(lm_ctx, "", (unsigned char *)vfio_reg, sizeof *vfio_reg);
+    dump_buffer(lm_ctx, "", (char*)vfio_reg, sizeof *vfio_reg);
 
     return 0;
 }
@@ -590,7 +597,7 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     int region, err = 0;
     unsigned long addr;
     unsigned long len = cmd->mmap.request.len;
-    unsigned long offset = cmd->mmap.request.addr;
+    loff_t offset = cmd->mmap.request.addr;
 
     region = lm_get_region(offset, len, &offset);
     if (region < 0) {
@@ -648,7 +655,7 @@ lm_get_region(loff_t pos, size_t count, loff_t *off)
     assert(off != NULL);
 
     r = offset_to_region(pos);
-    if (offset_to_region(pos + count) != r) {
+    if ((int)offset_to_region(pos + count) != r) {
         return -ENOENT;
     }
     *off = pos - region_to_offset(r);
@@ -657,7 +664,9 @@ lm_get_region(loff_t pos, size_t count, loff_t *off)
 }
 
 static ssize_t
-noop_cb(void *pvt, char *buf, size_t count, loff_t offset, bool is_write) {
+noop_cb(void *pvt __attribute((unused)), char *buf __attribute((unused)),
+        size_t count __attribute((unused)), loff_t offset __attribute((unused)),
+        bool is_write __attribute((unused))) {
 	return count;
 }
 
@@ -770,7 +779,7 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t *ppos,
              */
             return -EFAULT;
         }
-        if (ret != size) {
+        if (ret != (int)size) {
             lm_log(lm_ctx, LM_DBG, "bad read %d != %d\n", ret, size);
         }
         count -= size;
@@ -786,7 +795,6 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
 {
     char *rwbuf;
     int err;
-    unsigned int i;
     size_t count = 0, _count;
     ssize_t ret;
 
@@ -902,8 +910,6 @@ drive_loop(lm_ctx_t *lm_ctx)
 {
     struct muser_cmd cmd = { 0 };
     int err;
-    size_t size;
-    unsigned int i;
 
     do {
         err = ioctl(lm_ctx->fd, MUSER_DEV_CMD_WAIT, &cmd);
@@ -1124,7 +1130,7 @@ lm_ctx_t *
 lm_ctx_create(lm_dev_info_t *dev_info)
 {
     lm_ctx_t *lm_ctx = NULL;
-    uint32_t max_ivs = 0, nr_mmap_areas = 0;
+    uint32_t max_ivs = 0;
     uint32_t i;
     int err = 0;
     size_t size = 0;
@@ -1233,11 +1239,11 @@ out:
     return lm_ctx;
 }
 
-void
-dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
-            const unsigned char *buf, uint32_t count)
-{
 #ifdef DEBUG
+static void
+dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
+            const char *buf, uint32_t count)
+{
     int i;
     const size_t bytes_per_line = 0x8;
 
@@ -1257,8 +1263,10 @@ dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
     if (i % bytes_per_line != 0) {
         lm_log(lm_ctx, LM_DBG, "\n");
     }
-#endif
 }
+#else
+#define dump_buffer(lm_ctx, prefix, buf, count)
+#endif
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
@@ -1291,7 +1299,7 @@ inline int
 lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr,
               uint32_t len, dma_sg_t *sg, int max_sg)
 {
-    return dma_addr_to_sg(lm_ctx, lm_ctx->dma, dma_addr, len, sg, max_sg);
+    return dma_addr_to_sg(lm_ctx->dma, dma_addr, len, sg, max_sg);
 }
 
 inline int
