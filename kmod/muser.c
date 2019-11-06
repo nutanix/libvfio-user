@@ -28,7 +28,7 @@
 #include <linux/pagemap.h>
 #include <asm-generic/mman-common.h>
 #include <linux/device.h>
-#include <linux/uaccess.h>
+#include <linux/version.h>
 
 #include "muser.h"
 
@@ -379,16 +379,24 @@ retry:
 
 int muser_create(struct kobject *kobj, struct mdev_device *mdev)
 {
-	const guid_t *uuid = mdev_uuid(mdev);
-
-	return muser_create_dev(uuid, mdev);
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	const uuid_le uuid = mdev_uuid(mdev);
+	return muser_create_dev(&uuid, mdev);
+#else
+	return muser_create_dev(mdev_uuid(mdev), mdev);
+#endif
 }
 
 int muser_remove(struct mdev_device *mdev)
 {
-	const guid_t *uuid = mdev_uuid(mdev);
-
-	return muser_remove_dev(uuid);
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	const uuid_le uuid = mdev_uuid(mdev);
+	return muser_remove_dev(&uuid);
+#else
+	return muser_remove_dev(mdev_uuid(mdev));
+#endif
 }
 
 static int do_pin_pages(char __user *buf, const size_t count,
@@ -448,9 +456,9 @@ static int vm_insert_pages(struct vm_area_struct *const vma,
 		err = vm_insert_page(vma, vma->vm_start + i * PAGE_SIZE,
 				     pages[i]);
 		if (unlikely(err)) {
-			muser_dbg("count=%d, anon=%d, slab=%d, type=%d",
+			muser_dbg("count=%d, anon=%d, slab=%d",
 				  page_count(pages[i]), PageAnon(pages[i]),
-				  PageSlab(pages[i]), page_has_type(pages[i]));
+				  PageSlab(pages[i]));
 			muser_dbg("failed to insert page at %lx: %d",
 				  vma->vm_start + i * PAGE_SIZE, err);
 			unmap_kernel_range((unsigned long)vma->vm_start,
@@ -790,7 +798,7 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 	len = dma_map->length;
 	err = muser_process_dma_unmap(mudev, dma_map);
 	if (unlikely(err))
-		muser_dbg("failed to request PCI server to munmap: %d", err);
+		muser_dbg("failed to request libmuser to munmap: %d", err);
 
 	err = put_dma_map(mudev, dma_map, NR_PAGES(len));
 	if (unlikely(err)) {
@@ -806,11 +814,10 @@ out:
 
 /*
  * FIXME There can be multiple DMA map calls per device. If each of these calls
- * are serialised (this can be enforced by muser), then we tell PCI server to
+ * are serialised (this can be enforced by muser), then we tell libmuser to
  * mmap the control device. Do we need to distinguish between the different
  * DMA map calls at this stage if we can enforce only one outstanding DMA map
- * call? What happens when the DMA map happens too early, before GET_DEVICE_FD
- * is called?
+ * call?
  */
 static int muser_iommu_notifier(struct notifier_block *nb, unsigned long action,
 				void *data)
@@ -872,7 +879,7 @@ int muser_open(struct mdev_device *mdev)
 		int err2;
 		/*
 		 * TODO we might have triggered some notifiers which will have
-		 * caused PCI server to mmap. If open fails then PCI server dies
+		 * caused libmuser to mmap. If open fails then libmuser dies
 		 * therefore things get automatically cleaned up (e.g.
 		 * vfio_unpin etc.)?
 		 */
@@ -1688,7 +1695,12 @@ static ssize_t libmuser_read(struct file *filp, char __user *buf,
 		return -EINVAL;
 	}
 
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	if (!access_ok(VERIFY_WRITE, buf, bufsz)) {
+#else
 	if (!access_ok(buf, bufsz)) {
+#endif
 		muser_dbg("bad permissions");
 		return -EFAULT;
 	}
@@ -1755,8 +1767,12 @@ static ssize_t libmuser_write(struct file *filp, const char __user *buf,
 		muser_dbg("bad arguments");
 		return -EINVAL;
 	}
-
+	/* XXX this should be taken out when upstreaming */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,19,67)
+	if (!access_ok(VERIFY_READ, buf, bufsz)) {
+#else
 	if (!access_ok(buf, bufsz)) {
+#endif
 		muser_dbg("bad permissions");
 		return -EFAULT;
 	}
