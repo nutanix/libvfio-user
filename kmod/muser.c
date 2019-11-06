@@ -605,7 +605,7 @@ static int muser_process_dma_request(struct muser_dev *mudev,
 	if (unlikely(err))
 		return err;
 
-	return mucmd.muser_cmd.mmap.response;
+	return mucmd.muser_cmd.err;
 }
 
 static int muser_process_dma_map(struct muser_dev *mudev, int flags)
@@ -1478,9 +1478,6 @@ static inline int mmap_done(struct mudev_cmd * const mucmd)
 	char __user *addr = (char __user *) cmd->mmap.response;
 	int ret;
 
-	if (cmd->err < 0)
-		return -EINVAL;
-
 	ret = do_pin_pages(addr, mucmd->mmap_len, 1, &mucmd->pg_map);
 	if (ret) {
 		muser_alert("failed to pin pages: %d", ret);
@@ -1497,7 +1494,7 @@ static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
 	struct muser_dev *mudev = filep->private_data;
 	struct mudev_cmd *mucmd;
 	unsigned long offset;
-	int ret = -EINVAL;
+	int ret = -EINVAL, mucmd_err;
 
 	WARN_ON(mudev == NULL);
 	switch (cmd) {
@@ -1552,6 +1549,7 @@ static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
 		if (ret)
 			goto out;
 
+		mucmd_err = mucmd->muser_cmd.err;
 		switch (mucmd->type) {
 		case MUSER_IOCTL:
 			offset = offsetof(struct muser_cmd, ioctl);
@@ -1559,13 +1557,12 @@ static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
 			ret = bounce_in(mucmd, (void __user *)(arg + offset));
 			break;
 		case MUSER_MMAP:
-			ret = mmap_done(mucmd);
+			if (!mucmd_err)
+				ret = mmap_done(mucmd);
 			break;
 		case MUSER_READ:
-			if (mucmd->muser_cmd.err < 0) {
-				muser_alert("read failed: %d",
-			        mucmd->muser_cmd.err);
-			}
+			if (mucmd_err < 0)
+				muser_alert("read failed: %d", mucmd_err);
 			break;
 		case MUSER_WRITE:
 		case MUSER_DMA_MMAP:
