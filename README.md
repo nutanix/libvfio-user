@@ -168,3 +168,12 @@ Making libmuser Multi-threaded
 
 libmuser can be made multi-threaded in order to improve performance. To
 implement this we'll have to maintain a private context in struct file.
+
+Troubleshooting
+---------------
+
+If you get the following error when starting QEMU:
+
+    qemu-system-x86_64: -device vfio-pci,sysfsdev=/sys/bus/mdev/devices/00000000-0000-0000-0000-000000000000: vfio 00000000-0000-0000-0000-000000000000: failed to read device config space: Bad address
+
+it might mean that you haven't properly patched your kernel.
