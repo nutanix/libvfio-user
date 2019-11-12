@@ -1311,10 +1311,10 @@ lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr,
 }
 
 inline int
-lm_map_sg(lm_ctx_t *lm_ctx, int prot,
-          const dma_sg_t *sg, struct iovec *iov, int cnt)
+lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
+	  struct iovec *iov, int cnt)
 {
-    return dma_map_sg(lm_ctx->dma, prot, sg, iov, cnt);
+    return dma_map_sg(lm_ctx->dma, sg, iov, cnt);
 }
 
 inline void

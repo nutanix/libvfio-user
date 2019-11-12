@@ -88,9 +88,7 @@ static void
 _dma_controller_do_remove_region(dma_memory_region_t *region)
 {
     assert(region);
-#if DMA_MAP_FAST_IMPL
     dma_unmap_region(region, region->virt_addr, region->size);
-#endif
     (void)close(region->fd);
 }
 
@@ -216,7 +214,7 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
                strerror(errno));
         goto err;
     }
-#if DMA_MAP_FAST_IMPL
+
     region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
                                        0, region->size);
     if (region->virt_addr == MAP_FAILED) {
@@ -225,8 +223,6 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
         close(region->fd);
         goto err;
     }
-#endif
-
     dma->nregions++;
 
     return idx;

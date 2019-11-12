@@ -48,22 +48,11 @@
  *   as an iovec for direct access, and unmapped using dma_unmap_sg() when done.
  * - dma_map_addr() and dma_unmap_addr() helper functions are provided
  *   for mapping DMA regions that can fit into one scatter-gather entry.
- *
- * This library can be compiled to function in two modes as defined by the
- * following macros.
- * - DMA_MAP_FAST (default): Every region is mapped into the application's
- *   virtual address space at registration time with R/W permissions.
+ *   Every region is mapped into the application's virtual address space
+ *   at registration time with R/W permissions.
  *   dma_map_sg() ignores all protection bits and only does lookups and
  *   returns pointers to the previously mapped regions. dma_unmap_sg() is
  *   effectively a no-op.
- * - DMA_MAP_PROTECTED: Every call to dma_map_sg() does mmap()s and
- *   dma_unmap_sg() does munmap()s. All permission bits are honored. This mode
- *   is obviously much slower if used in the fast path. It may be useful to
- *   have the exta protection if the fast path does not need direct virtual
- *   memory access to foreign memory and data is accessed using a different
- *   method (e.g. RDMA, vfio-iommu). It can also be useful in debugging to
- *   make sure we are not writing to guest memory that's readonly for the
- *   device.
  */
 
 #ifdef DMA_MAP_PROTECTED
@@ -89,9 +78,7 @@ typedef struct {
     int fd;                     // File descriptor to mmap
     int page_size;              // Page size of this fd
     off_t offset;               // File offset
-#if DMA_MAP_FAST_IMPL
     void *virt_addr;            // Virtual address of this region
-#endif
 } dma_memory_region_t;
 
 typedef struct {
@@ -174,57 +161,39 @@ void
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);
 
 static inline int
-dma_map_sg(dma_controller_t *dma,
-#if DMA_MAP_FAST_IMPL
-           int prot __attribute__((unused)),
-#else
-           int prot,
-#endif
-           const dma_sg_t *sg, struct iovec *iov, int cnt)
+dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
+           int cnt)
 {
+    dma_memory_region_t *region;
     int i;
 
     for (i = 0; i < cnt; i++) {
-        dma_memory_region_t *const region = &dma->regions[sg[i].region];
-
-#if DMA_MAP_FAST_IMPL
-        iov[i].iov_base = (char *)region->virt_addr + sg[i].offset;
-#else
-        iov[i].iov_base = dma_map_region(region, prot,
-                                         sg[i].offset, sg[i].length);
-        if (iov[i].iov_base == MAP_FAILED) {
-            return -1;
-        }
-#endif
+        region = &dma->regions[sg[i].region];
+        iov[i].iov_base = region->virt_addr + sg[i].offset;
         iov[i].iov_len = sg[i].length;
     }
 
     return 0;
 }
 
-static inline void
-dma_unmap_sg(dma_controller_t *dma,
-             const dma_sg_t *sg, struct iovec *iov, int cnt)
-{
-    int i;
+#define UNUSED __attribute__((unused))
 
-    for (i = 0; i < cnt; i++) {
-        dma_memory_region_t *const region = &dma->regions[sg[i].region];
-        if (!DMA_MAP_FAST_IMPL) {
-            dma_unmap_region(region, iov[i].iov_base, iov[i].iov_len);
-        }
-    }
+static inline void
+dma_unmap_sg(UNUSED dma_controller_t *dma, UNUSED const dma_sg_t *sg,
+	     UNUSED struct iovec *iov, UNUSED int cnt)
+{
+    /* just a placeholder for now */
+    return;
 }
 
 static inline void *
-dma_map_addr(dma_controller_t *dma, int prot,
-             dma_addr_t dma_addr, uint32_t len)
+dma_map_addr(dma_controller_t *dma, dma_addr_t dma_addr, uint32_t len)
 {
     dma_sg_t sg;
     struct iovec iov;
 
     if (dma_addr_to_sg(dma, dma_addr, len, &sg, 1) == 1 &&
-        dma_map_sg(dma, prot, &sg, &iov, 1) == 0) {
+        dma_map_sg(dma, &sg, &iov, 1) == 0) {
         return iov.iov_base;
     }
 
