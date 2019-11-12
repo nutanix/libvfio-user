@@ -46,6 +46,7 @@
 #include <sys/mman.h>
 #include <stdarg.h>
 #include <linux/vfio.h>
+#include <sys/param.h>
 
 #include "../kmod/muser.h"
 #include "muser.h"
@@ -663,29 +664,33 @@ lm_get_region(loff_t pos, size_t count, loff_t *off)
     return r;
 }
 
+static uint32_t
+region_size(lm_ctx_t *lm_ctx, int region)
+{
+        assert(region >= LM_DEV_BAR0_REG_IDX && region <= LM_DEV_VGA_REG_IDX);
+        return lm_ctx->pci_info.reg_info[region].size;
+}
+
+static uint32_t
+pci_config_space_size(lm_ctx_t *lm_ctx)
+{
+    return region_size(lm_ctx, LM_DEV_CFG_REG_IDX);
+}
+
 static ssize_t
 handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
-                               loff_t pos, bool is_write,
-                               lm_region_access_t *pci_config_fn)
+                               loff_t pos, bool is_write)
 {
-    int r1, r2 = 0;
+    int ret;
 
-    r1 = cap_maybe_access(lm_ctx->caps, lm_ctx->pvt, buf, count, pos, is_write);
-    if (r1 < 0) {
+    count = MIN(pci_config_space_size(lm_ctx), count);
+    ret = cap_maybe_access(lm_ctx->caps, lm_ctx->pvt, buf, count, pos, is_write);
+    if (ret < 0) {
         lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
                pos);
-        return r1;
+        return ret;
     }
-    buf += r1;
-    pos += r1;
-    count -= r1;
-    if (pci_config_fn != NULL && count > 0) {
-        r2 = pci_config_fn(lm_ctx->pvt, buf, count, pos, is_write);
-        if (r2 < 0) {
-            return r2;
-        }
-    }
-    return r1 + r2;
+    return count;
 }
 
 static ssize_t
@@ -713,7 +718,7 @@ do_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t pos, bool is_write)
 
     if (idx == LM_DEV_CFG_REG_IDX) {
         return handle_pci_config_space_access(lm_ctx, buf, count, offset,
-                                              is_write, pci_info->reg_info[idx].fn);
+                                              is_write);
     }
 
     /*
