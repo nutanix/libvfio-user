@@ -69,9 +69,9 @@ executed in parallel.
 Building muser
 ==============
 
-vfio/mdev needs to be patched. To generate the patch run:
+vfio/mdev needs to be patched:
 
-	git diff 869e3305f23dfeacdaa234717c92ccb237815d90 --diff-filter=M > vfio.patch
+	patch -p1 < muser/patches/vfio.diff
 
 Apply the patch and rebuild the vfio/mdev modules:
 
