@@ -1167,6 +1167,11 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
 
+    if (dev_info->dev_type != LM_DEV_TYPE_PCI) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
      * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).

@@ -249,6 +249,13 @@ typedef struct {
 
 #define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
+/*
+ * Supported device types. Only PCI for now.
+ */
+typedef enum {
+    LM_DEV_TYPE_PCI
+} lm_dev_type_t;
+
 /**
  * Device information structure, used to create the lm_ctx.
  * To be filled and passed to lm_ctx_create()
@@ -275,6 +282,11 @@ typedef struct {
      * Log level. Messages above this level are not logged. Optional
      */
     lm_log_lvl_t    log_lvl;
+
+    /*
+     * Device type.
+     */
+    lm_dev_type_t   dev_type;
 
     /*
      * PCI configuration.

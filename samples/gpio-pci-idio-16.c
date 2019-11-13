@@ -52,6 +52,7 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
 int main(int argc, char **argv)
 {
     lm_dev_info_t dev_info = {
+        .dev_type = LM_DEV_TYPE_PCI,
         .pci_info = {
             .id = {.vid = 0x494F, .did = 0x0DC8 },
             .reg_info[LM_DEV_BAR2_REG_IDX] = {
