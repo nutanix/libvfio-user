@@ -165,51 +165,6 @@ enum {
     LM_DEV_NUM_REGS = 9
 };
 
-typedef struct {
-    uint32_t            irq_count[LM_DEV_NUM_IRQS];
-
-    /*
-     * Per-region information. Only supported regions need to be defined,
-     * unsupported regions should be left to 0.
-     */
-    lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
-
-    /*
-     * Device and vendor ID.
-     */
-    lm_pci_hdr_id_t     id;
-
-    /*
-     * Subsystem vendor and device ID.
-     */
-    lm_pci_hdr_ss_t     ss;
-
-    /*
-     * Class code.
-     */
-    lm_pci_hdr_cc_t     cc;
-} lm_pci_info_t;
-
-/*
- * Returns a pointer to the non-standard part of the PCI configuration space.
- */
-lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
-
-#define LM_DMA_REGIONS  0x10
-
-typedef enum {
-    LM_ERR,
-    LM_INF,
-    LM_DBG
-} lm_log_lvl_t;
-
-/**
- * Callback function signature for log function
- *
- * @lm_log_fn_t: typedef for log function.
- */
-typedef void (lm_log_fn_t) (void *pvt, const char *msg);
-
 /**
  * Callback function that gets called when a capability is accessed. The
  * callback is not called when the ID and next fields are accessed, these are
@@ -248,6 +203,64 @@ typedef struct {
 } lm_cap_t;
 
 #define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
+
+typedef struct {
+    uint32_t            irq_count[LM_DEV_NUM_IRQS];
+
+    /*
+     * Per-region information. Only supported regions need to be defined,
+     * unsupported regions should be left to 0.
+     */
+    lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
+
+    /*
+     * Device and vendor ID.
+     */
+    lm_pci_hdr_id_t     id;
+
+    /*
+     * Subsystem vendor and device ID.
+     */
+    lm_pci_hdr_ss_t     ss;
+
+    /*
+     * Class code.
+     */
+    lm_pci_hdr_cc_t     cc;
+
+    /*
+     * PCI capabilities. The user needs to only define the ID and size of each
+     * capability. The actual capability is not maintained by libmuser. When a
+     * capability is accessed the appropriate callback function is called.
+     */
+    lm_cap_t        caps[LM_MAX_CAPS];
+
+    /*
+     * Number of capabilities in above array.
+     */
+    int             nr_caps;
+
+} lm_pci_info_t;
+
+/*
+ * Returns a pointer to the non-standard part of the PCI configuration space.
+ */
+lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
+
+#define LM_DMA_REGIONS  0x10
+
+typedef enum {
+    LM_ERR,
+    LM_INF,
+    LM_DBG
+} lm_log_lvl_t;
+
+/**
+ * Callback function signature for log function
+ *
+ * @lm_log_fn_t: typedef for log function.
+ */
+typedef void (lm_log_fn_t) (void *pvt, const char *msg);
 
 /*
  * Supported device types. Only PCI for now.
@@ -293,17 +306,6 @@ typedef struct {
      */
     int (*reset)    (void *pvt);
 
-    /*
-     * PCI capabilities. The user needs to only define the ID and size of each
-     * capability. The actual capability is not maintained by libmuser. When a
-     * capability is accessed the appropriate callback function is called.
-     */
-    lm_cap_t        caps[LM_MAX_CAPS];
-
-    /*
-     * Number of capabilities in above array.
-     */
-    int             nr_caps;
 } lm_dev_info_t;
 
 /**
