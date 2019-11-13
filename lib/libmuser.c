@@ -77,6 +77,13 @@ typedef struct {
     _Static_assert(sizeof(s) - offsetof(s, m) == sizeof(t), \
         #t " " #m " must be last member in " #s)
 
+struct pci {
+    uint32_t                irq_count[LM_DEV_NUM_IRQS];
+    lm_reg_info_t           reg_info[LM_DEV_NUM_REGS];
+    lm_pci_config_space_t   *config_space;
+    struct caps             *caps;
+};
+
 struct lm_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
@@ -84,9 +91,7 @@ struct lm_ctx {
     int (*reset)            (void *pvt);
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
-    lm_pci_info_t           pci_info;
-    lm_pci_config_space_t   *pci_config_space;
-    struct caps             *caps;
+    struct pci              pci;
     lm_irqs_t               irqs; /* XXX must be last */
 };
 MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
@@ -273,7 +278,7 @@ irqs_trigger(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 static long
 dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 {
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
+    uint32_t *irq_count = lm_ctx->pci.irq_count;
     uint32_t a_type, d_type;
 
     assert(lm_ctx != NULL);
@@ -306,8 +311,8 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
         return -EINVAL;
     }
     // Ensure irq_set's start and count are within bounds.
-    if ((irq_set->start >= pci_info->irq_count[irq_set->index]) ||
-        (irq_set->start + irq_set->count > pci_info->irq_count[irq_set->index])) {
+    if ((irq_set->start >= irq_count[irq_set->index]) ||
+        (irq_set->start + irq_set->count > irq_count[irq_set->index])) {
         lm_log(lm_ctx, LM_DBG, "bad IRQ start/count\n");
         return -EINVAL;
     }
@@ -363,7 +368,7 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
 {
     assert(lm_ctx != NULL);
     assert(irq_info != NULL);
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
+    uint32_t *irq_count = lm_ctx->pci.irq_count;
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info->argsz < sizeof(struct vfio_irq_info)) ||
@@ -372,7 +377,7 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
         return -EINVAL;
     }
 
-    irq_info->count = pci_info->irq_count[irq_info->index];
+    irq_info->count = irq_count[irq_info->index];
     irq_info->flags = VFIO_IRQ_INFO_EVENTFD;
 
     return 0;
@@ -466,7 +471,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
 
     assert(lm_ctx != NULL);
     assert(vfio_reg != NULL);
-    lm_reg = &lm_ctx->pci_info.reg_info[vfio_reg->index];
+    lm_reg = &lm_ctx->pci.reg_info[vfio_reg->index];
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((vfio_reg->argsz < sizeof(struct vfio_region_info)) ||
@@ -607,13 +612,13 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         goto out;
     }
 
-    if (lm_ctx->pci_info.reg_info[region].map == NULL) {
+    if (lm_ctx->pci.reg_info[region].map == NULL) {
         lm_log(lm_ctx, LM_ERR, "region not mmapable\n");
         err = -ENOTSUP;
         goto out;
     }
 
-    addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, offset, len);
+    addr = lm_ctx->pci.reg_info[region].map(lm_ctx->pvt, offset, len);
     if ((void *)addr == MAP_FAILED) {
         err = -errno;
         lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
@@ -668,7 +673,7 @@ static uint32_t
 region_size(lm_ctx_t *lm_ctx, int region)
 {
         assert(region >= LM_DEV_BAR0_REG_IDX && region <= LM_DEV_VGA_REG_IDX);
-        return lm_ctx->pci_info.reg_info[region].size;
+        return lm_ctx->pci.reg_info[region].size;
 }
 
 static uint32_t
@@ -684,7 +689,8 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
     int ret;
 
     count = MIN(pci_config_space_size(lm_ctx), count);
-    ret = cap_maybe_access(lm_ctx->caps, lm_ctx->pvt, buf, count, pos, is_write);
+    ret = cap_maybe_access(lm_ctx->pci.caps, lm_ctx->pvt, buf, count, pos,
+                           is_write);
     if (ret < 0) {
         lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
                pos);
@@ -698,13 +704,13 @@ do_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t pos, bool is_write)
 {
     int idx;
     loff_t offset;
-    lm_pci_info_t *pci_info;
+    lm_reg_info_t *reg_info;
 
     assert(lm_ctx != NULL);
     assert(buf != NULL);
     assert(count > 0);
 
-    pci_info = &lm_ctx->pci_info;
+    reg_info = lm_ctx->pci.reg_info;
     idx = lm_get_region(pos, count, &offset);
     if (idx < 0) {
         lm_log(lm_ctx, LM_ERR, "invalid region %d\n", idx);
@@ -727,9 +733,8 @@ do_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t pos, bool is_write)
      * region to be used, so the user of the library can simply leave the
      * callback NULL in lm_ctx_create.
      */
-    if (pci_info->reg_info[idx].fn != NULL) {
-        return pci_info->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
-                                          is_write);
+    if (reg_info[idx].fn != NULL) {
+        return reg_info[idx].fn(lm_ctx->pvt, buf, count, offset, is_write);
     }
 
     lm_log(lm_ctx, LM_ERR, "no callback for region %d\n", idx);
@@ -1017,7 +1022,7 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
         return -1;
     }
 
-    if (vector == LM_DEV_INTX_IRQ_IDX && !lm_ctx->pci_config_space->hdr.cmd.id) {
+    if (vector == LM_DEV_INTX_IRQ_IDX && !lm_ctx->pci.config_space->hdr.cmd.id) {
         lm_log(lm_ctx, LM_ERR, "failed to trigger INTx IRQ, INTx disabled\n");
         errno = EINVAL;
         return -1;
@@ -1040,7 +1045,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
         return;
     }
 
-    free(lm_ctx->pci_config_space);
+    free(lm_ctx->pci.config_space);
     dev_detach(lm_ctx->fd);
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx, lm_ctx->dma);
@@ -1094,7 +1099,7 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     assert(dev_info != NULL);
 
     // Convenience pointer.
-    cfg_reg = &lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX];
+    cfg_reg = &lm_ctx->pci.reg_info[LM_DEV_CFG_REG_IDX];
 
     // Set a default config region if none provided.
     if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
@@ -1110,46 +1115,46 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     }
 
     // Allocate a buffer for the config space.
-    lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
-    if (lm_ctx->pci_config_space == NULL) {
+    lm_ctx->pci.config_space = calloc(1, cfg_reg->size);
+    if (lm_ctx->pci.config_space == NULL) {
         return -1;
     }
 
     // Bounce misc PCI basic header data.
-    lm_ctx->pci_config_space->hdr.id = dev_info->pci_info.id;
-    lm_ctx->pci_config_space->hdr.cc = dev_info->pci_info.cc;
-    lm_ctx->pci_config_space->hdr.ss = dev_info->pci_info.ss;
+    lm_ctx->pci.config_space->hdr.id = dev_info->pci_info.id;
+    lm_ctx->pci.config_space->hdr.cc = dev_info->pci_info.cc;
+    lm_ctx->pci.config_space->hdr.ss = dev_info->pci_info.ss;
 
     // Reflect on the config space whether INTX is available.
     if (dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
-        lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
+        lm_ctx->pci.config_space->hdr.intr.ipin = 1; // INTA#
     }
 
     // Set type for region registers.
     for (i = 0; i < PCI_BARS_NR; i++) {
         if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
-            lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
+            lm_ctx->pci.config_space->hdr.bars[i].io.region_type |= 0x1;
         }
     }
 
     // Initialise capabilities.
     if (dev_info->pci_info.nr_caps > 0) {
-        lm_ctx->caps = caps_create(dev_info->pci_info.caps,
+        lm_ctx->pci.caps = caps_create(dev_info->pci_info.caps,
                                    dev_info->pci_info.nr_caps);
-        if (lm_ctx->caps == NULL) {
+        if (lm_ctx->pci.caps == NULL) {
             lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %m\n");
             goto err;
         }
 
-        lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
-        lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
+        lm_ctx->pci.config_space->hdr.sts.cl = 0x1;
+        lm_ctx->pci.config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
     }
 
     return 0;
 
 err:
-    free(lm_ctx->pci_config_space);
-    lm_ctx->pci_config_space = NULL;
+    free(lm_ctx->pci.config_space);
+    lm_ctx->pci.config_space = NULL;
 
     return -1;
 }
@@ -1207,8 +1212,13 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     lm_ctx->log_lvl = dev_info->log_lvl;
     lm_ctx->reset = dev_info->reset;
 
-    // Bounce the provided pci_info into the context.
-    memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
+    // Bounce info for IRQs and regions.
+    assert(sizeof(lm_ctx->pci.irq_count) == sizeof(dev_info->pci_info.irq_count));
+    memcpy(lm_ctx->pci.irq_count, dev_info->pci_info.irq_count,
+           sizeof(lm_ctx->pci.irq_count));
+    assert(sizeof(lm_ctx->pci.reg_info) == sizeof(dev_info->pci_info.reg_info));
+    memcpy(lm_ctx->pci.reg_info, dev_info->pci_info.reg_info,
+           sizeof(lm_ctx->pci.reg_info));
 
     // Setup the PCI config space for this context.
     err = pci_config_setup(lm_ctx, dev_info);
@@ -1217,7 +1227,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     // Bounce info for the sparse mmap areas.
-    err = copy_sparse_mmap_areas(lm_ctx->pci_info.reg_info,
+    err = copy_sparse_mmap_areas(lm_ctx->pci.reg_info,
                                  dev_info->pci_info.reg_info);
     if (err) {
         goto out;
@@ -1242,8 +1252,8 @@ out:
         if (lm_ctx) {
             dma_controller_destroy(lm_ctx, lm_ctx->dma);
             dev_detach(lm_ctx->fd);
-            free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
-            free(lm_ctx->pci_config_space);
+            free_sparse_mmap_areas(lm_ctx->pci.reg_info);
+            free(lm_ctx->pci.config_space);
             free(lm_ctx);
             lm_ctx = NULL;
         }
@@ -1289,7 +1299,7 @@ inline lm_pci_config_space_t *
 lm_get_pci_config_space(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
-    return lm_ctx->pci_config_space;
+    return lm_ctx->pci.config_space;
 }
 
 /*
@@ -1299,14 +1309,14 @@ inline uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
-    return (uint8_t *)&lm_ctx->pci_config_space->non_std;
+    return (uint8_t *)&lm_ctx->pci.config_space->non_std;
 }
 
 inline lm_reg_info_t *
 lm_get_region_info(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
-    return lm_ctx->pci_info.reg_info;
+    return lm_ctx->pci.reg_info;
 }
 
 inline int
