@@ -269,11 +269,6 @@ typedef struct {
     void            *pvt;
 
     /*
-     * Whether an extended PCI configuration space should be created.
-     */
-    bool            extended;
-
-    /*
      * Function to call for logging. Optional.
      */
     lm_log_fn_t     *log;
