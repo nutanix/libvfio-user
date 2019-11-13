@@ -51,6 +51,8 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
 
 int main(int argc, char **argv)
 {
+    int err;
+
     lm_dev_info_t dev_info = {
         .pci_info = {
             .id = {.vid = 0x494F, .did = 0x0DC8 },
@@ -64,7 +66,11 @@ int main(int argc, char **argv)
         .uuid = argv[1],
     };
 
-    return lm_ctx_run(&dev_info);
+    err = lm_ctx_run(&dev_info);
+    if (err != 0) {
+        fprintf(stderr, "failed to realize device emulation: %m\n");
+    }
+    return err;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
