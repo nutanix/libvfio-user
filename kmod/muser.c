@@ -118,9 +118,6 @@ struct muser_dev {
 	struct radix_tree_root	devmem_tree;	/* Device memory */
 };
 
-/* function prototypes */
-static int dma_unmap_all(struct muser_dev *const mudev, const bool skip_user);
-
 static inline int muser_copyout(void __user *param, const void *address,
 				unsigned long size)
 {
@@ -856,6 +853,38 @@ static int register_notifier(struct mdev_device *const mdev)
 				      &events, &mudev->iommu_notifier);
 }
 
+static int dma_unmap_all(struct muser_dev *mudev)
+{
+	struct vfio_dma_mapping *dma_map;
+	unsigned long length;
+	LIST_HEAD(head);
+
+	/*
+	 * TODO: Cleanup
+	 * Use better list functions like:
+	 * list_replace()/list_replace_init()
+	 * list_for_each_entry_safe()
+	 */
+
+	mutex_lock(&mudev->dev_lock);
+	while (!list_empty(&mudev->dma_list)) {
+		dma_map = list_first_entry(&mudev->dma_list,
+					   struct vfio_dma_mapping, entry);
+		list_move(&dma_map->entry, &head);
+	}
+	mutex_unlock(&mudev->dev_lock);
+
+	while (!list_empty(&head)) {
+		dma_map = list_first_entry(&head, struct vfio_dma_mapping,
+					   entry);
+		list_del(&dma_map->entry);
+		length = dma_map->length;
+		put_dma_map(mudev, dma_map, NR_PAGES(length));
+		kfree(dma_map);
+	}
+	return 0;
+}
+
 int muser_open(struct mdev_device *mdev)
 {
 	int err;
@@ -879,7 +908,7 @@ int muser_open(struct mdev_device *mdev)
 		 */
 		atomic_dec(&mudev->mdev_opened);
 		muser_dbg("failed to register notifier: %d", err);
-		err2 = dma_unmap_all(mudev, false);
+		err2 = dma_unmap_all(mudev);
 		if (unlikely(err2))
 			muser_dbg("failed to DMA unmap all regions: %d", err2);
 		err2 = vfio_unregister_notifier(mdev_dev(mdev),
@@ -893,48 +922,12 @@ int muser_open(struct mdev_device *mdev)
 	return err;
 }
 
-static int dma_unmap_all(struct muser_dev *mudev, bool skip_user)
-{
-	struct vfio_dma_mapping *dma_map;
-	unsigned long length;
-	LIST_HEAD(head);
-
-	mutex_lock(&mudev->dev_lock);
-	while (!list_empty(&mudev->dma_list)) {
-		dma_map = list_first_entry(&mudev->dma_list,
-					   struct vfio_dma_mapping, entry);
-		list_move(&dma_map->entry, &head);
-	}
-	mutex_unlock(&mudev->dev_lock);
-
-	while (!list_empty(&head)) {
-		int err;
-
-		dma_map = list_first_entry(&head, struct vfio_dma_mapping,
-					   entry);
-		list_del(&dma_map->entry);
-		if (!skip_user) {
-			err = muser_process_dma_unmap(mudev, dma_map);
-			if (unlikely(err)) {
-				muser_alert("unmap request failed IOVA=%lx: %d",
-					    dma_map->iova, err);
-				continue;
-			}
-		}
-
-		length = dma_map->length;
-		put_dma_map(mudev, dma_map, NR_PAGES(length));
-		kfree(dma_map);
-	}
-	return 0;
-}
-
 void muser_close(struct mdev_device *mdev)
 {
 	struct muser_dev *mudev = mdev_get_drvdata(mdev);
 	int err;
 
-	err = dma_unmap_all(mudev, false);
+	err = dma_unmap_all(mudev);
 	if (unlikely(err))
 		muser_alert("failed to remove one or more DMA maps");
 
@@ -1631,7 +1624,6 @@ static int libmuser_open(struct inode *inode, struct file *filep)
 static int libmuser_release(struct inode *inode, struct file *filep)
 {
 	struct muser_dev *mudev = filep->private_data;
-	int err;
 
 	WARN_ON(mudev == NULL);
 	mutex_lock(&mudev->dev_lock);
@@ -1644,10 +1636,6 @@ static int libmuser_release(struct inode *inode, struct file *filep)
 		mudev->mucmd_pending = NULL;
 	}
 	mutex_unlock(&mudev->dev_lock);
-
-	err = dma_unmap_all(mudev, true);
-	if (unlikely(err))
-		muser_alert("failed to remove DMA maps");
 
 	filep->private_data = NULL;
 	atomic_dec(&mudev->srv_opened);
