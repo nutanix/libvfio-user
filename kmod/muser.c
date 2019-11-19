@@ -628,8 +628,8 @@ static int muser_process_dma_unmap(struct muser_dev *mudev,
 	return muser_process_dma_request(mudev, dma_map, 0, MUSER_DMA_MUNMAP);
 }
 
-static int put_dma_map(struct muser_dev *mudev,
-		       struct vfio_dma_mapping *dma_map, int nr_pages)
+static void put_dma_map(struct muser_dev *mudev,
+			struct vfio_dma_mapping *dma_map, int nr_pages)
 {
 	unsigned long off, iova_pfn;
 	int i, ret;
@@ -637,14 +637,12 @@ static int put_dma_map(struct muser_dev *mudev,
 	for (i = 0, off = 0; i < nr_pages; i++, off += PAGE_SIZE) {
 		iova_pfn = (dma_map->iova + off) >> PAGE_SHIFT;
 		ret = vfio_unpin_pages(mdev_dev(mudev->mdev), &iova_pfn, 1);
-		if (WARN_ON(ret != 1))
-			return -EINVAL;
+		WARN_ON(ret != 1);
 
 		put_page(dma_map->pages[i]);
 	}
 
 	kfree(dma_map->pages);
-	return 0;
 }
 
 static int
@@ -800,15 +798,11 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 	if (unlikely(err))
 		muser_dbg("failed to request libmuser to munmap: %d", err);
 
-	err = put_dma_map(mudev, dma_map, NR_PAGES(len));
-	if (unlikely(err)) {
-		muser_dbg("failed to tear down DMA map: %d", err);
-		goto out;
-	}
+	put_dma_map(mudev, dma_map, NR_PAGES(len));
+	kfree(dma_map);
 
 	/* XXX: Do we need this? */
 	unmap->size = len;
-out:
 	return err;
 }
 
@@ -929,10 +923,8 @@ static int dma_unmap_all(struct muser_dev *mudev, bool skip_user)
 		}
 
 		length = dma_map->length;
-		err = put_dma_map(mudev, dma_map, NR_PAGES(length));
-		if (unlikely(err))
-			muser_alert("failed to unmap DMA IOVA=%lx: %d",
-				    dma_map->iova, err);
+		put_dma_map(mudev, dma_map, NR_PAGES(length));
+		kfree(dma_map);
 	}
 	return 0;
 }
