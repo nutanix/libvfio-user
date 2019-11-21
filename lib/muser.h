@@ -389,7 +389,6 @@ lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * the mappings by calling lm_unmap_sg.
  *
  * @lm_ctx: the libmuser context
- * @prot: protection flags, defined as PROT_XXX in <sys/mman.h>
  * @sg: array of scatter/gather entries returned by lm_addr_to_sg
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
@@ -398,7 +397,7 @@ lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * @returns 0 on success, -1 on failure
  */
 int
-lm_map_sg(lm_ctx_t *lm_ctx, int prot, const dma_sg_t *sg,
+lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
           struct iovec *iov, int cnt);
 
 /**
