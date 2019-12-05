@@ -48,9 +48,9 @@ static inline void
 muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
-    uint32_t *bar;
     unsigned long mask;
     lm_reg_info_t *reg_info = lm_get_region_info(lm_ctx);
+    lm_pci_hdr_t *hdr;
 
     assert(lm_ctx);
 
@@ -58,7 +58,8 @@ muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
         return;
     }
 
-    bar = (uint32_t *) & lm_get_pci_config_space(lm_ctx)->hdr.bars[bar_index];
+    hdr = &lm_get_pci_config_space(lm_ctx)->hdr;
+
     cfg_addr = *(uint32_t *) buf;
 
     lm_log(lm_ctx, LM_DBG, "BAR%d addr 0x%x\n", bar_index, cfg_addr);
@@ -72,9 +73,9 @@ muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
     } else {
         mask = PCI_BASE_ADDRESS_IO_MASK;
     }
-    cfg_addr |= (*bar & ~mask);
+    cfg_addr |= (hdr->bars[bar_index].raw & ~mask);
 
-    *bar = htole32(cfg_addr);
+    hdr->bars[bar_index].raw = htole32(cfg_addr);
 }
 
 #define BAR_INDEX(offset) ((offset - PCI_BASE_ADDRESS_0) >> 2)
