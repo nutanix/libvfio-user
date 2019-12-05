@@ -626,7 +626,7 @@ static int muser_process_dma_unmap(struct muser_dev *mudev,
 }
 
 static void put_dma_map(struct muser_dev *mudev,
-			struct vfio_dma_mapping *dma_map, int nr_pages)
+			struct vfio_dma_mapping *dma_map, unsigned long nr_pages)
 {
 	unsigned long off, iova_pfn;
 	int i, ret;
@@ -649,7 +649,8 @@ get_dma_map(struct muser_dev *mudev, struct vfio_dma_mapping *dma_map,
 	unsigned long iova, vaddr;
 	unsigned long iova_pfn, phys_pfn;
 	unsigned long length, off;
-	int pgflag, ret, nr_pages = 0;
+	int pgflag, ret;
+	unsigned long nr_pages = 0;
 	struct page **pages;
 
 	length = map->size;
@@ -777,7 +778,7 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 		struct vfio_iommu_type1_dma_unmap *const unmap)
 {
 	int err;
-	int len;
+	unsigned long len;
 	struct vfio_dma_mapping *dma_map;
 
 	mutex_lock(&mudev->dev_lock);
