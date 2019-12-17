@@ -1262,7 +1262,7 @@ static int muser_mmap(struct mdev_device *const mdev,
 	mucmd.mmap_len = vma->vm_end - vma->vm_start;
 
 	mucmd.muser_cmd.type = MUSER_MMAP;
-	mucmd.muser_cmd.mmap.request.addr = vma->vm_pgoff;
+	mucmd.muser_cmd.mmap.request.addr = vma->vm_pgoff << PAGE_SHIFT;
 	mucmd.muser_cmd.mmap.request.len = vma->vm_end - vma->vm_start;
 
 	/* Process mudev_cmd in server context. */
@@ -1271,7 +1271,10 @@ static int muser_mmap(struct mdev_device *const mdev,
 		err = mucmd.muser_cmd.err;
 	}
 	if (unlikely(err != 0)) {
-		muser_info("failed to mmap: %d", err);
+		muser_info("failed to mmap %#lx@%#lx: %d",
+		           mucmd.muser_cmd.mmap.request.len,
+		           mucmd.muser_cmd.mmap.request.addr,
+		           err);
 		return err;
 	}
 
