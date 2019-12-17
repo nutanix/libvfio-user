@@ -603,19 +603,19 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     region = lm_get_region(offset, len, &offset);
     if (region < 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d\n", region);
-        err = region;
+        err = EINVAL;
         goto out;
     }
 
     if (lm_ctx->pci_info.reg_info[region].map == NULL) {
         lm_log(lm_ctx, LM_ERR, "region not mmapable\n");
-        err = -ENOTSUP;
+        err = ENOTSUP;
         goto out;
     }
 
     addr = lm_ctx->pci_info.reg_info[region].map(lm_ctx->pvt, offset, len);
     if ((void *)addr == MAP_FAILED) {
-        err = -errno;
+        err = errno;
         lm_log(lm_ctx, LM_ERR, "failed to mmap: %m\n");
         goto out;
     }
@@ -624,10 +624,10 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 out:
     if (err != 0) {
         lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %#x@%#lx: %s\n",
-               len, offset, strerror(-errno));
+               len, offset, strerror(err));
     }
 
-    return err;
+    return -err;
 }
 
 /*
