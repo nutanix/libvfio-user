@@ -1267,7 +1267,10 @@ static int muser_mmap(struct mdev_device *const mdev,
 
 	/* Process mudev_cmd in server context. */
 	err = muser_process_cmd(mudev, &mucmd);
-	if (unlikely(err)) {
+	if (likely(err == 0)) {
+		err = mucmd.muser_cmd.err;
+	}
+	if (unlikely(err != 0)) {
 		muser_info("failed to mmap: %d", err);
 		return err;
 	}
