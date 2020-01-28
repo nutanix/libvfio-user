@@ -39,7 +39,7 @@
 
 static struct muser {
 	struct class		*class;
-	struct list_head	dev_list;
+	struct list_head	mudev_list;
 	struct idr		dev_idr;
 	struct cdev		muser_cdev;
 	dev_t			muser_devt;
@@ -145,7 +145,7 @@ static struct muser_dev *__muser_search_dev(const guid_t *uuid)
 {
 	struct muser_dev *mudev;
 
-	list_for_each_entry(mudev, &muser.dev_list, dlist_entry) {
+	list_for_each_entry(mudev, &muser.mudev_list, dlist_entry) {
 		const uuid_le *u = &mudev->uuid;
 
 		if (uuid_le_cmp(*u, *uuid) == 0)
@@ -202,7 +202,7 @@ static int muser_create_dev(const guid_t *uuid, struct mdev_device *mdev)
 	INIT_LIST_HEAD(&mudev->cmd_list);
 	INIT_LIST_HEAD(&mudev->dma_list);
 	INIT_RADIX_TREE(&mudev->devmem_tree, GFP_KERNEL);
-	list_add(&mudev->dlist_entry, &muser.dev_list);
+	list_add(&mudev->dlist_entry, &muser.mudev_list);
 	mdev_set_drvdata(mdev, mudev);
 
 	muser_info("new device %s", uuid_str);
@@ -1821,7 +1821,7 @@ static int __init muser_init(void)
 	/* Initialise idr. */
 	idr_init(&muser.dev_idr);
 	mutex_init(&muser.muser_lock);
-	INIT_LIST_HEAD(&muser.dev_list);
+	INIT_LIST_HEAD(&muser.mudev_list);
 
 	/* Initialise class. */
 	muser.class = class_create(THIS_MODULE, DRIVER_NAME);
@@ -1873,7 +1873,9 @@ static void __exit muser_cleanup(void)
 
 	/* Remove all devices. */
 	mutex_lock(&muser.muser_lock);
-	list_for_each_entry_safe(mudev, tmp, &muser.dev_list, dlist_entry) {
+	list_for_each_entry_safe(mudev, tmp, &muser.mudev_list, dlist_entry) {
+		WARN_ON(atomic_read(&mudev->mdev_opened) ||
+			atomic_read(&mudev->srv_opened));
 		__muser_deinit_dev(mudev);
 		kfree(mudev);
 	}
