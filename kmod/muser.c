@@ -898,6 +898,11 @@ int muser_open(struct mdev_device *mdev)
 		return -EBUSY;
 	}
 
+	if (!try_module_get(THIS_MODULE)) {
+		atomic_dec(&mudev->mdev_opened);
+		return -ENODEV;
+	}
+
 	err = register_notifier(mdev);
 	if (unlikely(err)) {
 		int err2;
@@ -908,6 +913,8 @@ int muser_open(struct mdev_device *mdev)
 		 * vfio_unpin etc.)?
 		 */
 		atomic_dec(&mudev->mdev_opened);
+		module_put(THIS_MODULE);
+
 		muser_dbg("failed to register notifier: %d", err);
 		err2 = dma_unmap_all(mudev);
 		if (unlikely(err2))
@@ -917,8 +924,8 @@ int muser_open(struct mdev_device *mdev)
 						&mudev->iommu_notifier);
 		if (unlikely(err2))
 			muser_info("failed to unregister notifier: %d", err);
-
 	}
+
 
 	return err;
 }
@@ -941,6 +948,7 @@ void muser_close(struct mdev_device *mdev)
 	atomic_dec(&mudev->mdev_opened);
 
 	/* TODO: Replace any pending mucmd back in cmd_list. */
+	module_put(THIS_MODULE);
 }
 
 static int
