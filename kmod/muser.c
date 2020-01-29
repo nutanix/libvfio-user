@@ -39,7 +39,7 @@
 
 static struct muser {
 	struct class		*class;
-	struct list_head	dev_list;
+	struct list_head	mudev_list;
 	struct idr		dev_idr;
 	struct cdev		muser_cdev;
 	dev_t			muser_devt;
@@ -145,7 +145,7 @@ static struct muser_dev *__muser_search_dev(const guid_t *uuid)
 {
 	struct muser_dev *mudev;
 
-	list_for_each_entry(mudev, &muser.dev_list, dlist_entry) {
+	list_for_each_entry(mudev, &muser.mudev_list, dlist_entry) {
 		const uuid_le *u = &mudev->uuid;
 
 		if (uuid_le_cmp(*u, *uuid) == 0)
@@ -202,7 +202,7 @@ static int muser_create_dev(const guid_t *uuid, struct mdev_device *mdev)
 	INIT_LIST_HEAD(&mudev->cmd_list);
 	INIT_LIST_HEAD(&mudev->dma_list);
 	INIT_RADIX_TREE(&mudev->devmem_tree, GFP_KERNEL);
-	list_add(&mudev->dlist_entry, &muser.dev_list);
+	list_add(&mudev->dlist_entry, &muser.mudev_list);
 	mdev_set_drvdata(mdev, mudev);
 
 	muser_info("new device %s", uuid_str);
@@ -898,6 +898,11 @@ int muser_open(struct mdev_device *mdev)
 		return -EBUSY;
 	}
 
+	if (!try_module_get(THIS_MODULE)) {
+		atomic_dec(&mudev->mdev_opened);
+		return -ENODEV;
+	}
+
 	err = register_notifier(mdev);
 	if (unlikely(err)) {
 		int err2;
@@ -908,6 +913,8 @@ int muser_open(struct mdev_device *mdev)
 		 * vfio_unpin etc.)?
 		 */
 		atomic_dec(&mudev->mdev_opened);
+		module_put(THIS_MODULE);
+
 		muser_dbg("failed to register notifier: %d", err);
 		err2 = dma_unmap_all(mudev);
 		if (unlikely(err2))
@@ -917,8 +924,8 @@ int muser_open(struct mdev_device *mdev)
 						&mudev->iommu_notifier);
 		if (unlikely(err2))
 			muser_info("failed to unregister notifier: %d", err);
-
 	}
+
 
 	return err;
 }
@@ -941,6 +948,7 @@ void muser_close(struct mdev_device *mdev)
 	atomic_dec(&mudev->mdev_opened);
 
 	/* TODO: Replace any pending mucmd back in cmd_list. */
+	module_put(THIS_MODULE);
 }
 
 static int
@@ -1821,7 +1829,7 @@ static int __init muser_init(void)
 	/* Initialise idr. */
 	idr_init(&muser.dev_idr);
 	mutex_init(&muser.muser_lock);
-	INIT_LIST_HEAD(&muser.dev_list);
+	INIT_LIST_HEAD(&muser.mudev_list);
 
 	/* Initialise class. */
 	muser.class = class_create(THIS_MODULE, DRIVER_NAME);
@@ -1873,7 +1881,9 @@ static void __exit muser_cleanup(void)
 
 	/* Remove all devices. */
 	mutex_lock(&muser.muser_lock);
-	list_for_each_entry_safe(mudev, tmp, &muser.dev_list, dlist_entry) {
+	list_for_each_entry_safe(mudev, tmp, &muser.mudev_list, dlist_entry) {
+		WARN_ON(atomic_read(&mudev->mdev_opened) ||
+			atomic_read(&mudev->srv_opened));
 		__muser_deinit_dev(mudev);
 		kfree(mudev);
 	}
