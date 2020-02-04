@@ -639,7 +639,7 @@ static void put_dma_map(struct muser_dev *mudev,
 		put_page(dma_map->pages[i]);
 	}
 
-	kfree(dma_map->pages);
+	vfree(dma_map->pages);
 }
 
 static int
@@ -654,7 +654,7 @@ get_dma_map(struct muser_dev *mudev, struct vfio_dma_mapping *dma_map,
 	struct page **pages;
 
 	length = map->size;
-	pages = kmalloc_array(NR_PAGES(length), sizeof(*pages), GFP_KERNEL);
+	pages = vmalloc(NR_PAGES(length) * sizeof(*pages));
 	if (!pages)
 		return -ENOMEM;
 
