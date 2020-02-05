@@ -33,7 +33,11 @@
 configure_file(muser.c ${CMAKE_CURRENT_BINARY_DIR}/muser.c COPYONLY)
 configure_file(muser.h ${CMAKE_CURRENT_BINARY_DIR}/muser.h COPYONLY)
 # FIXME need to pass "CFLAGS_muser.o := -DDEBUG" for debug builds
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/Kbuild "obj-m := muser.o")
+set(KMOD_MAKEFILE_CONTENT "obj-m := muser.o")
+IF(CMAKE_BUILD_TYPE MATCHES Debug)
+	set(KMOD_MAKEFILE_CONTENT "CFLAGS_muser.o := -DDEBUG\n${KMOD_MAKEFILE_CONTENT}")
+ENDIF(CMAKE_BUILD_TYPE MATCHES Debug)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/Kbuild ${KMOD_MAKEFILE_CONTENT})
 
 # Build module using kernel's Makefile.
 set(KBUILD_CMD ${CMAKE_MAKE_PROGRAM} -C ${KDIR} M=${CMAKE_CURRENT_BINARY_DIR} modules)
