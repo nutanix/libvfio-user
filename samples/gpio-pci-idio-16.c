@@ -34,6 +34,8 @@
 /* gpio-pci-idio-16 */
 
 #include <stdio.h>
+#include <err.h>
+#include <stdlib.h>
 
 #include "../lib/muser.h"
 
@@ -51,7 +53,11 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
 
 int main(int argc, char **argv)
 {
-    int err;
+    int ret;
+
+    if (argc != 2) {
+        err(EXIT_FAILURE, "missing MUSER device UUID");
+    }
 
     lm_dev_info_t dev_info = {
         .pci_info = {
@@ -66,11 +72,11 @@ int main(int argc, char **argv)
         .uuid = argv[1],
     };
 
-    err = lm_ctx_run(&dev_info);
-    if (err != 0) {
+    ret = lm_ctx_run(&dev_info);
+    if (ret != 0) {
         fprintf(stderr, "failed to realize device emulation: %m\n");
     }
-    return err;
+    return ret;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
