@@ -1019,7 +1019,7 @@ static ssize_t muser_read(struct mdev_device *mdev, char __user *buf,
 		_count = mucmd.muser_cmd.err;
 
 	if (_count < 0)
-		muser_dbg("failed to process read: %d, %d\n", err,
+		muser_dbg("failed to process read: %d, %d", err,
 		          mucmd.muser_cmd.err);
 
 	*ppos = mucmd.muser_cmd.rw.pos;
@@ -1206,7 +1206,7 @@ static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 	/* Pin pages of the calling context. */
 	err = pin_pages(mucmd, (char __user *)arg, argsz, 1);
 	if (unlikely(err)) {
-		muser_dbg("failed to pin pages: %d\n", err);
+		muser_dbg("failed to pin pages: %d", err);
 		return err;
 	}
 
@@ -1220,7 +1220,7 @@ static long muser_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	struct mudev_cmd mucmd = { 0 };
 	int err;
 
-	muser_dbg("mdev=%p, cmd=%u, arg=0x%lX\n", mdev, cmd, arg);
+	muser_dbg("mdev=%p, cmd=%u, arg=0x%lX", mdev, cmd, arg);
 
 	if (cmd == VFIO_DEVICE_RESET) {
 		if (!device_trylock(mudev->dev))
@@ -1239,7 +1239,7 @@ static long muser_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	/* Process mudev_cmd in server context. */
 	err = muser_process_cmd(mudev, &mucmd);
 	if (err != 0) {
-		muser_dbg("failed to process command: %d\n", err);
+		muser_dbg("failed to process command: %d", err);
 		err = -1;
 	}
 
@@ -1826,7 +1826,7 @@ static const struct file_operations libmuser_fops = {
 
 static void muser_device_release(struct device *dev)
 {
-	muser_info("muser dev released\n");
+	muser_info("muser dev released");
 }
 
 static char *muser_devnode(struct device *dev, umode_t *mode)
