@@ -543,8 +543,9 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
-    lm_log(lm_ctx, LM_INF, "removing DMA region %#lx@%#lx\n",
-           cmd->mmap.request.len, cmd->mmap.request.addr);
+    lm_log(lm_ctx, LM_INF, "removing DMA region %#lx-%#lx\n",
+           cmd->mmap.request.addr,
+           cmd->mmap.request.addr + cmd->mmap.request.len);
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
@@ -556,8 +557,10 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
                                        cmd->mmap.request.len,
                                        lm_ctx->fd);
     if (err != 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx@%#lx: %s\n",
-               cmd->mmap.request.len, cmd->mmap.request.addr, strerror(err));
+        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx-%#lx: %s\n",
+               cmd->mmap.request.addr,
+               cmd->mmap.request.addr + cmd->mmap.request.len,
+               strerror(err));
     }
 
     return err;
@@ -568,8 +571,9 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
-    lm_log(lm_ctx, LM_INF, "adding DMA region %#lx@%#lx\n",
-           cmd->mmap.request.len, cmd->mmap.request.addr);
+    lm_log(lm_ctx, LM_INF, "adding DMA region %#lx-%#lx\n",
+           cmd->mmap.request.addr,
+           cmd->mmap.request.addr + cmd->mmap.request.len);
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
@@ -581,9 +585,9 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
                                     cmd->mmap.request.len,
                                     lm_ctx->fd, 0);
     if (err < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %#lx@%#lx: %d\n",
-               cmd->mmap.request.len, cmd->mmap.request.addr, err);
-        return err;
+        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %#lx-%#lx: %d\n",
+               cmd->mmap.request.addr,
+               cmd->mmap.request.addr + cmd->mmap.request.len, err);
     }
 
     return 0;
@@ -623,8 +627,8 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
 out:
     if (err != 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %#x@%#lx: %s\n",
-               len, offset, strerror(err));
+        lm_log(lm_ctx, LM_ERR, "failed to mmap device memory %#x-%#lx: %s\n",
+               offset, offset + len, strerror(err));
     }
 
     return -err;

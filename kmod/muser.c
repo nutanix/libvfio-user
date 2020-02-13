@@ -1279,9 +1279,9 @@ static int muser_mmap(struct mdev_device *const mdev,
 		err = mucmd.muser_cmd.err;
 	}
 	if (unlikely(err != 0)) {
-		muser_info("failed to mmap %#lx@%#lx: %d",
-		           mucmd.muser_cmd.mmap.request.len,
+		muser_info("failed to mmap %#lx-%#lx: %d",
 		           mucmd.muser_cmd.mmap.request.addr,
+		           mucmd.muser_cmd.mmap.request.addr + mucmd.muser_cmd.mmap.request.len,
 		           err);
 		return err;
 	}
