@@ -68,7 +68,7 @@ struct page_map {
 	int		offset;
 };
 
-struct vfio_dma_mapping {
+struct muser_dma_mapping {
 	unsigned long		iova;
 	unsigned long		length;
 	struct page		**pages;
@@ -113,7 +113,7 @@ struct muser_dev {
 	wait_queue_head_t	user_wait_q;
 	struct semaphore	sem;
 	struct notifier_block	iommu_notifier;
-	struct vfio_dma_mapping *dma_map;	/* Current DMA operation */
+	struct muser_dma_mapping *dma_map;	/* Current DMA operation */
 	struct list_head	dma_list;	/* list of dma mappings */
 	struct radix_tree_root	devmem_tree;	/* Device memory */
 };
@@ -515,6 +515,7 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 		if (pg == NULL) {
 			pg = mudev_page_alloc(mudev, cur_pgidx);
 			if (pg == NULL) {
+				muser_dbg("failed to alloc mudev page for index %ld", cur_pgidx);
 				i--;
 				ret = -ENOMEM;
 				goto free_pg;
@@ -524,8 +525,11 @@ static int libmuser_mmap_dev(struct file *fp, struct vm_area_struct *vma)
 
 		addr = vma->vm_start + (i << PAGE_SHIFT);
 		ret = vm_insert_page(vma, addr, pg);
-		if (unlikely(ret != 0))
+		if (unlikely(ret != 0)) {
+			muser_dbg("failed to insert page vma=%p addr=%ld page=%p: %d",
+			          vma, addr, pg, ret);
 			goto free_pg;
+		}
 	}
 	mutex_unlock(&mudev->dev_lock);
 
@@ -544,7 +548,7 @@ static int libmuser_mmap_dma(struct file *f, struct vm_area_struct *vma)
 {
 	int err;
 	unsigned long length;
-	struct vfio_dma_mapping *dma_map;
+	struct muser_dma_mapping *dma_map;
 	struct muser_dev *mudev = f->private_data;
 
 	BUG_ON(mudev == NULL);
@@ -589,7 +593,7 @@ static int libmuser_mmap(struct file *f, struct vm_area_struct *vma)
 }
 
 static int muser_process_dma_request(struct muser_dev *mudev,
-				     struct vfio_dma_mapping *dma_map,
+				     struct muser_dma_mapping *dma_map,
 				     int flags, int type)
 {
 	int err;
@@ -620,13 +624,13 @@ static int muser_process_dma_map(struct muser_dev *mudev, int flags)
 }
 
 static int muser_process_dma_unmap(struct muser_dev *mudev,
-				   struct vfio_dma_mapping *dma_map)
+				   struct muser_dma_mapping *dma_map)
 {
 	return muser_process_dma_request(mudev, dma_map, 0, MUSER_DMA_MUNMAP);
 }
 
 static void put_dma_map(struct muser_dev *mudev,
-			struct vfio_dma_mapping *dma_map, unsigned long nr_pages)
+			struct muser_dma_mapping *dma_map, unsigned long nr_pages)
 {
 	unsigned long off, iova_pfn;
 	int i, ret;
@@ -643,7 +647,7 @@ static void put_dma_map(struct muser_dev *mudev,
 }
 
 static int
-get_dma_map(struct muser_dev *mudev, struct vfio_dma_mapping *dma_map,
+get_dma_map(struct muser_dev *mudev, struct muser_dma_mapping *dma_map,
 	    struct vfio_iommu_type1_dma_map *map)
 {
 	unsigned long iova, vaddr;
@@ -674,11 +678,16 @@ get_dma_map(struct muser_dev *mudev, struct vfio_dma_mapping *dma_map,
 		iova_pfn = (iova + off) >> PAGE_SHIFT;
 		ret = vfio_pin_pages(mdev_dev(mudev->mdev), &iova_pfn, 1,
 				     map->flags, &phys_pfn);
-		if (ret != 1)
+		if (ret != 1) {
+			muser_dbg("failed to vfio_pin_pages for iova_pfn=%lx: %d",
+			          iova_pfn, ret);
 			goto err;
+		}
 
 		ret = get_user_pages_fast(vaddr, 1, pgflag, pages + nr_pages);
 		if (ret != 1) {
+			muser_dbg("failed to get_user_pages_fast for vaddr=%lx",
+			          vaddr);
 			vfio_unpin_pages(mdev_dev(mudev->mdev), &iova_pfn, 1);
 			goto err;
 		}
@@ -693,7 +702,7 @@ err:
 	return ret;
 }
 
-static bool has_anonymous_pages(struct vfio_dma_mapping *dma_map)
+static bool has_anonymous_pages(struct muser_dma_mapping *dma_map)
 {
 	int i, nr_pages = NR_PAGES(dma_map->length);
 
@@ -711,7 +720,7 @@ static bool has_anonymous_pages(struct vfio_dma_mapping *dma_map)
 static int muser_iommu_dma_map(struct muser_dev *mudev,
 			       struct vfio_iommu_type1_dma_map *map)
 {
-	struct vfio_dma_mapping *dma_map;
+	struct muser_dma_mapping *dma_map;
 	int ret;
 
 	/* TODO: support multiple DMA map operations in parallel */
@@ -722,7 +731,7 @@ static int muser_iommu_dma_map(struct muser_dev *mudev,
 		return -EBUSY;
 	}
 
-	dma_map = kmalloc(sizeof(struct vfio_dma_mapping), GFP_KERNEL);
+	dma_map = kmalloc(sizeof(struct muser_dma_mapping), GFP_KERNEL);
 	if (dma_map == NULL) {
 		mutex_unlock(&mudev->dev_lock);
 		return -ENOMEM;
@@ -740,8 +749,11 @@ static int muser_iommu_dma_map(struct muser_dev *mudev,
 		goto put_pages;
 
 	ret = muser_process_dma_map(mudev, map->flags);
-	if (ret)
+	if (ret) {
+		muser_dbg("libmuser failed to DMA map iova=%llx vaddr=%llx size=%llx: %d",
+		          map->iova, map->vaddr, map->size, ret);
 		goto put_pages;
+	}
 
 	/* add to the dma_list */
 	mutex_lock(&mudev->dev_lock);
@@ -762,10 +774,10 @@ out:
 }
 
 /* called with mudev.dev_lock held */
-static struct vfio_dma_mapping *__find_dma_map(struct muser_dev *mudev,
+static struct muser_dma_mapping *__find_dma_map(struct muser_dev *mudev,
 					       unsigned long iova)
 {
-	struct vfio_dma_mapping *dma_map;
+	struct muser_dma_mapping *dma_map;
 
 	list_for_each_entry(dma_map, &mudev->dma_list, entry) {
 		if (dma_map->iova == iova)
@@ -779,7 +791,7 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 {
 	int err;
 	unsigned long len;
-	struct vfio_dma_mapping *dma_map;
+	struct muser_dma_mapping *dma_map;
 
 	mutex_lock(&mudev->dev_lock);
 	dma_map = __find_dma_map(mudev, unmap->iova);
@@ -856,7 +868,7 @@ static int register_notifier(struct mdev_device *const mdev)
 
 static int dma_unmap_all(struct muser_dev *mudev)
 {
-	struct vfio_dma_mapping *dma_map;
+	struct muser_dma_mapping *dma_map;
 	unsigned long length;
 	LIST_HEAD(head);
 
@@ -870,13 +882,13 @@ static int dma_unmap_all(struct muser_dev *mudev)
 	mutex_lock(&mudev->dev_lock);
 	while (!list_empty(&mudev->dma_list)) {
 		dma_map = list_first_entry(&mudev->dma_list,
-					   struct vfio_dma_mapping, entry);
+					   struct muser_dma_mapping, entry);
 		list_move(&dma_map->entry, &head);
 	}
 	mutex_unlock(&mudev->dev_lock);
 
 	while (!list_empty(&head)) {
-		dma_map = list_first_entry(&head, struct vfio_dma_mapping,
+		dma_map = list_first_entry(&head, struct muser_dma_mapping,
 					   entry);
 		list_del(&dma_map->entry);
 		length = dma_map->length;
