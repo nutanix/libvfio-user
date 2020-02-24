@@ -472,7 +472,7 @@ static struct page *mudev_page_alloc(struct muser_dev *mudev,
 	struct page *pg;
 	int ret;
 
-	pg = alloc_page(GFP_KERNEL);
+	pg = alloc_page(GFP_HIGHUSER_MOVABLE | __GFP_ZERO);
 	if (unlikely(!pg))
 		return NULL;
 
