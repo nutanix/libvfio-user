@@ -48,7 +48,10 @@ union muser_cmd_mmap {
 	struct {
 		unsigned long addr; /* iova for DMA_MAP, offset for MMAP */
 		unsigned long len;
+		unsigned long offset;
 		unsigned long flags;
+		struct file *file;
+		int fd;
 	} request;
 	unsigned long response;
 };
