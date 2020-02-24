@@ -571,9 +571,10 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
 
-    lm_log(lm_ctx, LM_INF, "adding DMA region %#lx-%#lx\n",
-           cmd->mmap.request.addr,
-           cmd->mmap.request.addr + cmd->mmap.request.len);
+    lm_log(lm_ctx, LM_INF, "adding DMA region fd=%d iova=%#lx-%#lx offset=%#lx\n",
+           cmd->mmap.request.fd, cmd->mmap.request.addr,
+           cmd->mmap.request.addr + cmd->mmap.request.len,
+           cmd->mmap.request.offset);
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
@@ -583,9 +584,11 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     err = dma_controller_add_region(lm_ctx, lm_ctx->dma,
                                     cmd->mmap.request.addr,
                                     cmd->mmap.request.len,
-                                    lm_ctx->fd, 0);
+                                    cmd->mmap.request.fd,
+                                    cmd->mmap.request.offset);
     if (err < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %#lx-%#lx: %d\n",
+        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %d:%#lx-%#lx: %d\n",
+               cmd->mmap.request.fd,
                cmd->mmap.request.addr,
                cmd->mmap.request.addr + cmd->mmap.request.len, err);
     }
@@ -991,16 +994,17 @@ dev_attach(const char *uuid)
 void *
 lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
 {
-    off_t lm_off;
-
     if ((lm_ctx == NULL) || (length == 0) || !PAGE_ALIGNED(offset)) {
+        if (lm_ctx != NULL) {
+            lm_log(lm_ctx, LM_DBG, "bad device mmap region %#lx-%#lx\n",
+                   offset, offset + length);
+        }
         errno = EINVAL;
         return MAP_FAILED;
     }
 
-    lm_off = offset | BIT(63);
     return mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED,
-                lm_ctx->fd, lm_off);
+                lm_ctx->fd, offset);
 }
 
 int
