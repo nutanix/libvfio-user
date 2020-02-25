@@ -555,7 +555,7 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     err = dma_controller_remove_region(lm_ctx->dma,
                                        cmd->mmap.request.addr,
                                        cmd->mmap.request.len,
-                                       lm_ctx->fd);
+                                       cmd->mmap.request.fd);
     if (err != 0) {
         lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx-%#lx: %s\n",
                cmd->mmap.request.addr,

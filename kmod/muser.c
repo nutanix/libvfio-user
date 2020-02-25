@@ -73,7 +73,10 @@ struct muser_dma_mapping {
 	unsigned long		iova;
 	unsigned long		length;
 	unsigned long		offset;
-	struct file		*file;
+	union {
+		struct file	*file; /* only valid while operation is ongoing */
+		int		fd; /* required for unmap */
+	};
 	struct list_head	entry;
 };
 
@@ -560,11 +563,15 @@ static int muser_process_dma_request(struct muser_dev *mudev,
 					.addr = dma_map->iova,
 					.len = dma_map->length,
 					.offset = dma_map->offset,
-					.file = dma_map->file,
 					.flags = flags}
 			}
 		}
 	};
+
+	if (type == MUSER_DMA_MMAP)
+		mucmd.muser_cmd.mmap.request.file = dma_map->file;
+	else if (type == MUSER_DMA_MUNMAP)
+		mucmd.muser_cmd.mmap.request.fd = dma_map->fd;
 
 	err = muser_process_cmd(mudev, &mucmd);
 	if (unlikely(err))
@@ -1466,7 +1473,7 @@ static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
 			if (ret < 0) {
 				return ret;
 			}
-			mucmd->muser_cmd.mmap.request.fd = ret;
+			mudev->dma_map->fd = mucmd->muser_cmd.mmap.request.fd = ret;
 		}
 
 		/* Populate userspace with mucmd. */
