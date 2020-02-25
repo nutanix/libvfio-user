@@ -733,7 +733,8 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 	len = dma_map->length;
 	err = muser_process_dma_unmap(mudev, dma_map);
 	if (unlikely(err))
-		muser_dbg("failed to request libmuser to munmap: %d", err);
+		muser_dbg("failed to request libmuser to munmap iova=%#llx-%#llx: %d",
+		          unmap->iova, unmap->size, err);
 
 	kfree(dma_map);
 
