@@ -538,13 +538,39 @@ do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
     return err;
 }
 
+static void
+get_path_from_fd(lm_ctx_t *lm_ctx, int fd, char *buf)
+{
+    int err;
+    ssize_t ret;
+    char pathname[PATH_MAX];
+
+    err = snprintf(pathname, PATH_MAX, "/proc/self/fd/%d", fd);
+    if (err >= PATH_MAX || err == -1) {
+        buf[0] = '\0';
+    }
+    ret = readlink(pathname, buf, PATH_MAX);
+    if (ret == -1) {
+        lm_log(lm_ctx, LM_DBG, "failed to readlink %s: %m\n", pathname);
+        ret = 0;
+    } else if (ret == PATH_MAX) {
+        lm_log(lm_ctx, LM_DBG, "failed to readlink %s, output truncated\n",
+               pathname);
+        ret -= 1;
+    }
+    buf[ret] = '\0';
+}
+
 static int
 muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
+    char buf[PATH_MAX];
 
-    lm_log(lm_ctx, LM_INF, "removing DMA region %#lx-%#lx\n",
-           cmd->mmap.request.addr,
+    get_path_from_fd(lm_ctx, cmd->mmap.request.fd, buf);
+
+    lm_log(lm_ctx, LM_INF, "removing DMA region fd=%d path=%s %#lx-%#lx\n",
+           cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len);
 
     if (lm_ctx->dma == NULL) {
@@ -557,8 +583,8 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
                                        cmd->mmap.request.len,
                                        cmd->mmap.request.fd);
     if (err != 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx-%#lx: %s\n",
-               cmd->mmap.request.addr,
+        lm_log(lm_ctx, LM_ERR, "failed to remove DMA region fd=%d path=%s %#lx-%#lx: %s\n",
+               cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
                cmd->mmap.request.addr + cmd->mmap.request.len,
                strerror(err));
     }
@@ -570,9 +596,12 @@ static int
 muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int err;
+    char buf[PATH_MAX];
 
-    lm_log(lm_ctx, LM_INF, "adding DMA region fd=%d iova=%#lx-%#lx offset=%#lx\n",
-           cmd->mmap.request.fd, cmd->mmap.request.addr,
+    get_path_from_fd(lm_ctx, cmd->mmap.request.fd, buf);
+
+    lm_log(lm_ctx, LM_INF, "adding DMA region fd=%d path=%s iova=%#lx-%#lx offset=%#lx\n",
+           cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len,
            cmd->mmap.request.offset);
 
@@ -587,9 +616,8 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
                                     cmd->mmap.request.fd,
                                     cmd->mmap.request.offset);
     if (err < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to add DMA region %d:%#lx-%#lx: %d\n",
-               cmd->mmap.request.fd,
-               cmd->mmap.request.addr,
+        lm_log(lm_ctx, LM_ERR, "failed to add DMA region fd=%d path=%s %#lx-%#lx: %d\n",
+               cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
                cmd->mmap.request.addr + cmd->mmap.request.len, err);
     }
 
