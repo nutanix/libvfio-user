@@ -714,9 +714,18 @@ static int muser_iommu_dma_unmap(struct muser_dev *const mudev,
 	mutex_lock(&mudev->dev_lock);
 	dma_map = __find_dma_map(mudev, unmap->iova);
 	if (!dma_map) {
+		/*
+		 * XXX We no longer use vfio_pin_pages() so VFIO doesn't send
+		 * DMA unmap events at all. We've patched vfio_iommu_type1 to
+		 * send DMA unmap events even if we haven't pinned any of the
+		 * pages of a particular region (e.g. the VMA is not
+		 * shareable), so we have to ignore requests for such regions.
+		 * This behaviormight be temprorary, depending on whether or
+		 * not this solution gets accepted. For more information see:
+		 * https://www.redhat.com/archives/vfio-users/2020-February/msg00016.html.
+		 */
 		mutex_unlock(&mudev->dev_lock);
-		muser_dbg("failed to find dma map for iova:%llu\n", unmap->iova);
-		return -EINVAL;
+		return 0;
 	}
 	list_del(&dma_map->entry);
 	mutex_unlock(&mudev->dev_lock);
