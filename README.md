@@ -66,8 +66,8 @@ there can be only one command pending, we plan to allow multiple commands to be
 executed in parallel.
 
 
-Building muser
-==============
+Building and Running muser
+==========================
 
 vfio/mdev needs to be patched:
 
@@ -93,7 +93,10 @@ accordingly.
 To enable Python bindings set the PYTHON_BINDINGS environment variable to a
 non-empty string.
 
-Finally build your program and link it to libmuser.so.
+Build your program and link it to libmuser.so. Finally, insmod muser.ko, create
+the device by echoing the UUID to
+`/sys/class/muser/muser/mdev_supported_types/muser-1/create` and finally run
+your program that provides device emulation. Then you can start QEMU.
 
 Running QEMU
 ============
