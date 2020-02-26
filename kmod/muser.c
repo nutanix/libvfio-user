@@ -30,6 +30,7 @@
 #include <linux/device.h>
 #include <linux/version.h>
 #include <linux/sched/mm.h>
+#include <linux/fdtable.h>
 
 #include "muser.h"
 
@@ -1416,7 +1417,7 @@ static inline int mmap_done(struct mudev_cmd * const mucmd)
 	return ret;
 }
 
-static int fd_install_dma_map(struct file *file)
+static int __fd_install_dma_map(struct file *file)
 {
 	int fd;
 	fd = get_unused_fd_flags(0);
@@ -1427,6 +1428,25 @@ static int fd_install_dma_map(struct file *file)
 	get_file(file);
 	fd_install(fd, file);
 	return fd;
+}
+
+static int find_same_file(const void *p, struct file *file,
+                          unsigned n __attribute__((unused)))
+{
+	return file == (struct file*)p ? n : 0;
+}
+
+static int fd_install_dma_map(struct file *file)
+{
+	int ret;
+
+	ret = iterate_fd(current->files, 0, find_same_file, file);
+	if (!ret || ret == files_fdtable(current->files)->max_fds) {
+		ret = __fd_install_dma_map(file);
+		muser_dbg("%pD: installing new fd=%d", file, ret);
+	} else
+		muser_dbg("%pD: reusing existing fd=%d", file, ret);
+	return ret;
 }
 
 static int do_dev_cmd_wait(struct muser_dev *mudev, unsigned long arg)
