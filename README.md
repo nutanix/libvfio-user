@@ -69,7 +69,7 @@ executed in parallel.
 Building and Running muser
 ==========================
 
-vfio/mdev needs to be patched:
+The _host_ vfio/mdev needs to be patched:
 
 	patch -p1 < muser/patches/vfio.diff
 
