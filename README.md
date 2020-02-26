@@ -98,6 +98,12 @@ the device by echoing the UUID to
 `/sys/class/muser/muser/mdev_supported_types/muser-1/create` and finally run
 your program that provides device emulation. Then you can start QEMU.
 
+To remove the device, first stop QEMU and then your program, and finally tell
+muser to destroy the device as follows:
+```
+# echo 1 > /sys/class/muser/muser/00000000-0000-0000-0000-000000000000/remove
+```
+
 Running QEMU
 ============
 
