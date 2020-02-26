@@ -1446,111 +1446,116 @@ static int fd_install_dma_map(struct file *file)
 	return fd;
 }
 
+static int do_dev_cmd_wait(struct muser_dev *mudev, unsigned long arg)
+{
+	int ret;
+	struct mudev_cmd *mucmd;
+
+	/* Block until a request come from vfio. */
+	ret = wait_event_interruptible(mudev->user_wait_q,
+				       !list_empty(&mudev->cmd_list));
+	if (unlikely(ret)) {
+		muser_dbg("failed to wait for user space: %d", ret);
+		return ret;
+	}
+
+	/* Pick and remove the mucmd from the cmd_list. */
+	mutex_lock(&mudev->dev_lock);
+	WARN_ON(list_empty(&mudev->cmd_list));
+	mucmd = list_first_entry(&mudev->cmd_list, struct mudev_cmd, entry);
+	list_del(&mucmd->entry);
+	mutex_unlock(&mudev->dev_lock);
+
+	/* Keep a reference to mudev_cmd in mudev. */
+	WARN_ON(mudev->mucmd_pending != NULL);
+	mudev->mucmd_pending = mucmd;
+	/* TODO: These WARN_ON()s should really just detach mudev. */
+
+	if (mucmd->muser_cmd.type == MUSER_DMA_MMAP) {
+		ret = fd_install_dma_map(mucmd->muser_cmd.mmap.request.file);
+		if (unlikely(ret < 0))
+			return ret;
+		mudev->dma_map->fd = mucmd->muser_cmd.mmap.request.fd = ret;
+	}
+
+	/* Populate userspace with mucmd. */
+	ret = muser_copyout((void __user *)arg, &mucmd->muser_cmd,
+			    sizeof(struct muser_cmd));
+	if (unlikely(ret))
+		return -EFAULT;
+
+	/* Install FDs on VFIO_SET_IRQS */
+	return maybe_install_fds(mucmd);
+}
+
+static int do_dev_cmd_done(struct muser_dev *mudev, unsigned long arg)
+{
+	int ret;
+	struct mudev_cmd *mucmd;
+	unsigned long offset;
+	int mucmd_err;
+
+	/* This is only called when a command is pending. */
+	if (unlikely(mudev->mucmd_pending == NULL)) {
+		muser_dbg("done but no command pending");
+		return -EINVAL;
+	}
+
+	/* Fetch (and clear) the pending command. */
+	mucmd = mudev->mucmd_pending;
+	mudev->mucmd_pending = NULL;
+
+	/* Fetch response from userspace. */
+	ret = muser_copyin(&mucmd->muser_cmd, (void __user *)arg,
+			   sizeof(struct muser_cmd));
+	if (unlikely(ret))
+		return ret;
+
+	mucmd_err = mucmd->muser_cmd.err;
+	switch (mucmd->type) {
+	case MUSER_IOCTL:
+		offset = offsetof(struct muser_cmd, ioctl);
+		offset += offsetof(struct muser_cmd_ioctl, data);
+		ret = bounce_in(mucmd, (void __user *)(arg + offset));
+		break;
+	case MUSER_MMAP:
+		if (!mucmd_err)
+			ret = mmap_done(mucmd);
+		break;
+	case MUSER_READ:
+		if (unlikely(mucmd_err < 0))
+			muser_alert("read failed: %d", mucmd_err);
+		break;
+	case MUSER_WRITE:
+	case MUSER_DMA_MMAP:
+	case MUSER_DMA_MUNMAP:
+		break;
+	default:
+		muser_alert("bad command %d", mucmd->type);
+		ret = -EINVAL;
+		break;
+	}
+
+	/* Wake up vfio client. */
+	up(&mudev->sem);
+
+	return ret;
+}
+
 static long libmuser_unl_ioctl(struct file *filep, unsigned int cmd,
 			       unsigned long arg)
 {
 	struct muser_dev *mudev = filep->private_data;
-	struct mudev_cmd *mucmd;
-	unsigned long offset;
-	int ret = -EINVAL, mucmd_err;
 
 	WARN_ON(mudev == NULL);
 	switch (cmd) {
 	case MUSER_DEV_CMD_WAIT:
-		/* Block until a request come from vfio. */
-		ret = wait_event_interruptible(mudev->user_wait_q,
-					       !list_empty(&mudev->cmd_list));
-		if (unlikely(ret)) {
-			muser_dbg("failed to wait for user space: %d", ret);
-			goto out;
-		}
-
-		/* Pick and remove the mucmd from the cmd_list. */
-		mutex_lock(&mudev->dev_lock);
-		WARN_ON(list_empty(&mudev->cmd_list));
-		mucmd = list_first_entry(&mudev->cmd_list, struct mudev_cmd,
-					 entry);
-		list_del(&mucmd->entry);
-		mutex_unlock(&mudev->dev_lock);
-
-		/* Keep a reference to mudev_cmd in mudev. */
-		WARN_ON(mudev->mucmd_pending != NULL);
-		mudev->mucmd_pending = mucmd;
-		/* TODO: These WARN_ON()s should really just detach mudev. */
-
-		if (mucmd->muser_cmd.type == MUSER_DMA_MMAP) {
-			ret = fd_install_dma_map(mucmd->muser_cmd.mmap.request.file);
-			if (ret < 0) {
-				return ret;
-			}
-			mudev->dma_map->fd = mucmd->muser_cmd.mmap.request.fd = ret;
-		}
-
-		/* Populate userspace with mucmd. */
-		ret = muser_copyout((void __user *)arg, &mucmd->muser_cmd,
-				    sizeof(struct muser_cmd));
-		if (ret)
-			return -EFAULT;
-
-		/* Install FDs on VFIO_SET_IRQS */
-		ret = maybe_install_fds(mucmd);
-		if (ret)
-			return ret;
-
-		break;
+		return do_dev_cmd_wait(mudev, arg);
 	case MUSER_DEV_CMD_DONE:
-		/* This is only called when a command is pending. */
-		if (mudev->mucmd_pending == NULL) {
-			muser_dbg("done but no command pending");
-			return -EINVAL;
-		}
-
-		/* Fetch (and clear) the pending command. */
-		mucmd = mudev->mucmd_pending;
-		mudev->mucmd_pending = NULL;
-
-		/* Fetch response from userspace. */
-		ret = muser_copyin(&mucmd->muser_cmd, (void __user *)arg,
-				   sizeof(struct muser_cmd));
-		if (ret)
-			goto out;
-
-		mucmd_err = mucmd->muser_cmd.err;
-		switch (mucmd->type) {
-		case MUSER_IOCTL:
-			offset = offsetof(struct muser_cmd, ioctl);
-			offset += offsetof(struct muser_cmd_ioctl, data);
-			ret = bounce_in(mucmd, (void __user *)(arg + offset));
-			break;
-		case MUSER_MMAP:
-			if (!mucmd_err)
-				ret = mmap_done(mucmd);
-			break;
-		case MUSER_READ:
-			if (mucmd_err < 0)
-				muser_alert("read failed: %d", mucmd_err);
-			break;
-		case MUSER_WRITE:
-		case MUSER_DMA_MMAP:
-		case MUSER_DMA_MUNMAP:
-			break;
-		default:
-			muser_alert("bad command %d", mucmd->type);
-			ret = -EINVAL;
-			break;
-		}
-
-		/* Wake up vfio client. */
-		up(&mudev->sem);
-		break;
-
-	default:
-		muser_info("bad ioctl 0x%x", cmd);
-		return -EINVAL;
+		return do_dev_cmd_done(mudev, arg);
 	}
-
-out:
-	return ret;
+	muser_info("bad ioctl 0x%x", cmd);
+	return -EINVAL;
 }
 
 #ifdef CONFIG_COMPAT
