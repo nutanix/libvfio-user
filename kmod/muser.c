@@ -871,6 +871,8 @@ void muser_close(struct mdev_device *mdev)
 	struct muser_dev *mudev = mdev_get_drvdata(mdev);
 	int err;
 
+	muser_dbg("release %pUl", &mudev->uuid);
+
 	err = dma_unmap_all(mudev);
 	if (unlikely(err))
 		muser_alert("failed to remove one or more DMA maps");
@@ -1198,7 +1200,7 @@ static int muser_mmap(struct mdev_device *const mdev,
 	 */
 	if ((vma->vm_flags & ~(VM_READ | VM_WRITE | VM_SHARED | VM_MAYREAD |
 			       VM_MAYWRITE | VM_MAYEXEC | VM_MAYSHARE))) {
-		muser_dbg("bag flags=0x%lx", vma->vm_flags);
+		muser_dbg("bag flags=%#lx", vma->vm_flags);
 		return -EINVAL;
 	}
 
