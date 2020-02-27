@@ -106,8 +106,8 @@ dma_controller_add_region(lm_ctx_t *ctx, dma_controller_t *dma,
                           int fd, off_t offset);
 
 int
-dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
-                             size_t size, int fd);
+dma_controller_remove_region(lm_ctx_t *ctx, dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size, int fd);
 
 // Helper for dma_addr_to_sg() slow path.
 int
@@ -157,7 +157,7 @@ void *
 dma_map_region(dma_memory_region_t *region, int prot,
                size_t offset, size_t len);
 
-void
+int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);
 
 static inline int

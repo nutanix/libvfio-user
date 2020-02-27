@@ -85,17 +85,25 @@ dma_controller_create(int max_regions)
 }
 
 static void
-_dma_controller_do_remove_region(dma_memory_region_t *region)
+_dma_controller_do_remove_region(lm_ctx_t *lm_ctx, dma_memory_region_t *region)
 {
+    int err;
     assert(region);
-    dma_unmap_region(region, region->virt_addr, region->size);
-    (void)close(region->fd);
+    err = dma_unmap_region(region, region->virt_addr, region->size);
+    if (err != 0) {
+        lm_log(lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
+               region->fd, region->virt_addr, region->size);
+    }
+    err = close(region->fd);
+    if (err != 0) {
+        lm_log(lm_ctx, LM_DBG, "failed to close fd=%d\n", region->fd);
+    }
 }
 
 /* FIXME not thread safe */
 int
-dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
-                             size_t size, int fd)
+dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size, int fd)
 {
     int idx;
     dma_memory_region_t *region;
@@ -106,7 +114,7 @@ dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
         region = &dma->regions[idx];
         if (region->dma_addr == dma_addr && region->size == size &&
             fds_are_same_file(region->fd, fd)) {
-            _dma_controller_do_remove_region(region);
+            _dma_controller_do_remove_region(lm_ctx, region);
             if (dma->nregions > 1)
                 memcpy(region, &dma->regions[dma->nregions - 1],
                        sizeof *region);
@@ -130,7 +138,7 @@ dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
         lm_log(ctx, LM_INF, "unmap vaddr=%lx IOVA=%lx\n",
                region->virt_addr, region->dma_addr);
 
-        _dma_controller_do_remove_region(region);
+        _dma_controller_do_remove_region(ctx, region);
     }
 }
 
@@ -259,11 +267,11 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
     return mmap_base + (offset - mmap_offset);
 }
 
-void
+int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
 {
     mmap_round((size_t *)&virt_addr, &len, region->page_size);
-    munmap(virt_addr, len);
+    return munmap(virt_addr, len);
 }
 
 int

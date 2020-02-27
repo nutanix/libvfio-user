@@ -578,7 +578,7 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         return -EINVAL;
     }
 
-    err = dma_controller_remove_region(lm_ctx->dma,
+    err = dma_controller_remove_region(lm_ctx, lm_ctx->dma,
                                        cmd->mmap.request.addr,
                                        cmd->mmap.request.len,
                                        cmd->mmap.request.fd);
