@@ -73,10 +73,8 @@ struct muser_dma_mapping {
 	unsigned long		iova;
 	unsigned long		length;
 	unsigned long		offset;
-	union {
-		struct file	*file; /* only valid while operation is ongoing */
-		int		fd; /* required for unmap */
-	};
+	struct file		*file;
+	int			fd;
 	struct list_head	entry;
 };
 
