@@ -569,7 +569,7 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     get_path_from_fd(lm_ctx, cmd->mmap.request.fd, buf);
 
-    lm_log(lm_ctx, LM_INF, "removing DMA region fd=%d path=%s %#lx-%#lx\n",
+    lm_log(lm_ctx, LM_INF, "removing DMA region fd=%d path=%s iova=%#lx-%#lx\n",
            cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len);
 
