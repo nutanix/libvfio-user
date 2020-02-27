@@ -207,13 +207,7 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
     region->size = size;
     region->page_size = page_size;
     region->offset = offset;
-
-    region->fd = dup(fd);       // dup the fd to get our own private copy
-    if (region->fd < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to duplicate file descriptor: %s\n",
-               strerror(errno));
-        goto err;
-    }
+    region->fd = fd;
 
     region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
                                        0, region->size);
