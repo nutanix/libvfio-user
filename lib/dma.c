@@ -145,6 +145,9 @@ dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
 void
 dma_controller_destroy(lm_ctx_t *lm_ctx, dma_controller_t *dma)
 {
+    if (dma == NULL) {
+        return;
+    }
     dma_controller_remove_regions(lm_ctx, dma);
     free(dma);
 }
