@@ -60,8 +60,8 @@ struct pmcs {
     unsigned int dse:4;
     unsigned int dsc:2;
     unsigned int pmes:1;
-};
-_Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
+} __attribute__((packed));
+_Static_assert(sizeof(struct pc) == 0x2, "bad PMCS size");
 
 struct pmcap {
     struct pid pid;
