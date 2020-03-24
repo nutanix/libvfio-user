@@ -47,12 +47,19 @@
 #include <stdarg.h>
 #include <linux/vfio.h>
 #include <sys/param.h>
+#include <sys/un.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
 
 #include "../kmod/muser.h"
 #include "muser.h"
 #include "muser_priv.h"
 #include "dma.h"
 #include "cap.h"
+
+#define IOMMU_GRP_NAME "iommu_group"
 
 typedef enum {
     IRQ_NONE = 0,
@@ -77,6 +84,160 @@ typedef struct {
     _Static_assert(sizeof(s) - offsetof(s, m) == sizeof(t), \
         #t " " #m " must be last member in " #s)
 
+struct lm_ctx {
+    void                    *pvt;
+    dma_controller_t        *dma;
+    int                     fd;
+    int (*reset)            (void *pvt);
+    lm_log_lvl_t            log_lvl;
+    lm_log_fn_t             *log;
+    lm_pci_info_t           pci_info;
+    lm_pci_config_space_t   *pci_config_space;
+    lm_trans_t              trans;
+    struct caps             *caps;
+    
+    /* LM_TRANS_SOCK */
+    char                    *iommu_dir;
+    int                     iommu_dir_fd;
+
+    lm_irqs_t               irqs; /* XXX must be last */
+} __attribute__((packed)); /* FIXME packed required to make below macro work */
+MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
+
+
+/* function prototypes */
+static int
+muser_dma_map(lm_ctx_t*, struct muser_cmd*);
+
+static int
+muser_dma_unmap(lm_ctx_t*, struct muser_cmd*);
+
+static void
+free_sparse_mmap_areas(lm_reg_info_t*);
+
+static int
+dev_detach(int dev_fd)
+{
+    return close(dev_fd);
+}
+
+static int
+dev_attach(lm_ctx_t *lm_ctx __attribute__((unused)), const char *uuid)
+{
+    char *path;
+    int dev_fd;
+    int err;
+
+    err = asprintf(&path, "/dev/" MUSER_DEVNODE "/%s", uuid);
+    if (err != (int)(strlen(MUSER_DEVNODE) + strlen(uuid) + 6)) {
+        return -1;
+    }
+
+    dev_fd = open(path, O_RDWR);
+
+    free(path);
+
+    return dev_fd;
+}
+
+static int
+get_request_kernel(int fd, struct muser_cmd *cmd)
+{
+    return ioctl(fd, MUSER_DEV_CMD_WAIT, &cmd);
+}
+
+static int
+send_response_kernel(int fd, struct muser_cmd *cmd)
+{
+    return ioctl(fd, MUSER_DEV_CMD_DONE, &cmd);
+}
+
+static int
+open_sock(lm_ctx_t *lm_ctx, const char *uuid)
+{
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    int ret, fd;
+    unsigned long iommu_grp;
+    char *endptr;
+
+    assert(lm_ctx != NULL);
+    assert(uuid != NULL);
+
+    /*
+     * FIXME simplify by creating everything under a temporary directory and
+     * then atomically rename
+     */
+
+    iommu_grp = strtoul(uuid, &endptr, 10);
+    if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        return fd;
+    }
+
+    /* create /dev/vfio */
+    if (mkdir(VFIO_DIR, 0755) == -1 && errno != EEXIST) {
+        return -1;
+    }
+
+    /* create /dev/vfio/<IOMMU group> */
+    if ((ret = asprintf(&lm_ctx->iommu_dir, VFIO_DIR "%lu", iommu_grp)) == -1) {
+        return -1;
+    }
+    if (mkdir(lm_ctx->iommu_dir, 0755) == -1) {
+        return -1;
+    }
+
+    if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
+        return -1;
+    }
+
+    /* crealte symlink /dev/vfio/<IOMMU group>/iommu_group -> ../<IOMMU group> */
+    if ((ret = symlinkat(lm_ctx->iommu_dir, lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME)) == -1) {
+        return -1;
+    }
+
+    /* create control socket */
+    if ((ret = openat(lm_ctx->iommu_dir_fd, MUSER_SOCK, O_WRONLY | O_CREAT)) == -1) {
+        return -1;
+    }
+    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s/" MUSER_SOCK, lm_ctx->iommu_dir);
+    if (ret >= (int)sizeof addr.sun_path) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* start listening business */
+    if ((ret = unlink(addr.sun_path)) == -1 && errno != ENOENT) {
+        return -1;
+    }
+    if ((ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
+        return ret;
+    }
+    if ((ret = listen(fd, 0)) == -1) {
+        return ret;
+    }
+    return accept(fd, NULL, NULL);
+}
+
+static int
+get_request_sock(int fd, struct muser_cmd *cmd)
+{
+    return read(fd, cmd, sizeof *cmd);
+}
+
+static int
+send_response_sock(int fd, struct muser_cmd *cmd)
+{
+    return write(fd, cmd, sizeof *cmd);
+}
+
 static void
 get_path_from_fd(int fd, char *buf)
 {
@@ -97,19 +258,37 @@ get_path_from_fd(int fd, char *buf)
     buf[ret] = '\0';
 }
 
-struct lm_ctx {
-    void                    *pvt;
-    dma_controller_t        *dma;
-    int                     fd;
-    int (*reset)            (void *pvt);
-    lm_log_lvl_t            log_lvl;
-    lm_log_fn_t             *log;
-    lm_pci_info_t           pci_info;
-    lm_pci_config_space_t   *pci_config_space;
-    struct caps             *caps;
-    lm_irqs_t               irqs; /* XXX must be last */
+ssize_t recv_fds_sock(int fd, void *buf, size_t size)
+{
+    ssize_t ret = muser_recv_fds(fd, buf, size / sizeof(int));
+    if (ret < 0) {
+	    return ret;
+    }
+    return ret * sizeof(int);
+}
+
+static struct transport_ops {
+    int (*attach)(lm_ctx_t*, const char*);
+    int(*detach)(int fd);
+    int (*get_request)(int fd, struct muser_cmd*);
+    int (*send_response)(int fd, struct muser_cmd*);
+    ssize_t (*recv_fds)(int fd, void *buf, size_t size);
+} transports_ops[] = {
+    [LM_TRANS_KERNEL] = {
+        .attach = dev_attach,
+        .detach = dev_detach,
+        .recv_fds = read,
+        .get_request = get_request_kernel,
+        .send_response = send_response_kernel
+    },
+    [LM_TRANS_SOCK] = {
+        .attach = open_sock,
+        .detach = close,
+        .recv_fds = recv_fds_sock,
+        .get_request = get_request_sock,
+        .send_response = send_response_sock
+    }
 };
-MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
 
 #define LM2VFIO_IRQT(type) (type - 1)
 
@@ -558,7 +737,56 @@ do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
             return lm_ctx->reset(lm_ctx->pvt);
         }
         lm_log(lm_ctx, LM_DBG, "reset called but not reset function present\n");
+        err = 0;
         break;
+    case VFIO_GROUP_GET_STATUS:
+        cmd_ioctl->data.group_status.flags = VFIO_GROUP_FLAGS_VIABLE;
+        err = 0;
+        break;
+    case VFIO_GET_API_VERSION:
+        cmd_ioctl->data.vfio_api_version = VFIO_API_VERSION;
+        err = 0;
+        break;
+    case VFIO_CHECK_EXTENSION:
+        if (cmd_ioctl->data.vfio_extension == VFIO_TYPE1v2_IOMMU) {
+            err = 0;
+        }
+        break;
+    case VFIO_IOMMU_GET_INFO:
+        cmd_ioctl->data.iommu_type1_info.flags = VFIO_IOMMU_INFO_PGSIZES;
+        cmd_ioctl->data.iommu_type1_info.iova_pgsizes = sysconf(_SC_PAGESIZE);
+        err = 0;
+        break;
+    case VFIO_IOMMU_MAP_DMA:
+        {
+            struct muser_cmd muser_cmd = {
+                .type = MUSER_DMA_MMAP,
+                .mmap.request.fd = *((int*)data),
+                .mmap.request.addr = cmd_ioctl->data.dma_map.iova,
+                .mmap.request.len = cmd_ioctl->data.dma_map.size,
+                .mmap.request.offset = cmd_ioctl->data.dma_map.vaddr
+            };
+            err = muser_dma_map(lm_ctx, &muser_cmd);
+        }
+        break;
+    case VFIO_IOMMU_UNMAP_DMA:
+        {
+            struct muser_cmd muser_cmd = {
+                .type = MUSER_DMA_MUNMAP,
+                .mmap.request.addr = cmd_ioctl->data.dma_unmap.iova,
+                .mmap.request.len = cmd_ioctl->data.dma_unmap.size
+            };
+            err = muser_dma_unmap(lm_ctx, &muser_cmd);
+        }
+        break;
+        /* FIXME */
+    case VFIO_GROUP_SET_CONTAINER:
+    case VFIO_GROUP_UNSET_CONTAINER:
+    case VFIO_SET_IOMMU:
+        err = 0;
+        break;
+    default:
+        lm_log(lm_ctx, LM_ERR, "bad comamnd %d", cmd_ioctl->vfio_cmd);
     }
 
     return err;
@@ -618,13 +846,98 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         lm_log(lm_ctx, LM_ERR, "failed to add DMA region fd=%d path=%s %#lx-%#lx: %d\n",
                cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
                cmd->mmap.request.addr + cmd->mmap.request.len, err);
+    } else {
+        err = 0;
     }
 
-    return 0;
+    return err;
+}
+
+int
+muser_send_fds(int sock, int *fds, size_t count) {
+	struct msghdr msg = { 0 };
+	size_t size = count * sizeof *fds;
+	char buf[CMSG_SPACE(size)];
+	memset(buf, '\0', sizeof(buf));
+
+	/* XXX requires at least one byte */
+	struct iovec io = { .iov_base = "\0", .iov_len = 1 };
+
+	msg.msg_iov = &io;
+	msg.msg_iovlen = 1;
+	msg.msg_control = buf;
+	msg.msg_controllen = sizeof(buf);
+
+	struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	cmsg->cmsg_len = CMSG_LEN(size);
+	memcpy(CMSG_DATA(cmsg), fds, size);
+	msg.msg_controllen = CMSG_SPACE(size);
+	return sendmsg(sock, &msg, 0);
+}
+
+ssize_t
+muser_recv_fds(int sock, int *fds, size_t count)
+{
+    int ret;
+    struct cmsghdr *cmsg;
+    size_t fds_size;
+    char msg_buf[sysconf(_SC_PAGESIZE)];
+    struct iovec io = {.iov_base = msg_buf, .iov_len = sizeof(msg_buf)};
+    char cmsg_buf[sysconf(_SC_PAGESIZE)];
+    struct msghdr msg = {
+        .msg_iov = &io,
+        .msg_iovlen = 1,
+        .msg_control = cmsg_buf,
+        .msg_controllen = sizeof(cmsg_buf)
+    };
+
+    if (fds == NULL || count <= 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ret = recvmsg(sock, &msg, 0);
+    if (ret == -1) {
+        return ret;
+    }
+
+    cmsg = CMSG_FIRSTHDR(&msg);
+    if (cmsg == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    fds_size = cmsg->cmsg_len - sizeof *cmsg;
+    if ((fds_size % sizeof(int)) != 0 || fds_size / sizeof (int) > count) {
+        errno = EINVAL;
+        return -1;
+    }
+    memcpy((void*)fds, CMSG_DATA(cmsg), cmsg->cmsg_len - sizeof *cmsg);
+
+    return fds_size / sizeof(int);
 }
 
 /*
  * Callback that is executed when device memory is to be mmap'd.
+ *
+ * TODO vfio-over-socket: each PCI region can be sparsely memory mapped, so
+ * there can be multiple mapped regions per PCI region. We need to make these
+ * mapped regions persistent. One way would be to store each sparse region as
+ * an individual file named after the memory range, e.g.
+ * /dev/shm/muser/<UUID>/<region>/<offset>-<length> (the <region> can be <bar0>,
+ * <rom> etc.).
+ *
+ * Another way would be to create one file per PCI region and then
+ * tell libvfio which offset of each file corresponds to each region. The
+ * mapping between sparse regions and file offsets can be 1:1, so there can be
+ * large gaps in file which should be fine since it will be sparsely allocated.
+ * Alternatively, each sparse region can be put right next to each other so
+ * we'll need some kind of translation.
+ *
+ * However this functionality is implemented, it must be provided by libmuser.
+ * For now we don't do anything (except for receiving the file descriptors)
+ * and leave it to the device implementation to handle.
  */
 static int
 muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
@@ -654,6 +967,16 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         goto out;
     }
     cmd->mmap.response = addr;
+
+    /* FIXME */
+    if (lm_ctx->trans == LM_TRANS_SOCK) {
+        err = muser_send_fds(lm_ctx->fd, (int*)&addr, 1);
+	    if (err == -1) {
+		    lm_log(lm_ctx, LM_ERR, "failed to send fd=%d: %d, %m\n",
+                   *((int*)&addr), err);
+        }
+	    err = 0;
+    }
 
 out:
     if (err != 0) {
@@ -837,10 +1160,8 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
         return -1;
     }
 
-#ifndef LM_TERSE_LOGGING
-    lm_log(lm_ctx, LM_DBG, "%s %x@%lx\n", is_write ? "W" : "R", cmd->rw.count,
-           cmd->rw.pos);
-#endif
+    lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx\n", is_write ? "W" : "R", cmd->rw.pos,
+           cmd->rw.pos + cmd->rw.count);
 
     /* copy data to be written from kernel to user space */
     if (is_write) {
@@ -898,10 +1219,12 @@ muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
     void *data = NULL;
     size_t size = 0;
     int ret;
+    uint32_t flags;
 
     /* TODO make this a function that returns the size */
-    if (cmd->ioctl.vfio_cmd == VFIO_DEVICE_SET_IRQS) {
-        uint32_t flags = cmd->ioctl.data.irq_set.flags;
+    switch (cmd->ioctl.vfio_cmd) {
+    case VFIO_DEVICE_SET_IRQS:
+        flags = cmd->ioctl.data.irq_set.flags;
         switch ((flags & VFIO_IRQ_SET_DATA_TYPE_MASK)) {
         case VFIO_IRQ_SET_DATA_EVENTFD:
             size = sizeof(int32_t) * cmd->ioctl.data.irq_set.count;
@@ -910,23 +1233,27 @@ muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
             size = sizeof(uint8_t) * cmd->ioctl.data.irq_set.count;
             break;
         }
+        break;
+    case VFIO_IOMMU_MAP_DMA:
+        size = sizeof(int);
+        break;
     }
 
     if (size != 0) {
-        data = calloc(1, size);
+        data = calloc(1, size); /* TODO use alloca */
         if (data == NULL) {
 #ifdef DEBUG
             perror("calloc");
 #endif
             return -1;
         }
-
-        ret = read(lm_ctx->fd, data, size);
+        ret = transports_ops[lm_ctx->trans].recv_fds(lm_ctx->fd, data, size);
         if (ret < 0) {
-#ifdef DEBUG
-            perror("read failed");
-#endif
             goto out;
+        }
+        if (ret != (int)size) {
+            lm_log(lm_ctx, LM_ERR, "short read for fds\n");
+            return -EINVAL;
         }
     }
 
@@ -945,9 +1272,14 @@ drive_loop(lm_ctx_t *lm_ctx)
     int err;
 
     do {
-        err = ioctl(lm_ctx->fd, MUSER_DEV_CMD_WAIT, &cmd);
+        err = transports_ops[lm_ctx->trans].get_request(lm_ctx->fd, &cmd);
         if (err < 0) {
+            lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
             return err;
+        }
+        if (err == 0) {
+            lm_log(lm_ctx, LM_INF, "end of file: %m\n");
+            break;
         }
 
         switch (cmd.type) {
@@ -969,10 +1301,14 @@ drive_loop(lm_ctx_t *lm_ctx)
             break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d\n", cmd.type);
-            continue;
+            /*
+             * TODO should respond with something here instead of ignoring the
+             * command.
+             */
+            err = -EINVAL;
         }
         cmd.err = err;
-        err = ioctl(lm_ctx->fd, MUSER_DEV_CMD_DONE, &cmd);
+        err = transports_ops[lm_ctx->trans].send_response(lm_ctx->fd, &cmd);
         if (err < 0) {
             lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
                    strerror(errno));
@@ -994,31 +1330,7 @@ lm_ctx_drive(lm_ctx_t *lm_ctx)
     return drive_loop(lm_ctx);
 }
 
-static int
-dev_detach(int dev_fd)
-{
-    return close(dev_fd);
-}
-
-static int
-dev_attach(const char *uuid)
-{
-    char *path;
-    int dev_fd;
-    int err;
-
-    err = asprintf(&path, "/dev/" MUSER_DEVNODE "/%s", uuid);
-    if (err != (int)(strlen(MUSER_DEVNODE) + strlen(uuid) + 6)) {
-        return -1;
-    }
-
-    dev_fd = open(path, O_RDWR);
-
-    free(path);
-
-    return dev_fd;
-}
-
+/* FIXME this is not enough anymore, check muser_mmap */
 void *
 lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
 {
@@ -1076,11 +1388,40 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
         return;
     }
 
+    /*
+     * FIXME The following cleanup can be dangerous depending on how lm_ctx_destroy
+     * is called since it might delete files it did not create. Improve by
+     * acquiring a lock on the directory.
+     */
+    if (lm_ctx->trans == LM_TRANS_SOCK) {
+        int ret;
+
+        if (lm_ctx->iommu_dir_fd != -1) {
+            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME, 0)) == -1 && errno != ENOENT) {
+                lm_log(lm_ctx, LM_DBG, "failed to remove " IOMMU_GRP_NAME ": %m\n");
+            }
+            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, MUSER_SOCK, 0)) == -1 && errno != ENOENT) {
+                lm_log(lm_ctx, LM_DBG, "failed to remove " MUSER_SOCK ": %m\n");
+            }
+            if (close(lm_ctx->iommu_dir_fd) == -1) {
+                lm_log(lm_ctx, LM_DBG, "failed to close IOMMU dir fd %d: %m\n",
+                       lm_ctx->iommu_dir_fd);
+            }
+        }
+        if (lm_ctx->iommu_dir != NULL) {
+            if ((ret = rmdir(lm_ctx->iommu_dir)) == -1 && errno != ENOENT) {
+                lm_log(lm_ctx, LM_DBG, "failed to remove %s: %m\n", lm_ctx->iommu_dir);
+            }
+            free(lm_ctx->iommu_dir);
+        }
+    }
+
     free(lm_ctx->pci_config_space);
-    dev_detach(lm_ctx->fd);
+    transports_ops[lm_ctx->trans].detach(lm_ctx->fd);
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx, lm_ctx->dma);
     }
+    free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
@@ -1203,6 +1544,11 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
 
+    if (dev_info->trans < 0 || dev_info->trans >= LM_TRANS_MAX) {
+            errno = EINVAL;
+            return NULL;
+    }
+
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
      * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
@@ -1221,6 +1567,9 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     if (lm_ctx == NULL) {
         return NULL;
     }
+    lm_ctx->trans = dev_info->trans;
+
+    lm_ctx->iommu_dir_fd = -1;
 
     // Set context irq information.
     for (i = 0; i < max_ivs; i++) {
@@ -1254,9 +1603,12 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     // Attach to the muser control device.
-    lm_ctx->fd = dev_attach(dev_info->uuid);
+    lm_ctx->fd = transports_ops[dev_info->trans].attach(lm_ctx, dev_info->uuid);
     if (lm_ctx->fd == -1) {
         err = errno;
+        if (errno != EINTR) {
+            lm_log(lm_ctx, LM_ERR, "failed to attach: %m\n");
+        }
         goto out;
     }
 
@@ -1271,7 +1623,7 @@ out:
     if (err) {
         if (lm_ctx) {
             dma_controller_destroy(lm_ctx, lm_ctx->dma);
-            dev_detach(lm_ctx->fd);
+            transports_ops[dev_info->trans].detach(lm_ctx->fd);
             free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
             free(lm_ctx->pci_config_space);
             free(lm_ctx);

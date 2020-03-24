@@ -1046,37 +1046,6 @@ err:
 	return ret;
 }
 
-static ssize_t get_minsz(unsigned int cmd)
-{
-	switch (cmd) {
-	case VFIO_DEVICE_GET_INFO:
-		return offsetofend(struct vfio_device_info, num_irqs);
-	case VFIO_DEVICE_GET_REGION_INFO:
-		return offsetofend(struct vfio_region_info, offset);
-	case VFIO_DEVICE_GET_IRQ_INFO:
-		return offsetofend(struct vfio_irq_info, count);
-	case VFIO_DEVICE_SET_IRQS:
-		return offsetofend(struct vfio_irq_set, count);
-	}
-	return -EOPNOTSUPP;
-}
-
-static ssize_t get_argsz(unsigned int cmd, struct mudev_cmd *mucmd)
-{
-	switch (cmd) {
-	case VFIO_DEVICE_GET_INFO:
-		return mucmd->muser_cmd.ioctl.data.dev_info.argsz;
-	case VFIO_DEVICE_GET_REGION_INFO:
-		return mucmd->muser_cmd.ioctl.data.reg_info.argsz;
-	case VFIO_DEVICE_GET_IRQ_INFO:
-		return mucmd->muser_cmd.ioctl.data.irq_info.argsz;
-	case VFIO_DEVICE_SET_IRQS:
-		return mucmd->muser_cmd.ioctl.data.irq_set.argsz;
-	}
-
-	return -EOPNOTSUPP;
-}
-
 static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 				 unsigned long arg)
 {
@@ -1095,7 +1064,7 @@ static int muser_ioctl_setup_cmd(struct mudev_cmd *mucmd, unsigned int cmd,
 		return err;
 
 	/* Fetch argsz provided by caller. */
-	argsz = get_argsz(cmd, mucmd);
+	argsz = get_argsz(cmd, &mucmd->muser_cmd);
 	if (argsz < 0)
 		return argsz;
 

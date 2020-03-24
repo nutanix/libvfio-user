@@ -36,8 +36,15 @@
 #include <stdio.h>
 #include <err.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "../lib/muser.h"
+
+static void
+_log(void *pvt, char const *msg)
+{
+    fprintf(stderr, "gpio: %s", msg);
+}
 
 ssize_t
 bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
@@ -51,15 +58,34 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
     return count;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
     int ret;
+    bool trans_sock = false, verbose = false;
+    char opt;
 
-    if (argc != 2) {
+    while ((opt = getopt(argc, argv, "sv")) != -1) {
+        switch (opt) {
+            case 's':
+                trans_sock = true;
+                break;
+            case 'v':
+                verbose = true;
+                break;
+            default: /* '?' */
+                fprintf(stderr, "Usage: %s [-s] [-d] UUID\n", argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind >= argc) {
         err(EXIT_FAILURE, "missing MUSER device UUID");
     }
 
     lm_dev_info_t dev_info = {
+        .trans = trans_sock ? LM_TRANS_SOCK : LM_TRANS_KERNEL,
+        .log = verbose ? _log : NULL,
+        .log_lvl = LM_DBG,
         .pci_info = {
             .id = {.vid = 0x494F, .did = 0x0DC8 },
             .reg_info[LM_DEV_BAR2_REG_IDX] = {
@@ -69,7 +95,7 @@ int main(int argc, char **argv)
             },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
-        .uuid = argv[1],
+        .uuid = argv[optind],
     };
 
     ret = lm_ctx_run(&dev_info);

@@ -50,6 +50,12 @@
 #define LM_TERSE_LOGGING 0
 #endif
 
+#define VFIO_NAME       "vfio"
+#define VFIO_DIR        "/dev/" VFIO_NAME "/"
+#define VFIO_CONTAINER  VFIO_DIR "/" VFIO_NAME
+
+#define MUSER_SOCK "cntrl"
+
 typedef uint64_t dma_addr_t;
 
 typedef struct {
@@ -149,7 +155,9 @@ enum {
     LM_DEV_INTX_IRQ_IDX,
     LM_DEV_MSI_IRQ_IDX,
     LM_DEV_MSIX_IRQ_IDX,
-    LM_DEV_NUM_IRQS = 3
+    LM_DEV_ERR_IRQ_INDEX,
+    LM_DEV_REQ_IRQ_INDEX,
+    LM_DEV_NUM_IRQS
 };
 
 enum {
@@ -247,6 +255,12 @@ typedef struct {
     lm_cap_access_t *fn;
 } lm_cap_t;
 
+typedef enum {
+    LM_TRANS_KERNEL,
+    LM_TRANS_SOCK,
+    LM_TRANS_MAX
+} lm_trans_t;
+
 #define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
 /**
@@ -297,6 +311,8 @@ typedef struct {
      * Number of capabilities in above array.
      */
     int             nr_caps;
+
+    lm_trans_t      trans;
 } lm_dev_info_t;
 
 /**
@@ -435,6 +451,10 @@ lm_get_region(loff_t pos, size_t count, loff_t *off);
  */
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
+
+/* FIXME */
+int muser_send_fds(int sock, int *fds, size_t count);
+ssize_t muser_recv_fds(int sock, int *fds, size_t count);
 
 #endif /* LIB_MUSER_H */
 

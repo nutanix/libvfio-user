@@ -2,8 +2,6 @@
 # Copyright (c) 2019 Nutanix Inc. All rights reserved.
 #
 # Authors: Thanos Makatos <thanos@nutanix.com>
-#          Swapnil Ingle <swapnil.ingle@nutanix.com>
-#          Felipe Franciosi <felipe@nutanix.com>
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -28,18 +26,10 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-cmake_minimum_required (VERSION 2.6)
-project(muser)
-include(GNUInstallDirs)
-
-# shared libraries
-add_subdirectory(lib)
-add_subdirectory(libpathtrap)
-add_subdirectory(libvfio)
-
-# kernel module
-add_subdirectory(kmod)
-
-# samples
-add_subdirectory(samples)
-
+add_library(vfio SHARED
+    ../libpathtrap/libpathtrap.h
+    ../libpathtrap/vma_addr.h
+    libvfio.c
+)
+target_link_libraries(vfio muser dl ${CMAKE_BINARY_DIR}/libpathtrap/libpathtrap.a)
+set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -ldl")

@@ -1,0 +1,3 @@
+[submodule "libpathtrap"]
+	path = libpathtrap
+	url = git@github.com:tmakatos/libpathtrap.git
