@@ -103,7 +103,7 @@ _dma_controller_do_remove_region(lm_ctx_t *lm_ctx, dma_memory_region_t *region)
 /* FIXME not thread safe */
 int
 dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size, int fd)
+                             dma_addr_t dma_addr, size_t size)
 {
     int idx;
     dma_memory_region_t *region;
@@ -112,8 +112,7 @@ dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
-        if (region->dma_addr == dma_addr && region->size == size &&
-            fds_are_same_file(region->fd, fd)) {
+        if (region->dma_addr == dma_addr && region->size == size) {
             _dma_controller_do_remove_region(lm_ctx, region);
             if (dma->nregions > 1)
                 memcpy(region, &dma->regions[dma->nregions - 1],

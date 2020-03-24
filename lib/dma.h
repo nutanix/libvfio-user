@@ -107,7 +107,7 @@ dma_controller_add_region(lm_ctx_t *ctx, dma_controller_t *dma,
 
 int
 dma_controller_remove_region(lm_ctx_t *ctx, dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size, int fd);
+                             dma_addr_t dma_addr, size_t size);
 
 // Helper for dma_addr_to_sg() slow path.
 int
