@@ -52,7 +52,7 @@ muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
     lm_reg_info_t *reg_info = lm_get_region_info(lm_ctx);
     lm_pci_hdr_t *hdr;
 
-    assert(lm_ctx);
+    assert(lm_ctx != NULL);
 
     if (reg_info[bar_index].size == 0) {
         return;
@@ -86,15 +86,15 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
 {
     uint16_t v;
 
-    assert(ctx);
+    assert(ctx != NULL);
 
     if (count != 2) {
         lm_log(ctx, LM_ERR, "bad write command size %d\n", count);
         return -EINVAL;
     }
 
-    assert(pci);
-    assert(buf);
+    assert(pci != NULL);
+    assert(buf != NULL);
 
     v = *(uint16_t*)buf;
 
@@ -163,7 +163,7 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
         }
     }
 
-    if (v) {
+    if (v != 0) {
         lm_log(ctx, LM_ERR, "unconsumed command flags %x\n", v);
         return -EINVAL;
     }
@@ -177,8 +177,8 @@ handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
 {
     uint32_t v;
 
-    assert(ctx);
-    assert(pci);
+    assert(ctx != NULL);
+    assert(pci != NULL);
 
     if (count != 0x4) {
         lm_log(ctx, LM_ERR, "bad EROM count %d\n", count);
@@ -207,8 +207,8 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
     lm_pci_config_space_t *pci;
     int ret = 0;
 
-    assert(lm_ctx);
-    assert(buf);
+    assert(lm_ctx != NULL);
+    assert(buf != NULL);
 
     pci = lm_get_pci_config_space(lm_ctx);
 
@@ -271,10 +271,10 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
     loff_t _pos;
     int err = 0;
 
-    assert(lm_ctx);
-    assert(count);
-    assert(pos);
-    assert(buf);
+    assert(lm_ctx != NULL);
+    assert(count != NULL);
+    assert(pos != NULL);
+    assert(buf != NULL);
 
     _pos = *pos - region_to_offset(LM_DEV_CFG_REG_IDX);
     _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
@@ -301,9 +301,9 @@ muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
                      loff_t *pos, bool is_write,
                      char *buf)
 {
-    assert(lm_ctx);
-    assert(count);
-    assert(pos);
+    assert(lm_ctx != NULL);
+    assert(count != NULL);
+    assert(pos != NULL);
 
     if (!muser_is_pci_hdr_access(*pos)) {
         return 0;
