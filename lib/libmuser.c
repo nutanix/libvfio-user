@@ -388,7 +388,8 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info->argsz < sizeof(struct vfio_irq_info)) ||
         (irq_info->index >= LM_DEV_NUM_IRQS)) {
-        lm_log(lm_ctx, LM_DBG, "bad irq_info\n");
+        lm_log(lm_ctx, LM_DBG, "bad irq_info (size=%d index=%d)\n",
+               irq_info->argsz, irq_info->index);
         return -EINVAL;
     }
 
@@ -415,8 +416,10 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     size_t size;
     ssize_t ret;
 
-    if (lm_reg->mmap_areas == NULL)
+    if (lm_reg->mmap_areas == NULL) {
+        lm_log(lm_ctx, LM_DBG, "bad mmap_areas\n");
         return -EINVAL;
+    }
 
     nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
     size = sizeof(*sparse) + (nr_mmap_areas * sizeof(*sparse->areas));
@@ -428,6 +431,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
      */
 
     if (vfio_reg->argsz < size + sizeof(*vfio_reg)) {
+        lm_log(lm_ctx, LM_DBG, "vfio_reg too small=%d\n", vfio_reg->argsz);
         vfio_reg->argsz = size + sizeof(*vfio_reg);
         vfio_reg->cap_offset = 0;
         return 0;
@@ -491,6 +495,8 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((vfio_reg->argsz < sizeof(struct vfio_region_info)) ||
         (vfio_reg->index >= LM_DEV_NUM_REGS)) {
+        lm_log(lm_ctx, LM_DBG, "bad args argsz=%d index=%d\n", vfio_reg->argsz,
+               vfio_reg->index);
         return -EINVAL;
     }
 
@@ -858,7 +864,8 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
     cmd->err = muser_pci_hdr_access(lm_ctx, &_count, &cmd->rw.pos,
                                     is_write, rwbuf);
     if (cmd->err) {
-        lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %d\n", cmd->err);
+        lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %s\n",
+               strerror(-cmd->err));
 #ifndef LM_TERSE_LOGGING
         dump_buffer(lm_ctx, "buffer write", rwbuf, _count);
 #endif
