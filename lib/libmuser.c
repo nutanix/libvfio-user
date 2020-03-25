@@ -1636,13 +1636,9 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
 out:
-    if (err) {
-        if (lm_ctx) {
-            dma_controller_destroy(lm_ctx, lm_ctx->dma);
-            transports_ops[dev_info->trans].detach(lm_ctx->fd);
-            free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
-            free(lm_ctx->pci_config_space);
-            free(lm_ctx);
+    if (err != 0) {
+        if (lm_ctx != NULL) {
+            lm_ctx_destroy(lm_ctx);
             lm_ctx = NULL;
         }
         errno = err;
