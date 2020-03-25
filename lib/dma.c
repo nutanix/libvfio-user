@@ -94,9 +94,10 @@ _dma_controller_do_remove_region(lm_ctx_t *lm_ctx, dma_memory_region_t *region)
         lm_log(lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
                region->fd, region->virt_addr, region->size);
     }
-    err = close(region->fd);
-    if (err != 0) {
-        lm_log(lm_ctx, LM_DBG, "failed to close fd=%d\n", region->fd);
+    if (region->fd != -1) {
+        if (close(region->fd) == -1) {
+            lm_log(lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
+        }
     }
 }
 
@@ -224,7 +225,11 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
     if (region->virt_addr == MAP_FAILED) {
         lm_log(lm_ctx, LM_ERR, "failed to memory map DMA region %lx-%lx: %s\n",
                dma_addr, dma_addr + size, strerror(errno));
-        close(region->fd);
+        if (region->fd != -1) {
+            if (close(region->fd) == -1) {
+                lm_log(lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
+            }
+        }
         goto err;
     }
     dma->nregions++;

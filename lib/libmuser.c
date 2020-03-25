@@ -118,7 +118,12 @@ free_sparse_mmap_areas(lm_reg_info_t*);
 static int
 dev_detach(int dev_fd)
 {
-    return close(dev_fd);
+    int ret = 0;
+
+    if (dev_fd != -1) {
+        ret = close(dev_fd);
+    }
+    return ret;
 }
 
 static int
@@ -342,7 +347,10 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
         lm_ctx->irqs.type = IRQ_NONE;
         for (i = 0; i < lm_ctx->irqs.max_ivs; i++) {
             if (lm_ctx->irqs.efds[i] >= 0) {
-                (void)close(lm_ctx->irqs.efds[i]);
+                if (close(lm_ctx->irqs.efds[i]) == -1) {
+                    lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n",
+                           lm_ctx->irqs.efds[i]);
+                }
                 lm_ctx->irqs.efds[i] = -1;
             }
         }
@@ -356,8 +364,13 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
     }
 
     if (irq_efd != NULL) {
-        (void)close(*irq_efd);
-        *irq_efd = -1;
+        if (*irq_efd != -1) {
+            if (close(*irq_efd) == -1) {
+                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n",
+                       *irq_efd);
+            }
+            *irq_efd = -1;
+        }
         return 0;
     }
 
@@ -427,7 +440,10 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
          i++, d32++) {
         efd = lm_ctx->irqs.efds[i];
         if (efd >= 0) {
-            (void) close(efd);
+            if (close(efd) == -1) {
+                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n", efd);
+            }
+
             lm_ctx->irqs.efds[i] = -1;
         }
         if (*d32 >= 0) {
