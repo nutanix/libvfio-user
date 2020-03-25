@@ -37,6 +37,9 @@
 #include <err.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <signal.h>
+#include <errno.h>
 
 #include "../lib/muser.h"
 
@@ -58,11 +61,17 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
     return count;
 }
 
+static void _sa_handler(int signum __attribute__((unused)))
+{
+}
+
 int main(int argc, char *argv[])
 {
     int ret;
     bool trans_sock = false, verbose = false;
     char opt;
+    struct sigaction act = {.sa_handler = _sa_handler};
+    lm_ctx_t *lm_ctx;
 
     while ((opt = getopt(argc, argv, "sv")) != -1) {
         switch (opt) {
@@ -98,10 +107,25 @@ int main(int argc, char *argv[])
         .uuid = argv[optind],
     };
 
-    ret = lm_ctx_run(&dev_info);
-    if (ret != 0) {
+    sigemptyset(&act.sa_mask);
+    if (sigaction(SIGINT, &act, NULL) == -1) {
+        fprintf(stderr, "warning: failed to register signal handler: %m\n");
+    }
+
+    lm_ctx = lm_ctx_create(&dev_info);
+    if (lm_ctx == NULL) {
+        if (errno == EINTR) {
+            goto out;
+        }
+        fprintf(stderr, "failed to initialize device emulation: %m\n");
+        return -1;
+    }
+    ret = lm_ctx_drive(lm_ctx);
+    if (ret != 0 && errno != EINTR) {
         fprintf(stderr, "failed to realize device emulation: %m\n");
     }
+out:
+    lm_ctx_destroy(lm_ctx);
     return ret;
 }
 
