@@ -118,6 +118,7 @@ lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...)
 {
     va_list ap;
     char buf[BUFSIZ];
+    int _errno = errno;
 
     assert(lm_ctx != NULL);
 
@@ -129,6 +130,7 @@ lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...)
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     lm_ctx->log(lm_ctx->pvt, buf);
+    errno = _errno;
 }
 
 static const char *
@@ -198,9 +200,8 @@ irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                ret = -errno;
                 lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to none: %m\n");
-                return ret;
+                return -errno;
             }
         }
     }
@@ -226,9 +227,8 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                ret = -errno;
                 lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to bool: %m\n");
-                return ret;
+                return -errno;
             }
         }
     }
