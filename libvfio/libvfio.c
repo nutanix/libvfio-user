@@ -35,9 +35,6 @@
 #include <linux/vfio.h>
 #include <string.h>
 #include <stdio.h>
-#include <linux/muser.h>
-#include <muser/muser.h>
-#include <muser/pci.h>
 #include <sys/socket.h>
 #include <stdlib.h>
 #include <sys/syscall.h>
@@ -46,6 +43,8 @@
 #include <sys/mman.h>
 #include <dlfcn.h>
 
+#include "../kmod/muser.h"
+#include "../lib/muser.h"
 #include "../libpathtrap/libpathtrap.h"
 #include "../libpathtrap/vma_addr.h"
 
@@ -57,10 +56,6 @@
 #else
 #define debug(fmt, ...)
 #endif
-
-#define VFIO_NAME	"vfio"
-#define VFIO_DIR	"/dev/" VFIO_NAME "/"
-#define VFIO_CONTAINER 	VFIO_DIR "/" VFIO_NAME
 
 static int sock = -1;
 

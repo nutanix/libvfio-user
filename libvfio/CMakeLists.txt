@@ -27,6 +27,8 @@
 #
 
 add_library(vfio SHARED
+    ../kmod/muser.h
+    ../lib/muser.h
     ../libpathtrap/libpathtrap.h
     ../libpathtrap/vma_addr.h
     libvfio.c
