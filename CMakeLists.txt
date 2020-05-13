@@ -38,7 +38,7 @@ add_subdirectory(libpathtrap)
 add_subdirectory(libvfio)
 
 # kernel module
-add_subdirectory(kmod)
+#add_subdirectory(kmod)
 
 # samples
 add_subdirectory(samples)
