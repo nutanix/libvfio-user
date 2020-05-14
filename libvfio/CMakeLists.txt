@@ -35,3 +35,5 @@ add_library(vfio SHARED
 )
 target_link_libraries(vfio muser dl ${CMAKE_BINARY_DIR}/libpathtrap/libpathtrap.a)
 set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -ldl")
+install(TARGETS vfio
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
