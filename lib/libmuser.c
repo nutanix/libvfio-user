@@ -184,12 +184,12 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     }
 
     /* create /dev/vfio */
-    if (mkdir(VFIO_DIR, 0755) == -1 && errno != EEXIST) {
+    if (mkdir(MUSER_DIR, 0755) == -1 && errno != EEXIST) {
         return -1;
     }
 
     /* create /dev/vfio/<IOMMU group> */
-    if ((ret = asprintf(&lm_ctx->iommu_dir, VFIO_DIR "%lu", iommu_grp)) == -1) {
+    if ((ret = asprintf(&lm_ctx->iommu_dir, MUSER_DIR "%lu", iommu_grp)) == -1) {
         return -1;
     }
     if (mkdir(lm_ctx->iommu_dir, 0755) == -1) {

@@ -222,7 +222,7 @@ static int open_sock(struct vfio_fd *vfio_fd) {
 	assert(vfio_fd);
 
 	ret = snprintf(addr.sun_path, sizeof addr.sun_path,
-	               VFIO_DIR "%lu/" MUSER_SOCK, vfio_fd->iommu_grp);
+	               MUSER_DIR "%lu/" MUSER_SOCK, vfio_fd->iommu_grp);
 
 	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		debug("failed to open socket: %m\n");

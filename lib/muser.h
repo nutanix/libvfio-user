@@ -54,6 +54,7 @@
 #define VFIO_DIR        "/dev/" VFIO_NAME "/"
 #define VFIO_CONTAINER  VFIO_DIR "/" VFIO_NAME
 
+#define MUSER_DIR "/var/run/muser/"
 #define MUSER_SOCK "cntrl"
 
 typedef uint64_t dma_addr_t;
