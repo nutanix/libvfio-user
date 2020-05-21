@@ -164,6 +164,7 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     int ret, fd;
     unsigned long iommu_grp;
     char *endptr;
+    mode_t mode;
 
     assert(lm_ctx != NULL);
     assert(uuid != NULL);
@@ -183,8 +184,10 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
         return fd;
     }
 
-    /* create /dev/vfio */
-    if (mkdir(MUSER_DIR, 0755) == -1 && errno != EEXIST) {
+    /* FIXME SPDK can't easily run as non-root */
+    mode =  umask(0000);
+
+    if (mkdir(MUSER_DIR, 0777) == -1 && errno != EEXIST) {
         return -1;
     }
 
@@ -192,7 +195,7 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     if ((ret = asprintf(&lm_ctx->iommu_dir, MUSER_DIR "%lu", iommu_grp)) == -1) {
         return -1;
     }
-    if (mkdir(lm_ctx->iommu_dir, 0755) == -1) {
+    if (mkdir(lm_ctx->iommu_dir, 0777) == -1) {
         return -1;
     }
 
@@ -206,9 +209,10 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     }
 
     /* create control socket */
-    if ((ret = openat(lm_ctx->iommu_dir_fd, MUSER_SOCK, O_WRONLY | O_CREAT)) == -1) {
+    if ((ret = openat(lm_ctx->iommu_dir_fd, MUSER_SOCK, O_WRONLY | O_CREAT, 0666)) == -1) {
         return -1;
     }
+
     ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s/" MUSER_SOCK, lm_ctx->iommu_dir);
     if (ret >= (int)sizeof addr.sun_path) {
         errno = ENAMETOOLONG;
@@ -228,6 +232,9 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     if ((ret = listen(fd, 0)) == -1) {
         return ret;
     }
+
+    umask(mode);
+    
     return accept(fd, NULL, NULL);
 }
 
