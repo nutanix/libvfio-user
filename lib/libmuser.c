@@ -157,8 +157,13 @@ send_response_kernel(int fd, struct muser_cmd *cmd)
     return ioctl(fd, MUSER_DEV_CMD_DONE, &cmd);
 }
 
+/**
+ * lm_ctx: libmuser context
+ * iommu_dir: full path to the IOMMU group to create. All parent directories must
+ *            already exist.
+ */
 static int
-open_sock(lm_ctx_t *lm_ctx, const char *uuid)
+open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int ret, fd;
@@ -167,42 +172,37 @@ open_sock(lm_ctx_t *lm_ctx, const char *uuid)
     mode_t mode;
 
     assert(lm_ctx != NULL);
-    assert(uuid != NULL);
+    assert(iommu_dir != NULL);
+
+    /* FIXME implement clean up in error case */
 
     /*
-     * FIXME simplify by creating everything under a temporary directory and
-     * then atomically rename
+     * Validate that IOMMU group is a number. Maybe it's not necessary for us
+     * to do so.
      */
-
-    iommu_grp = strtoul(uuid, &endptr, 10);
+    iommu_grp = strtoul(basename(iommu_dir), &endptr, 10);
     if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
         errno = EINVAL;
         return -1;
     }
 
-    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        return fd;
+    lm_ctx->iommu_dir = strdup(iommu_dir);
+    if (!lm_ctx->iommu_dir) {
+        return -1;
     }
 
     /* FIXME SPDK can't easily run as non-root */
     mode =  umask(0000);
 
-    if (mkdir(MUSER_DIR, 0777) == -1 && errno != EEXIST) {
-        return -1;
-    }
-
-    /* create /dev/vfio/<IOMMU group> */
-    if ((ret = asprintf(&lm_ctx->iommu_dir, MUSER_DIR "%lu", iommu_grp)) == -1) {
-        return -1;
-    }
-    if (mkdir(lm_ctx->iommu_dir, 0777) == -1) {
-        return -1;
+    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        return fd;
     }
 
     if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
         return -1;
     }
 
+    /* TODO this could be done by the control stack */
     /* crealte symlink /dev/vfio/<IOMMU group>/iommu_group -> ../<IOMMU group> */
     if ((ret = symlinkat(lm_ctx->iommu_dir, lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME)) == -1) {
         return -1;
