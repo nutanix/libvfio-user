@@ -48,10 +48,14 @@
 #include "../libpathtrap/libpathtrap.h"
 #include "../libpathtrap/vma_addr.h"
 
+#define DEBUG
 #ifdef DEBUG
 #define debug(fmt, ...)									\
 	do {										\
-		fprintf(stderr, "%s:%d " fmt, __FILE__, __LINE__, ##__VA_ARGS__);	\
+		FILE *fp = fopen("/tmp/foo", "a+");					\
+		assert(fp);								\
+		fprintf(fp, "%s:%d " fmt, __FILE__, __LINE__, ##__VA_ARGS__);		\
+		fclose(fp);								\
 	} while (0)
 #else
 #define debug(fmt, ...)
@@ -244,6 +248,7 @@ static int vfio_group_get_device_fd(struct fake_fd *fake_fd __attribute__((unuse
 	 * FIXME need to associate the fd we return with the passed fake_fd
 	 */
 	bool flag = true;
+	debug("XXX %s\n", fake_fd->pathname);
 	return open_fake("device_fd", 0, &flag);
 }
 
