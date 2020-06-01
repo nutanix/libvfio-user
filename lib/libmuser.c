@@ -202,12 +202,6 @@ open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
         return -1;
     }
 
-    /* TODO this could be done by the control stack */
-    /* crealte symlink /dev/vfio/<IOMMU group>/iommu_group -> ../<IOMMU group> */
-    if ((ret = symlinkat(lm_ctx->iommu_dir, lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME)) == -1) {
-        return -1;
-    }
-
     /* create control socket */
     if ((ret = openat(lm_ctx->iommu_dir_fd, MUSER_SOCK, O_WRONLY | O_CREAT, 0666)) == -1) {
         return -1;
