@@ -1408,19 +1408,6 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
         return -1;
     }
 
-    if (vector == LM_DEV_INTX_IRQ_IDX && !lm_ctx->pci_config_space->hdr.cmd.id) {
-        lm_log(lm_ctx, LM_ERR, "failed to trigger INTx IRQ, INTx disabled\n");
-        errno = EINVAL;
-        return -1;
-    } else if (vector == LM_DEV_MSIX_IRQ_IDX) {
-        /*
-         * FIXME must check that MSI-X capability exists during creation time
-         * FIXME need to check that MSI-X is enabled and that it's not masked.
-         * Currently that's not possible because libmuser doesn't care about
-         * the internals of a capability.
-         */
-    }
-
     return eventfd_write(lm_ctx->irqs.efds[vector], val);
 }
 

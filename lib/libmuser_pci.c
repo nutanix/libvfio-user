@@ -153,13 +153,13 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     if ((v & PCI_COMMAND_INTX_DISABLE) == PCI_COMMAND_INTX_DISABLE) {
         if (!pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x1;
-            lm_log(ctx, LM_INF, "INTx emulation enabled\n");
+            lm_log(ctx, LM_INF, "INTx emulation disabled\n");
         }
         v &= ~PCI_COMMAND_INTX_DISABLE;
     } else {
         if (pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x0;
-            lm_log(ctx, LM_INF, "INTx emulation disabled\n");
+            lm_log(ctx, LM_INF, "INTx emulation enabled\n");
         }
     }
 
