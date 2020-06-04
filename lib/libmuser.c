@@ -52,6 +52,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include <sys/select.h>
 
 #include "../kmod/muser.h"
 #include "muser.h"
@@ -95,6 +96,8 @@ struct lm_ctx {
     lm_pci_config_space_t   *pci_config_space;
     lm_trans_t              trans;
     struct caps             *caps;
+    uint64_t                flags;
+    char                    *uuid;
     
     /* LM_TRANS_SOCK */
     char                    *iommu_dir;
@@ -127,14 +130,16 @@ dev_detach(int dev_fd)
 }
 
 static int
-dev_attach(lm_ctx_t *lm_ctx __attribute__((unused)), const char *uuid)
+dev_attach(lm_ctx_t *lm_ctx)
 {
     char *path;
     int dev_fd;
     int err;
 
-    err = asprintf(&path, "/dev/" MUSER_DEVNODE "/%s", uuid);
-    if (err != (int)(strlen(MUSER_DEVNODE) + strlen(uuid) + 6)) {
+    assert(lm_ctx != NULL);
+
+    err = asprintf(&path, "/dev/" MUSER_DEVNODE "/%s", lm_ctx->uuid);
+    if (err != (int)(strlen(MUSER_DEVNODE) + strlen(lm_ctx->uuid) + 6)) {
         return -1;
     }
 
@@ -157,13 +162,8 @@ send_response_kernel(int fd, struct muser_cmd *cmd)
     return ioctl(fd, MUSER_DEV_CMD_DONE, &cmd);
 }
 
-/**
- * lm_ctx: libmuser context
- * iommu_dir: full path to the IOMMU group to create. All parent directories must
- *            already exist.
- */
 static int
-open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
+init_sock(lm_ctx_t *lm_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int ret, fd;
@@ -172,7 +172,6 @@ open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
     mode_t mode;
 
     assert(lm_ctx != NULL);
-    assert(iommu_dir != NULL);
 
     /* FIXME implement clean up in error case */
 
@@ -180,13 +179,13 @@ open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
      * Validate that IOMMU group is a number. Maybe it's not necessary for us
      * to do so.
      */
-    iommu_grp = strtoul(basename(iommu_dir), &endptr, 10);
+    iommu_grp = strtoul(basename(lm_ctx->uuid), &endptr, 10);
     if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
         errno = EINVAL;
         return -1;
     }
 
-    lm_ctx->iommu_dir = strdup(iommu_dir);
+    lm_ctx->iommu_dir = strdup(lm_ctx->uuid);
     if (!lm_ctx->iommu_dir) {
         return -1;
     }
@@ -195,7 +194,15 @@ open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
     mode =  umask(0000);
 
     if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        return fd;
+        return -1;
+    }
+
+    if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
+        ret = fcntl(fd, F_SETFL, fcntl(lm_ctx->fd, F_GETFL, 0) | O_NONBLOCK);
+        if (ret == -1) {
+            assert(false); /* FIXME */
+            return -1;
+        }        
     }
 
     if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
@@ -221,15 +228,26 @@ open_sock(lm_ctx_t *lm_ctx, const char *iommu_dir)
         return -1;
     }
     if ((ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
-        return ret;
+        return -1;
     }
     if ((ret = listen(fd, 0)) == -1) {
-        return ret;
+        return -1;
     }
 
     umask(mode);
-    
-    return accept(fd, NULL, NULL);
+
+    return fd;
+}
+
+/**
+ * lm_ctx: libmuser context
+ * iommu_dir: full path to the IOMMU group to create. All parent directories must
+ *            already exist.
+ */
+static int
+open_sock(lm_ctx_t *lm_ctx)
+{
+    return accept(lm_ctx->fd, NULL, NULL);
 }
 
 static int
@@ -274,13 +292,15 @@ ssize_t recv_fds_sock(int fd, void *buf, size_t size)
 }
 
 static struct transport_ops {
-    int (*attach)(lm_ctx_t*, const char*);
+    int (*init)(lm_ctx_t*);
+    int (*attach)(lm_ctx_t*);
     int(*detach)(int fd);
     int (*get_request)(int fd, struct muser_cmd*);
     int (*send_response)(int fd, struct muser_cmd*);
     ssize_t (*recv_fds)(int fd, void *buf, size_t size);
 } transports_ops[] = {
     [LM_TRANS_KERNEL] = {
+        .init = NULL,
         .attach = dev_attach,
         .detach = dev_detach,
         .recv_fds = read,
@@ -288,6 +308,7 @@ static struct transport_ops {
         .send_response = send_response_kernel
     },
     [LM_TRANS_SOCK] = {
+        .init = init_sock,
         .attach = open_sock,
         .detach = close,
         .recv_fds = recv_fds_sock,
@@ -1289,6 +1310,10 @@ drive_loop(lm_ctx_t *lm_ctx)
     int err;
 
     do {
+        /*
+         * FIXME for non-blocking socket we allow the user to call get_request.
+         * In SPDK that would be done in the poll function.
+         */
         err = transports_ops[lm_ctx->trans].get_request(lm_ctx->fd, &cmd);
         if (err < 0) {
             lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
@@ -1318,6 +1343,7 @@ drive_loop(lm_ctx_t *lm_ctx)
             break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d\n", cmd.type);
+            assert(false);
             /*
              * TODO should respond with something here instead of ignoring the
              * command.
@@ -1404,6 +1430,8 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     if (lm_ctx == NULL) {
         return;
     }
+
+    free(lm_ctx->uuid);
 
     /*
      * FIXME The following cleanup can be dangerous depending on how lm_ctx_destroy
@@ -1547,6 +1575,25 @@ err:
     return -1;
 }
 
+int
+lm_ctx_try_attach(lm_ctx_t *lm_ctx)
+{
+    int ret;
+
+    assert(lm_ctx != NULL);
+
+    if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    ret = transports_ops[lm_ctx->trans].attach(lm_ctx);
+    if (ret == -1) {
+        return -1;
+    }
+    lm_ctx->fd = ret;
+    return 0;
+}
+
 lm_ctx_t *
 lm_ctx_create(const lm_dev_info_t *dev_info)
 {
@@ -1565,6 +1612,11 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
             errno = EINVAL;
             return NULL;
     }
+
+    if ((dev_info->flags & LM_FLAG_ATTACH_NB) != 0 && dev_info->trans != LM_TRANS_SOCK) {
+        errno = EINVAL;
+        return NULL;
+    } 
 
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
@@ -1602,6 +1654,13 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     lm_ctx->log = dev_info->log;
     lm_ctx->log_lvl = dev_info->log_lvl;
     lm_ctx->reset = dev_info->reset;
+    lm_ctx->flags = dev_info->flags;
+
+    lm_ctx->uuid = strdup(dev_info->uuid);
+    if (lm_ctx->uuid == NULL) {
+        err = errno;
+        goto out;
+    }
 
     // Bounce the provided pci_info into the context.
     memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
@@ -1619,14 +1678,21 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         goto out;
     }
 
+    if (transports_ops[dev_info->trans].init != NULL) {
+        lm_ctx->fd = transports_ops[dev_info->trans].init(lm_ctx);
+        assert(lm_ctx->fd != -1); /* FIXME */
+    }
+
     // Attach to the muser control device.
-    lm_ctx->fd = transports_ops[dev_info->trans].attach(lm_ctx, dev_info->uuid);
-    if (lm_ctx->fd == -1) {
-        err = errno;
-        if (errno != EINTR) {
-            lm_log(lm_ctx, LM_ERR, "failed to attach: %m\n");
+    if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
+        lm_ctx->fd = transports_ops[dev_info->trans].attach(lm_ctx);
+        if (lm_ctx->fd == -1) {
+                err = errno;
+                if (errno != EINTR) {
+                    lm_log(lm_ctx, LM_ERR, "failed to attach: %m\n");
+                }
+                goto out;
         }
-        goto out;
     }
 
     // Create the internal DMA controller.

@@ -314,6 +314,16 @@ typedef struct {
     int             nr_caps;
 
     lm_trans_t      trans;
+
+    /*
+     * Attaching to the transport is non-blocking. The library will attempt to
+     * attach during context creation time and if attaching fails because the
+     * transport is not ready then the error will be ingored. The caller must
+     * then manually call lm_try_ctx_attach, which is non-blocking, as many
+     * times as necessary.
+     */
+#define LM_FLAG_ATTACH_NB  (1 << 0)
+    uint64_t             flags;
 } lm_dev_info_t;
 
 /**
@@ -452,6 +462,15 @@ lm_get_region(loff_t pos, size_t count, loff_t *off);
  */
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
+
+/*
+ * Attempts to attach to the transport. LM_FLAG_ATTACH_NB must be set when
+ * creating the context. Returns 0 on success and -1 on error. If errno is set
+ * to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and the
+ * operation must be retried.
+ */
+int
+lm_ctx_try_attach(lm_ctx_t *lm_ctx);
 
 /* FIXME */
 int muser_send_fds(int sock, int *fds, size_t count);
