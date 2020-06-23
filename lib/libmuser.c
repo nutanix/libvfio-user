@@ -1320,7 +1320,11 @@ drive_loop(lm_ctx_t *lm_ctx)
             return err;
         }
         if (err == 0) {
-            lm_log(lm_ctx, LM_INF, "end of file: %m\n");
+            if (errno == 0) {
+                lm_log(lm_ctx, LM_INF, "VFIO client closed connection\n");
+            } else {
+                lm_log(lm_ctx, LM_ERR, "end of file: %m\n");
+            }
             break;
         }
 
