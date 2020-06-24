@@ -139,7 +139,8 @@ dma_addr_to_sg(const dma_controller_t *dma,
 
     // Fast path: single region.
     if (likely(max_sg > 0 && len > 0 &&
-               dma_addr >= region->dma_addr && dma_addr + len <= region_end)) {
+               dma_addr >= region->dma_addr && dma_addr + len <= region_end &&
+               region_hint < dma->nregions)) {
         sg->region = region_hint;
         sg->offset = dma_addr - region->dma_addr;
         sg->length = len;

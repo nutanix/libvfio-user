@@ -116,6 +116,10 @@ dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
         if (region->dma_addr == dma_addr && region->size == size) {
             _dma_controller_do_remove_region(lm_ctx, region);
             if (dma->nregions > 1)
+                /*
+                 * FIXME valgrind complains with 'Source and destination overlap in memcpy',
+                 * check whether memmove eliminates this warning.
+                 */
                 memcpy(region, &dma->regions[dma->nregions - 1],
                        sizeof *region);
             dma->nregions--;
