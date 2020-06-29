@@ -1295,64 +1295,57 @@ out:
 }
 
 static int
-drive_loop(lm_ctx_t *lm_ctx)
+process_request(lm_ctx_t *lm_ctx)
 {
     struct muser_cmd cmd = { 0 };
     int err;
 
-    do {
-        /*
-         * FIXME for non-blocking socket we allow the user to call get_request.
-         * In SPDK that would be done in the poll function.
-         */
-        err = transports_ops[lm_ctx->trans].get_request(lm_ctx->fd, &cmd);
-        if (err < 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
-            return err;
+    err = transports_ops[lm_ctx->trans].get_request(lm_ctx->fd, &cmd);
+    if (unlikely(err < 0)) {
+        lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
+        return err;
+    }
+    if (unlikely(err == 0)) {
+        if (errno == 0) {
+            lm_log(lm_ctx, LM_INF, "VFIO client closed connection\n");
+        } else {
+            lm_log(lm_ctx, LM_ERR, "end of file: %m\n");
         }
-        if (err == 0) {
-            if (errno == 0) {
-                lm_log(lm_ctx, LM_INF, "VFIO client closed connection\n");
-            } else {
-                lm_log(lm_ctx, LM_ERR, "end of file: %m\n");
-            }
-            break;
-        }
+        return -ENOTCONN;
+    }
 
-        switch (cmd.type) {
-        case MUSER_IOCTL:
-            err = muser_ioctl(lm_ctx, &cmd);
-            break;
-        case MUSER_READ:
-        case MUSER_WRITE:
-            err = muser_access(lm_ctx, &cmd, cmd.type == MUSER_WRITE);
-            break;
-        case MUSER_MMAP:
-            err = muser_mmap(lm_ctx, &cmd);
-            break;
-        case MUSER_DMA_MMAP:
-            err = muser_dma_map(lm_ctx, &cmd);
-            break;
-        case MUSER_DMA_MUNMAP:
-            err = muser_dma_unmap(lm_ctx, &cmd);
-            break;
-        default:
-            lm_log(lm_ctx, LM_ERR, "bad command %d\n", cmd.type);
-            assert(false);
-            /*
-             * TODO should respond with something here instead of ignoring the
-             * command.
-             */
-            err = -EINVAL;
-        }
-        cmd.err = err;
-        err = transports_ops[lm_ctx->trans].send_response(lm_ctx->fd, &cmd);
-        if (err < 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
-                   strerror(errno));
-        }
-        // TODO: Figure out a clean way to get out of the loop.
-    } while (1);
+    switch (cmd.type) {
+    case MUSER_IOCTL:
+        err = muser_ioctl(lm_ctx, &cmd);
+        break;
+    case MUSER_READ:
+    case MUSER_WRITE:
+        err = muser_access(lm_ctx, &cmd, cmd.type == MUSER_WRITE);
+        break;
+    case MUSER_MMAP:
+        err = muser_mmap(lm_ctx, &cmd);
+        break;
+    case MUSER_DMA_MMAP:
+        err = muser_dma_map(lm_ctx, &cmd);
+        break;
+    case MUSER_DMA_MUNMAP:
+        err = muser_dma_unmap(lm_ctx, &cmd);
+        break;
+    default:
+        lm_log(lm_ctx, LM_ERR, "bad command %d\n", cmd.type);
+        assert(false);
+        /*
+            * TODO should respond with something here instead of ignoring the
+            * command.
+            */
+        err = -EINVAL;
+    }
+    cmd.err = err;
+    err = transports_ops[lm_ctx->trans].send_response(lm_ctx->fd, &cmd);
+    if (unlikely(err < 0)) {
+        lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
+                strerror(errno));
+    }
 
     return err;
 }
@@ -1360,12 +1353,33 @@ drive_loop(lm_ctx_t *lm_ctx)
 int
 lm_ctx_drive(lm_ctx_t *lm_ctx)
 {
+    int err;
+
     if (lm_ctx == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    return drive_loop(lm_ctx);
+    do {
+        err = process_request(lm_ctx);
+    } while (err >= 0);
+
+    return err;
+}
+
+int
+lm_ctx_poll(lm_ctx_t *lm_ctx)
+{
+    int err;
+
+    if (unlikely((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0)) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    err = process_request(lm_ctx);
+
+    return err >= 0 ? 0 : err;
 }
 
 /* FIXME this is not enough anymore, check muser_mmap */

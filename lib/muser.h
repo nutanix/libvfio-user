@@ -366,6 +366,21 @@ int
 lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
+ * Polls, without blocking, an lm_ctx. This is an alternative to using
+ * a thread and making a blocking call to lm_ctx_drive(). Instead, the
+ * application can periodically poll the context directly from one of
+ * its own threads.
+ *
+ * This is only allowed when LM_FLAG_ATTACH_NB is specified during creation.
+ *
+ * @lm_ctx: The libmuser context to poll
+ *
+ * @returns 0 on success, -errno on failure.
+ */
+int
+lm_ctx_poll(lm_ctx_t *lm_ctx);
+
+/**
  * Triggers an interrupt.
  *
  * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
