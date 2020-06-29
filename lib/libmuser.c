@@ -77,14 +77,6 @@ typedef struct {
     int         efds[0];    /* XXX must be last */
 } lm_irqs_t;
 
-/*
- * Macro that ensures that a particular struct member is last. Doesn't work for
- * flexible array members.
- */
-#define MUST_BE_LAST(s, m, t) \
-    _Static_assert(sizeof(s) - offsetof(s, m) == sizeof(t), \
-        #t " " #m " must be last member in " #s)
-
 struct lm_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
@@ -98,14 +90,13 @@ struct lm_ctx {
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
-    
+
     /* LM_TRANS_SOCK */
     char                    *iommu_dir;
     int                     iommu_dir_fd;
 
     lm_irqs_t               irqs; /* XXX must be last */
-} __attribute__((packed)); /* FIXME packed required to make below macro work */
-MUST_BE_LAST(struct lm_ctx, irqs, lm_irqs_t);
+};
 
 
 /* function prototypes */
@@ -202,7 +193,7 @@ init_sock(lm_ctx_t *lm_ctx)
         if (ret == -1) {
             assert(false); /* FIXME */
             return -1;
-        }        
+        }
     }
 
     if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
@@ -1608,7 +1599,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) != 0 && dev_info->trans != LM_TRANS_SOCK) {
         errno = EINVAL;
         return NULL;
-    } 
+    }
 
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
