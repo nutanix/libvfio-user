@@ -176,6 +176,11 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
         }
     }
 
+    if ((v & PCI_COMMAND_VGA_PALETTE) == PCI_COMMAND_VGA_PALETTE) {
+        lm_log(ctx, LM_INF, "enabling VGA palette snooping ignored\n");
+        v &= ~PCI_COMMAND_VGA_PALETTE;
+    }
+
     if (v != 0) {
         lm_log(ctx, LM_ERR, "unconsumed command flags %x\n", v);
         return -EINVAL;
