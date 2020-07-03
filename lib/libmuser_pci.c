@@ -163,6 +163,19 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
         }
     }
 
+    if ((v & PCI_COMMAND_INVALIDATE) == PCI_COMMAND_INVALIDATE) {
+        if (!pci->hdr.cmd.mwie) {
+            pci->hdr.cmd.mwie = 1U;
+            lm_log(ctx, LM_INF, "memory write and invalidate enabled\n");
+        }
+        v &= ~PCI_COMMAND_INVALIDATE;
+    } else {
+        if (pci->hdr.cmd.mwie) {
+            pci->hdr.cmd.mwie = 0;
+            lm_log(ctx, LM_INF, "memory write and invalidate disabled");
+        }
+    }
+
     if (v != 0) {
         lm_log(ctx, LM_ERR, "unconsumed command flags %x\n", v);
         return -EINVAL;
