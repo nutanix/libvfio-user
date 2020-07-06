@@ -217,7 +217,7 @@ typedef enum {
  *
  * @lm_log_fn_t: typedef for log function.
  */
-typedef void (lm_log_fn_t) (void *pvt, const char *msg);
+typedef void (lm_log_fn_t) (void *pvt, lm_log_lvl_t lvl, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The

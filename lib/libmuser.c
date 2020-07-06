@@ -335,7 +335,7 @@ lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    lm_ctx->log(lm_ctx->pvt, buf);
+    lm_ctx->log(lm_ctx->pvt, lvl, buf);
     errno = _errno;
 }
 
