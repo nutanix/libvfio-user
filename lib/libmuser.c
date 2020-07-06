@@ -1458,6 +1458,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
         dma_controller_destroy(lm_ctx, lm_ctx->dma);
     }
     free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
+    free(lm_ctx->caps);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
