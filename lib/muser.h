@@ -60,6 +60,7 @@
 typedef uint64_t dma_addr_t;
 
 typedef struct {
+    dma_addr_t dma_addr;
     int region;
     int length;
     uint64_t offset;
@@ -300,6 +301,12 @@ typedef struct {
      * Function that is called when the guest resets the device. Optional.
      */
     int (*reset)    (void *pvt);
+
+    /*
+     * Function that is called when the guest unmaps a DMA region. The device
+     * must release all references to that region before the callback returns.
+     */
+    int (*unmap_dma) (void *pvt, uint64_t iova);
 
     /*
      * PCI capabilities. The user needs to only define the ID and size of each

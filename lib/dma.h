@@ -72,6 +72,8 @@
 #include "muser.h"
 #include "common.h"
 
+struct lm_ctx;
+
 typedef struct {
     dma_addr_t dma_addr;        // DMA address of this region
     size_t size;                // Size of this region
@@ -79,19 +81,21 @@ typedef struct {
     int page_size;              // Page size of this fd
     off_t offset;               // File offset
     void *virt_addr;            // Virtual address of this region
+    int refcnt;                 // Number of users of this region
 } dma_memory_region_t;
 
 typedef struct {
     int max_regions;
     int nregions;
+    struct lm_ctx *lm_ctx;
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
 dma_controller_t *
-dma_controller_create(int max_regions);
+dma_controller_create(lm_ctx_t *lm_ctx, int max_regions);
 
 void
-dma_controller_destroy(lm_ctx_t *ctx, dma_controller_t *dma);
+dma_controller_destroy(dma_controller_t *dma);
 
 /* Registers a new memory region.
  * Returns:
@@ -101,13 +105,14 @@ dma_controller_destroy(lm_ctx_t *ctx, dma_controller_t *dma);
  *   (e.g. due to conflict with existing region).
  */
 int
-dma_controller_add_region(lm_ctx_t *ctx, dma_controller_t *dma,
+dma_controller_add_region(dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
                           int fd, off_t offset);
 
 int
-dma_controller_remove_region(lm_ctx_t *ctx, dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size);
+dma_controller_remove_region(dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size,
+                             int (*unmap_dma) (void*, uint64_t), void *data);
 
 // Helper for dma_addr_to_sg() slow path.
 int
@@ -141,6 +146,7 @@ dma_addr_to_sg(const dma_controller_t *dma,
     if (likely(max_sg > 0 && len > 0 &&
                dma_addr >= region->dma_addr && dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
+        sg->dma_addr = region->dma_addr;
         sg->region = region_hint;
         sg->offset = dma_addr - region->dma_addr;
         sg->length = len;
@@ -169,9 +175,12 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
     int i;
 
     for (i = 0; i < cnt; i++) {
+        lm_log(dma->lm_ctx, LM_DBG, "map %#lx-%#lx\n",
+               sg->dma_addr + sg->offset, sg->dma_addr + sg->offset + sg->length);
         region = &dma->regions[sg[i].region];
         iov[i].iov_base = region->virt_addr + sg[i].offset;
         iov[i].iov_len = sg[i].length;
+        region->refcnt++;
     }
 
     return 0;
@@ -180,10 +189,28 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
 #define UNUSED __attribute__((unused))
 
 static inline void
-dma_unmap_sg(UNUSED dma_controller_t *dma, UNUSED const dma_sg_t *sg,
-	     UNUSED struct iovec *iov, UNUSED int cnt)
+dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
+	     UNUSED struct iovec *iov, int cnt)
 {
-    /* just a placeholder for now */
+    int i;
+
+    for (i = 0; i < cnt; i++) {
+        dma_memory_region_t *r;
+        /*
+         * FIXME this double loop will be removed if we replace the array with
+         * tfind(3)
+         */
+        for (r = dma->regions;
+             r < dma->regions + dma->nregions && r->dma_addr != sg[i].dma_addr;
+             r++);
+        if (r > dma->regions + dma->nregions) {
+            /* bad region */
+            continue;
+        }
+        lm_log(dma->lm_ctx, LM_DBG, "unmap %#lx-%#lx\n",
+               sg[i].dma_addr + sg[i].offset, sg[i].dma_addr + sg[i].offset + sg[i].length);
+        r->refcnt--;
+    }
     return;
 }
 

@@ -90,6 +90,7 @@ struct lm_ctx {
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
+    int (*unmap_dma)        (void *pvt, uint64_t iova);
 
     /* LM_TRANS_SOCK */
     char                    *iommu_dir;
@@ -835,9 +836,10 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         return -EINVAL;
     }
 
-    err = dma_controller_remove_region(lm_ctx, lm_ctx->dma,
+    err = dma_controller_remove_region(lm_ctx->dma,
                                        cmd->mmap.request.addr,
-                                       cmd->mmap.request.len);
+                                       cmd->mmap.request.len,
+                                       lm_ctx->unmap_dma, lm_ctx->pvt);
     if (err != 0 && err != -ENOENT) {
         lm_log(lm_ctx, LM_ERR, "failed to remove DMA region %#lx-%#lx: %s\n",
                cmd->mmap.request.addr,
@@ -866,7 +868,7 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         return -EINVAL;
     }
 
-    err = dma_controller_add_region(lm_ctx, lm_ctx->dma,
+    err = dma_controller_add_region(lm_ctx->dma,
                                     cmd->mmap.request.addr,
                                     cmd->mmap.request.len,
                                     cmd->mmap.request.fd,
@@ -1460,7 +1462,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     free(lm_ctx->pci_config_space);
     transports_ops[lm_ctx->trans].detach(lm_ctx->fd);
     if (lm_ctx->dma != NULL) {
-        dma_controller_destroy(lm_ctx, lm_ctx->dma);
+        dma_controller_destroy(lm_ctx->dma);
     }
     free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
     free(lm_ctx->caps);
@@ -1615,6 +1617,11 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
 
+    if (dev_info->unmap_dma == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
      * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
@@ -1692,8 +1699,10 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         }
     }
 
+    lm_ctx->unmap_dma = dev_info->unmap_dma;
+
     // Create the internal DMA controller.
-    lm_ctx->dma = dma_controller_create(LM_DMA_REGIONS);
+    lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
     if (lm_ctx->dma == NULL) {
         err = errno;
         goto out;

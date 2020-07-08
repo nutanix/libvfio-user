@@ -66,7 +66,7 @@ fds_are_same_file(int fd1, int fd2)
 }
 
 dma_controller_t *
-dma_controller_create(int max_regions)
+dma_controller_create(lm_ctx_t *lm_ctx, int max_regions)
 {
     dma_controller_t *dma;
 
@@ -77,6 +77,7 @@ dma_controller_create(int max_regions)
         return dma;
     }
 
+    dma->lm_ctx = lm_ctx;
     dma->max_regions = max_regions;
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
@@ -85,36 +86,53 @@ dma_controller_create(int max_regions)
 }
 
 static void
-_dma_controller_do_remove_region(lm_ctx_t *lm_ctx, dma_memory_region_t *region)
+_dma_controller_do_remove_region(dma_controller_t *dma,
+                                 dma_memory_region_t *region)
 {
     int err;
-    assert(region);
+
+    assert(dma != NULL);
+    assert(region != NULL);
+
     err = dma_unmap_region(region, region->virt_addr, region->size);
     if (err != 0) {
-        lm_log(lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
+        lm_log(dma->lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
                region->fd, region->virt_addr, region->size);
     }
     if (region->fd != -1) {
         if (close(region->fd) == -1) {
-            lm_log(lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
+            lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
         }
     }
 }
 
 /* FIXME not thread safe */
 int
-dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size)
+dma_controller_remove_region(dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size,
+                             int (*unmap_dma) (void*, uint64_t), void *data)
 {
     int idx;
     dma_memory_region_t *region;
+    int err;
 
-    assert(dma);
+    assert(dma != NULL);
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
         if (region->dma_addr == dma_addr && region->size == size) {
-            _dma_controller_do_remove_region(lm_ctx, region);
+            if (region->refcnt > 0) {
+                err = unmap_dma(data, region->dma_addr);
+                if (err != 0) {
+                    lm_log(dma->lm_ctx, LM_ERR,
+                           "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
+                           region->dma_addr, region->dma_addr + region->size,
+                           strerror(-err));
+                    return err;
+                }
+                assert(region->refcnt > 0);
+            }
+            _dma_controller_do_remove_region(dma, region);
             if (dma->nregions > 1)
                 /*
                  * FIXME valgrind complains with 'Source and destination overlap in memcpy',
@@ -130,7 +148,7 @@ dma_controller_remove_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
 }
 
 static inline void
-dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
+dma_controller_remove_regions(dma_controller_t *dma)
 {
     int i;
 
@@ -139,25 +157,25 @@ dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        lm_log(ctx, LM_INF, "unmap vaddr=%lx IOVA=%lx\n",
+        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%#lx IOVA=%#lx\n",
                region->virt_addr, region->dma_addr);
 
-        _dma_controller_do_remove_region(ctx, region);
+        _dma_controller_do_remove_region(dma, region);
     }
 }
 
 void
-dma_controller_destroy(lm_ctx_t *lm_ctx, dma_controller_t *dma)
+dma_controller_destroy(dma_controller_t *dma)
 {
     if (dma == NULL) {
         return;
     }
-    dma_controller_remove_regions(lm_ctx, dma);
+    dma_controller_remove_regions(dma);
     free(dma);
 }
 
 int
-dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
+dma_controller_add_region(dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
                           int fd, off_t offset)
 {
@@ -171,8 +189,8 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
         /* First check if this is the same exact region. */
         if (region->dma_addr == dma_addr && region->size == size) {
             if (offset != region->offset) {
-                lm_log(lm_ctx, LM_ERR, "bad offset for new DMA region %lx+%lx, "
-                       "want=%d, existing=%d\n",
+                lm_log(dma->lm_ctx, LM_ERR,
+                       "bad offset for new DMA region %#lx+%#lx, want=%d, existing=%d\n",
                        dma_addr, size, offset, region->offset);
                 goto err;
             }
@@ -183,8 +201,9 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
                  * the same file, however in the majority of cases we'll be
                  * using a single fd.
                  */
-                lm_log(lm_ctx, LM_ERR, "bad fd=%d for new DMA region %lx-%lx, "
-                       "existing fd=%d\n", fd, region->fd);
+                lm_log(dma->lm_ctx, LM_ERR,
+                       "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
+                       fd, region->fd);
                 goto err;
             }
             return idx;
@@ -195,16 +214,17 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
              dma_addr < region->dma_addr + region->size) ||
             (region->dma_addr >= dma_addr &&
              region->dma_addr < dma_addr + size)) {
-            lm_log(lm_ctx, LM_INF, "new DMA region %lx+%lx overlaps with DMA "
-                   "region %lx-%lx\n", dma_addr, size, region->dma_addr,
-                   region->size);
+            lm_log(dma->lm_ctx, LM_INF,
+                   "new DMA region %#lx+%#lx overlaps with DMA region %#lx-%#lx\n",
+                   dma_addr, size, region->dma_addr, region->size);
             goto err;
         }
     }
 
     if (dma->nregions == dma->max_regions) {
         idx = dma->max_regions;
-        lm_log(lm_ctx, LM_ERR, "reached maxed regions, recompile with higher number of DMA regions\n");
+        lm_log(dma->lm_ctx, LM_ERR,
+               "reached maxed regions, recompile with higher number of DMA regions\n");
         goto err;
     }
 
@@ -213,7 +233,7 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
 
     page_size = fd_get_blocksize(fd);
     if (page_size < 0) {
-        lm_log(lm_ctx, LM_ERR, "bad page size %d\n", page_size);
+        lm_log(dma->lm_ctx, LM_ERR, "bad page size %d\n", page_size);
         goto err;
     }
     page_size = MAX(page_size, getpagesize());
@@ -223,15 +243,18 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
     region->page_size = page_size;
     region->offset = offset;
     region->fd = fd;
+    region->refcnt = 0;
 
     region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
                                        0, region->size);
     if (region->virt_addr == MAP_FAILED) {
-        lm_log(lm_ctx, LM_ERR, "failed to memory map DMA region %lx-%lx: %s\n",
+        lm_log(dma->lm_ctx, LM_ERR,
+               "failed to memory map DMA region %#lx-%#lx: %s\n",
                dma_addr, dma_addr + size, strerror(errno));
         if (region->fd != -1) {
             if (close(region->fd) == -1) {
-                lm_log(lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
+                lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n",
+                       region->fd);
             }
         }
         goto err;
@@ -304,6 +327,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
+                    sg[cnt].dma_addr = region->dma_addr;
                     sg[cnt].region = idx;
                     sg[cnt].offset = dma_addr - region->dma_addr;
                     sg[cnt].length = region_len;
