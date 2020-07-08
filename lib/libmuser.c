@@ -111,12 +111,12 @@ static void
 free_sparse_mmap_areas(lm_reg_info_t*);
 
 static int
-dev_detach(int dev_fd)
+dev_detach(lm_ctx_t *lm_ctx)
 {
     int ret = 0;
 
-    if (dev_fd != -1) {
-        ret = close(dev_fd);
+    if (lm_ctx->fd != -1) {
+        ret = close(lm_ctx->fd);
     }
     return ret;
 }
@@ -142,16 +142,22 @@ dev_attach(lm_ctx_t *lm_ctx)
     return dev_fd;
 }
 
-static int
-get_request_kernel(int fd, struct muser_cmd *cmd)
+static ssize_t
+recv_fds_kernel(lm_ctx_t *lm_ctx, void *buf, size_t size)
 {
-    return ioctl(fd, MUSER_DEV_CMD_WAIT, &cmd);
+    return read(lm_ctx->fd, buf, size);
 }
 
 static int
-send_response_kernel(int fd, struct muser_cmd *cmd)
+get_request_kernel(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
-    return ioctl(fd, MUSER_DEV_CMD_DONE, &cmd);
+    return ioctl(lm_ctx->fd, MUSER_DEV_CMD_WAIT, &cmd);
+}
+
+static int
+send_response_kernel(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+{
+    return ioctl(lm_ctx->fd, MUSER_DEV_CMD_DONE, &cmd);
 }
 
 static int
@@ -243,15 +249,21 @@ open_sock(lm_ctx_t *lm_ctx)
 }
 
 static int
-get_request_sock(int fd, struct muser_cmd *cmd)
+close_sock(lm_ctx_t *lm_ctx)
 {
-    return read(fd, cmd, sizeof *cmd);
+    return close(lm_ctx->fd);
 }
 
 static int
-send_response_sock(int fd, struct muser_cmd *cmd)
+get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
-    return write(fd, cmd, sizeof *cmd);
+    return read(lm_ctx->fd, cmd, sizeof *cmd);
+}
+
+static int
+send_response_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+{
+    return write(lm_ctx->fd, cmd, sizeof *cmd);
 }
 
 static void
@@ -274,9 +286,10 @@ get_path_from_fd(int fd, char *buf)
     buf[ret] = '\0';
 }
 
-ssize_t recv_fds_sock(int fd, void *buf, size_t size)
+static ssize_t
+recv_fds_sock(lm_ctx_t *lm_ctx, void *buf, size_t size)
 {
-    ssize_t ret = muser_recv_fds(fd, buf, size / sizeof(int));
+    ssize_t ret = muser_recv_fds(lm_ctx->fd, buf, size / sizeof(int));
     if (ret < 0) {
 	    return ret;
     }
@@ -286,23 +299,23 @@ ssize_t recv_fds_sock(int fd, void *buf, size_t size)
 static struct transport_ops {
     int (*init)(lm_ctx_t*);
     int (*attach)(lm_ctx_t*);
-    int(*detach)(int fd);
-    int (*get_request)(int fd, struct muser_cmd*);
-    int (*send_response)(int fd, struct muser_cmd*);
-    ssize_t (*recv_fds)(int fd, void *buf, size_t size);
+    int(*detach)(lm_ctx_t*);
+    int (*get_request)(lm_ctx_t*, struct muser_cmd*);
+    int (*send_response)(lm_ctx_t*, struct muser_cmd*);
+    ssize_t (*recv_fds)(lm_ctx_t*, void *buf, size_t size);
 } transports_ops[] = {
     [LM_TRANS_KERNEL] = {
         .init = NULL,
         .attach = dev_attach,
         .detach = dev_detach,
-        .recv_fds = read,
+        .recv_fds = recv_fds_kernel,
         .get_request = get_request_kernel,
         .send_response = send_response_kernel
     },
     [LM_TRANS_SOCK] = {
         .init = init_sock,
         .attach = open_sock,
-        .detach = close,
+        .detach = close_sock,
         .recv_fds = recv_fds_sock,
         .get_request = get_request_sock,
         .send_response = send_response_sock
@@ -1278,7 +1291,7 @@ muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 #endif
             return -1;
         }
-        ret = transports_ops[lm_ctx->trans].recv_fds(lm_ctx->fd, data, size);
+        ret = transports_ops[lm_ctx->trans].recv_fds(lm_ctx, data, size);
         if (ret < 0) {
             goto out;
         }
@@ -1302,7 +1315,7 @@ process_request(lm_ctx_t *lm_ctx)
     struct muser_cmd cmd = { 0 };
     int err;
 
-    err = transports_ops[lm_ctx->trans].get_request(lm_ctx->fd, &cmd);
+    err = transports_ops[lm_ctx->trans].get_request(lm_ctx, &cmd);
     if (unlikely(err < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
         return err;
@@ -1343,7 +1356,7 @@ process_request(lm_ctx_t *lm_ctx)
         err = -EINVAL;
     }
     cmd.err = err;
-    err = transports_ops[lm_ctx->trans].send_response(lm_ctx->fd, &cmd);
+    err = transports_ops[lm_ctx->trans].send_response(lm_ctx, &cmd);
     if (unlikely(err < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
                 strerror(errno));
@@ -1460,7 +1473,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     }
 
     free(lm_ctx->pci_config_space);
-    transports_ops[lm_ctx->trans].detach(lm_ctx->fd);
+    transports_ops[lm_ctx->trans].detach(lm_ctx);
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx->dma);
     }
