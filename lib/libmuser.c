@@ -257,7 +257,21 @@ close_sock(lm_ctx_t *lm_ctx)
 static int
 get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
-    return read(lm_ctx->fd, cmd, sizeof *cmd);
+    int flags;
+    ssize_t ret;
+
+    if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
+        flags = 0;
+    } else {
+        flags = MSG_DONTWAIT;
+    }
+
+    ret = recv(lm_ctx->fd, cmd, sizeof(*cmd), flags);
+
+    /* TODO: Handle partial receives */
+    assert(ret <= 0 || (size_t)ret == sizeof(*cmd));
+
+    return ret;
 }
 
 static int
@@ -1317,6 +1331,9 @@ process_request(lm_ctx_t *lm_ctx)
 
     err = transports_ops[lm_ctx->trans].get_request(lm_ctx, &cmd);
     if (unlikely(err < 0)) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0;
+        }
         lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
         return err;
     }
