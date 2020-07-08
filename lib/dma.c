@@ -130,7 +130,7 @@ dma_controller_remove_region(dma_controller_t *dma,
                            strerror(-err));
                     return err;
                 }
-                assert(region->refcnt > 0);
+                assert(region->refcnt == 0);
             }
             _dma_controller_do_remove_region(dma, region);
             if (dma->nregions > 1)
