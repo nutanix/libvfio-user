@@ -45,7 +45,7 @@
 static void
 null_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
 {
-	fprintf(stderr, "%s", msg);
+	fprintf(stderr, "muser: %s", msg);
 }
 
 
