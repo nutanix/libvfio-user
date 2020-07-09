@@ -92,9 +92,11 @@ struct lm_ctx {
     char                    *uuid;
     int (*unmap_dma)        (void *pvt, uint64_t iova);
 
+    /* TODO there should be a void * variable to store transport-specific stuff */
     /* LM_TRANS_SOCK */
     char                    *iommu_dir;
     int                     iommu_dir_fd;
+    int                     sock_flags;
 
     lm_irqs_t               irqs; /* XXX must be last */
 };
@@ -201,6 +203,9 @@ init_sock(lm_ctx_t *lm_ctx)
             assert(false); /* FIXME */
             return -1;
         }
+        lm_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
+    } else {
+        lm_ctx->sock_flags = 0;
     }
 
     if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
@@ -257,21 +262,12 @@ close_sock(lm_ctx_t *lm_ctx)
 static int
 get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
-    int flags;
-    ssize_t ret;
-
-    if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
-        flags = 0;
-    } else {
-        flags = MSG_DONTWAIT;
-    }
-
-    ret = recv(lm_ctx->fd, cmd, sizeof(*cmd), flags);
-
-    /* TODO: Handle partial receives */
-    assert(ret <= 0 || (size_t)ret == sizeof(*cmd));
-
-    return ret;
+    /*
+     * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
+     * faster (?). I tried that and get short reads, so we need to store the
+     * partially received buffer somewhere and retry.
+     */
+    return recv(lm_ctx->fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
 }
 
 static int
@@ -1345,6 +1341,8 @@ process_request(lm_ctx_t *lm_ctx)
         }
         return -ENOTCONN;
     }
+
+    assert(err == sizeof cmd);
 
     switch (cmd.type) {
     case MUSER_IOCTL:
