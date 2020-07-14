@@ -44,7 +44,7 @@ struct caps;
  * capabilities have been added.
  */
 struct caps *
-caps_create(const lm_cap_t *caps, int nr_caps);
+caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
 
 /*
  * Conditionally accesses the PCI capabilities. Returns:
@@ -54,8 +54,11 @@ caps_create(const lm_cap_t *caps, int nr_caps);
  * <0: negative error code on error.
  */
 ssize_t
-cap_maybe_access(struct caps *caps, void *pvt, char *buf, size_t count,
+cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
                  loff_t offset, bool is_write);
+
+union pci_cap*
+cap_find_by_id(struct caps *caps, uint8_t id);
 
 #endif /* __CAP_H__ */
 

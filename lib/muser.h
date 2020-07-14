@@ -38,6 +38,10 @@
 #include <unistd.h>
 
 #include "pci.h"
+#include "caps/pm.h"
+#include "caps/px.h"
+#include "caps/msi.h"
+#include "caps/msix.h"
 
 /*
  * Influential enviroment variables:
@@ -238,23 +242,23 @@ typedef ssize_t (lm_cap_access_t) (void *pvt, uint8_t id,
                                    char *buf, size_t count,
                                    loff_t offset, bool is_write);
 
+union pci_cap {
+    struct msicap msi;
+    struct msixcap msix;
+    struct pmcap pm;
+    struct pxcap px;
+};
+
 typedef struct {
 
     /*
      * Capability ID, as defined by the PCI specification. Also defined as
      * PCI_CAP_ID_XXX in <linux/pci_regs.h>.
+     * FIXME capability header already includes ID
      */
     uint8_t id;
 
-    /*
-     * Size of the capability.
-     */
-    size_t size;
-
-    /*
-     * Function to call back when the capability gets read or written.
-     */
-    lm_cap_access_t *fn;
+    union pci_cap cap;
 } lm_cap_t;
 
 typedef enum {
@@ -308,18 +312,6 @@ typedef struct {
      */
     int (*unmap_dma) (void *pvt, uint64_t iova);
 
-    /*
-     * PCI capabilities. The user needs to only define the ID and size of each
-     * capability. The actual capability is not maintained by libmuser. When a
-     * capability is accessed the appropriate callback function is called.
-     */
-    lm_cap_t        caps[LM_MAX_CAPS];
-
-    /*
-     * Number of capabilities in above array.
-     */
-    int             nr_caps;
-
     lm_trans_t      trans;
 
     /*
@@ -330,7 +322,15 @@ typedef struct {
      * times as necessary.
      */
 #define LM_FLAG_ATTACH_NB  (1 << 0)
-    uint64_t             flags;
+    uint64_t         flags;
+
+    /*
+     * PCI capabilities.
+     */
+    int             nr_caps;
+    lm_cap_t        **caps;
+
+
 } lm_dev_info_t;
 
 /**
@@ -493,6 +493,16 @@ lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
  */
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx);
+
+/*
+ * FIXME need to make sure that there can be at most one capability with a given
+ * ID, otherwise this function will return the first one with this ID.
+ */
+union pci_cap*
+lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
+
+void
+lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
 
 /* FIXME */
 int muser_send_fds(int sock, int *fds, size_t count);
