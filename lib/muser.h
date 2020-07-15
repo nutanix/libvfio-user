@@ -43,17 +43,6 @@
 #include "caps/msi.h"
 #include "caps/msix.h"
 
-/*
- * Influential enviroment variables:
- *
- * LM_TERSE_LOGGING: define to make libmuser log only erroneous PCI accesses.
- *                   (this should really be done with a more fine grained debug
- *                    level)
- */
-#ifndef LM_TERSE_LOGGING
-#define LM_TERSE_LOGGING 0
-#endif
-
 #define VFIO_NAME       "vfio"
 #define VFIO_DIR        "/dev/" VFIO_NAME "/"
 #define VFIO_CONTAINER  VFIO_DIR "/" VFIO_NAME

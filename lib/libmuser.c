@@ -714,6 +714,34 @@ offset_to_region(uint64_t offset)
     return (offset >> LM_REGION_SHIFT) & LM_REGION_MASK;
 }
 
+#ifdef LM_VERBOSE_LOGGING
+void
+dump_buffer(const char *prefix, const char *buf, uint32_t count)
+{
+    int i;
+    const size_t bytes_per_line = 0x8;
+
+    if (strcmp(prefix, "")) {
+        fprintf(stderr, "%s\n", prefix);
+    }
+    for (i = 0; i < (int)count; i++) {
+        if (i % bytes_per_line != 0) {
+            fprintf(stderr, " ");
+        }
+        /* TODO valgrind emits a warning if count is 1 */
+        fprintf(stderr,"0x%02x", *(buf + i));
+        if ((i + 1) % bytes_per_line == 0) {
+            fprintf(stderr, "\n");
+        }
+    }
+    if (i % bytes_per_line != 0) {
+        fprintf(stderr, "\n");
+    }
+}
+#else
+#define dump_buffer(prefix, buf, count)
+#endif
+
 static long
 dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
 {
@@ -744,7 +772,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
     }
 
     lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", vfio_reg->index);
-    dump_buffer(lm_ctx, "", (char*)vfio_reg, sizeof *vfio_reg);
+    dump_buffer("", (char*)vfio_reg, sizeof *vfio_reg);
 
     return 0;
 }
@@ -1230,8 +1258,8 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
             goto out;
         }
         err = 0;
-#ifndef LM_TERSE_LOGGING
-        dump_buffer(lm_ctx, "buffer write", rwbuf, cmd->rw.count);
+#ifdef LM_VERBOSE_LOGGING
+        dump_buffer("buffer write", rwbuf, cmd->rw.count);
 #endif
     }
 
@@ -1241,8 +1269,8 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
     if (cmd->err) {
         lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %s\n",
                strerror(-cmd->err));
-#ifndef LM_TERSE_LOGGING
-        dump_buffer(lm_ctx, "buffer write", rwbuf, _count);
+#ifdef LM_VERBOSE_LOGGING
+        dump_buffer("buffer write", rwbuf, _count);
 #endif
     }
 
@@ -1256,9 +1284,11 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
     if (!is_write && ret >= 0) {
         ret += count;
         err = post_read(lm_ctx, rwbuf, ret);
-        if (!LM_TERSE_LOGGING && err == ret) {
-            dump_buffer(lm_ctx, "buffer read", rwbuf, ret);
+#ifdef LM_VERBOSE_LOGGING
+        if (err == ret) {
+            dump_buffer("buffer read", rwbuf, ret);
         }
+#endif
     }
 
 out:
@@ -1747,35 +1777,6 @@ out:
 
     return lm_ctx;
 }
-
-#ifdef DEBUG
-static void
-dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
-            const char *buf, uint32_t count)
-{
-    int i;
-    const size_t bytes_per_line = 0x8;
-
-    if (strcmp(prefix, "")) {
-        lm_log(lm_ctx, LM_DBG, "%s\n", prefix);
-    }
-    for (i = 0; i < (int)count; i++) {
-        if (i % bytes_per_line != 0) {
-            lm_log(lm_ctx, LM_DBG, " ");
-        }
-        /* TODO valgrind emits a warning if count is 1 */
-        lm_log(lm_ctx, LM_DBG, "0x%02x", *(buf + i));
-        if ((i + 1) % bytes_per_line == 0) {
-            lm_log(lm_ctx, LM_DBG, "\n");
-        }
-    }
-    if (i % bytes_per_line != 0) {
-        lm_log(lm_ctx, LM_DBG, "\n");
-    }
-}
-#else
-#define dump_buffer(lm_ctx, prefix, buf, count)
-#endif
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.

@@ -51,12 +51,11 @@
 void
 lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
 
-#ifdef DEBUG
+#ifdef LM_VERBOSE_LOGGING
 void
-dump_buffer(lm_ctx_t *lm_ctx, const char *prefix,
-            const char *buf, uint32_t count);
+dump_buffer(const char *prefix, const char *buf, uint32_t count);
 #else
-#define dump_buffer(lm_ctx, prefix, buf, count)
+#define dump_buffer(prefix, buf, count)
 #endif
 
 #endif /* __COMMON_H__ */
