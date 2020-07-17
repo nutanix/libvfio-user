@@ -194,7 +194,7 @@ typedef struct {
 } lm_pci_info_t;
 
 /*
- * Returns a pointer to the non-standard part of the PCI configuration space.
+ * Returns a pointer to the standard part of the PCI configuration space.
  */
 lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
 
@@ -231,23 +231,12 @@ typedef ssize_t (lm_cap_access_t) (void *pvt, uint8_t id,
                                    char *buf, size_t count,
                                    loff_t offset, bool is_write);
 
-union pci_cap {
+/* FIXME does it have to be packed as well? */
+typedef union {
     struct msicap msi;
     struct msixcap msix;
     struct pmcap pm;
     struct pxcap px;
-};
-
-typedef struct {
-
-    /*
-     * Capability ID, as defined by the PCI specification. Also defined as
-     * PCI_CAP_ID_XXX in <linux/pci_regs.h>.
-     * FIXME capability header already includes ID
-     */
-    uint8_t id;
-
-    union pci_cap cap;
 } lm_cap_t;
 
 typedef enum {
@@ -487,7 +476,7 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx);
  * FIXME need to make sure that there can be at most one capability with a given
  * ID, otherwise this function will return the first one with this ID.
  */
-union pci_cap*
+uint8_t *
 lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
 
 void

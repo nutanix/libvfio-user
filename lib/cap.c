@@ -41,55 +41,53 @@
 #include "cap.h"
 
 struct cap {
-    uint8_t         start;
-    uint8_t         end;
-    /*
-     * TODO lm_cap_t is a union so we're waisting some memory. If we replace the
-     * list with a buffer then this issue goes away.
-     */
-    lm_cap_t        cap;
+    uint8_t start;
+    uint8_t end;
 };
 
 struct caps {
-    struct cap  caps[LM_MAX_CAPS];
-    struct cap  *caps_by_id[LM_MAX_CAPS];
-    int         nr_caps;
+    struct cap      caps[LM_MAX_CAPS]; /* FIXME only needs to be as big as nr_caps */
+    unsigned int    nr_caps;
 };
 
 /*
  * Tells whether a capability is being accessed.
  */
 static bool
-cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
+cap_is_accessed(struct cap *caps, int nr_caps, size_t count, loff_t offset)
 {
-    /*
-     * Ignore if it's at the standard PCI header. The first capability starts
-     * right after that.
-     */
-    if (offset < PCI_STD_HEADER_SIZEOF) {
+    if (nr_caps == 0) {
         return false;
     }
 
-    /* ignore if there are no capabilities */
-    if (!nr_caps) {
-        return false;
-    }
+    assert(caps != NULL);
 
-    assert(caps);
-
-    /*
-     * Ignore if it's before the first capability. This check is probably
-     * redundant since we assume that the first capability starts right after
-     * the standard PCI header.
-     * TODO should we check that it doesn't cross into the first capability?
-     */
     if (offset < caps[0].start) {
+        /* write starts before first capability */
+
+        if (offset + count <= caps[0].start) {
+            /* write ends before first capability */
+            return false;
+        }
+
+        /*
+         * FIXME write starts before capabilities but extends into them. I don't
+         * think that the while loop in lm_access will allow this in the first
+         * place.
+         */
+        assert(false);
+    } else if (offset > caps[nr_caps - 1].end) {
+        /* write starts after last capability */
         return false;
     }
 
-    /* ignore if it's past the last capability */
-    if (offset > caps[nr_caps - 1].end) {
-        return false;
+    if (offset + count > (size_t)(caps[nr_caps - 1].end + 1)) {
+        /*
+         * FIXME write starts within capabilities but extends past them, I think
+         * that this _is_ possible, e.g. MSI-X is 12 bytes (PCI_CAP_MSIX_SIZEOF)
+         * and the host writes to first 8 bytes and then writes 8 more.
+         */
+        assert(false);
     }
     return true;
 }
@@ -98,24 +96,29 @@ cap_is_accessed(struct cap *caps, int nr_caps, loff_t offset)
  * Returns the PCI capability that is contained within the specified region
  * (offset + count).
  */
-static struct cap *
-cap_find(struct cap *caps, int nr_caps, loff_t offset, size_t count)
+static uint8_t *
+cap_find(lm_pci_config_space_t *config_space, struct caps *caps, loff_t offset,
+         size_t count)
 {
     struct cap *cap;
 
-    cap = caps;
-    while (cap < caps + nr_caps) {
+    assert(config_space != NULL);
+    assert(caps != NULL);
+
+    cap = caps->caps;
+    while (cap < caps->caps + caps->nr_caps) {
         /*
-         * TODO this assumes that at most one capability is read. It might be
-         * legitimate to read an arbitrary number of bytes, which we could
-         * support. For now lets explicitly fail such cases.
+         * FIXME ensure that at most one capability is written to. It might
+         * legitimate to write to two capabilities at the same time.
          */
-        if (offset >= cap->start && offset + count - 1 <= cap->end) {
-            return cap;
+        if (offset >= cap->start && offset <= cap->end) {
+            if (offset + count - 1 > cap->end) {
+                assert(false);
+            }
+            return config_space->raw + cap->start;
         }
         cap++;
     }
-    /* this means that the access spans more than a capability */
     return NULL;
 }
 
@@ -129,76 +132,49 @@ cap_is_valid(uint8_t id)
     return id >= PCI_CAP_ID_PM && id <= PCI_CAP_ID_MAX;
 }
 
-union pci_cap*
-cap_find_by_id(struct caps *caps, uint8_t id)
+uint8_t *
+cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id)
 {
+    uint8_t *pos;
+    lm_pci_config_space_t *config_space;
+
     if (!cap_is_valid(id)) {
         errno = EINVAL;
         return NULL;
     }
 
-    if (caps->caps_by_id[id] == NULL) {
+    config_space = lm_get_pci_config_space(lm_ctx);
+
+    if (config_space->hdr.cap == 0) {
         errno = ENOENT;
         return NULL;
     }
 
-    return &caps->caps_by_id[id]->cap.cap;
+    pos = config_space->raw + config_space->hdr.cap;
+    while (true) {
+        if (*(pos + PCI_CAP_LIST_ID) == id) {
+            return pos;
+        }
+        if (*(pos + PCI_CAP_LIST_NEXT) == 0) {
+            break;
+        }
+        pos = config_space->raw + *(pos + PCI_CAP_LIST_NEXT);
+    }
+    errno = ENOENT;        
+    return NULL;
 }
 
 /*
  * Tells whether the header of a PCI capability is accessed.
  */
 static bool
-cap_header_is_accessed(struct cap *cap, loff_t offset)
+cap_header_is_accessed(uint8_t cap_offset, loff_t offset)
 {
-    assert(cap);
-    return offset - cap->start <= 1;
+    return offset - cap_offset <= 1;
 }
 
-/*
- * Reads the header of a PCI capability.
- */
-static int
-cap_header_access(struct caps *caps, struct cap *cap, char *buf,
-                  loff_t offset, size_t count, bool is_write)
-{
-    int n;
-
-    /*
-     * We don't allow ID and next to be written. TODO not sure what the PCI
-     * spec says about this, need to check.
-     */
-    if (is_write) {
-        return -EINVAL;
-    }
-
-    assert(caps);
-    assert(cap);
-    n = 0;
-    /*
-     * We handle reads to ID and next, the rest is handled by the callback.
-     */
-    if (offset == cap->start && count > 0) { /* ID */
-        buf[n++] = cap->cap.id;
-        offset++;
-        count--;
-    }
-    if (offset == cap->start + 1 && count > 0) { /* next */
-
-        if ((cap - caps->caps) / sizeof *cap == (size_t)(caps->nr_caps - 1)) {
-            buf[n++] = 0;
-        } else {
-            buf[n++] = (cap + 1)->start;
-        }
-
-        offset++;
-        count--;
-    }
-    return n;
-}
-
-typedef ssize_t (cap_access) (lm_ctx_t *lm_ctx, union pci_cap *cap, char *buf,
-                              size_t count, loff_t offset, bool is_write);
+typedef ssize_t (cap_access) (lm_ctx_t *lm_ctx, uint8_t *cap, char *buf,
+                              size_t count, loff_t offset);
 
 static ssize_t
 handle_pmcs_write(lm_ctx_t *lm_ctx, struct pmcap *pm,
@@ -222,9 +198,11 @@ handle_pmcs_write(lm_ctx_t *lm_ctx, struct pmcap *pm,
 }
 
 static ssize_t
-handle_pm_write(lm_ctx_t *lm_ctx, struct pmcap *pm, char *const buf,
+handle_pm_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
                 const size_t count, const loff_t offset)
 {
+    struct pmcap *pm = (struct pmcap *)cap;
+
 	switch (offset) {
 	case offsetof(struct pmcap, pc):
 		if (count != sizeof(struct pc)) {
@@ -238,19 +216,6 @@ handle_pm_write(lm_ctx_t *lm_ctx, struct pmcap *pm, char *const buf,
 		return handle_pmcs_write(lm_ctx, pm, (struct pmcs *)buf);
 	}
 	return -EINVAL;
-}
-
-static ssize_t
-handle_pm(lm_ctx_t *lm_ctx, union pci_cap *cap, char *const buf,
-          const size_t count, const loff_t offset, const bool is_write)
-{
-	if (is_write) {
-		return handle_pm_write(lm_ctx, &cap->pm, buf, count, offset);
-	}
-
-	memcpy(buf, ((char *)&cap->pm) + offset, count);
-
-	return count;
 }
 
 static ssize_t
@@ -279,9 +244,11 @@ handle_mxc_write(lm_ctx_t *lm_ctx, struct msixcap *msix,
 }
 
 static ssize_t
-handle_msix_write(lm_ctx_t *lm_ctx, struct msixcap *msix, char *const buf,
+handle_msix_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
                   const size_t count, const loff_t offset)
 {
+    struct msixcap *msix = (struct msixcap *)cap;
+
 	if (count == sizeof(struct mxc)) {
 		switch (offset) {
 		case offsetof(struct msixcap, mxc):
@@ -293,19 +260,6 @@ handle_msix_write(lm_ctx_t *lm_ctx, struct msixcap *msix, char *const buf,
 	}
 	lm_log(lm_ctx, LM_ERR, "invalid MSI-X write size %lu\n", count);
 	return -EINVAL;
-}
-
-static ssize_t
-handle_msix(lm_ctx_t *lm_ctx, union pci_cap *cap, char *const buf, size_t count,
-            loff_t offset, const bool is_write)
-{
-	if (is_write) {
-		return handle_msix_write(lm_ctx, &cap->msix, buf, count, offset);
-	}
-
-	memcpy(buf, ((char *)&cap->msix) + offset, count);
-
-	return count;
 }
 
 static int
@@ -389,9 +343,11 @@ handle_px_write_2_bytes(lm_ctx_t *lm_ctx, struct pxcap *px, char *const buf,
 }
 
 static ssize_t
-handle_px_write(lm_ctx_t *lm_ctx, struct pxcap *px, char *const buf,
+handle_px_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
                 size_t count, loff_t offset)
 {
+    struct pxcap *px = (struct pxcap *)cap;
+
 	int err = -EINVAL;
 	switch (count) {
 	case 2:
@@ -404,70 +360,57 @@ handle_px_write(lm_ctx_t *lm_ctx, struct pxcap *px, char *const buf,
 	return count;
 }
 
-static ssize_t
-handle_exp(lm_ctx_t *lm_ctx, union pci_cap *cap, char *const buf, size_t count,
-          loff_t offset, const bool is_write)
-{
-	if (is_write) {
-		return handle_px_write(lm_ctx, &cap->px, buf, count, offset);
-	}
-
-	memcpy(buf, ((char *)&cap->px) + offset, count);
-
-	return count;
-}
-
 static const struct cap_handler {
     char *name;
     size_t size;
     cap_access *fn;
 } cap_handlers[PCI_CAP_ID_MAX + 1] = {
-    [PCI_CAP_ID_PM] = {"PM", PCI_PM_SIZEOF, handle_pm},
-    [PCI_CAP_ID_EXP] = {"PCI Express", PCI_CAP_EXP_ENDPOINT_SIZEOF_V2, handle_exp},
-    [PCI_CAP_ID_MSIX] = {"MSI-X", PCI_CAP_MSIX_SIZEOF, handle_msix},
+    [PCI_CAP_ID_PM] = {"PM", PCI_PM_SIZEOF, handle_pm_write},
+    [PCI_CAP_ID_EXP] = {"PCI Express", PCI_CAP_EXP_ENDPOINT_SIZEOF_V2,
+                        handle_px_write},
+    [PCI_CAP_ID_MSIX] = {"MSI-X", PCI_CAP_MSIX_SIZEOF, handle_msix_write},
 };
 
 ssize_t
 cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
-                 loff_t offset, bool is_write)
+                 loff_t offset)
 {
-    struct cap *cap;
+    lm_pci_config_space_t *config_space;
+    uint8_t *cap;
 
-    if (!caps) {
+    if (caps == NULL) {
         return 0;
     }
 
-    if (!count) {
+    if (count == 0) {
         return 0;
     }
 
-    if (!cap_is_accessed(caps->caps, caps->nr_caps, offset)) {
+    if (!cap_is_accessed(caps->caps, caps->nr_caps, count, offset)) {
         return 0;
     }
 
     /* we're now guaranteed that the access is within some capability */
-    cap = cap_find(caps->caps, caps->nr_caps, offset, count);
+    config_space = lm_get_pci_config_space(lm_ctx);
+    cap = cap_find(config_space, caps, offset, count);
+    assert(cap != NULL); /* FIXME */
 
-    if (!cap) {
-        return 0;
+    if (cap_header_is_accessed(cap - config_space->raw, offset)) {
+        /* FIXME how to deal with writes to capability header? */
+        assert(false);
     }
-
-    if (cap_header_is_accessed(cap, offset)) {
-        return cap_header_access(caps, cap, buf, offset, count, is_write);
-    }
-    if (count > 0) {
-        return cap_handlers[cap->cap.id].fn(lm_ctx, &cap->cap.cap, buf, count,
-                                            offset - cap->start, is_write);
-    }
-    return 0;
+    return cap_handlers[cap[PCI_CAP_LIST_ID]].fn(lm_ctx, cap, buf, count,
+                                                 offset - (loff_t)(cap - config_space->raw));
 }
 
 struct caps *
 caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
 {
-    uint8_t prev_end;
     int i, err = 0;
-    struct caps *caps = NULL;
+    uint8_t *prev;
+    uint8_t next;
+    lm_pci_config_space_t *config_space;
+    struct caps *caps;
 
     if (nr_caps <= 0 || nr_caps >= LM_MAX_CAPS) {
         err = EINVAL;
@@ -477,45 +420,45 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
     assert(lm_caps != NULL);
 
     caps = calloc(1, sizeof *caps);
-    if (!caps) {
-        err = errno;
+    if (caps == NULL) {
         goto out;
     }
 
-    prev_end = PCI_STD_HEADER_SIZEOF - 1;
+    config_space = lm_get_pci_config_space(lm_ctx);
+    /* points to the next field of the previous capability */
+    prev = &config_space->hdr.cap;
+
+    /* relative offset that points where the next capability should be placed */
+    next = PCI_STD_HEADER_SIZEOF;
+
     for (i = 0; i < nr_caps; i++) {
-        uint8_t cap_id;
-        size_t cap_size;
+        uint8_t *cap = (uint8_t*)lm_caps[i];
+        uint8_t id = cap[PCI_CAP_LIST_ID];
+        size_t size;
 
-        cap_id = lm_caps[i]->id;
-        if (!cap_is_valid(cap_id)) {
+        if (!cap_is_valid(id)) {
             err = EINVAL;
             goto out;
         }
 
-        cap_size = cap_handlers[cap_id].size;
-        if (cap_size == 0) {
+        size = cap_handlers[id].size;
+        if (size == 0) {
             err = EINVAL;
             goto out;
         }
 
-        /*
-         * FIXME we assume that a capability with a given ID can appear only
-         * once, check the spec.
-         */
-        if (caps->caps_by_id[cap_id] != NULL) {
-            err = EINVAL;
-            goto out;
-        }
-        caps->caps_by_id[cap_id] = &caps->caps[i];
+        caps->caps[i].start = next;
+        caps->caps[i].end = next + size - 1;
 
-        caps->caps[i].cap = *lm_caps[i];
-        caps->caps[i].start = prev_end + 1;
-        caps->caps[i].end = prev_end = caps->caps[i].start + cap_size - 1;
+        memcpy(&config_space->hdr.raw[next], cap, size);
+        *prev = next;
+        prev = &config_space->hdr.raw[next + PCI_CAP_LIST_NEXT];
+        *prev = 0;
+        next += size;
+        assert(next % 4 == 0); /* FIXME */
 
         lm_log(lm_ctx, LM_DBG, "initialized capability %s %#x-%#x\n",
-               cap_handlers[cap_id].name, caps->caps[i].start,
-               caps->caps[i].end);
+               cap_handlers[id].name, caps->caps[i].start, caps->caps[i].end);
     }
     caps->nr_caps = nr_caps;
 

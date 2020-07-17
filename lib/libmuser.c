@@ -1123,11 +1123,15 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
     int ret;
 
     count = MIN(pci_config_space_size(lm_ctx), count);
-    ret = cap_maybe_access(lm_ctx, lm_ctx->caps, buf, count, pos, is_write);
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
-               pos);
-        return ret;
+    if (is_write) {
+        ret = cap_maybe_access(lm_ctx, lm_ctx->caps, buf, count, pos);
+        if (ret < 0) {
+            lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
+                   pos);
+            return ret;
+        }
+    } else {
+        memcpy(buf, lm_ctx->pci_config_space->raw + pos, count);
     }
     return count;
 }
@@ -1839,12 +1843,12 @@ lm_ctx_run(lm_dev_info_t *dev_info)
     return ret;
 }
 
-union pci_cap*
+uint8_t *
 lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id)
 {
     assert(lm_ctx != NULL);
 
-    return cap_find_by_id(lm_ctx->caps, id);
+    return cap_find_by_id(lm_ctx, id);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

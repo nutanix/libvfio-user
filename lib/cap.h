@@ -55,10 +55,10 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
  */
 ssize_t
 cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
-                 loff_t offset, bool is_write);
+                 loff_t offset);
 
-union pci_cap*
-cap_find_by_id(struct caps *caps, uint8_t id);
+uint8_t *
+cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id);
 
 #endif /* __CAP_H__ */
 
