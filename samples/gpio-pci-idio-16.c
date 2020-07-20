@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-s] [-d] UUID\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-s] [-d] <IOMMU group>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
