@@ -52,7 +52,7 @@
 #ifdef DEBUG
 #define debug(fmt, ...)									\
 	do {										\
-		FILE *fp = fopen("/tmp/foo", "a+");					\
+		FILE *fp = fopen("/tmp/libvfio", "a+");					\
 		assert(fp);								\
 		fprintf(fp, "%s:%d " fmt, __FILE__, __LINE__, ##__VA_ARGS__);		\
 		fclose(fp);								\
