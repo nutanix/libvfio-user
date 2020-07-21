@@ -882,6 +882,10 @@ muser_dma_unmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
            cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len);
 
+    if (lm_ctx->unmap_dma == NULL) {
+        return 0;
+    }
+
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
         return -EINVAL;
@@ -909,10 +913,15 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     get_path_from_fd(cmd->mmap.request.fd, buf);
 
-    lm_log(lm_ctx, LM_INF, "adding DMA region fd=%d path=%s iova=%#lx-%#lx offset=%#lx\n",
+    lm_log(lm_ctx, LM_INF, "%s DMA region fd=%d path=%s iova=%#lx-%#lx offset=%#lx\n",
+           lm_ctx->unmap_dma == NULL ? "ignoring" : "adding",
            cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len,
            cmd->mmap.request.offset);
+
+    if (lm_ctx->unmap_dma == NULL) {
+        return 0;
+    }
 
     if (lm_ctx->dma == NULL) {
         lm_log(lm_ctx, LM_ERR, "DMA not initialized\n");
@@ -1679,11 +1688,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
 
-    if (dev_info->unmap_dma == NULL) {
-        errno = EINVAL;
-        return NULL;
-    }
-
     /*
      * FIXME need to check that the number of MSI and MSI-X IRQs are valid
      * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
@@ -1764,10 +1768,12 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     lm_ctx->unmap_dma = dev_info->unmap_dma;
 
     // Create the internal DMA controller.
-    lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
-    if (lm_ctx->dma == NULL) {
-        err = errno;
-        goto out;
+    if (lm_ctx->unmap_dma != NULL) {
+        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
+        if (lm_ctx->dma == NULL) {
+            err = errno;
+            goto out;
+        }
     }
 
 out:
@@ -1813,6 +1819,10 @@ inline int
 lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr,
               uint32_t len, dma_sg_t *sg, int max_sg)
 {
+    if (unlikely(lm_ctx->unmap_dma == NULL)) {
+        errno = EINVAL;
+        return -1;
+    }
     return dma_addr_to_sg(lm_ctx->dma, dma_addr, len, sg, max_sg);
 }
 
@@ -1820,12 +1830,19 @@ inline int
 lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
 	  struct iovec *iov, int cnt)
 {
+    if (unlikely(lm_ctx->unmap_dma == NULL)) {
+        errno = EINVAL;
+        return -1;
+    }
     return dma_map_sg(lm_ctx->dma, sg, iov, cnt);
 }
 
 inline void
 lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
+    if (unlikely(lm_ctx->unmap_dma == NULL)) {
+        return;
+    }
     return dma_unmap_sg(lm_ctx->dma, sg, iov, cnt);
 }
 

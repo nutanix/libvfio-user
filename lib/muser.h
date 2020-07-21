@@ -287,6 +287,7 @@ typedef struct {
     /*
      * Function that is called when the guest unmaps a DMA region. The device
      * must release all references to that region before the callback returns.
+     * This is required if you want to be able to access guest memory.
      */
     int (*unmap_dma) (void *pvt, uint64_t iova);
 
@@ -393,6 +394,8 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
  * than can be individually mapped in the program's virtual memory.  A single
  * linear guest physical address span may need to be split into multiple
  * scatter/gather regions due to limitations of how memory can be mapped.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @dma_addr: the guest physical address
@@ -414,6 +417,8 @@ lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * Maps a list scatter/gather entries from the guest's physical address space
  * to the program's virtual memory. It is the caller's responsibility to remove
  * the mappings by calling lm_unmap_sg.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @sg: array of scatter/gather entries returned by lm_addr_to_sg
@@ -430,6 +435,8 @@ lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
 /**
  * Unmaps a list scatter/gather entries (previously mapped by lm_map_sg) from
  * the program's virtual memory.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @sg: array of scatter/gather entries to unmap
