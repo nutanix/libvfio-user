@@ -341,8 +341,8 @@ lm_ctx_run(lm_dev_info_t *dev_info);
 /**
  * Triggers an interrupt.
  *
- * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
- * needs to specify the sub-index.
+ * libmuser takes care of using the correct IRQ type (IRQ index: INTx or MSI/X),
+ * the caller only needs to specify the sub-index.
  *
  * @lm_ctx: the libmuser context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
