@@ -285,6 +285,11 @@ typedef struct {
     int (*reset)    (void *pvt);
 
     /*
+     * Function that is called when the guest maps a DMA region. Optional.
+     */
+    void (*map_dma) (void *pvt, uint64_t iova, uint64_t len);
+
+    /*
      * Function that is called when the guest unmaps a DMA region. The device
      * must release all references to that region before the callback returns.
      * This is required if you want to be able to access guest memory.

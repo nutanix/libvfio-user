@@ -90,6 +90,7 @@ struct lm_ctx {
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
+    void (*map_dma)         (void *pvt, uint64_t iova, uint64_t len);
     int (*unmap_dma)        (void *pvt, uint64_t iova);
 
     /* TODO there should be a void * variable to store transport-specific stuff */
@@ -941,6 +942,10 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
         err = 0;
     }
 
+    if (lm_ctx->map_dma != NULL) {
+        lm_ctx->map_dma(lm_ctx->pvt, cmd->mmap.request.addr, cmd->mmap.request.len); 
+    }
+
     return err;
 }
 
@@ -1765,6 +1770,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         }
     }
 
+    lm_ctx->map_dma = dev_info->map_dma;
     lm_ctx->unmap_dma = dev_info->unmap_dma;
 
     // Create the internal DMA controller.
