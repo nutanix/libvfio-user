@@ -448,8 +448,8 @@ static void unpin_pages(struct page_map *const pg_map)
 	pg_map->pages = NULL;
 }
 
-static int vm_insert_pages(struct vm_area_struct *const vma,
-			   struct page *const pages[], const int nr_pages)
+static int _vm_insert_pages(struct vm_area_struct *const vma,
+			    struct page *const pages[], const int nr_pages)
 {
 	int err = 0, i;
 
@@ -1224,7 +1224,7 @@ static int muser_mmap(struct mdev_device *const mdev,
 		return err;
 	}
 
-	return vm_insert_pages(vma, mucmd.pg_map.pages, mucmd.pg_map.nr_pages);
+	return _vm_insert_pages(vma, mucmd.pg_map.pages, mucmd.pg_map.nr_pages);
 }
 
 struct mdev_parent_ops muser_mdev_fops = {
