@@ -86,7 +86,7 @@ test_map_dma(const int fd, void *vaddr, unsigned long size, unsigned long iova,
 		.size = size,
 	};
 	fprintf(stderr, "attempting to MAP_DMA IOVA=%llx\n", dma_map.iova);
-	
+
 	err = ioctl(fd, VFIO_IOMMU_MAP_DMA, &dma_map);
 	if (err) {
 		fprintf(stderr, "failed to MAP_DMA: %d (%s)\n", err,
@@ -179,7 +179,7 @@ int main(int argc, char * argv[])
 
 	ret = lseek(fd, size, SEEK_END);
 	if (ret == -1) {
-		err(EXIT_FAILURE, "failed to seek at %d", size);
+		err(EXIT_FAILURE, "failed to seek at %zu", size);
 	}
 
 	/*

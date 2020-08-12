@@ -28,30 +28,46 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -fPIC")
+set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
+
 add_library(muser SHARED
     ../kmod/muser.h
     muser.h
     muser_priv.h
-    pci.h
-    common.h
-    dma.h
-    dma.c
-    libmuser.c
-    libmuser_pci.c
-    cap.c
-    cap.h)
-set(CMAKE_C_FLAGS "-Wall -Wextra -Werror")
+    common.h)
+
+target_link_libraries(muser muser_ctx muser_pci dma cap)
+set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h")
+
+set(UT_CFLAGS "-O0 -ggdb --coverage")
+set(UT_LFLAGS "--coverage")
+
+function(add_library_ut lib)
+    add_library(${lib} ${ARGN})
+    string(CONCAT lib_ut ${lib} "_ut")
+    add_library(${lib_ut} ${ARGN})
+    set_target_properties(${lib_ut} PROPERTIES COMPILE_FLAGS ${UT_CFLAGS})
+    set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
+endfunction(add_library_ut)
+
+add_library_ut(muser_ctx muser_ctx.c muser.h)
+add_library_ut(muser_pci muser_pci.c pci.h)
+add_library_ut(cap cap.c cap.h)
+add_library_ut(dma dma.c dma.h)
+
 set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
+
 install(TARGETS muser
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     PUBLIC_HEADER DESTINATION ${MUSER_HEADERS_DIR})
+
 install(DIRECTORY "caps"
         DESTINATION ${MUSER_HEADERS_DIR}
         FILES_MATCHING PATTERN "*.h")
 
 if (DEFINED ENV{PYTHON_BINDINGS})
-
         add_custom_target(python_bindings_build ALL
                 COMMAND python setup.py build -b ${CMAKE_BINARY_DIR}
                 DEPENDS python_bindings.c setup.py

@@ -1069,6 +1069,15 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
     return eventfd_write(lm_ctx->irqs.efds[vector], val);
 }
 
+static void
+free_sparse_mmap_areas(lm_reg_info_t *reg_info)
+{
+    int i;
+
+    for (i = 0; i < LM_DEV_NUM_REGS; i++)
+        free(reg_info[i].mmap_areas);
+}
+
 void
 lm_ctx_destroy(lm_ctx_t *lm_ctx)
 {
@@ -1081,6 +1090,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx, lm_ctx->dma);
     }
+    free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
@@ -1108,15 +1118,6 @@ copy_sparse_mmap_areas(lm_reg_info_t *dst, const lm_reg_info_t *src)
     }
 
     return 0;
-}
-
-static void
-free_sparse_mmap_areas(lm_reg_info_t *reg_info)
-{
-    int i;
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++)
-        free(reg_info[i].mmap_areas);
 }
 
 static int
@@ -1189,6 +1190,28 @@ err:
     return -1;
 }
 
+static void
+pci_info_bounce(lm_pci_info_t *dst, const lm_pci_info_t *src)
+{
+    int i;
+
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        dst->irq_count[i] = src->irq_count[i];
+    }
+
+    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
+        dst->reg_info[i].flags = src->reg_info[i].flags;
+        dst->reg_info[i].size  = src->reg_info[i].size;
+        dst->reg_info[i].fn    = src->reg_info[i].fn;
+        dst->reg_info[i].map   = src->reg_info[i].map;
+        // Sparse map data copied by copy_sparse_mmap_areas().
+    }
+
+    dst->id = src->id;
+    dst->ss = src->ss;
+    dst->cc = src->cc;
+}
+
 lm_ctx_t *
 lm_ctx_create(const lm_dev_info_t *dev_info)
 {
@@ -1238,7 +1261,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     lm_ctx->reset = dev_info->reset;
 
     // Bounce the provided pci_info into the context.
-    memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
+    pci_info_bounce(&lm_ctx->pci_info, &dev_info->pci_info);
 
     // Setup the PCI config space for this context.
     err = pci_config_setup(lm_ctx, dev_info);
