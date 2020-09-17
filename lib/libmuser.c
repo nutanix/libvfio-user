@@ -200,7 +200,7 @@ init_sock(lm_ctx_t *lm_ctx)
     }
 
     if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
-        ret = fcntl(fd, F_SETFL, fcntl(lm_ctx->fd, F_GETFL, 0) | O_NONBLOCK);
+        ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
         if (ret == -1) {
             assert(false); /* FIXME */
             return -1;
