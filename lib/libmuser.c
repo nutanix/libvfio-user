@@ -81,6 +81,7 @@ struct lm_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
     int                     fd;
+    int                     conn_fd;
     int (*reset)            (void *pvt);
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
@@ -257,7 +258,7 @@ open_sock(lm_ctx_t *lm_ctx)
 static int
 close_sock(lm_ctx_t *lm_ctx)
 {
-    return close(lm_ctx->fd);
+    return close(lm_ctx->conn_fd);
 }
 
 static int
@@ -268,13 +269,13 @@ get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    return recv(lm_ctx->fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
+    return recv(lm_ctx->conn_fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
 }
 
 static int
 send_response_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
-    return write(lm_ctx->fd, cmd, sizeof *cmd);
+    return write(lm_ctx->conn_fd, cmd, sizeof *cmd);
 }
 
 static void
@@ -300,7 +301,7 @@ get_path_from_fd(int fd, char *buf)
 static ssize_t
 recv_fds_sock(lm_ctx_t *lm_ctx, void *buf, size_t size)
 {
-    ssize_t ret = muser_recv_fds(lm_ctx->fd, buf, size / sizeof(int));
+    ssize_t ret = muser_recv_fds(lm_ctx->conn_fd, buf, size / sizeof(int));
     if (ret < 0) {
 	    return ret;
     }
@@ -687,7 +688,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     }
 
     /* write the sparse mmap cap info to vfio-client user pages */
-    ret = write(lm_ctx->fd, sparse, size);
+    ret = write(lm_ctx->conn_fd, sparse, size);
     if (ret != (ssize_t)size) {
         free(sparse);
         return -EIO;
@@ -1066,7 +1067,7 @@ muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     /* FIXME */
     if (lm_ctx->trans == LM_TRANS_SOCK) {
-        err = muser_send_fds(lm_ctx->fd, (int*)&addr, 1);
+        err = muser_send_fds(lm_ctx->conn_fd, (int*)&addr, 1);
 	    if (err == -1) {
 		    lm_log(lm_ctx, LM_ERR, "failed to send fd=%d: %d, %m\n",
                    *((int*)&addr), err);
@@ -1092,7 +1093,7 @@ post_read(lm_ctx_t *lm_ctx, char *rwbuf, ssize_t count)
 {
     ssize_t ret;
 
-    ret = write(lm_ctx->fd, rwbuf, count);
+    ret = write(lm_ctx->conn_fd, rwbuf, count);
     if (ret != count) {
         lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %lu/%lu, %s\n",
                __func__, ret, count, strerror(errno));
@@ -1265,7 +1266,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
 
     /* copy data to be written from kernel to user space */
     if (is_write) {
-        err = read(lm_ctx->fd, rwbuf, cmd->rw.count);
+        err = read(lm_ctx->conn_fd, rwbuf, cmd->rw.count);
         /*
          * FIXME this is wrong, we should be checking for
          * err != cmd->rw.count
@@ -1665,7 +1666,7 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx)
     if (ret == -1) {
         return -1;
     }
-    lm_ctx->fd = ret;
+    lm_ctx->conn_fd = ret;
     return 0;
 }
 
@@ -1760,8 +1761,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
 
     // Attach to the muser control device.
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
-        lm_ctx->fd = transports_ops[dev_info->trans].attach(lm_ctx);
-        if (lm_ctx->fd == -1) {
+        lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
+        if (lm_ctx->conn_fd == -1) {
                 err = errno;
                 if (errno != EINTR) {
                     lm_log(lm_ctx, LM_ERR, "failed to attach: %m\n");
