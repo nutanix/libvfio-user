@@ -37,6 +37,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
+#include "vfio_user.h"
 #include "pci.h"
 #include "caps/pm.h"
 #include "caps/px.h"
