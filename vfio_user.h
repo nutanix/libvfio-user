@@ -34,6 +34,8 @@
 #ifndef _VFIO_USER_H
 #define _VFIO_USER_H
 
+#include <linux/vfio.h>
+
 enum vfio_user_command {
 	VFIO_USER_VERSION			= 1,
 	VFIO_USER_DMA_MAP			= 2,
