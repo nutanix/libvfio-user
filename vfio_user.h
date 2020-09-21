@@ -68,7 +68,7 @@ struct vfio_user_header {
 		uint32_t	resvd    : 26;
 	} flags;
 	uint32_t	error_no;
-} __attribute((packed));
+} __attribute__((packed));
 
 #define VFIO_USER_DMA_REGION_MAPPABLE		(0x1)
 
@@ -78,13 +78,13 @@ struct vfio_user_dma_region {
 	uint64_t	offset;
 	uint32_t	protections;
 	uint32_t	flags;
-} __attribute((packed));
+} __attribute__((packed));
 
 struct vfio_user_region_access {
 	uint64_t	offset;
 	uint32_t	region;
 	uint32_t	count;
 	uint8_t		data[];
-} __attribute((packed));
+} __attribute__((packed));
 
 #endif
