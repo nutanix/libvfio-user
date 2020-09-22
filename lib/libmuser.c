@@ -168,80 +168,84 @@ static int
 init_sock(lm_ctx_t *lm_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
-    int ret, fd;
+    int ret, unix_sock;
     unsigned long iommu_grp;
     char *endptr;
     mode_t mode;
 
     assert(lm_ctx != NULL);
 
-    /* FIXME implement clean up in error case */
-
-    /*
-     * Validate that IOMMU group is a number. Maybe it's not necessary for us
-     * to do so.
-     */
     iommu_grp = strtoul(basename(lm_ctx->uuid), &endptr, 10);
     if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
         errno = EINVAL;
-        return -1;
+        return -errno;
     }
 
     lm_ctx->iommu_dir = strdup(lm_ctx->uuid);
     if (!lm_ctx->iommu_dir) {
-        return -1;
+        return -ENOMEM;
     }
 
     /* FIXME SPDK can't easily run as non-root */
     mode =  umask(0000);
 
-    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        return -1;
+    if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+	    ret = errno;
+	    goto free_iommu_dir;
     }
 
     if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
-        ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-        if (ret == -1) {
-            assert(false); /* FIXME */
-            return -1;
+        ret = fcntl(unix_sock, F_SETFL,
+                    fcntl(unix_sock, F_GETFL, 0) | O_NONBLOCK);
+        if (ret < 0) {
+            ret = errno;
+            goto close_unix_sock;
         }
         lm_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     } else {
         lm_ctx->sock_flags = 0;
     }
 
-    if ((lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY)) == -1) {
-        return -1;
+    lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY);
+    if (lm_ctx->iommu_dir_fd < 0) {
+        ret = errno;
+        goto close_unix_sock;
     }
 
-    /* create control socket */
-    if ((ret = openat(lm_ctx->iommu_dir_fd, MUSER_SOCK, O_WRONLY | O_CREAT, 0666)) == -1) {
-        return -1;
-    }
-
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s/" MUSER_SOCK, lm_ctx->iommu_dir);
+    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s/" MUSER_SOCK,
+		   lm_ctx->iommu_dir);
     if (ret >= (int)sizeof addr.sun_path) {
-        errno = ENAMETOOLONG;
-        return -1;
+        ret = ENAMETOOLONG;
+        goto close_iommu_dir_fd;
     }
     if (ret < 0) {
-        return ret;
+        goto close_iommu_dir_fd;
     }
 
     /* start listening business */
-    if ((ret = unlink(addr.sun_path)) == -1 && errno != ENOENT) {
-        return -1;
+    ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
+    if (ret < 0) {
+	    ret = errno;
+        goto close_iommu_dir_fd;
     }
-    if ((ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
-        return -1;
-    }
-    if ((ret = listen(fd, 0)) == -1) {
-        return -1;
+
+    ret = listen(unix_sock, 0);
+    if (ret < 0) {
+        ret = errno;
+        goto close_iommu_dir_fd;
     }
 
     umask(mode);
+    return unix_sock;
 
-    return fd;
+close_iommu_dir_fd:
+    close(lm_ctx->iommu_dir_fd);
+close_unix_sock:
+    close(unix_sock);
+free_iommu_dir:
+    free(lm_ctx->iommu_dir);
+
+    return -ret;
 }
 
 /**
@@ -1756,7 +1760,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
 
     if (transports_ops[dev_info->trans].init != NULL) {
         lm_ctx->fd = transports_ops[dev_info->trans].init(lm_ctx);
-        assert(lm_ctx->fd != -1); /* FIXME */
+        assert(lm_ctx->fd > 0); /* FIXME */
     }
 
     // Attach to the muser control device.
