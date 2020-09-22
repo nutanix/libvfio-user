@@ -1658,20 +1658,13 @@ err:
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx)
 {
-    int ret;
-
     assert(lm_ctx != NULL);
 
     if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
         errno = EINVAL;
         return -1;
     }
-    ret = transports_ops[lm_ctx->trans].attach(lm_ctx);
-    if (ret == -1) {
-        return -1;
-    }
-    lm_ctx->conn_fd = ret;
-    return 0;
+    return transports_ops[lm_ctx->trans].attach(lm_ctx);
 }
 
 lm_ctx_t *
