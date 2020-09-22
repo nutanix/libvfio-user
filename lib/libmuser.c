@@ -1752,8 +1752,12 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     if (transports_ops[dev_info->trans].init != NULL) {
-        lm_ctx->fd = transports_ops[dev_info->trans].init(lm_ctx);
-        assert(lm_ctx->fd > 0); /* FIXME */
+        err = transports_ops[dev_info->trans].init(lm_ctx);
+        if (err == -1) {
+            err = errno;
+            goto out;
+        }
+        lm_ctx->fd = err;
     }
 
     // Attach to the muser control device.
