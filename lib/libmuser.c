@@ -248,6 +248,98 @@ free_iommu_dir:
     return -ret;
 }
 
+static void
+__free_s(char **p)
+{
+    free(*p);
+}
+
+static int
+set_version(lm_ctx_t *lm_ctx)
+{
+    int ret;
+    char *server_data __attribute__((__cleanup__(__free_s))) = NULL;
+    char *client_data __attribute__((__cleanup__(__free_s))) = NULL;
+    struct vfio_user_header hdr = {.msg_id = 0, .cmd = VFIO_USER_VERSION};
+    struct iovec iov[2];
+    struct msghdr msg;
+    int client_mj, client_mn;
+
+    assert(lm_ctx != NULL);
+
+    ret  = asprintf(&server_data, "{version: {\"major\": %d, \"minor\": %d}}",
+                    LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN);
+    if (ret == -1) {
+        server_data = NULL;
+        return -1;
+    }
+
+    hdr.msg_size = sizeof(hdr) + ret;
+
+    iov[0].iov_base = &hdr;
+    iov[0].iov_len = sizeof(hdr);
+    iov[1].iov_base = server_data;
+    iov[1].iov_len = ret;
+
+    msg.msg_iov = iov;
+    msg.msg_iovlen = ARRAY_SIZE(iov);
+
+    ret = sendmsg(lm_ctx->conn_fd, &msg, 0);
+    if (ret == -1) {
+        lm_log(lm_ctx, LM_DBG, "failed to send version message: %m");
+        return -errno;
+    }
+
+    ret = recv(lm_ctx->conn_fd, &hdr, sizeof(hdr), 0);
+    if (ret == -1) {
+        lm_log(lm_ctx, LM_DBG, "failed to receive version header: %m");
+        return -errno;
+    }
+    if (ret <= (int)sizeof(hdr)) {
+        lm_log(lm_ctx, LM_DBG, "short read: %d", ret);
+        return -EINVAL;
+    }
+    if (hdr.msg_id != 0) {
+        lm_log(lm_ctx, LM_DBG, "bad message ID in response %d", hdr.msg_id);
+        return -EINVAL;
+    }
+    if (hdr.flags.error == 1U) {
+        if (hdr.error_no <= 0) {
+            lm_log(lm_ctx, LM_DBG, "bad error from client %d", ret);
+            hdr.error_no = EINVAL;
+        }
+        return -hdr.error_no;
+    }
+    hdr.msg_size -= sizeof(hdr);
+    client_data = malloc(hdr.msg_size);
+    if (client_data == NULL) {
+        return -errno;
+    }
+    ret = recv(lm_ctx->conn_fd, client_data, hdr.msg_size, 0);
+    if (ret == -1) {
+        lm_log(lm_ctx, LM_DBG, "failed to receive client version data: %d");
+        return -errno;
+    }
+    if (ret < (int)hdr.msg_size) {
+        lm_log(lm_ctx, LM_DBG, "short read: %d", ret);
+        return -EINVAL;
+    }
+
+    /* FIXME use proper parsing */
+    ret = sscanf(client_data, "{version: {major: %d, minor: %d}}",
+                 &client_mj, &client_mn);
+    if (ret != 2) {
+        lm_log(lm_ctx, LM_DBG, "bad version string '%s'", client_data);
+        return -EINVAL;
+    }
+    if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ || client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
+        lm_log(lm_ctx, LM_DBG, "incompatible client version %d.%d",
+               client_mj, client_mn);
+        return -EINVAL;
+    }
+    return 0;
+}
+
 /**
  * lm_ctx: libmuser context
  * iommu_dir: full path to the IOMMU group to create. All parent directories must
@@ -256,7 +348,15 @@ free_iommu_dir:
 static int
 open_sock(lm_ctx_t *lm_ctx)
 {
-    return accept(lm_ctx->fd, NULL, NULL);
+    assert(lm_ctx != NULL);
+
+    lm_ctx->conn_fd = accept(lm_ctx->fd, NULL, NULL);
+    if (lm_ctx->conn_fd == -1) {
+        return lm_ctx->conn_fd;
+    }
+
+    /* send version and caps */
+    return set_version(lm_ctx);
 }
 
 static int
