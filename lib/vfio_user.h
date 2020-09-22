@@ -62,7 +62,7 @@ enum vfio_user_message_type {
 
 struct vfio_user_header {
 	uint16_t	msg_id;
-	uint16_t	command;
+	uint16_t	cmd;
 	uint32_t	msg_size;
 	struct {
 		uint32_t	type     : 4;
