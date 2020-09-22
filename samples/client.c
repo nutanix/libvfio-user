@@ -35,23 +35,14 @@
 
 #include "../lib/muser.h"
 
-int main(int argc, char *argv[])
+static int
+init_sock(const char *path)
 {
-	int ret;
-    int sock;
+    int ret, sock;
 	struct sockaddr_un addr = {.sun_family = AF_UNIX};
-    char *server_data;
-    size_t size;
-    int server_mj, server_mn;
-    struct vfio_user_header hdr;
-
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
-        return -1;
-    }
 
 	/* TODO path should be defined elsewhere */
-	ret = snprintf(addr.sun_path, sizeof addr.sun_path, argv[1]);
+	ret = snprintf(addr.sun_path, sizeof addr.sun_path, path);
 
 	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		perror("failed to open socket");
@@ -59,9 +50,20 @@ int main(int argc, char *argv[])
 	}
 
 	if ((ret = connect(sock, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
-		perror("failed to connect");
-		return ret;
+		perror("failed to connect server");
+        return ret;
 	}
+	return sock;
+}
+
+static int
+set_version(int sock)
+{
+    int ret;
+    char *server_data;
+    size_t size;
+    int server_mj, server_mn;
+    struct vfio_user_header hdr;
 
     /* receive version from client */
     ret = recv(sock, &hdr, sizeof(hdr), 0);
@@ -106,6 +108,26 @@ int main(int argc, char *argv[])
         fprintf(stderr, "bad server version %d.%d\n", server_mj, server_mn);
         return -1;
     }
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+	int ret, sock;
+
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
+        return -1;
+    }
+
+    if ((sock = init_sock(argv[1])) == -1) {
+        return sock;
+    }
+
+    if ((ret = set_version(sock)) == -1) {
+        return ret;
+    }
+
     return 0;
 }
 
