@@ -34,6 +34,7 @@
 #ifndef _VFIO_USER_H
 #define _VFIO_USER_H
 
+#include <inttypes.h>
 #include <linux/vfio.h>
 
 enum vfio_user_command {
