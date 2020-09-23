@@ -51,6 +51,10 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                    int count);
 
 int
+recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id);
+
+int
 send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply);
 
 int

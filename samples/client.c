@@ -37,6 +37,7 @@
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
+#include "../lib/common.h"
 
 static int
 init_sock(const char *path)
@@ -59,13 +60,11 @@ init_sock(const char *path)
 	return sock;
 }
 
-#if 0
 static int
 map_dma(int sock)
 {
     struct vfio_user_header hdr = {.msg_id = 1, .cmd = VFIO_USER_DMA_MAP};
 }
-#endif
 
 static int
 set_version(int sock)
@@ -95,36 +94,15 @@ set_version(int sock)
     return 0;
 }
 
-#if 0
-static int
-dma_map(int sock, int fd, uint64_t addr, int size, int offset) {
-    
-    struct vfio_user_dma_region dma_region = {
-        .addr = addr,
-        .size = size,
-        .offset = offset,
-        .prot = PROT_READ | PROT_WRITE,
-        .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
-    };
-    int ret;
-
-    ret = send_vfio_user_msg(sock, 1, false, VFIO_USER_DMA_MAP, &dma_region,
-                             sizeof(dma_region), &fd, 1);
-    if (ret < 0) {
-        return ret;
-    }
-    return 0;
-}
-#endif
-
 int main(int argc, char *argv[])
 {
 	int ret, sock;
 
-#if 0
-    int dma_region_fd;
     char template[] = "XXXXXX";
-#endif
+    struct vfio_user_dma_region dma_regions[2];
+    int dma_region_fds[ARRAY_SIZE(dma_regions)];
+    struct vfio_user_header hdr;
+    uint16_t msg_id;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
@@ -143,22 +121,45 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-#if 0
     /* Tell the server we have a memory DMA region it can access. */
-    if ((dma_region_fd = mkstemp(template)) == -1) {
+    if ((dma_region_fds[0] = mkstemp(template)) == -1) {
         perror("failed to create DMA file");
         return -1;
     }
-    if ((ret = ftruncate(dma_region_fd, 2 * sysconf(_SC_PAGESIZE))) == -1) {
+    if ((ret = ftruncate(dma_region_fds[0], 2 * sysconf(_SC_PAGESIZE))) == -1) {
         perror("failed to truncate file");
         return -1;
     }
-    ret = dma_map(sock, dma_region_fd, 0xdeadbeef, sysconf(_SC_PAGESIZE),
-                  sysconf(_SC_PAGESIZE));
+
+    dma_regions[0].addr = 0xdeadbeef;
+    dma_regions[0].size = sysconf(_SC_PAGESIZE);
+    dma_regions[0].offset = 0;
+    dma_regions[0].prot = PROT_READ | PROT_WRITE;
+    dma_regions[0].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
+
+    dma_regions[1].addr = 0xcafebabe;
+    dma_regions[1].size = sysconf(_SC_PAGESIZE);
+    dma_regions[1].offset = dma_regions[0].size;
+    dma_regions[1].prot = PROT_READ | PROT_WRITE;
+    dma_regions[1].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
+
+    dma_region_fds[1] = dma_region_fds[0];
+
+    msg_id = 1;
+    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_MAP, dma_regions,
+                             sizeof(dma_regions), dma_region_fds,
+                             ARRAY_SIZE(dma_region_fds));
+
     if (ret < 0) {
+        fprintf(stderr, "failed to send DMA regions: %s\n", strerror(-ret));
         return ret;
     }
-#endif
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+    if (ret < 0) {
+        fprintf(stderr, "failed to receive response for mapping DMA regions: %s\n",
+               strerror(-ret));
+        return ret;
+    }
 
     return 0;
 }

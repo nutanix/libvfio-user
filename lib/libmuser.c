@@ -153,14 +153,16 @@ recv_fds_kernel(lm_ctx_t *lm_ctx, void *buf, size_t size)
 }
 
 static int
-get_request_kernel(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+get_request_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd)
 {
+    assert(false);
     return ioctl(lm_ctx->fd, MUSER_DEV_CMD_WAIT, &cmd);
 }
 
 static int
-send_response_kernel(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+send_response_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd)
 {
+    assert(false);
     return ioctl(lm_ctx->fd, MUSER_DEV_CMD_DONE, &cmd);
 }
 
@@ -271,6 +273,10 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
         hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
     }
 
+    if (data != NULL && len == 0) {
+        return -EINVAL;
+    }
+
     hdr.msg_size = sizeof(hdr) + len;
 
     iov[0].iov_base = &hdr;
@@ -325,40 +331,53 @@ send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply)
 }
 
 int
+recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id)
+{
+    int ret;
+
+    ret = recv(sock, hdr, sizeof(*hdr), 0);
+    if (ret == -1) {
+        return -errno;
+    }
+    if (ret < (int)sizeof(*hdr)) {
+        return -EINVAL;
+    }
+
+    if (is_reply) {
+        if (hdr->msg_id != *msg_id) {
+            return -EINVAL;
+        }
+
+        if (hdr->flags.type != VFIO_USER_F_TYPE_REPLY) {
+            return -EINVAL;
+        }
+
+        if (hdr->flags.error == 1U) {
+            if (hdr->error_no <= 0) {
+                hdr->error_no = EINVAL;
+            }
+            return -hdr->error_no;
+        }
+    } else {
+        if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
+            return -EINVAL;
+        }
+        *msg_id = hdr->msg_id;
+    }
+    return 0;
+}
+
+int
 recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply)
 {
     int ret;
     struct vfio_user_header hdr;
     char *data __attribute__((__cleanup__(__free_s))) = NULL;
 
-    ret = recv(sock, &hdr, sizeof(hdr), 0);
-    if (ret == -1) {
-        return -errno;
-    }
-    if (ret < (int)sizeof(hdr)) {
-        return -EINVAL;
-    }
-
-    if (is_reply) {
-        if (hdr.msg_id != *msg_id) {
-            return -EINVAL;
-        }
-
-        if (hdr.flags.type != VFIO_USER_F_TYPE_REPLY) {
-            return -EINVAL;
-        }
-
-        if (hdr.flags.error == 1U) {
-            if (hdr.error_no <= 0) {
-                hdr.error_no = EINVAL;
-            }
-            return -hdr.error_no;
-        }
-    } else {
-        if (hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
-            return -EINVAL;
-        }
-        *msg_id = hdr.msg_id;
+    ret = recv_vfio_user_msg(sock, &hdr, is_reply, msg_id);
+    if (ret < 0) {
+        return ret;
     }
 
     hdr.msg_size -= sizeof(hdr);
@@ -444,7 +463,7 @@ close_sock(lm_ctx_t *lm_ctx)
 }
 
 static int
-get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
 {
     int ret;
 
@@ -453,7 +472,7 @@ get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    ret = recv(lm_ctx->conn_fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
+    ret = recv(lm_ctx->conn_fd, hdr, sizeof(*hdr), lm_ctx->sock_flags);
     if (ret == -1) {
         return -errno;
     }
@@ -461,9 +480,9 @@ get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 }
 
 static int
-send_response_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+send_response_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
 {
-    return write(lm_ctx->conn_fd, cmd, sizeof *cmd);
+    return write(lm_ctx->conn_fd, hdr, sizeof *hdr);
 }
 
 static void
@@ -500,8 +519,8 @@ static struct transport_ops {
     int (*init)(lm_ctx_t*);
     int (*attach)(lm_ctx_t*);
     int(*detach)(lm_ctx_t*);
-    int (*get_request)(lm_ctx_t*, struct muser_cmd*);
-    int (*send_response)(lm_ctx_t*, struct muser_cmd*);
+    int (*get_request)(lm_ctx_t*, struct vfio_user_header*);
+    int (*send_response)(lm_ctx_t*, struct vfio_user_header*);
     ssize_t (*recv_fds)(lm_ctx_t*, void *buf, size_t size);
 } transports_ops[] = {
     [LM_TRANS_KERNEL] = {
@@ -1225,7 +1244,7 @@ muser_recv_fds(int sock, int *fds, size_t count)
  * and leave it to the device implementation to handle.
  */
 static int
-muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+__attribute__((unused)) muser_mmap(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     int region, err = 0;
     unsigned long addr;
@@ -1505,7 +1524,7 @@ out:
 }
 
 static int
-muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
+__attribute__((unused)) muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
     void *data = NULL;
     size_t size = 0;
@@ -1556,6 +1575,38 @@ out:
     return ret;
 }
 
+static int
+handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
+{
+    int ret, i;
+    struct vfio_user_dma_region dma_region;
+
+    assert(lm_ctx != NULL);
+    assert(hdr != NULL);
+
+    hdr->msg_size -= sizeof *hdr;
+
+    if ((hdr->msg_size < sizeof(struct vfio_user_dma_region)) || 
+        (hdr->msg_size % sizeof(struct vfio_user_dma_region) != 0)) {
+        lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", hdr->msg_size);
+        return -EINVAL;
+    }
+
+    for (i = 0; i < (int)(hdr->msg_size / sizeof(struct vfio_user_dma_region));
+         i++) {
+        ret = recv(lm_ctx->conn_fd, &dma_region, sizeof dma_region, 0);
+        if (ret == -1) {
+            lm_log(lm_ctx, LM_ERR, "failed to receive DMA region: %m");
+            return -errno;
+        }
+
+        lm_log(lm_ctx, LM_DBG, "received DMA region %#lx-%#lx offset=%#lx",
+               dma_region.addr, dma_region.addr + dma_region.size - 1,
+               dma_region.offset);
+    }
+    return 0;
+}
+
 /*
  * FIXME return value is messed up, sometimes we return -1 and set errno while
  * other times we return -errno. Fix.
@@ -1564,18 +1615,18 @@ out:
 static int
 process_request(lm_ctx_t *lm_ctx)
 {
-    struct muser_cmd cmd = { 0 };
-    int err;
+    struct vfio_user_header hdr = {};
+    int ret;
 
-    err = transports_ops[lm_ctx->trans].get_request(lm_ctx, &cmd);
-    if (unlikely(err < 0)) {
-        if (err == -EAGAIN || err == -EWOULDBLOCK) {
+    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, &hdr);
+    if (unlikely(ret < 0)) {
+        if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
         }
         lm_log(lm_ctx, LM_ERR, "failed to receive request: %m");
-        return err;
+        return ret;
     }
-    if (unlikely(err == 0)) {
+    if (unlikely(ret == 0)) {
         if (errno == 0) {
             lm_log(lm_ctx, LM_INF, "VFIO client closed connection");
         } else {
@@ -1584,42 +1635,38 @@ process_request(lm_ctx_t *lm_ctx)
         return -ENOTCONN;
     }
 
-    assert(err == sizeof cmd);
-
-    switch (cmd.type) {
-    case MUSER_IOCTL:
-        err = muser_ioctl(lm_ctx, &cmd);
-        break;
-    case MUSER_READ:
-    case MUSER_WRITE:
-        err = muser_access(lm_ctx, &cmd, cmd.type == MUSER_WRITE);
-        break;
-    case MUSER_MMAP:
-        err = muser_mmap(lm_ctx, &cmd);
-        break;
-    case MUSER_DMA_MMAP:
-        err = muser_dma_map(lm_ctx, &cmd);
-        break;
-    case MUSER_DMA_MUNMAP:
-        err = muser_dma_unmap(lm_ctx, &cmd);
-        break;
-    default:
-        lm_log(lm_ctx, LM_ERR, "bad command %d\n", cmd.type);
-        assert(false);
-        /*
-            * TODO should respond with something here instead of ignoring the
-            * command.
-            */
-        err = -EINVAL;
+    if (ret < (int)sizeof hdr) {
+        lm_log(lm_ctx, LM_ERR, "short header read");
+        return -EINVAL;
     }
-    cmd.err = err;
-    err = transports_ops[lm_ctx->trans].send_response(lm_ctx, &cmd);
-    if (unlikely(err < 0)) {
+
+    if (hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
+        lm_log(lm_ctx, LM_ERR, "header not a request");
+        return -EINVAL;
+    }
+
+    if (hdr.msg_size < sizeof hdr) {
+        lm_log(lm_ctx, LM_ERR, "bad size in header %d", hdr.msg_size);
+        return -EINVAL;
+    }
+
+    switch (hdr.cmd) {
+        case VFIO_USER_DMA_MAP:
+            handle_dma_map(lm_ctx, &hdr);
+            break;
+        default:
+            lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd); 
+            return -EINVAL;
+    }
+
+    ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
+                             0, NULL, 0, NULL, 0);
+    if (unlikely(ret < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
-                strerror(errno));
+                strerror(-ret));
     }
 
-    return err;
+    return ret;
 }
 
 int
