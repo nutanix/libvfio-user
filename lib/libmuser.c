@@ -179,8 +179,7 @@ init_sock(lm_ctx_t *lm_ctx)
 
     iommu_grp = strtoul(basename(lm_ctx->uuid), &endptr, 10);
     if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
-        errno = EINVAL;
-        return -errno;
+        return -EINVAL;
     }
 
     lm_ctx->iommu_dir = strdup(lm_ctx->uuid);
@@ -1988,8 +1987,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
 
     if (transports_ops[dev_info->trans].init != NULL) {
         err = transports_ops[dev_info->trans].init(lm_ctx);
-        if (err == -1) {
-            err = errno;
+        if (err < 0) {
             goto out;
         }
         lm_ctx->fd = err;
