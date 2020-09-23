@@ -46,7 +46,7 @@
 static void
 _log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
 {
-    fprintf(stderr, "gpio: %s", msg);
+    fprintf(stderr, "gpio: %s\n", msg);
 }
 
 ssize_t
