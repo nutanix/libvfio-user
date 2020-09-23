@@ -1483,14 +1483,14 @@ process_request(lm_ctx_t *lm_ctx)
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return 0;
         }
-        lm_log(lm_ctx, LM_ERR, "failed to receive request: %m\n");
+        lm_log(lm_ctx, LM_ERR, "failed to receive request: %m");
         return err;
     }
     if (unlikely(err == 0)) {
         if (errno == 0) {
-            lm_log(lm_ctx, LM_INF, "VFIO client closed connection\n");
+            lm_log(lm_ctx, LM_INF, "VFIO client closed connection");
         } else {
-            lm_log(lm_ctx, LM_ERR, "end of file: %m\n");
+            lm_log(lm_ctx, LM_ERR, "end of file: %m");
         }
         return -ENOTCONN;
     }
