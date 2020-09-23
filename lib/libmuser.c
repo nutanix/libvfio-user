@@ -1574,6 +1574,27 @@ out:
     return ret;
 }
 
+static int handle_device_get_info(lm_ctx_t *lm_ctx,
+                                  struct vfio_user_header *hdr)
+{
+    struct vfio_device_info dev_info;
+    int ret;
+
+    dev_info.argsz = sizeof(struct vfio_device_info);
+
+    ret = dev_get_info(&dev_info);
+    if (ret < 0) {
+        return ret;
+    }
+
+    ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr->msg_id, true,
+                             VFIO_USER_DEVICE_GET_INFO, (void *)&dev_info,
+                             dev_info.argsz, NULL, 0);
+    lm_log(lm_ctx, LM_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
+           " %d", dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+    return ret;
+}
+
 static int
 handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
 {
@@ -1653,13 +1674,19 @@ process_request(lm_ctx_t *lm_ctx)
         case VFIO_USER_DMA_MAP:
             handle_dma_map(lm_ctx, &hdr);
             break;
+        case VFIO_USER_DEVICE_GET_INFO:
+            ret = handle_device_get_info(lm_ctx, &hdr);
+            goto out;
+            break;
         default:
-            lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd); 
+            lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);
             return -EINVAL;
     }
 
     ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
                              0, NULL, 0, NULL, 0);
+
+out:
     if (unlikely(ret < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
                 strerror(-ret));

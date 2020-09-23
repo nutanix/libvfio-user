@@ -94,6 +94,48 @@ set_version(int sock)
     return 0;
 }
 
+static int
+get_device_info(int sock)
+{
+    struct vfio_user_header hdr;
+    struct vfio_device_info dev_info;
+    uint16_t msg_id;
+    int ret;
+
+    msg_id = 1;
+    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_GET_INFO,
+                             NULL, 0, NULL,0);
+    if (ret < 0) {
+        fprintf(stderr, "%s: failed to send message: %s\n", __func__,
+                strerror(-ret));
+        return ret;
+    }
+
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+    if (ret < 0) {
+        fprintf(stderr, "%s: failed to receive header: %s\n", __func__,
+                strerror(-ret));
+        return ret;
+    }
+
+    if ((hdr.msg_size - sizeof(hdr)) < sizeof(struct vfio_device_info)) {
+        fprintf(stderr, "%s: bad response data size\n", __func__);
+        return -EINVAL;
+    }
+
+    ret = recv(sock, &dev_info, sizeof(struct vfio_device_info), 0);
+    if (ret < 0) {
+        ret = -errno;
+        fprintf(stderr, "%s: failed to receive data: %s\n", __func__,
+                strerror(-ret));
+        return ret;
+    }
+
+    fprintf(stdout, "devinfo: flags %#x, num_regions %d, num_irqs %d\n",
+	    dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret, sock;
@@ -118,6 +160,11 @@ int main(int argc, char *argv[])
      * version the version we support.
      */
     if ((ret = set_version(sock)) < 0) {
+        return ret;
+    }
+
+    ret = get_device_info(sock);
+    if (ret < 0) {
         return ret;
     }
 
