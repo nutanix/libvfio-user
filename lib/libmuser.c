@@ -290,17 +290,17 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
     msg.msg_iov = iov;
 
     if (fds != NULL) {
-    	size_t size = count * sizeof *fds;
-    	char buf[CMSG_SPACE(size)];
+        size_t size = count * sizeof *fds;
+        char buf[CMSG_SPACE(size)];
 
-    	msg.msg_control = buf;
-    	msg.msg_controllen = sizeof(buf);
+        msg.msg_control = buf;
+        msg.msg_controllen = sizeof(buf);
 
-    	struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
-    	cmsg->cmsg_level = SOL_SOCKET;
-    	cmsg->cmsg_type = SCM_RIGHTS;
-    	cmsg->cmsg_len = CMSG_LEN(size);
-    	memcpy(CMSG_DATA(cmsg), fds, size);
+        struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
+        cmsg->cmsg_level = SOL_SOCKET;
+        cmsg->cmsg_type = SCM_RIGHTS;
+        cmsg->cmsg_len = CMSG_LEN(size);
+        memcpy(CMSG_DATA(cmsg), fds, size);
 	    msg.msg_controllen = CMSG_SPACE(size);
     }
 
@@ -308,8 +308,8 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
     if (ret == -1) {
         return -errno;
     }
-    return 0;
 
+    return 0;
 }
 
 int
@@ -326,7 +326,7 @@ send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply)
     }
 
     return send_vfio_user_msg(sock, msg_id, is_reply, VFIO_USER_VERSION, data,
-                              ret, NULL, 0); 
+                              ret, NULL, 0);
 }
 
 int
@@ -393,7 +393,8 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply)
     }
 
     /* FIXME use proper parsing */
-    ret = sscanf(data, "{version: {\"major\": %d, \"minor\": %d}}", major, minor);
+    ret = sscanf(data, "{version: {\"major\": %d, \"minor\": %d}}", major,
+                 minor);
     if (ret != 2) {
         return -EINVAL;
     }
@@ -419,7 +420,8 @@ set_version(lm_ctx_t *lm_ctx, int sock)
         lm_log(lm_ctx, LM_DBG, "failed to receive version: %s", strerror(-ret));
         return ret;
     }
-    if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ || client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
+    if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ ||
+        client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
         lm_log(lm_ctx, LM_DBG, "version mismatch,  server=%d.%d, client=%d.%d",
                LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN,
                client_mj, client_mn);
@@ -431,8 +433,8 @@ set_version(lm_ctx_t *lm_ctx, int sock)
 
 /**
  * lm_ctx: libmuser context
- * iommu_dir: full path to the IOMMU group to create. All parent directories must
- *            already exist.
+ * iommu_dir: full path to the IOMMU group to create. All parent directories
+ *            must already exist.
  */
 static int
 open_sock(lm_ctx_t *lm_ctx)
@@ -1121,8 +1123,8 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 
     get_path_from_fd(cmd->mmap.request.fd, buf);
 
-    lm_log(lm_ctx, LM_INF, "%s DMA region fd=%d path=%s iova=%#lx-%#lx offset=%#lx\n",
-           lm_ctx->unmap_dma == NULL ? "ignoring" : "adding",
+    lm_log(lm_ctx, LM_INF, "%s DMA region fd=%d path=%s iova=%#lx-%#lx "
+           "offset=%#lx\n", lm_ctx->unmap_dma == NULL ? "ignoring" : "adding",
            cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
            cmd->mmap.request.addr + cmd->mmap.request.len,
            cmd->mmap.request.offset);
@@ -1142,15 +1144,16 @@ muser_dma_map(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
                                     cmd->mmap.request.fd,
                                     cmd->mmap.request.offset);
     if (err < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to add DMA region fd=%d path=%s %#lx-%#lx: %d\n",
-               cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
+        lm_log(lm_ctx, LM_ERR, "failed to add DMA region fd=%d path=%s %#lx-%#lx: "
+               "%d\n", cmd->mmap.request.fd, buf, cmd->mmap.request.addr,
                cmd->mmap.request.addr + cmd->mmap.request.len, err);
     } else {
         err = 0;
     }
 
     if (lm_ctx->map_dma != NULL) {
-        lm_ctx->map_dma(lm_ctx->pvt, cmd->mmap.request.addr, cmd->mmap.request.len); 
+        lm_ctx->map_dma(lm_ctx->pvt, cmd->mmap.request.addr,
+                        cmd->mmap.request.len);
     }
 
     return err;
@@ -1606,7 +1609,7 @@ handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
 
     hdr->msg_size -= sizeof *hdr;
 
-    if ((hdr->msg_size < sizeof(struct vfio_user_dma_region)) || 
+    if ((hdr->msg_size < sizeof(struct vfio_user_dma_region)) ||
         (hdr->msg_size % sizeof(struct vfio_user_dma_region) != 0)) {
         lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", hdr->msg_size);
         return -EINVAL;
@@ -1782,10 +1785,13 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
         int ret;
 
         if (lm_ctx->iommu_dir_fd != -1) {
-            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME, 0)) == -1 && errno != ENOENT) {
-                lm_log(lm_ctx, LM_DBG, "failed to remove " IOMMU_GRP_NAME ": %m\n");
+            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME, 0)) == -1
+                && errno != ENOENT) {
+                lm_log(lm_ctx, LM_DBG, "failed to remove " IOMMU_GRP_NAME ": "
+                       "%m\n");
             }
-            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, MUSER_SOCK, 0)) == -1 && errno != ENOENT) {
+            if ((ret = unlinkat(lm_ctx->iommu_dir_fd, MUSER_SOCK, 0)) == -1 &&
+                errno != ENOENT) {
                 lm_log(lm_ctx, LM_DBG, "failed to remove " MUSER_SOCK ": %m\n");
             }
             if (close(lm_ctx->iommu_dir_fd) == -1) {
@@ -1795,7 +1801,8 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
         }
         if (lm_ctx->iommu_dir != NULL) {
             if ((ret = rmdir(lm_ctx->iommu_dir)) == -1 && errno != ENOENT) {
-                lm_log(lm_ctx, LM_DBG, "failed to remove %s: %m\n", lm_ctx->iommu_dir);
+                lm_log(lm_ctx, LM_DBG, "failed to remove %s: %m\n",
+                       lm_ctx->iommu_dir);
             }
             free(lm_ctx->iommu_dir);
         }
@@ -1947,7 +1954,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
             return NULL;
     }
 
-    if ((dev_info->flags & LM_FLAG_ATTACH_NB) != 0 && dev_info->trans != LM_TRANS_SOCK) {
+    if ((dev_info->flags & LM_FLAG_ATTACH_NB) != 0 &&
+        dev_info->trans != LM_TRANS_SOCK) {
         errno = EINVAL;
         return NULL;
     }
@@ -2027,7 +2035,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         if (lm_ctx->conn_fd < 0) {
                 err = lm_ctx->conn_fd;
                 if (err != EINTR) {
-                    lm_log(lm_ctx, LM_ERR, "failed to attach: %s", strerror(-err));
+                    lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
+                           strerror(-err));
                 }
                 goto out;
         }
