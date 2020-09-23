@@ -66,6 +66,8 @@ struct vfio_user_header {
 	uint32_t	msg_size;
 	struct {
 		uint32_t	type     : 4;
+#define VFIO_USER_F_TYPE_COMMAND    0
+#define VFIO_USER_F_TYPE_REPLY      1
 		uint32_t	no_reply : 1;
 		uint32_t	error    : 1;
 		uint32_t	resvd    : 26;
@@ -73,14 +75,13 @@ struct vfio_user_header {
 	uint32_t	error_no;
 } __attribute__((packed));
 
-#define VFIO_USER_DMA_REGION_MAPPABLE		(0x1)
-
 struct vfio_user_dma_region {
 	uint64_t	addr;
 	uint64_t	size;
 	uint64_t	offset;
-	uint32_t	protections;
+	uint32_t	prot;
 	uint32_t	flags;
+#define VFIO_USER_F_DMA_REGION_MAPPABLE	(0x0)
 } __attribute__((packed));
 
 struct vfio_user_region_access {

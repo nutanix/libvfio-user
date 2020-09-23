@@ -254,89 +254,160 @@ __free_s(char **p)
     free(*p);
 }
 
-static int
-set_version(lm_ctx_t *lm_ctx)
+int
+send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+                   enum vfio_user_command cmd, void *data, int len,
+                   int *fds, int count)
 {
     int ret;
-    char *server_data __attribute__((__cleanup__(__free_s))) = NULL;
-    char *client_data __attribute__((__cleanup__(__free_s))) = NULL;
-    struct vfio_user_header hdr = {.msg_id = 0, .cmd = VFIO_USER_VERSION};
+    struct vfio_user_header hdr = {.msg_id = msg_id};
     struct iovec iov[2];
-    struct msghdr msg;
-    int client_mj, client_mn;
+    struct msghdr msg = {.msg_iovlen = 1};
 
-    assert(lm_ctx != NULL);
-
-    ret  = asprintf(&server_data, "{version: {\"major\": %d, \"minor\": %d}}",
-                    LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN);
-    if (ret == -1) {
-        server_data = NULL;
-        return -1;
+    if (is_reply) {
+        hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
+    } else {
+        hdr.cmd = cmd;
+        hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
     }
 
-    hdr.msg_size = sizeof(hdr) + ret;
+    hdr.msg_size = sizeof(hdr) + len;
 
     iov[0].iov_base = &hdr;
     iov[0].iov_len = sizeof(hdr);
-    iov[1].iov_base = server_data;
-    iov[1].iov_len = ret;
+
+    if (data != NULL) {
+        msg.msg_iovlen = 2;
+        iov[1].iov_base = data;
+        iov[1].iov_len = len;
+    }
 
     msg.msg_iov = iov;
-    msg.msg_iovlen = ARRAY_SIZE(iov);
 
-    ret = sendmsg(lm_ctx->conn_fd, &msg, 0);
+    if (fds != NULL) {
+    	size_t size = count * sizeof *fds;
+    	char buf[CMSG_SPACE(size)];
+
+    	msg.msg_control = buf;
+    	msg.msg_controllen = sizeof(buf);
+
+    	struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
+    	cmsg->cmsg_level = SOL_SOCKET;
+    	cmsg->cmsg_type = SCM_RIGHTS;
+    	cmsg->cmsg_len = CMSG_LEN(size);
+    	memcpy(CMSG_DATA(cmsg), fds, size);
+	    msg.msg_controllen = CMSG_SPACE(size);
+    }
+
+    ret = sendmsg(sock, &msg, 0);
     if (ret == -1) {
-        lm_log(lm_ctx, LM_DBG, "failed to send version message: %m");
         return -errno;
     }
+    return 0;
 
-    ret = recv(lm_ctx->conn_fd, &hdr, sizeof(hdr), 0);
+}
+
+int
+send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply)
+{
+    int ret;
+    char *data __attribute__((__cleanup__(__free_s))) = NULL;
+
+    ret  = asprintf(&data, "{version: {\"major\": %d, \"minor\": %d}}",
+                    major, minor);
     if (ret == -1) {
-        lm_log(lm_ctx, LM_DBG, "failed to receive version header: %m");
+        data = NULL;
+        return -1;
+    }
+
+    return send_vfio_user_msg(sock, msg_id, is_reply, VFIO_USER_VERSION, data,
+                              ret, NULL, 0); 
+}
+
+int
+recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply)
+{
+    int ret;
+    struct vfio_user_header hdr;
+    char *data __attribute__((__cleanup__(__free_s))) = NULL;
+
+    ret = recv(sock, &hdr, sizeof(hdr), 0);
+    if (ret == -1) {
         return -errno;
     }
-    if (ret <= (int)sizeof(hdr)) {
-        lm_log(lm_ctx, LM_DBG, "short read: %d", ret);
+    if (ret < (int)sizeof(hdr)) {
         return -EINVAL;
     }
-    if (hdr.msg_id != 0) {
-        lm_log(lm_ctx, LM_DBG, "bad message ID in response %d", hdr.msg_id);
-        return -EINVAL;
-    }
-    if (hdr.flags.error == 1U) {
-        if (hdr.error_no <= 0) {
-            lm_log(lm_ctx, LM_DBG, "bad error from client %d", ret);
-            hdr.error_no = EINVAL;
+
+    if (is_reply) {
+        if (hdr.msg_id != *msg_id) {
+            return -EINVAL;
         }
-        return -hdr.error_no;
+
+        if (hdr.flags.type != VFIO_USER_F_TYPE_REPLY) {
+            return -EINVAL;
+        }
+
+        if (hdr.flags.error == 1U) {
+            if (hdr.error_no <= 0) {
+                hdr.error_no = EINVAL;
+            }
+            return -hdr.error_no;
+        }
+    } else {
+        if (hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
+            return -EINVAL;
+        }
+        *msg_id = hdr.msg_id;
     }
+
     hdr.msg_size -= sizeof(hdr);
-    client_data = malloc(hdr.msg_size);
-    if (client_data == NULL) {
+    data = malloc(hdr.msg_size);
+    if (data == NULL) {
         return -errno;
     }
-    ret = recv(lm_ctx->conn_fd, client_data, hdr.msg_size, 0);
+    ret = recv(sock, data, hdr.msg_size, 0);
     if (ret == -1) {
-        lm_log(lm_ctx, LM_DBG, "failed to receive client version data: %d");
         return -errno;
     }
     if (ret < (int)hdr.msg_size) {
-        lm_log(lm_ctx, LM_DBG, "short read: %d", ret);
         return -EINVAL;
     }
 
     /* FIXME use proper parsing */
-    ret = sscanf(client_data, "{version: {major: %d, minor: %d}}",
-                 &client_mj, &client_mn);
+    ret = sscanf(data, "{version: {\"major\": %d, \"minor\": %d}}", major, minor);
     if (ret != 2) {
-        lm_log(lm_ctx, LM_DBG, "bad version string '%s'", client_data);
         return -EINVAL;
     }
+    return 0;
+}
+
+static int
+set_version(lm_ctx_t *lm_ctx, int sock)
+{
+    int ret;
+    int client_mj, client_mn;
+    uint16_t msg_id = 0;
+
+    ret = send_version(sock, LIB_MUSER_VFIO_USER_VERS_MJ,
+                       LIB_MUSER_VFIO_USER_VERS_MN, msg_id, false);
+    if (ret < 0) {
+        lm_log(lm_ctx, LM_DBG, "failed to send version: %s", strerror(-ret));
+        return ret;
+    }
+
+    ret = recv_version(sock, &client_mj, &client_mn, &msg_id, true);
+    if (ret < 0) {
+        lm_log(lm_ctx, LM_DBG, "failed to receive version: %s", strerror(-ret));
+        return ret;
+    }
     if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ || client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
-        lm_log(lm_ctx, LM_DBG, "incompatible client version %d.%d",
+        lm_log(lm_ctx, LM_DBG, "version mismatch,  server=%d.%d, client=%d.%d",
+               LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN,
                client_mj, client_mn);
         return -EINVAL;
     }
+
     return 0;
 }
 
@@ -348,15 +419,22 @@ set_version(lm_ctx_t *lm_ctx)
 static int
 open_sock(lm_ctx_t *lm_ctx)
 {
+    int ret;
+    int conn_fd;
+
     assert(lm_ctx != NULL);
 
-    lm_ctx->conn_fd = accept(lm_ctx->fd, NULL, NULL);
-    if (lm_ctx->conn_fd == -1) {
-        return lm_ctx->conn_fd;
+    conn_fd = accept(lm_ctx->fd, NULL, NULL);
+    if (conn_fd == -1) {
+        return conn_fd;
     }
 
     /* send version and caps */
-    return set_version(lm_ctx);
+    ret = set_version(lm_ctx, conn_fd);
+    if (ret < 0) {
+        return ret;
+    }
+    return conn_fd;
 }
 
 static int
@@ -368,12 +446,18 @@ close_sock(lm_ctx_t *lm_ctx)
 static int
 get_request_sock(lm_ctx_t *lm_ctx, struct muser_cmd *cmd)
 {
+    int ret;
+
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    return recv(lm_ctx->conn_fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
+    ret = recv(lm_ctx->conn_fd, cmd, sizeof(*cmd), lm_ctx->sock_flags);
+    if (ret == -1) {
+        return -errno;
+    }
+    return ret;
 }
 
 static int
@@ -1472,6 +1556,11 @@ out:
     return ret;
 }
 
+/*
+ * FIXME return value is messed up, sometimes we return -1 and set errno while
+ * other times we return -errno. Fix.
+ */
+
 static int
 process_request(lm_ctx_t *lm_ctx)
 {
@@ -1480,7 +1569,7 @@ process_request(lm_ctx_t *lm_ctx)
 
     err = transports_ops[lm_ctx->trans].get_request(lm_ctx, &cmd);
     if (unlikely(err < 0)) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        if (err == -EAGAIN || err == -EWOULDBLOCK) {
             return 0;
         }
         lm_log(lm_ctx, LM_ERR, "failed to receive request: %m");
@@ -1556,8 +1645,7 @@ lm_ctx_poll(lm_ctx_t *lm_ctx)
     int err;
 
     if (unlikely((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0)) {
-        errno = ENOTSUP;
-        return -1;
+        return -ENOTSUP;
     }
 
     err = process_request(lm_ctx);
@@ -1859,14 +1947,15 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         }
         lm_ctx->fd = err;
     }
+    err = 0;
 
     // Attach to the muser control device.
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
         lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
-        if (lm_ctx->conn_fd == -1) {
-                err = errno;
-                if (errno != EINTR) {
-                    lm_log(lm_ctx, LM_ERR, "failed to attach: %m\n");
+        if (lm_ctx->conn_fd < 0) {
+                err = lm_ctx->conn_fd;
+                if (err != EINTR) {
+                    lm_log(lm_ctx, LM_ERR, "failed to attach: %s", strerror(-err));
                 }
                 goto out;
         }
@@ -1890,7 +1979,7 @@ out:
             lm_ctx_destroy(lm_ctx);
             lm_ctx = NULL;
         }
-        errno = err;
+        errno = -err;
     }
 
     return lm_ctx;

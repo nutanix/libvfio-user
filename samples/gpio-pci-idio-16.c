@@ -121,8 +121,10 @@ int main(int argc, char *argv[])
         return -1;
     }
     ret = lm_ctx_drive(lm_ctx);
-    if (ret != 0 && errno != EINTR) {
-        fprintf(stderr, "failed to realize device emulation: %m\n");
+    if (ret != 0) {
+        if (ret != -ENOTCONN && ret != -EINTR) {
+            fprintf(stderr, "failed to realize device emulation: %m\n");
+        }
     }
 out:
     lm_ctx_destroy(lm_ctx);

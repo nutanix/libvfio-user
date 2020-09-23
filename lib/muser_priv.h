@@ -45,4 +45,15 @@ lm_get_region_info(lm_ctx_t *lm_ctx);
 uint64_t
 region_to_offset(uint32_t region);
 
+int
+send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+                   enum vfio_user_command cmd, void *data, int len, int *fds,
+                   int count);
+
+int
+send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply);
+
+int
+recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply);
+
 #endif /* MUSER_PRIV_H */

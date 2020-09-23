@@ -32,8 +32,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <sys/mman.h>
 
 #include "../lib/muser.h"
+#include "../lib/muser_priv.h"
 
 static int
 init_sock(const char *path)
@@ -56,77 +59,106 @@ init_sock(const char *path)
 	return sock;
 }
 
+#if 0
+static int
+map_dma(int sock)
+{
+    struct vfio_user_header hdr = {.msg_id = 1, .cmd = VFIO_USER_DMA_MAP};
+}
+#endif
+
 static int
 set_version(int sock)
 {
+    int ret, mj, mn;
+    uint16_t msg_id;
+
+    ret = recv_version(sock, &mj, &mn, &msg_id, false);
+    if (ret < 0) {
+        fprintf(stderr, "failed to receive version from server: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+
+    if (mj != LIB_MUSER_VFIO_USER_VERS_MJ || mn != LIB_MUSER_VFIO_USER_VERS_MN) {
+        fprintf(stderr, "bad server version %d.%d\n", mj, mn);
+        return -EINVAL;
+    }
+
+    ret = send_version(sock, mj, mn, msg_id, true); 
+    if (ret < 0) {
+        fprintf(stderr, "failed to send version to server: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+
+    return 0;
+}
+
+#if 0
+static int
+dma_map(int sock, int fd, uint64_t addr, int size, int offset) {
+    
+    struct vfio_user_dma_region dma_region = {
+        .addr = addr,
+        .size = size,
+        .offset = offset,
+        .prot = PROT_READ | PROT_WRITE,
+        .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+    };
     int ret;
-    char *server_data;
-    size_t size;
-    int server_mj, server_mn;
-    struct vfio_user_header hdr;
 
-    /* receive version from client */
-    ret = recv(sock, &hdr, sizeof(hdr), 0);
-    if (ret == -1) {
-        perror("failed to receive version header");
-        return -1;
-    }
-
-    if (ret < sizeof(hdr)) {
-        fprintf(stderr, "short version header: %d\n", ret);
-        return -1;
-    }
-
-    if (hdr.msg_size < sizeof(hdr)) {
-        fprintf(stderr, "bad version data size: %d\n", hdr.msg_size);
-        return -1;
-    }
-    size = hdr.msg_size - sizeof(hdr);
-    server_data = malloc(size);
-    if (server_data == NULL) {
-        perror(NULL);
-        return -1;
-    }
-    ret = recv(sock, server_data, size, 0);
-    if (ret == -1) {
-        perror("failed to receive server version");
-        return -1;
-    }
-
-    if (ret < size) {
-        fprintf(stderr, "short verson data read: %d", ret);
-        return -1;
-    }
-
-    ret = sscanf(server_data, "{version: {\"major\": %d, \"minor\": %d}}",
-                 &server_mj, &server_mn);
-    if (ret != 2) {
-        fprintf(stderr, "bad server version data %s\n", server_data);
-        return -1;
-    }
-    if (server_mj != 0 || server_mn != 1) {
-        fprintf(stderr, "bad server version %d.%d\n", server_mj, server_mn);
-        return -1;
+    ret = send_vfio_user_msg(sock, 1, false, VFIO_USER_DMA_MAP, &dma_region,
+                             sizeof(dma_region), &fd, 1);
+    if (ret < 0) {
+        return ret;
     }
     return 0;
 }
+#endif
 
 int main(int argc, char *argv[])
 {
 	int ret, sock;
+
+#if 0
+    int dma_region_fd;
+    char template[] = "XXXXXX";
+#endif
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
         return -1;
     }
 
-    if ((sock = init_sock(argv[1])) == -1) {
+    if ((sock = init_sock(argv[1])) < 0) {
         return sock;
     }
 
-    if ((ret = set_version(sock)) == -1) {
+    /*
+     * The server proposes version upon connection, we need to send back the
+     * version the version we support.
+     */
+    if ((ret = set_version(sock)) < 0) {
         return ret;
     }
+
+#if 0
+    /* Tell the server we have a memory DMA region it can access. */
+    if ((dma_region_fd = mkstemp(template)) == -1) {
+        perror("failed to create DMA file");
+        return -1;
+    }
+    if ((ret = ftruncate(dma_region_fd, 2 * sysconf(_SC_PAGESIZE))) == -1) {
+        perror("failed to truncate file");
+        return -1;
+    }
+    ret = dma_map(sock, dma_region_fd, 0xdeadbeef, sysconf(_SC_PAGESIZE),
+                  sysconf(_SC_PAGESIZE));
+    if (ret < 0) {
+        return ret;
+    }
+#endif
 
     return 0;
 }
