@@ -28,6 +28,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -67,31 +68,43 @@ map_dma(int sock)
 }
 
 static int
-set_version(int sock)
+set_version(int sock, int client_max_fds, int *server_max_fds)
 {
     int ret, mj, mn;
     uint16_t msg_id;
+    char *client_caps = NULL;
 
-    ret = recv_version(sock, &mj, &mn, &msg_id, false);
+    ret = recv_version(sock, &mj, &mn, &msg_id, false, server_max_fds);
     if (ret < 0) {
         fprintf(stderr, "failed to receive version from server: %s\n",
                 strerror(-ret));
-        return ret;
+        goto out;
     }
 
     if (mj != LIB_MUSER_VFIO_USER_VERS_MJ || mn != LIB_MUSER_VFIO_USER_VERS_MN) {
         fprintf(stderr, "bad server version %d.%d\n", mj, mn);
-        return -EINVAL;
+        ret = -EINVAL;
+        goto out;
     }
 
-    ret = send_version(sock, mj, mn, msg_id, true); 
+    ret = asprintf(&client_caps, "{max_fds: %d}", client_max_fds);
+    if (ret == -1) {
+        client_caps = NULL;
+        ret = -ENOMEM; /* FIXME */
+        goto out;
+    }
+
+    ret = send_version(sock, mj, mn, msg_id, true, client_caps); 
     if (ret < 0) {
         fprintf(stderr, "failed to send version to server: %s\n",
                 strerror(-ret));
-        return ret;
+        goto out;
     }
+    ret = 0;
 
-    return 0;
+out:
+    free(client_caps);
+    return ret;
 }
 
 static int
@@ -140,11 +153,16 @@ int main(int argc, char *argv[])
 {
 	int ret, sock;
 
-    char template[] = "XXXXXX";
-    struct vfio_user_dma_region dma_regions[2];
-    int dma_region_fds[ARRAY_SIZE(dma_regions)];
+    struct vfio_user_dma_region *dma_regions;
+    int *dma_region_fds;
     struct vfio_user_header hdr;
-    uint16_t msg_id;
+    uint16_t msg_id = 1;
+    int i;
+    FILE *fp;
+    int fd;
+    const int client_max_fds = 32;
+    int server_max_fds;
+    int nr_dma_regions;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
@@ -159,7 +177,7 @@ int main(int argc, char *argv[])
      * The server proposes version upon connection, we need to send back the
      * version the version we support.
      */
-    if ((ret = set_version(sock)) < 0) {
+    if ((ret = set_version(sock, client_max_fds, &server_max_fds)) < 0) {
         return ret;
     }
 
@@ -168,44 +186,49 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-    /* Tell the server we have a memory DMA region it can access. */
-    if ((dma_region_fds[0] = mkstemp(template)) == -1) {
+    /*
+     * Tell the server we have some DMA regions it can access. Each DMA regions
+     * is accompanied by a file descriptor, so let's create more DMA regions
+     * that can fit in a message that can be handled by the server.
+     */
+    nr_dma_regions = server_max_fds << 1;
+
+    if ((fp = tmpfile()) == NULL) {
         perror("failed to create DMA file");
         return -1;
     }
-    if ((ret = ftruncate(dma_region_fds[0], 2 * sysconf(_SC_PAGESIZE))) == -1) {
+
+    if ((ret = ftruncate(fileno(fp), nr_dma_regions * sysconf(_SC_PAGESIZE))) == -1) {
         perror("failed to truncate file");
         return -1;
     }
 
-    dma_regions[0].addr = 0xdeadbeef;
-    dma_regions[0].size = sysconf(_SC_PAGESIZE);
-    dma_regions[0].offset = 0;
-    dma_regions[0].prot = PROT_READ | PROT_WRITE;
-    dma_regions[0].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
+    dma_regions = alloca(sizeof *dma_regions * nr_dma_regions);
+    dma_region_fds = alloca(sizeof *dma_region_fds * nr_dma_regions);
 
-    dma_regions[1].addr = 0xcafebabe;
-    dma_regions[1].size = sysconf(_SC_PAGESIZE);
-    dma_regions[1].offset = dma_regions[0].size;
-    dma_regions[1].prot = PROT_READ | PROT_WRITE;
-    dma_regions[1].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
-
-    dma_region_fds[1] = dma_region_fds[0];
-
-    msg_id = 1;
-    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_MAP, dma_regions,
-                             sizeof(dma_regions), dma_region_fds,
-                             ARRAY_SIZE(dma_region_fds));
-
-    if (ret < 0) {
-        fprintf(stderr, "failed to send DMA regions: %s\n", strerror(-ret));
-        return ret;
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
+        dma_regions[i].size = sysconf(_SC_PAGESIZE);
+        dma_regions[i].offset = dma_regions[i].addr;
+        dma_regions[i].prot = PROT_READ | PROT_WRITE;
+        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
+        dma_region_fds[i] = fileno(fp);
     }
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
-    if (ret < 0) {
-        fprintf(stderr, "failed to receive response for mapping DMA regions: %s\n",
-               strerror(-ret));
-        return ret;
+
+    for (i = 0; i < nr_dma_regions / server_max_fds; i++, msg_id++) {
+        ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_MAP,
+                                 dma_regions + (i * server_max_fds), sizeof *dma_regions * server_max_fds,
+                                 dma_region_fds + (i * server_max_fds), server_max_fds);
+        if (ret < 0) {
+            fprintf(stderr, "failed to send DMA regions: %s\n", strerror(-ret));
+            return ret;
+        }
+        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+        if (ret < 0) {
+            fprintf(stderr, "failed to receive response for mapping DMA regions: %s\n",
+                   strerror(-ret));
+            return ret;
+        }
     }
 
     return 0;

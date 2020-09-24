@@ -65,6 +65,12 @@ static void _sa_handler(int signum __attribute__((unused)))
 {
 }
 
+static int
+unmap_dma(void *pvt __attribute__((unused)),
+          uint64_t iova __attribute__((unused)))
+{
+}
+
 int main(int argc, char *argv[])
 {
     int ret;
@@ -105,6 +111,13 @@ int main(int argc, char *argv[])
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
+
+        /*
+         * Not strictly necessary since this device doesn't yet do any DMA.
+         * By declaring this dummy callback DMA regions get registered,
+         * otherwise they're ignored.
+         */
+        .unmap_dma = unmap_dma
     };
 
     sigemptyset(&act.sa_mask);

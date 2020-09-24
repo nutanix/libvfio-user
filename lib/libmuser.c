@@ -60,6 +60,8 @@
 #include "dma.h"
 #include "cap.h"
 
+#define MAX_FDS 8
+
 #define IOMMU_GRP_NAME "iommu_group"
 
 typedef enum {
@@ -99,6 +101,8 @@ struct lm_ctx {
     char                    *iommu_dir;
     int                     iommu_dir_fd;
     int                     sock_flags;
+
+    int                     client_max_fds;
 
     lm_irqs_t               irqs; /* XXX must be last */
 };
@@ -153,7 +157,9 @@ recv_fds_kernel(lm_ctx_t *lm_ctx, void *buf, size_t size)
 }
 
 static int
-get_request_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd)
+get_request_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd,
+                   int *fds __attribute__((unused)),
+                   int *nr_fds __attribute__((unused)))
 {
     assert(false);
     return ioctl(lm_ctx->fd, MUSER_DEV_CMD_WAIT, &cmd);
@@ -263,7 +269,9 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
     struct iovec iov[2];
-    struct msghdr msg = {.msg_iovlen = 1};
+    struct msghdr msg;
+
+    memset(&msg, 0, sizeof(msg));
 
     if (is_reply) {
         hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
@@ -280,9 +288,10 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 
     iov[0].iov_base = &hdr;
     iov[0].iov_len = sizeof(hdr);
+    msg.msg_iovlen = 1;
 
     if (data != NULL) {
-        msg.msg_iovlen = 2;
+        msg.msg_iovlen++;
         iov[1].iov_base = data;
         iov[1].iov_len = len;
     }
@@ -291,17 +300,16 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 
     if (fds != NULL) {
         size_t size = count * sizeof *fds;
-        char buf[CMSG_SPACE(size)];
+        char *buf = alloca(CMSG_SPACE(size));
 
         msg.msg_control = buf;
-        msg.msg_controllen = sizeof(buf);
+        msg.msg_controllen = CMSG_SPACE(size);
 
         struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
         cmsg->cmsg_level = SOL_SOCKET;
         cmsg->cmsg_type = SCM_RIGHTS;
         cmsg->cmsg_len = CMSG_LEN(size);
         memcpy(CMSG_DATA(cmsg), fds, size);
-	    msg.msg_controllen = CMSG_SPACE(size);
     }
 
     ret = sendmsg(sock, &msg, 0);
@@ -313,13 +321,14 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 }
 
 int
-send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply)
+send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
+             char *caps)
 {
     int ret;
     char *data __attribute__((__cleanup__(__free_s))) = NULL;
 
-    ret  = asprintf(&data, "{version: {\"major\": %d, \"minor\": %d}}",
-                    major, minor);
+    ret  = asprintf(&data, "{version: {\"major\": %d, \"minor\": %d}, capabilities: %s}",
+                    major, minor, caps != NULL ? caps : "{}");
     if (ret == -1) {
         data = NULL;
         return -1;
@@ -368,7 +377,8 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
 }
 
 int
-recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply)
+recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
+             int *max_fds)
 {
     int ret;
     struct vfio_user_header hdr;
@@ -393,9 +403,10 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply)
     }
 
     /* FIXME use proper parsing */
-    ret = sscanf(data, "{version: {\"major\": %d, \"minor\": %d}}", major,
-                 minor);
-    if (ret != 2) {
+    ret = sscanf(data,
+                 "{version: {\"major\": %d, \"minor\": %d}, capabilities: {max_fds: %d}}",
+                 major, minor, max_fds);
+    if (ret != 3) {
         return -EINVAL;
     }
     return 0;
@@ -407,28 +418,36 @@ set_version(lm_ctx_t *lm_ctx, int sock)
     int ret;
     int client_mj, client_mn;
     uint16_t msg_id = 0;
+    char *server_caps;
 
-    ret = send_version(sock, LIB_MUSER_VFIO_USER_VERS_MJ,
-                       LIB_MUSER_VFIO_USER_VERS_MN, msg_id, false);
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_DBG, "failed to send version: %s", strerror(-ret));
-        return ret;
+    ret = asprintf(&server_caps, "{max_fds: %d}", MAX_FDS);
+    if (ret == -1) {
+        return -ENOMEM;
     }
 
-    ret = recv_version(sock, &client_mj, &client_mn, &msg_id, true);
+    ret = send_version(sock, LIB_MUSER_VFIO_USER_VERS_MJ,
+                       LIB_MUSER_VFIO_USER_VERS_MN, msg_id, false, server_caps);
+    if (ret < 0) {
+        lm_log(lm_ctx, LM_DBG, "failed to send version: %s", strerror(-ret));
+        goto out;
+    }
+
+    ret = recv_version(sock, &client_mj, &client_mn, &msg_id, true,
+                       &lm_ctx->client_max_fds);
     if (ret < 0) {
         lm_log(lm_ctx, LM_DBG, "failed to receive version: %s", strerror(-ret));
-        return ret;
+        goto out;
     }
     if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ ||
         client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
         lm_log(lm_ctx, LM_DBG, "version mismatch,  server=%d.%d, client=%d.%d",
                LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN,
                client_mj, client_mn);
-        return -EINVAL;
+        ret = -EINVAL;
     }
-
-    return 0;
+out:
+    free(server_caps);
+    return ret;
 }
 
 /**
@@ -464,19 +483,46 @@ close_sock(lm_ctx_t *lm_ctx)
 }
 
 static int
-get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
+get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+                 int *fds, int *nr_fds)
 {
     int ret;
+    struct iovec iov = {.iov_base = hdr, .iov_len = sizeof *hdr};
+    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
+    struct cmsghdr *cmsg;
+
+    msg.msg_controllen = CMSG_SPACE(sizeof(int) * *nr_fds);
+    msg.msg_control = alloca(msg.msg_controllen);
 
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    ret = recv(lm_ctx->conn_fd, hdr, sizeof(*hdr), lm_ctx->sock_flags);
+    ret = recvmsg(lm_ctx->conn_fd, &msg, lm_ctx->sock_flags);
     if (ret == -1) {
         return -errno;
     }
+
+    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+        if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
+            continue;
+        }
+        if (cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
+            return -EINVAL;
+        }
+        int size = cmsg->cmsg_len - CMSG_LEN(0);
+        if (size % sizeof(int) != 0) {
+            return -EINVAL;
+        }
+        int i;
+        *nr_fds = (int)(size / sizeof(int));
+        for (i = 0; i < *nr_fds; i++) {
+           //memcpy(fds[i], CMSG_DATA(cmsg) + sizeof(int) * i, sizeof *fds);
+            fds[i] = *(CMSG_DATA(cmsg) + sizeof(int) * i);
+        }
+    }
+
     return ret;
 }
 
@@ -520,7 +566,7 @@ static struct transport_ops {
     int (*init)(lm_ctx_t*);
     int (*attach)(lm_ctx_t*);
     int(*detach)(lm_ctx_t*);
-    int (*get_request)(lm_ctx_t*, struct vfio_user_header*);
+    int (*get_request)(lm_ctx_t*, struct vfio_user_header*, int *fds, int *nr_fds);
     int (*send_response)(lm_ctx_t*, struct vfio_user_header*);
     ssize_t (*recv_fds)(lm_ctx_t*, void *buf, size_t size);
 } transports_ops[] = {
@@ -1599,33 +1645,62 @@ static int handle_device_get_info(lm_ctx_t *lm_ctx,
 }
 
 static int
-handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
+handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+               int *fds, int nr_fds)
 {
     int ret, i;
-    struct vfio_user_dma_region dma_region;
+    int nr_dma_regions;
+    struct vfio_user_dma_region *dma_regions;
 
     assert(lm_ctx != NULL);
     assert(hdr != NULL);
 
     hdr->msg_size -= sizeof *hdr;
 
-    if ((hdr->msg_size < sizeof(struct vfio_user_dma_region)) ||
-        (hdr->msg_size % sizeof(struct vfio_user_dma_region) != 0)) {
+    if (hdr->msg_size % sizeof(struct vfio_user_dma_region) != 0) {
         lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", hdr->msg_size);
         return -EINVAL;
     }
 
-    for (i = 0; i < (int)(hdr->msg_size / sizeof(struct vfio_user_dma_region));
-         i++) {
-        ret = recv(lm_ctx->conn_fd, &dma_region, sizeof dma_region, 0);
-        if (ret == -1) {
-            lm_log(lm_ctx, LM_ERR, "failed to receive DMA region: %m");
-            return -errno;
-        }
+    nr_dma_regions = (int)(hdr->msg_size / sizeof(struct vfio_user_dma_region));
+    if (nr_dma_regions != nr_fds) {
+        lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
+               nr_dma_regions, nr_fds);
+        return -EINVAL;
+    }
 
-        lm_log(lm_ctx, LM_DBG, "received DMA region %#lx-%#lx offset=%#lx",
-               dma_region.addr, dma_region.addr + dma_region.size - 1,
-               dma_region.offset);
+    dma_regions = alloca(nr_dma_regions * sizeof(*dma_regions));
+
+    ret = recv(lm_ctx->conn_fd, dma_regions, hdr->msg_size, 0);
+    if (ret == -1) {
+        lm_log(lm_ctx, LM_ERR, "failed to receive DMA region entries: %m");
+        return -errno;
+    }
+
+    if (lm_ctx->dma == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < nr_dma_regions; i++) {
+        lm_log(lm_ctx, LM_DBG, "received DMA region %#lx-%#lx offset=%#lx fd=%d",
+               dma_regions[i].addr, dma_regions[i].addr + dma_regions[i].size - 1,
+               dma_regions[i].offset, fds[i]);
+
+        ret = dma_controller_add_region(lm_ctx->dma,
+                                        dma_regions[i].addr,
+                                        dma_regions[i].size,
+                                        fds[i],
+                                        dma_regions[i].offset);
+        if (ret < 0) {
+            lm_log(lm_ctx, LM_DBG, "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
+                   strerror(-ret), dma_regions[i].addr,
+                   dma_regions[i].addr + dma_regions[i].size - 1,
+                   dma_regions[i].offset, fds[i]);
+            return ret;
+        }
+        if (lm_ctx->map_dma != NULL) {
+            lm_ctx->map_dma(lm_ctx->pvt, dma_regions[i].addr, dma_regions[i].size);
+        }
     }
     return 0;
 }
@@ -1640,13 +1715,20 @@ process_request(lm_ctx_t *lm_ctx)
 {
     struct vfio_user_header hdr = {};
     int ret;
+    int *fds = NULL;
+    int nr_fds;
 
-    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, &hdr);
+    assert(lm_ctx != NULL);
+
+    nr_fds = lm_ctx->client_max_fds;
+    fds = alloca(nr_fds * sizeof(int));
+
+    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, &hdr, fds, &nr_fds);
     if (unlikely(ret < 0)) {
         if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
         }
-        lm_log(lm_ctx, LM_ERR, "failed to receive request: %m");
+        lm_log(lm_ctx, LM_ERR, "failed to receive request: %s", strerror(-ret));
         return ret;
     }
     if (unlikely(ret == 0)) {
@@ -1675,7 +1757,7 @@ process_request(lm_ctx_t *lm_ctx)
 
     switch (hdr.cmd) {
         case VFIO_USER_DMA_MAP:
-            handle_dma_map(lm_ctx, &hdr);
+            handle_dma_map(lm_ctx, &hdr, fds, nr_fds);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
             ret = handle_device_get_info(lm_ctx, &hdr);
