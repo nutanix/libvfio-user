@@ -157,7 +157,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%#lx IOVA=%#lx\n",
+        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%#lx IOVA=%#lx",
                region->virt_addr, region->dma_addr);
 
         _dma_controller_do_remove_region(dma, region);
