@@ -188,8 +188,8 @@ int main(int argc, char *argv[])
 
     /*
      * Tell the server we have some DMA regions it can access. Each DMA regions
-     * is accompanied by a file descriptor, so let's create more DMA regions
-     * that can fit in a message that can be handled by the server.
+     * is accompanied by a file descriptor, so let's create more (2x) DMA
+     * regions that can fit in a message that can be handled by the server.
      */
     nr_dma_regions = server_max_fds << 1;
 
@@ -217,18 +217,37 @@ int main(int argc, char *argv[])
 
     for (i = 0; i < nr_dma_regions / server_max_fds; i++, msg_id++) {
         ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_MAP,
-                                 dma_regions + (i * server_max_fds), sizeof *dma_regions * server_max_fds,
-                                 dma_region_fds + (i * server_max_fds), server_max_fds);
+                                 dma_regions + (i * server_max_fds),
+                                 sizeof *dma_regions * server_max_fds,
+                                 dma_region_fds + (i * server_max_fds),
+                                 server_max_fds);
         if (ret < 0) {
-            fprintf(stderr, "failed to send DMA regions: %s\n", strerror(-ret));
+            fprintf(stderr, "failed to map DMA regions: %s\n", strerror(-ret));
             return ret;
         }
         ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
         if (ret < 0) {
-            fprintf(stderr, "failed to receive response for mapping DMA regions: %s\n",
-                   strerror(-ret));
+            fprintf(stderr,
+                    "failed to receive response for mapping DMA regions: %s\n",
+                    strerror(-ret));
             return ret;
         }
+    }
+
+    /* unmap the first group of the DMA regions */
+    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_UNMAP,
+                             dma_regions, sizeof *dma_regions * server_max_fds,
+                             NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
+        return ret;
+    }
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+    if (ret < 0) {
+        fprintf(stderr,
+                "failed to receive response for unmapping DMA regions: %s\n",
+                strerror(-ret));
+        return ret;
     }
 
     return 0;

@@ -1645,8 +1645,8 @@ static int handle_device_get_info(lm_ctx_t *lm_ctx,
 }
 
 static int
-handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-               int *fds, int nr_fds)
+handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map,
+                        int *fds, int nr_fds)
 {
     int ret, i;
     int nr_dma_regions;
@@ -1663,7 +1663,7 @@ handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     }
 
     nr_dma_regions = (int)(hdr->msg_size / sizeof(struct vfio_user_dma_region));
-    if (nr_dma_regions != nr_fds) {
+    if (map && nr_dma_regions != nr_fds) {
         lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
                nr_dma_regions, nr_fds);
         return -EINVAL;
@@ -1682,20 +1682,53 @@ handle_dma_map(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     }
 
     for (i = 0; i < nr_dma_regions; i++) {
-        lm_log(lm_ctx, LM_DBG, "received DMA region %#lx-%#lx offset=%#lx fd=%d",
-               dma_regions[i].addr, dma_regions[i].addr + dma_regions[i].size - 1,
-               dma_regions[i].offset, fds[i]);
+        if (map) {
+            if (dma_regions[i].flags != VFIO_USER_F_DMA_REGION_MAPPABLE) {
+                /*
+                 * FIXME implement non-mappable DMA regions. This requires changing
+                 * dma.c to not take a file descriptor.
+                 */
+                assert(false);
+            }
 
-        ret = dma_controller_add_region(lm_ctx->dma,
-                                        dma_regions[i].addr,
-                                        dma_regions[i].size,
-                                        fds[i],
-                                        dma_regions[i].offset);
+            ret = dma_controller_add_region(lm_ctx->dma,
+                                            dma_regions[i].addr,
+                                            dma_regions[i].size,
+                                            fds[i],
+                                            dma_regions[i].offset);
+            if (ret < 0) {
+                lm_log(lm_ctx, LM_INF,
+                       "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
+                       dma_regions[i].addr,
+                       dma_regions[i].addr + dma_regions[i].size - 1,
+                       dma_regions[i].offset, fds[i],
+                       strerror(-ret));
+            } else {
+                lm_log(lm_ctx, LM_DBG,
+                       "added DMA region %#lx-%#lx offset=%#lx fd=%d",
+                       dma_regions[i].addr,
+                       dma_regions[i].addr + dma_regions[i].size - 1,
+                       dma_regions[i].offset, fds[i]);
+            }
+        } else {
+            ret = dma_controller_remove_region(lm_ctx->dma,
+                                               dma_regions[i].addr,
+                                               dma_regions[i].size,
+                                               lm_ctx->unmap_dma, lm_ctx->pvt);
+            if (ret < 0) {
+                lm_log(lm_ctx, LM_INF,
+                       "failed to remove DMA region %#lx-%#lx: %s",
+                       dma_regions[i].addr,
+                       dma_regions[i].addr + dma_regions[i].size - 1,
+                       strerror(-ret));
+            } else {
+                lm_log(lm_ctx, LM_DBG,
+                       "removed DMA region %#lx-%#lx",
+                       dma_regions[i].addr,
+                       dma_regions[i].addr + dma_regions[i].size - 1);
+            }
+        } 
         if (ret < 0) {
-            lm_log(lm_ctx, LM_DBG, "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
-                   strerror(-ret), dma_regions[i].addr,
-                   dma_regions[i].addr + dma_regions[i].size - 1,
-                   dma_regions[i].offset, fds[i]);
             return ret;
         }
         if (lm_ctx->map_dma != NULL) {
@@ -1757,7 +1790,10 @@ process_request(lm_ctx_t *lm_ctx)
 
     switch (hdr.cmd) {
         case VFIO_USER_DMA_MAP:
-            handle_dma_map(lm_ctx, &hdr, fds, nr_fds);
+        case VFIO_USER_DMA_UNMAP:
+            ret = handle_dma_map_or_unmap(lm_ctx, &hdr,
+                                          hdr.cmd == VFIO_USER_DMA_MAP,
+                                          fds, nr_fds);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
             ret = handle_device_get_info(lm_ctx, &hdr);
