@@ -114,6 +114,7 @@ get_device_info(int sock)
     struct vfio_device_info dev_info;
     uint16_t msg_id;
     int ret;
+    int size = sizeof dev_info;
 
     msg_id = 1;
     ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_GET_INFO,
@@ -124,22 +125,9 @@ get_device_info(int sock)
         return ret;
     }
 
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &dev_info, &size);
     if (ret < 0) {
         fprintf(stderr, "%s: failed to receive header: %s\n", __func__,
-                strerror(-ret));
-        return ret;
-    }
-
-    if ((hdr.msg_size - sizeof(hdr)) < sizeof(struct vfio_device_info)) {
-        fprintf(stderr, "%s: bad response data size\n", __func__);
-        return -EINVAL;
-    }
-
-    ret = recv(sock, &dev_info, sizeof(struct vfio_device_info), 0);
-    if (ret < 0) {
-        ret = -errno;
-        fprintf(stderr, "%s: failed to receive data: %s\n", __func__,
                 strerror(-ret));
         return ret;
     }
@@ -174,6 +162,8 @@ int main(int argc, char *argv[])
     }
 
     /*
+     * XXX VFIO_USER_VERSION
+     *
      * The server proposes version upon connection, we need to send back the
      * version the version we support.
      */
@@ -181,12 +171,15 @@ int main(int argc, char *argv[])
         return ret;
     }
 
+    /* XXX VFIO_USER_DEVICE_GET_INFO */
     ret = get_device_info(sock);
     if (ret < 0) {
         return ret;
     }
 
     /*
+     * XXX VFIO_USER_DMA_MAP
+     *
      * Tell the server we have some DMA regions it can access. Each DMA regions
      * is accompanied by a file descriptor, so let's create more (2x) DMA
      * regions that can fit in a message that can be handled by the server.
@@ -225,7 +218,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "failed to map DMA regions: %s\n", strerror(-ret));
             return ret;
         }
-        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
         if (ret < 0) {
             fprintf(stderr,
                     "failed to receive response for mapping DMA regions: %s\n",
@@ -234,7 +227,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* unmap the first group of the DMA regions */
+    /*
+     * XXX VFIO_USER_DMA_UNMAP
+     *
+     * unmap the first group of the DMA regions
+     */
     ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_UNMAP,
                              dma_regions, sizeof *dma_regions * server_max_fds,
                              NULL, 0);
@@ -242,12 +239,39 @@ int main(int argc, char *argv[])
         fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
         return ret;
     }
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id);
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
     if (ret < 0) {
         fprintf(stderr,
                 "failed to receive response for unmapping DMA regions: %s\n",
                 strerror(-ret));
         return ret;
+    }
+
+    msg_id++;
+
+    /* XXX VFIO_USER_DEVICE_GET_IRQ_INFO */
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        struct vfio_irq_info irq_info = {.argsz = sizeof irq_info, .index = i};
+        int size;
+        ret = send_vfio_user_msg(sock, msg_id, false,
+                             VFIO_USER_DEVICE_GET_IRQ_INFO,
+                             &irq_info, sizeof irq_info, NULL, 0);
+        if (ret < 0) {
+            fprintf(stderr, "failed to request %s info: %s\n", irq_to_str[i],
+                    strerror(-ret));
+            return ret;
+        }
+        size = sizeof irq_info;
+        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &irq_info, &size);
+        if (ret < 0) {
+            fprintf(stderr, "failed to receive %s info: %s\n", irq_to_str[i],
+                    strerror(-ret));
+            return ret;
+        }
+        if (irq_info.count > 0) {
+            printf("IRQ %s: count=%d flags=%#x\n",
+                   irq_to_str[i], irq_info.count, irq_info.flags);
+        }
     }
 
     return 0;

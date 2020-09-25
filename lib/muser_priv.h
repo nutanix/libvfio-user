@@ -35,6 +35,8 @@
 
 #include "muser.h"
 
+extern char *irq_to_str[];
+
 int
 muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
                      loff_t *pos, bool write, char *buf);
@@ -52,7 +54,7 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 
 int
 recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id);
+                   uint16_t *msg_id, void *data, int *len);
 
 int
 send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
@@ -63,3 +65,5 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
              int *max_fds);
 
 #endif /* MUSER_PRIV_H */
+
+/* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

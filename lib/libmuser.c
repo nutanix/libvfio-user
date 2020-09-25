@@ -71,6 +71,14 @@ typedef enum {
     IRQ_MSIX,
 } irq_type_t;
 
+char *irq_to_str[] = {
+    [LM_DEV_INTX_IRQ_IDX] = "INTx",
+    [LM_DEV_MSI_IRQ_IDX] = "MSI",
+    [LM_DEV_MSIX_IRQ_IDX] = "MSI-X",
+    [LM_DEV_ERR_IRQ_INDEX] = "ERR",
+    [LM_DEV_REQ_IRQ_INDEX] = "REQ"
+};
+
 typedef struct {
     irq_type_t  type;       /* irq type this device is using */
     int         err_efd;    /* eventfd for irq err */
@@ -340,7 +348,7 @@ send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
 
 int
 recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id)
+                   uint16_t *msg_id, void *data, int *len)
 {
     int ret;
 
@@ -373,6 +381,17 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
         }
         *msg_id = hdr->msg_id;
     }
+
+    if (is_reply && len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
+        ret = recv(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len), 0);
+        if (ret < 0) {
+            return ret;
+        }
+        if (*len != ret) { /* FIXME we should allow receiving less */
+            return -EINVAL;
+        }
+        *len = ret;         
+    }
     return 0;
 }
 
@@ -384,7 +403,7 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
     struct vfio_user_header hdr;
     char *data __attribute__((__cleanup__(__free_s))) = NULL;
 
-    ret = recv_vfio_user_msg(sock, &hdr, is_reply, msg_id);
+    ret = recv_vfio_user_msg(sock, &hdr, is_reply, msg_id, NULL, NULL);
     if (ret < 0) {
         return ret;
     }
@@ -1645,6 +1664,32 @@ static int handle_device_get_info(lm_ctx_t *lm_ctx,
 }
 
 static int
+handle_device_get_irq_info(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+                           struct vfio_irq_info *irq_info)
+{
+    int ret;
+
+    assert(lm_ctx != NULL);
+    assert(irq_info != NULL);
+
+    hdr->msg_size -= sizeof *hdr;
+
+    if (hdr->msg_size != sizeof *irq_info) {
+        return -EINVAL;
+    }
+
+    ret = recv(lm_ctx->conn_fd, irq_info, hdr->msg_size, 0);
+    if (ret < 0) {
+        return -errno;
+    }
+    if (ret != (int)hdr->msg_size) {
+        assert(false);
+    }
+
+    return dev_get_irqinfo(lm_ctx, irq_info);
+}
+
+static int
 handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map,
                         int *fds, int nr_fds)
 {
@@ -1750,6 +1795,9 @@ process_request(lm_ctx_t *lm_ctx)
     int ret;
     int *fds = NULL;
     int nr_fds;
+    struct vfio_irq_info irq_info;
+    void *data = NULL;
+    int len;    
 
     assert(lm_ctx != NULL);
 
@@ -1799,13 +1847,20 @@ process_request(lm_ctx_t *lm_ctx)
             ret = handle_device_get_info(lm_ctx, &hdr);
             goto out;
             break;
+        case VFIO_USER_DEVICE_GET_IRQ_INFO:
+            ret = handle_device_get_irq_info(lm_ctx, &hdr, &irq_info);
+            if (ret == 0) {
+                data = &irq_info;
+                len = sizeof irq_info;
+            }
+            break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);
             return -EINVAL;
     }
 
     ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
-                             0, NULL, 0, NULL, 0);
+                             0, data, len, NULL, 0);
 
 out:
     if (unlikely(ret < 0)) {
