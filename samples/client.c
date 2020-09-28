@@ -104,6 +104,71 @@ out:
     return ret;
 }
 
+static int
+get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
+{
+    struct vfio_region_info region_info, *region_info_recv;
+    struct vfio_region_info_cap_sparse_mmap *sparse;
+    struct vfio_user_header hdr;
+    uint16_t msg_id;
+    size_t cap_sz;
+    int regsz = sizeof(region_info);
+    int i, ret;
+
+    region_info.argsz = sizeof(region_info);
+    msg_id = 1;
+    for (i = 0; i < client_dev_info->num_regions; i++) {
+        region_info.index = i;
+	    ret = send_vfio_user_msg(sock, msg_id, false,
+                                 VFIO_USER_DEVICE_GET_REGION_INFO, &region_info,
+                                 sizeof(region_info), NULL, 0);
+	    if (ret < 0) {
+		    fprintf(stderr, "%s: failed to send message: %s\n", __func__,
+                    strerror(-ret));
+		    return ret;
+	    }
+
+	    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &region_info,
+				     &regsz);
+	    if (ret < 0) {
+		    fprintf(stderr, "%s: failed to receive header: %s\n", __func__,
+			        strerror(-ret));
+		    return ret;
+	    }
+
+
+	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
+        fprintf(stdout, "%s: region_info[%d] offset %lu flags %#x size %llu "
+                "cap_sz %d\n", __func__, i, region_info.offset,
+                region_info.flags, region_info.size, cap_sz);
+	    if (cap_sz) {
+            int j;
+
+            sparse = calloc(cap_sz, 1);
+            if (sparse == NULL) {
+                return -ENOMEM;
+            }
+
+            ret = recv(sock, sparse, cap_sz, 0);
+            if (ret < 0) {
+                ret = -errno;
+		        fprintf(stderr, "%s: failed to receive sparse cap info: %s\n",
+                        __func__, strerror(-ret));
+                free(sparse);
+                return ret;
+            }
+            fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
+                    sparse->nr_areas);
+            for (j = 0; j < sparse->nr_areas; j++) {
+                fprintf(stdout, "%s: nr %d offset %lu size\n", __func__,
+                        sparse->areas[i].offset, sparse->areas[i].size);
+            }
+            free(sparse);
+	    }
+        msg_id++;
+    }
+}
+
 static int get_device_info(int sock, struct vfio_device_info *dev_info)
 {
     struct vfio_user_header hdr;
@@ -115,14 +180,14 @@ static int get_device_info(int sock, struct vfio_device_info *dev_info)
     msg_id = 1;
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_GET_INFO,
                                   dev_info, dev_info_sz, NULL, 0, NULL,
-                                  &dev_info, dev_info_sz);
+                                  dev_info, dev_info_sz);
     if (ret < 0) {
         fprintf(stderr, "failed to get device info: %s\n", strerror(-ret));
         return ret;
     }
 
     printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
-           dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+           dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
     return 0;
 }
 
@@ -265,6 +330,12 @@ int main(int argc, char *argv[])
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
     ret = get_device_info(sock, &client_dev_info);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
+    ret = get_device_region_info(sock, &client_dev_info);
     if (ret < 0) {
         return ret;
     }

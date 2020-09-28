@@ -926,19 +926,17 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
 
 /*
  * Populate the sparse mmap capability information to vfio-client.
- * kernel/muser constructs the response for VFIO_DEVICE_GET_REGION_INFO
- * accommodating sparse mmap information.
  * Sparse mmap information stays after struct vfio_region_info and cap_offest
  * points accordingly.
  */
 static int
 dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
-                        struct vfio_region_info *vfio_reg)
+                        struct vfio_region_info **vfio_reg, bool is_kernel)
 {
     struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
     struct lm_sparse_mmap_areas *mmap_areas;
     int nr_mmap_areas, i;
-    size_t size;
+    size_t sparse_size;
     ssize_t ret;
 
     if (lm_reg->mmap_areas == NULL) {
@@ -947,24 +945,24 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     }
 
     nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
-    size = sizeof(*sparse) + (nr_mmap_areas * sizeof(*sparse->areas));
+    sparse_size = sizeof(*sparse) + (nr_mmap_areas * sizeof(*sparse->areas));
 
     /*
      * If vfio_reg does not have enough space to accommodate  sparse info then
-     * set the argsz with the expected size and return. Vfio client will call
-     * back after reallocating the vfio_reg
+     * set the argsz with the expected size and return. This behaviour
+     * is only for kernel/muser.ko, where the request comes from kernel/vfio.
      */
 
-    if (vfio_reg->argsz < size + sizeof(*vfio_reg)) {
-        lm_log(lm_ctx, LM_DBG, "vfio_reg too small=%d\n", vfio_reg->argsz);
-        vfio_reg->argsz = size + sizeof(*vfio_reg);
-        vfio_reg->cap_offset = 0;
+    if ((*vfio_reg)->argsz < sparse_size + sizeof(**vfio_reg) && is_kernel) {
+        lm_log(lm_ctx, LM_DBG, "vfio_reg too small=%d\n", (*vfio_reg)->argsz);
+        (*vfio_reg)->argsz = sparse_size + sizeof(**vfio_reg);
+        (*vfio_reg)->cap_offset = 0;
         return 0;
     }
 
-    lm_log(lm_ctx, LM_DBG, "%s: size %llu, nr_mmap_areas %u\n", __func__, size,
-           nr_mmap_areas);
-    sparse = calloc(1, size);
+    lm_log(lm_ctx, LM_DBG, "%s: size %llu, nr_mmap_areas %u\n", __func__,
+           sparse_size, nr_mmap_areas);
+    sparse = calloc(1, sparse_size);
     if (sparse == NULL)
         return -ENOMEM;
     sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
@@ -976,18 +974,30 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     for (i = 0; i < nr_mmap_areas; i++) {
         sparse->areas[i].offset = mmap_areas->areas[i].start;
         sparse->areas[i].size = mmap_areas->areas[i].size;
+        lm_log(lm_ctx, LM_DBG, "%s: nr %d offset %lu size\n", __func__, i,
+               sparse->areas[i].offset, sparse->areas[i].size);
     }
 
-    /* write the sparse mmap cap info to vfio-client user pages */
-    ret = write(lm_ctx->conn_fd, sparse, size);
-    if (ret != (ssize_t)size) {
-        free(sparse);
-        return -EIO;
+    if (is_kernel) {
+        /* write the sparse mmap cap info to vfio-client user pages */
+        ret = write(lm_ctx->conn_fd, sparse, sparse_size);
+        if (ret != (ssize_t)sparse_size) {
+            free(sparse);
+            return -EIO;
+        }
+    } else {
+        *vfio_reg = realloc(*vfio_reg, sparse_size + sizeof(**vfio_reg));
+        if (*vfio_reg == NULL) {
+            goto out;
+        }
+        memcpy(*vfio_reg + sizeof(**vfio_reg), sparse, sparse_size);
+        (*vfio_reg)->argsz = sparse_size + sizeof(**vfio_reg);
     }
 
-    vfio_reg->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
-    vfio_reg->cap_offset = sizeof(*vfio_reg);
+    (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
+    (*vfio_reg)->cap_offset = sizeof(**vfio_reg);
 
+out:
     free(sparse);
     return 0;
 }
@@ -1036,36 +1046,39 @@ dump_buffer(const char *prefix, const char *buf, uint32_t count)
 #endif
 
 static long
-dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info *vfio_reg)
+dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info **vfio_reg,
+                bool is_kernel)
 {
     lm_reg_info_t *lm_reg;
     int err;
 
     assert(lm_ctx != NULL);
-    assert(vfio_reg != NULL);
-    lm_reg = &lm_ctx->pci_info.reg_info[vfio_reg->index];
+    assert(*vfio_reg != NULL);
+    lm_reg = &lm_ctx->pci_info.reg_info[(*vfio_reg)->index];
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
-    if ((vfio_reg->argsz < sizeof(struct vfio_region_info)) ||
-        (vfio_reg->index >= LM_DEV_NUM_REGS)) {
-        lm_log(lm_ctx, LM_DBG, "bad args argsz=%d index=%d\n", vfio_reg->argsz,
-               vfio_reg->index);
+    if (((*vfio_reg)->argsz < sizeof(struct vfio_region_info)) ||
+        ((*vfio_reg)->index >= LM_DEV_NUM_REGS)) {
+        lm_log(lm_ctx, LM_DBG, "bad args argsz=%d index=%d\n",
+               (*vfio_reg)->argsz, (*vfio_reg)->index);
         return -EINVAL;
     }
 
-    vfio_reg->offset = region_to_offset(vfio_reg->index);
-    vfio_reg->flags = lm_reg->flags;
-    vfio_reg->size = lm_reg->size;
+    (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
+    (*vfio_reg)->flags = lm_reg->flags;
+    (*vfio_reg)->size = lm_reg->size;
 
     if (lm_reg->mmap_areas != NULL) {
-        err = dev_get_sparse_mmap_cap(lm_ctx, lm_reg, vfio_reg);
+        err = dev_get_sparse_mmap_cap(lm_ctx, lm_reg, vfio_reg, is_kernel);
         if (err) {
             return err;
         }
     }
 
-    lm_log(lm_ctx, LM_DBG, "region_info[%d]\n", vfio_reg->index);
-    dump_buffer("", (char*)vfio_reg, sizeof *vfio_reg);
+    lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %lu flags %#x size %llu "
+           "argsz %llu\n",
+           (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
+           (*vfio_reg)->size, (*vfio_reg)->argsz);
 
     return 0;
 }
@@ -1090,6 +1103,7 @@ dev_get_info(struct vfio_device_info *dev_info)
 static long
 do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
 {
+    struct vfio_region_info *reg_info;
     int err = -ENOTSUP;
 
     assert(lm_ctx != NULL);
@@ -1098,7 +1112,8 @@ do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
         err = dev_get_info(&cmd_ioctl->data.dev_info);
         break;
     case VFIO_DEVICE_GET_REGION_INFO:
-        err = dev_get_reginfo(lm_ctx, &cmd_ioctl->data.reg_info);
+        reg_info = &cmd_ioctl->data.reg_info;
+        err = dev_get_reginfo(lm_ctx, &reg_info, true);
         break;
     case VFIO_DEVICE_GET_IRQ_INFO:
         err = dev_get_irqinfo(lm_ctx, &cmd_ioctl->data.irq_info);
@@ -1666,6 +1681,39 @@ out:
     return ret;
 }
 
+static int handle_device_get_region_info(lm_ctx_t *lm_ctx,
+                                         struct vfio_user_header *hdr,
+                                         struct vfio_region_info **dev_reg_info)
+{
+    struct vfio_region_info *reg_info;
+    int ret;
+
+    reg_info = calloc(sizeof(*reg_info), 1);
+    if (reg_info == NULL) {
+        return -ENOMEM;
+    }
+
+    if ((hdr->msg_size - sizeof(*hdr)) != sizeof(*reg_info)) {
+        free(reg_info);
+        return -EINVAL;
+    }
+
+    ret = recv(lm_ctx->conn_fd, reg_info, sizeof(*reg_info), 0);
+    if (ret < 0) {
+        free(reg_info);
+        return -errno;
+    }
+
+    ret = dev_get_reginfo(lm_ctx, &reg_info, false);
+    if (ret < 0) {
+        free(reg_info);
+        return ret;
+    }
+    *dev_reg_info = reg_info;
+
+    return 0;
+}
+
 static int handle_device_get_info(lm_ctx_t *lm_ctx,
                                   struct vfio_user_header *hdr,
                                   struct vfio_device_info *dev_info)
@@ -1922,6 +1970,7 @@ process_request(lm_ctx_t *lm_ctx)
     int nr_fds;
     struct vfio_irq_info irq_info;
     struct vfio_device_info dev_info;
+    struct vfio_region_info *dev_reg_info = NULL;
     void *data = NULL;
     bool free_data = false;
     int len;
@@ -1982,6 +2031,13 @@ process_request(lm_ctx_t *lm_ctx)
                 len = dev_info.argsz;
             }
             break;
+        case VFIO_USER_DEVICE_GET_REGION_INFO:
+            ret = handle_device_get_region_info(lm_ctx, &hdr, &dev_reg_info);
+            if (ret == 0) {
+                data = (void *)dev_reg_info;
+                len = dev_reg_info->argsz;
+            }
+            break;
         case VFIO_USER_DEVICE_GET_IRQ_INFO:
             ret = handle_device_get_irq_info(lm_ctx, &hdr, &irq_info);
             if (ret == 0) {
@@ -2014,6 +2070,10 @@ process_request(lm_ctx_t *lm_ctx)
     }
     if (free_data) {
         free(data);
+    }
+
+    if (dev_reg_info) {
+        free(dev_reg_info);
     }
     return ret;
 }
