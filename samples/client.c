@@ -94,7 +94,7 @@ set_version(int sock, int client_max_fds, int *server_max_fds)
         goto out;
     }
 
-    ret = send_version(sock, mj, mn, msg_id, true, client_caps); 
+    ret = send_version(sock, mj, mn, msg_id, true, client_caps);
     if (ret < 0) {
         fprintf(stderr, "failed to send version to server: %s\n",
                 strerror(-ret));
@@ -111,14 +111,16 @@ static int
 get_device_info(int sock)
 {
     struct vfio_user_header hdr;
-    struct vfio_device_info dev_info;
+    struct vfio_device_info dev_info =  {
+        .argsz = sizeof(dev_info)
+    };
     uint16_t msg_id;
     int ret;
     int size = sizeof dev_info;
 
     msg_id = 1;
     ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_GET_INFO,
-                             NULL, 0, NULL,0);
+                             &dev_info, size, NULL,0);
     if (ret < 0) {
         fprintf(stderr, "%s: failed to send message: %s\n", __func__,
                 strerror(-ret));

@@ -1643,23 +1643,27 @@ out:
 }
 
 static int handle_device_get_info(lm_ctx_t *lm_ctx,
-                                  struct vfio_user_header *hdr)
+                                  struct vfio_user_header *hdr,
+                                  struct vfio_device_info *dev_info)
 {
-    struct vfio_device_info dev_info;
     int ret;
 
-    dev_info.argsz = sizeof(struct vfio_device_info);
+    if ((hdr->msg_size - sizeof(*hdr)) != sizeof(*dev_info)) {
+        return -EINVAL;
+    }
 
-    ret = dev_get_info(&dev_info);
+    ret = recv(lm_ctx->conn_fd, dev_info, sizeof(*dev_info), 0);
+    if (ret < 0) {
+        return -errno;
+    }
+
+    ret = dev_get_info(dev_info);
     if (ret < 0) {
         return ret;
     }
 
-    ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr->msg_id, true,
-                             VFIO_USER_DEVICE_GET_INFO, (void *)&dev_info,
-                             dev_info.argsz, NULL, 0);
     lm_log(lm_ctx, LM_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
-           " %d", dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+           " %d", dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
     return ret;
 }
 
@@ -1796,6 +1800,7 @@ process_request(lm_ctx_t *lm_ctx)
     int *fds = NULL;
     int nr_fds;
     struct vfio_irq_info irq_info;
+    struct vfio_device_info dev_info;
     void *data = NULL;
     int len;    
 
@@ -1844,8 +1849,11 @@ process_request(lm_ctx_t *lm_ctx)
                                           fds, nr_fds);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
-            ret = handle_device_get_info(lm_ctx, &hdr);
-            goto out;
+            ret = handle_device_get_info(lm_ctx, &hdr, &dev_info);
+            if (ret == 0) {
+                data = &dev_info;
+                len = dev_info.argsz;
+            }
             break;
         case VFIO_USER_DEVICE_GET_IRQ_INFO:
             ret = handle_device_get_irq_info(lm_ctx, &hdr, &irq_info);
@@ -1859,10 +1867,12 @@ process_request(lm_ctx_t *lm_ctx)
             return -EINVAL;
     }
 
+    /*
+     * TODO: In case of error during command handling set errno respectively
+     * in the reply message.
+     */
     ret = send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
                              0, data, len, NULL, 0);
-
-out:
     if (unlikely(ret < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
                 strerror(-ret));
