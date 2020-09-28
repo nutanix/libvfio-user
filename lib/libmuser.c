@@ -1818,6 +1818,9 @@ process_request(lm_ctx_t *lm_ctx)
         return ret;
     }
     if (unlikely(ret == 0)) {
+        if (errno == EINTR) {
+            return -EINTR;
+        }
         if (errno == 0) {
             lm_log(lm_ctx, LM_INF, "VFIO client closed connection");
         } else {
