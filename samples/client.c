@@ -104,19 +104,18 @@ out:
     return ret;
 }
 
-static int
-get_device_info(int sock)
+static int get_device_info(int sock, struct vfio_device_info *dev_info)
 {
-    struct vfio_device_info dev_info =  {
-        .argsz = sizeof(dev_info)
-    };
+    struct vfio_user_header hdr;
+    int dev_info_sz = sizeof(*dev_info);
     uint16_t msg_id;
     int ret;
-    int size = sizeof dev_info;
 
+    dev_info->argsz = dev_info_sz;
     msg_id = 1;
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_GET_INFO,
-                             &dev_info, size, NULL, 0, NULL, &dev_info, size);
+                                  dev_info, dev_info_sz, NULL, 0, NULL,
+                                  &dev_info, dev_info_sz);
     if (ret < 0) {
         fprintf(stderr, "failed to get device info: %s\n", strerror(-ret));
         return ret;
@@ -234,8 +233,8 @@ access_bar0(int sock)
 int main(int argc, char *argv[])
 {
 	int ret, sock;
-
     struct vfio_user_dma_region *dma_regions;
+    struct vfio_device_info client_dev_info = {0};
     int *dma_region_fds;
     uint16_t msg_id = 1;
     int i;
@@ -265,7 +264,7 @@ int main(int argc, char *argv[])
     }
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
-    ret = get_device_info(sock);
+    ret = get_device_info(sock, &client_dev_info);
     if (ret < 0) {
         return ret;
     }
