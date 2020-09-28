@@ -32,6 +32,8 @@ add_executable(test_read test_read.c)
 add_executable(test_mmap test_mmap.c)
 add_executable(test_dma_map test_dma_map.c)
 
+add_executable(server server.c)
+target_link_libraries(server muser)
 add_executable(client client.c ../lib/libmuser.c ../lib/libmuser_pci.c ../lib/dma.c ../lib/cap.c)
 
 add_executable(null null.c)

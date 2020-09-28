@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <sys/eventfd.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -136,6 +137,83 @@ get_device_info(int sock)
 
     fprintf(stdout, "devinfo: flags %#x, num_regions %d, num_irqs %d\n",
 	    dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+    return 0;
+}
+
+static int
+configure_irqs(int sock)
+{
+    int i;
+    int ret;
+    struct vfio_user_header hdr;
+    struct vfio_irq_set irq_set;
+    uint16_t msg_id = 1;
+    int irq_fd;
+    uint64_t val;
+
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        struct vfio_irq_info irq_info = {.argsz = sizeof irq_info, .index = i};
+        int size;
+        ret = send_vfio_user_msg(sock, msg_id, false,
+                             VFIO_USER_DEVICE_GET_IRQ_INFO,
+                             &irq_info, sizeof irq_info, NULL, 0);
+        if (ret < 0) {
+            fprintf(stderr, "failed to request %s info: %s\n", irq_to_str[i],
+                    strerror(-ret));
+            return ret;
+        }
+        size = sizeof irq_info;
+        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &irq_info, &size);
+        if (ret < 0) {
+            fprintf(stderr, "failed to receive %s info: %s\n", irq_to_str[i],
+                    strerror(-ret));
+            return ret;
+        }
+        if (irq_info.count > 0) {
+            printf("IRQ %s: count=%d flags=%#x\n",
+                   irq_to_str[i], irq_info.count, irq_info.flags);
+        }
+    }
+
+    msg_id++;
+
+    irq_set.argsz = sizeof irq_set;
+    irq_set.flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
+    irq_set.index = 0;
+    irq_set.start = 0;
+    irq_set.count = 1;
+    irq_fd = eventfd(0, 0);
+    if (irq_fd == -1) {
+        perror("failed to create eventfd");
+        return -1;
+    }
+    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_SET_IRQS,
+                             &irq_set, sizeof irq_set, &irq_fd, 1);
+    if (ret < 0) {
+        fprintf(stderr, "failed to send configure IRQs message: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
+    if (ret < 0) {
+        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
+        return ret;
+    }
+
+    printf("client waiting for server to trigger INTx\n");
+    printf("(send SIGUSR1 to the server trigger INTx)\n");
+
+    ret = read(irq_fd, &val, sizeof val);
+    if (ret == -1) {
+        ret = -errno;
+        perror("server failed to trigger IRQ");
+        return ret;
+    }
+
+    printf("INTx triggered!\n");
+
+    pause();
+
     return 0;
 }
 
@@ -249,31 +327,15 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-    msg_id++;
-
-    /* XXX VFIO_USER_DEVICE_GET_IRQ_INFO */
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        struct vfio_irq_info irq_info = {.argsz = sizeof irq_info, .index = i};
-        int size;
-        ret = send_vfio_user_msg(sock, msg_id, false,
-                             VFIO_USER_DEVICE_GET_IRQ_INFO,
-                             &irq_info, sizeof irq_info, NULL, 0);
-        if (ret < 0) {
-            fprintf(stderr, "failed to request %s info: %s\n", irq_to_str[i],
-                    strerror(-ret));
-            return ret;
-        }
-        size = sizeof irq_info;
-        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &irq_info, &size);
-        if (ret < 0) {
-            fprintf(stderr, "failed to receive %s info: %s\n", irq_to_str[i],
-                    strerror(-ret));
-            return ret;
-        }
-        if (irq_info.count > 0) {
-            printf("IRQ %s: count=%d flags=%#x\n",
-                   irq_to_str[i], irq_info.count, irq_info.flags);
-        }
+    /*
+     * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
+     * Query interruptes, configure an eventfd to be associated with INTx, and
+     * finally wait for the server to fire the interrupt.     
+     */
+    ret = configure_irqs(sock);
+    if (ret < 0) {
+        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
     }
 
     return 0;

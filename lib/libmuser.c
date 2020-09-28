@@ -1687,10 +1687,54 @@ handle_device_get_irq_info(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
         return -errno;
     }
     if (ret != (int)hdr->msg_size) {
-        assert(false);
+        assert(false); /* FIXME */
     }
 
     return dev_get_irqinfo(lm_ctx, irq_info);
+}
+
+static int
+handle_device_set_irqs(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+                       int *fds, int nr_fds)
+{
+    int ret;
+    struct vfio_irq_set *irq_set;
+    void *data;
+
+    assert(lm_ctx != NULL);
+    assert(hdr != NULL);
+
+    hdr->msg_size -= sizeof *hdr;
+
+    if (hdr->msg_size < sizeof *irq_set) {
+        return -EINVAL;
+    }
+
+    irq_set = alloca(hdr->msg_size); /* FIXME */
+
+    ret = recv(lm_ctx->conn_fd, irq_set, hdr->msg_size, 0);
+    if (ret < 0) {
+        return -errno;
+    }
+    if (ret != (int)hdr->msg_size) {
+        assert(false); /* FIXME */
+    }
+    if (ret != (int)irq_set->argsz) {
+        assert(false); /* FIXME */
+    }
+    switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
+        case VFIO_IRQ_SET_DATA_EVENTFD:
+            data = fds;
+            if (nr_fds != (int)irq_set->count) {
+                return -EINVAL;
+            }
+            break;
+        case VFIO_IRQ_SET_DATA_BOOL:
+            data = irq_set + 1;
+            break;
+    }
+
+    return dev_set_irqs(lm_ctx, irq_set, data);
 }
 
 static int
@@ -1814,7 +1858,9 @@ process_request(lm_ctx_t *lm_ctx)
         if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
         }
-        lm_log(lm_ctx, LM_ERR, "failed to receive request: %s", strerror(-ret));
+        if (ret != -EINTR) {
+            lm_log(lm_ctx, LM_ERR, "failed to receive request: %s", strerror(-ret));
+        }
         return ret;
     }
     if (unlikely(ret == 0)) {
@@ -1864,6 +1910,9 @@ process_request(lm_ctx_t *lm_ctx)
                 data = &irq_info;
                 len = sizeof irq_info;
             }
+            break;
+        case VFIO_USER_DEVICE_SET_IRQS:
+            ret = handle_device_set_irqs(lm_ctx, &hdr, fds, nr_fds);
             break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);

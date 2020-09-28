@@ -1,10 +1,8 @@
 /*
- * Userspace mediated device sample application
+ * Sample server to be tested with samples/client.c
  *
- * Copyright (c) 2019, Nutanix Inc. All rights reserved.
+ * Copyright (c) 2020, Nutanix Inc. All rights reserved.
  *     Author: Thanos Makatos <thanos@nutanix.com>
- *             Swapnil Ingle <swapnil.ingle@nutanix.com>
- *             Felipe Franciosi <felipe@nutanix.com>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -31,8 +29,6 @@
  *
  */
 
-/* gpio-pci-idio-16 */
-
 #include <stdio.h>
 #include <err.h>
 #include <stdlib.h>
@@ -40,28 +36,53 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
+#include <time.h>
+#include <assert.h>
 
 #include "../lib/muser.h"
 
 static void
 _log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
 {
-    fprintf(stderr, "gpio: %s\n", msg);
+    fprintf(stderr, "server: %s\n", msg);
 }
 
+/* returns time in seconds since Epoch */
 ssize_t
-bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
-           const bool is_write)
+bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
+            const bool is_write)
 {
-    static char n;
+    time_t t = time(NULL);
 
-    if (offset == 0 && !is_write)
-        buf[0] = n++ / 3;
+    if (count != sizeof(time_t) || offset != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memcpy(buf, &t, count);
 
     return count;
 }
 
-static void _sa_handler(int signum __attribute__((unused)))
+lm_ctx_t *lm_ctx;
+
+bool irq_triggered = false;
+static void _sa_handler(int signum)
+{
+    int _errno = errno;
+    if (signum == SIGUSR1) {
+        /*
+         * FIXME not async-signal-safe becasue lm_irq_trigger prints to the log
+         */
+        lm_irq_trigger(lm_ctx, 0);
+        irq_triggered = true;
+    }
+    errno = _errno;
+}
+
+static int
+unmap_dma(void *pvt __attribute__((unused)),
+          uint64_t iova __attribute__((unused)))
 {
 }
 
@@ -71,18 +92,15 @@ int main(int argc, char *argv[])
     bool trans_sock = false, verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    lm_ctx_t *lm_ctx;
+    lm_ctx_t **_lm_ctx;
 
-    while ((opt = getopt(argc, argv, "sv")) != -1) {
+    while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
-            case 's':
-                trans_sock = true;
-                break;
             case 'v':
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-s] [-d] <IOMMU group>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
@@ -92,22 +110,24 @@ int main(int argc, char *argv[])
     }
 
     lm_dev_info_t dev_info = {
-        .trans = trans_sock ? LM_TRANS_SOCK : LM_TRANS_KERNEL,
+        .trans = LM_TRANS_SOCK,
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
         .pci_info = {
-            .id = {.vid = 0x494F, .did = 0x0DC8 },
-            .reg_info[LM_DEV_BAR2_REG_IDX] = {
+            .reg_info[LM_DEV_BAR0_REG_IDX] = {
                 .flags = LM_REG_FLAG_RW,
-                .size = 0x100,
-                .fn = &bar2_access
+                .size = sizeof(time_t),
+                .fn = &bar0_access
             },
+            .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
+        .unmap_dma = unmap_dma,
+        .pvt = &_lm_ctx
     };
 
     sigemptyset(&act.sa_mask);
-    if (sigaction(SIGINT, &act, NULL) == -1) {
+    if (sigaction(SIGUSR1, &act, NULL) == -1) {
         fprintf(stderr, "warning: failed to register signal handler: %m\n");
     }
 
@@ -119,11 +139,18 @@ int main(int argc, char *argv[])
         fprintf(stderr, "failed to initialize device emulation: %m\n");
         return -1;
     }
-    ret = lm_ctx_drive(lm_ctx);
-    if (ret != 0) {
-        if (ret != -ENOTCONN && ret != -EINTR) {
-            fprintf(stderr, "failed to realize device emulation: %m\n");
+    _lm_ctx = &lm_ctx;
+    do {
+        ret = lm_ctx_drive(lm_ctx);
+        if (ret == -EINTR) {
+            if (irq_triggered) {
+                ret = 0;
+                irq_triggered = false;
+            }            
         }
+    } while (ret == 0);
+    if (ret != -ENOTCONN && ret != -EINTR) {
+        fprintf(stderr, "failed to realize device emulation: %m\n");
     }
 out:
     lm_ctx_destroy(lm_ctx);
