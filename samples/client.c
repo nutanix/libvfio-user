@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
 
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
-     * Query interruptes, configure an eventfd to be associated with INTx, and
+     * Query interrupts, configure an eventfd to be associated with INTx, and
      * finally wait for the server to fire the interrupt.     
      */
     ret = configure_irqs(sock);
