@@ -41,6 +41,11 @@
 
 #include "../lib/muser.h"
 
+struct server_data {
+    time_t bar0;
+    uint8_t *bar1;
+};
+
 static void
 _log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
 {
@@ -52,29 +57,35 @@ ssize_t
 bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
             const bool is_write)
 {
-    time_t t = time(NULL);
+    struct server_data *server_data = pvt;
 
     if (count != sizeof(time_t) || offset != 0) {
         errno = EINVAL;
         return -1;
     }
 
-    memcpy(buf, &t, count);
+    if (is_write) {
+        memcpy(&server_data->bar0, buf, count);
+    } else {
+        time_t delta = time(NULL) - server_data->bar0;
+        memcpy(buf, &delta, count);
+    }
 
     return count;
 }
 
-lm_ctx_t *lm_ctx;
+ssize_t
+bar1_access(void *pvt, char * const buf, size_t count, loff_t offset,
+            const bool is_write)
+{
+    assert(false);
+}
 
 bool irq_triggered = false;
 static void _sa_handler(int signum)
 {
     int _errno = errno;
     if (signum == SIGUSR1) {
-        /*
-         * FIXME not async-signal-safe becasue lm_irq_trigger prints to the log
-         */
-        lm_irq_trigger(lm_ctx, 0);
         irq_triggered = true;
     }
     errno = _errno;
@@ -92,7 +103,8 @@ int main(int argc, char *argv[])
     bool trans_sock = false, verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    lm_ctx_t **_lm_ctx;
+    struct server_data server_data;
+    lm_ctx_t *lm_ctx;
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -100,13 +112,17 @@ int main(int argc, char *argv[])
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
-                exit(EXIT_FAILURE);
+                err(EXIT_FAILURE, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
         }
     }
 
     if (optind >= argc) {
         err(EXIT_FAILURE, "missing MUSER device UUID");
+    }
+
+    server_data.bar1 = malloc(sysconf(_SC_PAGESIZE));
+    if (server_data.bar1 == NULL) {
+        err(EXIT_FAILURE, "BAR1");
     }
 
     lm_dev_info_t dev_info = {
@@ -119,16 +135,21 @@ int main(int argc, char *argv[])
                 .size = sizeof(time_t),
                 .fn = &bar0_access
             },
+            .reg_info[LM_DEV_BAR1_REG_IDX] = {
+                .flags = LM_REG_FLAG_RW,
+                .size = sysconf(_SC_PAGESIZE),
+                .fn = &bar1_access
+            },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
         .unmap_dma = unmap_dma,
-        .pvt = &_lm_ctx
+        .pvt = &server_data
     };
 
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGUSR1, &act, NULL) == -1) {
-        fprintf(stderr, "warning: failed to register signal handler: %m\n");
+        err(EXIT_FAILURE, "warning: failed to register signal handler: %m\n");
     }
 
     lm_ctx = lm_ctx_create(&dev_info);
@@ -136,16 +157,16 @@ int main(int argc, char *argv[])
         if (errno == EINTR) {
             goto out;
         }
-        fprintf(stderr, "failed to initialize device emulation: %m\n");
-        return -1;
+        err(EXIT_FAILURE, "failed to initialize device emulation: %m\n");
     }
-    _lm_ctx = &lm_ctx;
+
     do {
         ret = lm_ctx_drive(lm_ctx);
         if (ret == -EINTR) {
             if (irq_triggered) {
-                ret = 0;
                 irq_triggered = false;
+                lm_irq_trigger(lm_ctx, 0);
+                ret = 0;
             }            
         }
     } while (ret == 0);

@@ -1539,7 +1539,8 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t *ppos,
 }
 
 static inline int
-muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
+muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
+             void **data)
 {
     char *rwbuf;
     int err;
@@ -1554,7 +1555,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
     }
 
     lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx\n", is_write ? "W" : "R", cmd->rw.pos,
-           cmd->rw.pos + cmd->rw.count);
+           cmd->rw.pos + cmd->rw.count - 1);
 
     /* copy data to be written from kernel to user space */
     if (is_write) {
@@ -1594,18 +1595,23 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write)
                     is_write);
     if (!is_write && ret >= 0) {
         ret += count;
-        err = post_read(lm_ctx, rwbuf, ret);
+        if (data != NULL) {
+            *data = rwbuf;
+            return ret;
+        } else {
+            err = post_read(lm_ctx, rwbuf, ret);
 #ifdef LM_VERBOSE_LOGGING
-        if (err == ret) {
-            dump_buffer("buffer read", rwbuf, ret);
-        }
+            if (err == ret) {
+                dump_buffer("buffer read", rwbuf, ret);
+            }
 #endif
+        }
     }
 
 out:
     free(rwbuf);
 
-    return err;
+    return ret;
 }
 
 static int
@@ -1849,6 +1855,59 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map
     return 0;
 }
 
+static int
+handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+                     void **data, int *len)
+{
+    struct vfio_user_region_access region_access;
+    struct muser_cmd muser_cmd = {};
+    int ret;
+
+    assert(lm_ctx != NULL);
+    assert(hdr != NULL);
+    assert(data != NULL);
+
+    /* 
+     * TODO if muser_access doesn't need to handle the kernel case, then we can
+     * avoid having to do an additional read/recv inside muser_access (one recv
+     * for struct region_access and another for the write data) by doing a
+     * single recvmsg here with an iovec where the first element of the array
+     * will be struct vfio_user_region_access and the second a buffer if it's a
+     * write.  The size of the write buffer is:
+     * hdr->msg_size - sizeof *hdr - sizeof region_access,
+     * and should be equal to region_access.count.
+     */
+
+    hdr->msg_size -= sizeof *hdr;
+    if (hdr->msg_size < sizeof region_access) {
+        return -EINVAL;
+    }
+
+    ret = recv(lm_ctx->conn_fd, &region_access, sizeof region_access, 0);
+    if (ret == -1) {
+        return -errno;
+    }
+    if (ret != sizeof region_access) {
+        return -EINVAL;
+    }
+    if (region_access.region >= LM_DEV_NUM_REGS || region_access.count <= 0 ) {
+        return -EINVAL;
+    }
+    muser_cmd.rw.count = region_access.count;
+    muser_cmd.rw.pos = region_to_offset(region_access.region) + region_access.offset;
+
+    ret = muser_access(lm_ctx, &muser_cmd, hdr->cmd == VFIO_USER_REGION_WRITE,
+                       data);
+    if (ret != (int)region_access.count) {
+        assert(false); /* FIXME */
+    }
+    assert(muser_cmd.err == 0);
+
+    *len = region_access.count;
+
+    return 0;
+}
+
 /*
  * FIXME return value is messed up, sometimes we return -1 and set errno while
  * other times we return -errno. Fix.
@@ -1864,7 +1923,8 @@ process_request(lm_ctx_t *lm_ctx)
     struct vfio_irq_info irq_info;
     struct vfio_device_info dev_info;
     void *data = NULL;
-    int len;    
+    bool free_data = false;
+    int len;
 
     assert(lm_ctx != NULL);
 
@@ -1894,7 +1954,7 @@ process_request(lm_ctx_t *lm_ctx)
     }
 
     if (ret < (int)sizeof hdr) {
-        lm_log(lm_ctx, LM_ERR, "short header read");
+        lm_log(lm_ctx, LM_ERR, "short header read %d", ret);
         return -EINVAL;
     }
 
@@ -1932,6 +1992,11 @@ process_request(lm_ctx_t *lm_ctx)
         case VFIO_USER_DEVICE_SET_IRQS:
             ret = handle_device_set_irqs(lm_ctx, &hdr, fds, nr_fds);
             break;
+        case VFIO_USER_REGION_READ:
+        case VFIO_USER_REGION_WRITE:
+            ret = handle_region_access(lm_ctx, &hdr, &data, &len);
+            free_data = true;
+            break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);
             return -EINVAL;
@@ -1947,7 +2012,9 @@ process_request(lm_ctx_t *lm_ctx)
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
                 strerror(-ret));
     }
-
+    if (free_data) {
+        free(data);
+    }
     return ret;
 }
 

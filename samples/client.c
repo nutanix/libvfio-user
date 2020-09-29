@@ -36,6 +36,8 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/eventfd.h>
+#include <time.h>
+#include <err.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -189,6 +191,46 @@ configure_irqs(int sock)
     return 0;
 }
 
+static int
+access_bar0(int sock)
+{
+    struct {
+        struct vfio_user_region_access region_access;
+        time_t t;
+    } __attribute__((packed)) data = {
+        .region_access = {
+            .region = LM_DEV_BAR0_REG_IDX,
+            .count = sizeof(data.t)
+        },
+        .t = time(NULL)
+    };
+    uint16_t msg_id = 1;
+    int ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_WRITE,
+                                      &data, sizeof data, NULL, 0, NULL, NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
+        return ret;
+    }
+
+    printf("wrote to BAR0: %ld\n", data.t);
+
+    sleep(2);
+
+    msg_id++;
+
+    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_READ,
+                                  &data.region_access, sizeof data.region_access,
+                                  NULL, 0, NULL, &data.t, sizeof data.t);
+    if (ret < 0) {
+        fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
+        return ret;
+    }
+
+    printf("read from BAR0: %ld\n", data.t);
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret, sock;
@@ -205,7 +247,7 @@ int main(int argc, char *argv[])
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     if ((sock = init_sock(argv[1])) < 0) {
@@ -238,13 +280,11 @@ int main(int argc, char *argv[])
     nr_dma_regions = server_max_fds << 1;
 
     if ((fp = tmpfile()) == NULL) {
-        perror("failed to create DMA file");
-        return -1;
+        err(EXIT_FAILURE, "failed to create DMA file");
     }
 
     if ((ret = ftruncate(fileno(fp), nr_dma_regions * sysconf(_SC_PAGESIZE))) == -1) {
-        perror("failed to truncate file");
-        return -1;
+        err(EXIT_FAILURE,"failed to truncate file");
     }
 
     dma_regions = alloca(sizeof *dma_regions * nr_dma_regions);
@@ -295,6 +335,27 @@ int main(int argc, char *argv[])
         fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
+
+    /*
+     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
+     *
+     * BAR0 in the server does not support memory mapping so it must be accessed
+     * via explicit messages.
+     */
+    ret = access_bar0(sock);
+    if (ret < 0) {
+        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+    /*
+     * FIXME now that region read/write works, change the server implementation
+     * to trigger an interrupt after N seconds, where N is the value written to
+     * BAR0 by the client.
+     */
+
+    /* BAR1 can be memory mapped and read directly */
+    /* TODO implement the following: write a value in BAR1, a server timer will increase it every second (SIGALARM) */
 
     return 0;
 }
