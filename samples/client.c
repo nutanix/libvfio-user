@@ -186,8 +186,6 @@ configure_irqs(int sock)
 
     printf("INTx triggered!\n");
 
-    pause();
-
     return 0;
 }
 
