@@ -63,12 +63,6 @@ init_sock(const char *path)
 }
 
 static int
-map_dma(int sock)
-{
-    struct vfio_user_header hdr = {.msg_id = 1, .cmd = VFIO_USER_DMA_MAP};
-}
-
-static int
 set_version(int sock, int client_max_fds, int *server_max_fds)
 {
     int ret, mj, mn;
