@@ -111,7 +111,6 @@ out:
 static int
 get_device_info(int sock)
 {
-    struct vfio_user_header hdr;
     struct vfio_device_info dev_info =  {
         .argsz = sizeof(dev_info)
     };
@@ -120,23 +119,15 @@ get_device_info(int sock)
     int size = sizeof dev_info;
 
     msg_id = 1;
-    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_GET_INFO,
-                             &dev_info, size, NULL,0);
+    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_GET_INFO,
+                             &dev_info, size, NULL, 0, NULL, &dev_info, size);
     if (ret < 0) {
-        fprintf(stderr, "%s: failed to send message: %s\n", __func__,
-                strerror(-ret));
+        fprintf(stderr, "failed to get device info: %s\n", strerror(-ret));
         return ret;
     }
 
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &dev_info, &size);
-    if (ret < 0) {
-        fprintf(stderr, "%s: failed to receive header: %s\n", __func__,
-                strerror(-ret));
-        return ret;
-    }
-
-    fprintf(stdout, "devinfo: flags %#x, num_regions %d, num_irqs %d\n",
-	    dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
+    printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
+           dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
     return 0;
 }
 
@@ -145,7 +136,6 @@ configure_irqs(int sock)
 {
     int i;
     int ret;
-    struct vfio_user_header hdr;
     struct vfio_irq_set irq_set;
     uint16_t msg_id = 1;
     int irq_fd;
@@ -154,18 +144,12 @@ configure_irqs(int sock)
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
         struct vfio_irq_info irq_info = {.argsz = sizeof irq_info, .index = i};
         int size;
-        ret = send_vfio_user_msg(sock, msg_id, false,
-                             VFIO_USER_DEVICE_GET_IRQ_INFO,
-                             &irq_info, sizeof irq_info, NULL, 0);
+        ret = send_recv_vfio_user_msg(sock, msg_id,
+                                      VFIO_USER_DEVICE_GET_IRQ_INFO,
+                                      &irq_info, sizeof irq_info, NULL, 0, NULL,
+                                      &irq_info, sizeof irq_info);
         if (ret < 0) {
-            fprintf(stderr, "failed to request %s info: %s\n", irq_to_str[i],
-                    strerror(-ret));
-            return ret;
-        }
-        size = sizeof irq_info;
-        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, &irq_info, &size);
-        if (ret < 0) {
-            fprintf(stderr, "failed to receive %s info: %s\n", irq_to_str[i],
+            fprintf(stderr, "failed to get  %s info: %s\n", irq_to_str[i],
                     strerror(-ret));
             return ret;
         }
@@ -187,16 +171,12 @@ configure_irqs(int sock)
         perror("failed to create eventfd");
         return -1;
     }
-    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DEVICE_SET_IRQS,
-                             &irq_set, sizeof irq_set, &irq_fd, 1);
+    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_SET_IRQS,
+                                  &irq_set, sizeof irq_set, &irq_fd, 1, NULL,
+                                  NULL, 0);
     if (ret < 0) {
         fprintf(stderr, "failed to send configure IRQs message: %s\n",
                 strerror(-ret));
-        return ret;
-    }
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
-    if (ret < 0) {
-        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
         return ret;
     }
 
@@ -223,7 +203,6 @@ int main(int argc, char *argv[])
 
     struct vfio_user_dma_region *dma_regions;
     int *dma_region_fds;
-    struct vfio_user_header hdr;
     uint16_t msg_id = 1;
     int i;
     FILE *fp;
@@ -289,20 +268,13 @@ int main(int argc, char *argv[])
     }
 
     for (i = 0; i < nr_dma_regions / server_max_fds; i++, msg_id++) {
-        ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_MAP,
+        ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_MAP,
                                  dma_regions + (i * server_max_fds),
                                  sizeof *dma_regions * server_max_fds,
                                  dma_region_fds + (i * server_max_fds),
-                                 server_max_fds);
+                                 server_max_fds, NULL, NULL, 0);
         if (ret < 0) {
             fprintf(stderr, "failed to map DMA regions: %s\n", strerror(-ret));
-            return ret;
-        }
-        ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
-        if (ret < 0) {
-            fprintf(stderr,
-                    "failed to receive response for mapping DMA regions: %s\n",
-                    strerror(-ret));
             return ret;
         }
     }
@@ -312,18 +284,12 @@ int main(int argc, char *argv[])
      *
      * unmap the first group of the DMA regions
      */
-    ret = send_vfio_user_msg(sock, msg_id, false, VFIO_USER_DMA_UNMAP,
-                             dma_regions, sizeof *dma_regions * server_max_fds,
-                             NULL, 0);
+    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_UNMAP,
+                                  dma_regions,
+                                  sizeof *dma_regions * server_max_fds,
+                                  NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
         fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
-        return ret;
-    }
-    ret = recv_vfio_user_msg(sock, &hdr, true, &msg_id, NULL, NULL);
-    if (ret < 0) {
-        fprintf(stderr,
-                "failed to receive response for unmapping DMA regions: %s\n",
-                strerror(-ret));
         return ret;
     }
 

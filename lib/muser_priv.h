@@ -64,6 +64,13 @@ int
 recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
              int *max_fds);
 
+int
+send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                        void *send_data, int send_len,
+                        int *send_fds, int fd_count,
+                        struct vfio_user_header *hdr,
+                        void *recv_data, int recv_len);
+
 #endif /* MUSER_PRIV_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -431,6 +431,24 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
     return 0;
 }
 
+int
+send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                        void *send_data, int send_len,
+                        int *send_fds, int fd_count,
+                        struct vfio_user_header *hdr,
+                        void *recv_data, int recv_len)
+{
+    int ret = send_vfio_user_msg(sock, msg_id, false, cmd, send_data, send_len,
+                                 send_fds, fd_count);
+    if (ret < 0) {
+        return ret;
+    }
+    if (hdr == NULL) {
+        hdr = alloca(sizeof *hdr);
+    }
+    return recv_vfio_user_msg(sock, hdr, true, &msg_id, recv_data, &recv_len);
+}
+
 static int
 set_version(lm_ctx_t *lm_ctx, int sock)
 {
