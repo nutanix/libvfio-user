@@ -132,7 +132,7 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
         }
 
 	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
-        fprintf(stdout, "%s: region_info[%d] offset %lu flags %#x size %llu "
+        fprintf(stdout, "%s: region_info[%d] offset %#lx flags %#x size %llu "
                 "cap_sz %d\n", __func__, i, region_info.offset,
                 region_info.flags, region_info.size, cap_sz);
 	    if (cap_sz) {
@@ -154,8 +154,8 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
             fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
                     sparse->nr_areas);
             for (j = 0; j < sparse->nr_areas; j++) {
-                fprintf(stdout, "%s: nr %d offset %lu size\n", __func__,
-                        sparse->areas[i].offset, sparse->areas[i].size);
+                fprintf(stdout, "%s: area %d offset %#lx size %llu\n", __func__,
+                        j, sparse->areas[j].offset, sparse->areas[j].size);
             }
             free(sparse);
 	    }
