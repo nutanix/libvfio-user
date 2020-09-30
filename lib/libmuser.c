@@ -938,6 +938,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     int nr_mmap_areas, i;
     size_t sparse_size;
     ssize_t ret;
+    void *cap_ptr;
 
     if (lm_reg->mmap_areas == NULL) {
         lm_log(lm_ctx, LM_DBG, "bad mmap_areas\n");
@@ -960,8 +961,6 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
         return 0;
     }
 
-    lm_log(lm_ctx, LM_DBG, "%s: size %llu, nr_mmap_areas %u\n", __func__,
-           sparse_size, nr_mmap_areas);
     sparse = calloc(1, sparse_size);
     if (sparse == NULL)
         return -ENOMEM;
@@ -970,12 +969,14 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     sparse->header.next = 0;
     sparse->nr_areas = nr_mmap_areas;
 
+    lm_log(lm_ctx, LM_DBG, "%s: capsize %llu, nr_mmap_areas %u\n", __func__,
+           sparse_size, nr_mmap_areas);
     mmap_areas = lm_reg->mmap_areas;
     for (i = 0; i < nr_mmap_areas; i++) {
         sparse->areas[i].offset = mmap_areas->areas[i].start;
         sparse->areas[i].size = mmap_areas->areas[i].size;
-        lm_log(lm_ctx, LM_DBG, "%s: nr %d offset %lu size\n", __func__, i,
-               sparse->areas[i].offset, sparse->areas[i].size);
+        lm_log(lm_ctx, LM_DBG, "%s: area %d offset %#lx size %llu\n", __func__,
+               i, sparse->areas[i].offset, sparse->areas[i].size);
     }
 
     (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
@@ -995,7 +996,9 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
             free(sparse);
             return -ENOMEM;
         }
-        memcpy(*vfio_reg + (*vfio_reg)->cap_offset, sparse, sparse_size);
+
+        cap_ptr = (char *)*vfio_reg + (*vfio_reg)->cap_offset;
+        memcpy(cap_ptr, sparse, sparse_size);
     }
 
     free(sparse);
@@ -1075,7 +1078,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info **vfio_reg,
         }
     }
 
-    lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %lu flags %#x size %llu "
+    lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %#lx flags %#x size %llu "
            "argsz %llu\n",
            (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
            (*vfio_reg)->size, (*vfio_reg)->argsz);
