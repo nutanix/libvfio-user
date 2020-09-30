@@ -978,6 +978,9 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
                sparse->areas[i].offset, sparse->areas[i].size);
     }
 
+    (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
+    (*vfio_reg)->cap_offset = sizeof(**vfio_reg);
+
     if (is_kernel) {
         /* write the sparse mmap cap info to vfio-client user pages */
         ret = write(lm_ctx->conn_fd, sparse, sparse_size);
@@ -986,18 +989,15 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
             return -EIO;
         }
     } else {
-        *vfio_reg = realloc(*vfio_reg, sparse_size + sizeof(**vfio_reg));
-        if (*vfio_reg == NULL) {
-            goto out;
-        }
-        memcpy(*vfio_reg + sizeof(**vfio_reg), sparse, sparse_size);
         (*vfio_reg)->argsz = sparse_size + sizeof(**vfio_reg);
+        *vfio_reg = realloc(*vfio_reg, (*vfio_reg)->argsz);
+        if (*vfio_reg == NULL) {
+            free(sparse);
+            return -ENOMEM;
+        }
+        memcpy(*vfio_reg + (*vfio_reg)->cap_offset, sparse, sparse_size);
     }
 
-    (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
-    (*vfio_reg)->cap_offset = sizeof(**vfio_reg);
-
-out:
     free(sparse);
     return 0;
 }
@@ -2034,8 +2034,9 @@ process_request(lm_ctx_t *lm_ctx)
         case VFIO_USER_DEVICE_GET_REGION_INFO:
             ret = handle_device_get_region_info(lm_ctx, &hdr, &dev_reg_info);
             if (ret == 0) {
-                data = (void *)dev_reg_info;
+                data = dev_reg_info;
                 len = dev_reg_info->argsz;
+                free_data = true;
             }
             break;
         case VFIO_USER_DEVICE_GET_IRQ_INFO:
@@ -2072,9 +2073,6 @@ process_request(lm_ctx_t *lm_ctx)
         free(data);
     }
 
-    if (dev_reg_info) {
-        free(dev_reg_info);
-    }
     return ret;
 }
 
