@@ -245,6 +245,10 @@ dma_unmap_addr(dma_controller_t *dma,
     dma_unmap_sg(dma, &sg, &iov, 1);
 }
 
+bool
+dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
+                            size_t size);
+
 #endif /* DMA_DMA_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

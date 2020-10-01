@@ -106,6 +106,23 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
     }
 }
 
+bool
+dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
+                            size_t size)
+{
+    dma_memory_region_t *region;
+    int i;
+
+    for (i = 0; i < dma->nregions; i++) {
+        region = &dma->regions[i];
+        if (dma_addr == region->dma_addr && size <= region->size) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /* FIXME not thread safe */
 int
 dma_controller_remove_region(dma_controller_t *dma,
