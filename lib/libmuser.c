@@ -1062,7 +1062,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info **vfio_reg,
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if (((*vfio_reg)->argsz < sizeof(struct vfio_region_info)) ||
         ((*vfio_reg)->index >= LM_DEV_NUM_REGS)) {
-        lm_log(lm_ctx, LM_DBG, "bad args argsz=%d index=%d\n",
+        lm_log(lm_ctx, LM_DBG, "bad args argsz=%d index=%d",
                (*vfio_reg)->argsz, (*vfio_reg)->index);
         return -EINVAL;
     }
@@ -1079,7 +1079,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, struct vfio_region_info **vfio_reg,
     }
 
     lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %#lx flags %#x size %llu "
-           "argsz %llu\n",
+           "argsz %llu",
            (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
            (*vfio_reg)->size, (*vfio_reg)->argsz);
 
