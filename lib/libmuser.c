@@ -969,13 +969,13 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg,
     sparse->header.next = 0;
     sparse->nr_areas = nr_mmap_areas;
 
-    lm_log(lm_ctx, LM_DBG, "%s: capsize %llu, nr_mmap_areas %u\n", __func__,
+    lm_log(lm_ctx, LM_DBG, "%s: capsize %llu, nr_mmap_areas %u", __func__,
            sparse_size, nr_mmap_areas);
     mmap_areas = lm_reg->mmap_areas;
     for (i = 0; i < nr_mmap_areas; i++) {
         sparse->areas[i].offset = mmap_areas->areas[i].start;
         sparse->areas[i].size = mmap_areas->areas[i].size;
-        lm_log(lm_ctx, LM_DBG, "%s: area %d offset %#lx size %llu\n", __func__,
+        lm_log(lm_ctx, LM_DBG, "%s: area %d offset %#lx size %llu", __func__,
                i, sparse->areas[i].offset, sparse->areas[i].size);
     }
 

@@ -97,6 +97,11 @@ unmap_dma(void *pvt __attribute__((unused)),
 {
 }
 
+unsigned long map_area(void *pvt, unsigned long off, unsigned long len)
+{
+    assert(false);
+}
+
 int main(int argc, char *argv[])
 {
     int ret;
@@ -104,6 +109,9 @@ int main(int argc, char *argv[])
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     struct server_data server_data;
+    int nr_sparse_areas = 2, size = 1024, i;
+    struct lm_sparse_mmap_areas *sparse_areas;
+
     lm_ctx_t *lm_ctx;
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
@@ -125,6 +133,18 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "BAR1");
     }
 
+    sparse_areas = calloc(1, sizeof(*sparse_areas) +
+			  (nr_sparse_areas * sizeof(struct lm_mmap_area)));
+    if (sparse_areas == NULL) {
+        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM");
+        goto out;
+    }
+    sparse_areas->nr_mmap_areas = nr_sparse_areas;
+    for (i = 0; i < nr_sparse_areas; i++) {
+        sparse_areas->areas[i].start += size;
+        sparse_areas->areas[i].size = size;
+    }
+
     lm_dev_info_t dev_info = {
         .trans = LM_TRANS_SOCK,
         .log = verbose ? _log : NULL,
@@ -138,7 +158,9 @@ int main(int argc, char *argv[])
             .reg_info[LM_DEV_BAR1_REG_IDX] = {
                 .flags = LM_REG_FLAG_RW,
                 .size = sysconf(_SC_PAGESIZE),
-                .fn = &bar1_access
+                .fn = &bar1_access,
+                .mmap_areas = sparse_areas,
+		        .map = map_area
             },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
@@ -175,6 +197,8 @@ int main(int argc, char *argv[])
     }
 out:
     lm_ctx_destroy(lm_ctx);
+    free(server_data.bar1);
+    free(sparse_areas);
     return ret;
 }
 
