@@ -288,6 +288,126 @@ access_bar0(int sock)
     return 0;
 }
 
+static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
+                            int nr_dma_regions, int *dma_region_fds)
+{
+    struct vfio_user_dma_region_access dma_access;
+    struct vfio_user_header hdr;
+    int ret, size = sizeof(dma_access), i;
+    uint16_t msg_id;
+    void *data;
+
+    msg_id = 1;
+    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &dma_access, &size);
+    if (ret < 0) {
+        fprintf(stderr, "failed to recieve DMA read: %m\n");
+        return ret;
+    }
+
+    data = calloc(dma_access.count, 1);
+    if (data == NULL) {
+        return -ENOMEM;
+    }
+
+    ret = recv(sock, data, dma_access.count, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to recieve DMA read data: %m\n");
+        goto out;
+    }
+
+    for (i = 0; i < nr_dma_regions; i++) {
+        if (dma_regions[i].addr == dma_access.addr) {
+            ret = pwrite(dma_region_fds[i], data, dma_access.count,
+                         dma_regions[i].offset);
+            if (ret < 0) {
+                fprintf(stderr, "failed to write data at %#lu: %m\n",
+                        dma_regions[i].offset);
+                goto out;
+            }
+            break;
+	    }
+    }
+
+    dma_access.count = 0;
+    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_DMA_WRITE,
+                             &dma_access, sizeof(dma_access), NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to send reply of DMA write: %m\n");
+    }
+
+out:
+    free(data);
+    return ret;
+}
+
+static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
+                            int nr_dma_regions, int *dma_region_fds)
+{
+    struct vfio_user_dma_region_access dma_access, *response;
+    struct vfio_user_header hdr;
+    int ret, size = sizeof(dma_access), i, response_sz;
+    uint16_t msg_id;
+    void *data;
+
+    msg_id = 1;
+    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &dma_access, &size);
+    if (ret < 0) {
+        fprintf(stderr, "failed to recieve DMA read: %m\n");
+        return ret;
+    }
+
+    response_sz = sizeof(dma_access) + dma_access.count;
+    response = calloc(response_sz, 1);
+    if (response == NULL) {
+        return -ENOMEM;
+    }
+    response->count = dma_access.count;
+    data = (char *)response->data;
+
+    for (i = 0; i < nr_dma_regions; i++) {
+        if (dma_regions[i].addr == dma_access.addr) {
+            ret = pread(dma_region_fds[i], data, dma_access.count,
+                         dma_regions[i].offset);
+            if (ret < 0) {
+                fprintf(stderr, "failed to write data at %#lu: %m\n",
+                        dma_regions[i].offset);
+                goto out;
+            }
+            break;
+	    }
+    }
+
+    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_DMA_READ,
+                             response, response_sz, NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to send reply of DMA write: %m\n");
+    }
+
+out:
+    free(response);
+    return ret;
+}
+
+static int handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
+                     int nr_dma_regions, int *dma_region_fds)
+{
+    int ret;
+
+    ret = handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    if (ret < 0) {
+        fprintf(stderr, "failed to handle DMA write data: %m\n");
+        return ret;
+    }
+
+    ret = handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    if (ret < 0) {
+        fprintf(stderr, "failed to handle DMA read data: %m\n");
+        return ret;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret, sock;
@@ -375,20 +495,6 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * XXX VFIO_USER_DMA_UNMAP
-     *
-     * unmap the first group of the DMA regions
-     */
-    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_UNMAP,
-                                  dma_regions,
-                                  sizeof *dma_regions * server_max_fds,
-                                  NULL, 0, NULL, NULL, 0);
-    if (ret < 0) {
-        fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
-        return ret;
-    }
-
-    /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
      * Query interrupts, configure an eventfd to be associated with INTx, and
      * finally wait for the server to fire the interrupt.     
@@ -396,6 +502,12 @@ int main(int argc, char *argv[])
     ret = configure_irqs(sock);
     if (ret < 0) {
         fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+    ret = handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    if (ret < 0) {
+        fprintf(stderr, "DMA IO failed: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
 
@@ -419,6 +531,20 @@ int main(int argc, char *argv[])
 
     /* BAR1 can be memory mapped and read directly */
     /* TODO implement the following: write a value in BAR1, a server timer will increase it every second (SIGALARM) */
+
+    /*
+     * XXX VFIO_USER_DMA_UNMAP
+     *
+     * unmap the first group of the DMA regions
+     */
+    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_UNMAP,
+                                  dma_regions,
+                                  sizeof *dma_regions * server_max_fds,
+                                  NULL, 0, NULL, NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
+        return ret;
+    }
 
     return 0;
 }

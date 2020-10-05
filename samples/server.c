@@ -38,12 +38,21 @@
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
+#include <openssl/md5.h>
 
 #include "../lib/muser.h"
+
+struct dma_regions {
+    uint64_t addr;
+    uint64_t len;
+};
+
+#define NR_DMA_REGIONS  96
 
 struct server_data {
     time_t bar0;
     uint8_t *bar1;
+    struct dma_regions regions[NR_DMA_REGIONS];
 };
 
 static void
@@ -91,10 +100,85 @@ static void _sa_handler(int signum)
     errno = _errno;
 }
 
-static int
-unmap_dma(void *pvt __attribute__((unused)),
-          uint64_t iova __attribute__((unused)))
+static void map_dma(void *pvt, uint64_t iova, uint64_t len)
 {
+    struct server_data *server_data = pvt;
+    int idx;
+
+    for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
+        if (server_data->regions[idx].addr == 0 &&
+            server_data->regions[idx].len == 0)
+            break;
+    }
+    if (idx >= NR_DMA_REGIONS) {
+        fprintf(stderr, "Failed to add dma region, slots full\n");
+        return;
+    }
+
+    server_data->regions[idx].addr = iova;
+    server_data->regions[idx].len = len;
+}
+
+static int unmap_dma(void *pvt, uint64_t iova)
+{
+    struct server_data *server_data = pvt;
+    int idx;
+
+    for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
+        if (server_data->regions[idx].addr == iova) {
+            server_data->regions[idx].addr = 0;
+            server_data->regions[idx].len = 0;
+            return 0;
+        }
+    }
+
+    return -EINVAL;
+}
+
+void get_md5sum(char *buf, int len, char *md5sum)
+{
+	MD5_CTX ctx;
+
+    MD5_Init(&ctx);
+    MD5_Update(&ctx, buf, len);
+    MD5_Final(md5sum, &ctx);
+
+    return;
+}
+
+static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
+{
+    int count = 4096;
+    char buf[count], md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
+    int i, ret;
+
+    memset(buf, 'A', count);
+    get_md5sum(buf, count, md5sum1);
+    printf("%s: WRITE addr %#lx count %llu\n", __func__,
+           server_data->regions[0].addr, count);
+    ret = lm_dma_write(lm_ctx, server_data->regions[0].addr, count, buf);
+    if (ret < 0) {
+        fprintf(stderr, "lm_dma_write failed: %s\n", strerror(-ret));
+        return ret;
+    }
+
+    memset(buf, 0, count);
+    printf("%s: READ  addr %#lx count %llu\n", __func__,
+	   server_data->regions[0].addr, count);
+    ret = lm_dma_read(lm_ctx, server_data->regions[0].addr, count, buf);
+    if (ret < 0) {
+        fprintf(stderr, "lm_dma_read failed: %s\n", strerror(-ret));
+        return ret;
+    }
+    get_md5sum(buf, count, md5sum2);
+    for(i = 0; i < MD5_DIGEST_LENGTH; i++) {
+        if (md5sum2[i] != md5sum1[i]) {
+            fprintf(stderr, "DMA write and DMA read mismatch\n");
+            return -EIO;
+        }
+    }
+
+    return 0;
 }
 
 unsigned long map_area(void *pvt, unsigned long off, unsigned long len)
@@ -108,7 +192,7 @@ int main(int argc, char *argv[])
     bool trans_sock = false, verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    struct server_data server_data;
+    struct server_data server_data = {0};
     int nr_sparse_areas = 2, size = 1024, i;
     struct lm_sparse_mmap_areas *sparse_areas;
 
@@ -165,6 +249,7 @@ int main(int argc, char *argv[])
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
+        .map_dma = map_dma,
         .unmap_dma = unmap_dma,
         .pvt = &server_data
     };
@@ -188,8 +273,13 @@ int main(int argc, char *argv[])
             if (irq_triggered) {
                 irq_triggered = false;
                 lm_irq_trigger(lm_ctx, 0);
+
+                ret = do_dma_io(lm_ctx, &server_data);
+                if (ret < 0) {
+                    fprintf(stderr, "DMA read/write failed: %m\n");
+                }
                 ret = 0;
-            }            
+            }
         }
     } while (ret == 0);
     if (ret != -ENOTCONN && ret != -EINTR) {
