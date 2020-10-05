@@ -91,4 +91,10 @@ struct vfio_user_region_access {
 	uint8_t		data[];
 } __attribute__((packed));
 
+struct vfio_user_dma_region_access {
+    uint64_t    addr;
+    uint32_t    count;
+    uint8_t     data[];
+} __attribute__((packed));
+
 #endif

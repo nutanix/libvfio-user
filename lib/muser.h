@@ -469,6 +469,28 @@ lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
 int
 lm_get_region(loff_t pos, size_t count, loff_t *off);
 
+/**
+ * Read from the dma region exposed by the client.
+ *
+ * @lm_ctx: the libmuser context
+ * @addr: dma address exposed by the client
+ * @count: size of the data to read
+ * @data: data buffer to read into
+ */
+int
+lm_dma_read(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data);
+
+/**
+ * Write to the dma region exposed by the client.
+ *
+ * @lm_ctx: the libmuser context
+ * @addr: dma address exposed by the client
+ * @count: size of the data to write
+ * @data: data buffer to write
+ */
+int
+lm_dma_write(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data);
+
 /*
  * Advanced stuff.
  */

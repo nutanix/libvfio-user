@@ -382,7 +382,7 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
         *msg_id = hdr->msg_id;
     }
 
-    if (is_reply && len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
+    if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
         ret = recv(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len), 0);
         if (ret < 0) {
             return ret;
@@ -390,7 +390,7 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
         if (*len != ret) { /* FIXME we should allow receiving less */
             return -EINVAL;
         }
-        *len = ret;         
+        *len = ret;
     }
     return 0;
 }
@@ -2525,6 +2525,68 @@ lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id)
     assert(lm_ctx != NULL);
 
     return cap_find_by_id(lm_ctx, id);
+}
+
+int
+lm_dma_read(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data)
+{
+    struct vfio_user_dma_region_access *dma_recv;
+    struct vfio_user_dma_region_access dma_send = {
+        .addr = addr,
+        .count = count
+    };
+    int recv_size = sizeof(*dma_recv) + count;
+    int msg_id = 1, ret;
+
+    if (!dma_controller_region_valid(lm_ctx->dma, addr, count)) {
+        lm_log(lm_ctx, LM_ERR, "DMA region addr %#lx count %llu doest not "
+               "exists", addr, count);
+        return -ENOENT;
+    }
+
+    dma_recv = calloc(recv_size, 1);
+    if (dma_recv == NULL) {
+        return -ENOMEM;
+    }
+
+    dma_recv->addr = addr;
+    dma_recv->count = count;
+    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
+                                  &dma_send, sizeof(dma_send), NULL, 0, NULL,
+                                  dma_recv, recv_size);
+    memcpy(data, dma_recv->data, count);
+    free(dma_recv);
+
+    return ret;
+}
+
+int
+lm_dma_write(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data)
+{
+    struct vfio_user_dma_region_access *dma_send, dma_recv;
+    int send_size = sizeof(*dma_send) + count;
+    int msg_id = 1, ret;
+
+    if (!dma_controller_region_valid(lm_ctx->dma, addr, count)) {
+        lm_log(lm_ctx, LM_ERR, "DMA region addr %#lx count %llu does not "
+               "exists", addr, count);
+        return -ENOENT;
+    }
+
+    dma_send = calloc(send_size, 1);
+    if (dma_send == NULL) {
+        return -ENOMEM;
+    }
+    dma_send->addr = addr;
+    dma_send->count = count;
+    memcpy(dma_send->data, data, count);
+
+    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
+                                  dma_send, send_size, NULL, 0, NULL, &dma_recv,
+                                  sizeof(dma_recv));
+    free(dma_send);
+
+    return ret;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
