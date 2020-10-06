@@ -389,6 +389,22 @@ lm_ctx_poll(lm_ctx_t *lm_ctx);
 int
 lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
 
+/**
+ * Sends message to client to trigger an interrupt.
+ *
+ * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
+ * needs to specify the sub-index.
+ * This api can be used to trigger interrupt by sending message to client.
+ *
+ * @lm_ctx: the libmuser context to trigger interrupt
+ * @subindex: vector subindex to trigger interrupt on
+ *
+ * @returns 0 on success, or -1 on failure. Sets errno.
+ */
+
+int
+lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
+
 /* Helper functions */
 
 /**

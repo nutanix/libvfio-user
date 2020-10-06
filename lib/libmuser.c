@@ -2127,10 +2127,8 @@ lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
                 lm_ctx->fd, offset);
 }
 
-int
-lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
+static int validate_irq_vector(lm_ctx_t *lm_ctx, uint32_t vector)
 {
-    eventfd_t val = 1;
 
     if ((lm_ctx == NULL) || (vector >= lm_ctx->irqs.max_ivs)) {
         lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", vector,
@@ -2139,6 +2137,19 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
         return -1;
     }
 
+    return 0;
+}
+
+int
+lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
+{
+    int ret;
+    eventfd_t val = 1;
+
+    ret = validate_irq_vector(lm_ctx, vector);
+    if (ret < 0)
+        return ret;
+
     if (lm_ctx->irqs.efds[vector] == -1) {
         lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", vector);
         errno = ENOENT;
@@ -2146,6 +2157,29 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
     }
 
     return eventfd_write(lm_ctx->irqs.efds[vector], val);
+}
+
+int
+lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex)
+{
+    int ret, msg_id = 1;
+    struct vfio_user_irq_info irq_info;
+
+    ret = validate_irq_vector(lm_ctx, subindex);
+    if (ret < 0) {
+        return -1;
+    }
+
+    irq_info.subindex = subindex;
+    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id,
+                                  VFIO_USER_VM_INTERRUPT, &irq_info,
+                                  sizeof(irq_info), NULL, 0, NULL, NULL, 0);
+    if (ret < 0) {
+	    errno = -ret;
+	    return -1;
+    }
+
+    return 0;
 }
 
 void

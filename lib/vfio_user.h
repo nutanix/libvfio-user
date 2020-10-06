@@ -49,6 +49,7 @@ enum vfio_user_command {
 	VFIO_USER_REGION_WRITE			= 9,
 	VFIO_USER_DMA_READ			= 10,
 	VFIO_USER_DMA_WRITE			= 11,
+	VFIO_USER_VM_INTERRUPT			= 12,
 	VFIO_USER_DEVICE_RESET			= 13,
 	VFIO_USER_MAX,
 };
@@ -95,6 +96,10 @@ struct vfio_user_dma_region_access {
     uint64_t    addr;
     uint32_t    count;
     uint8_t     data[];
+} __attribute__((packed));
+
+struct vfio_user_irq_info {
+    uint32_t    subindex;
 } __attribute__((packed));
 
 #endif
