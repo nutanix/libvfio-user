@@ -187,9 +187,11 @@ static int get_device_info(int sock, struct vfio_device_info *dev_info)
 static int
 configure_irqs(int sock)
 {
-    int i;
+    int i, size;
     int ret;
     struct vfio_irq_set irq_set;
+    struct vfio_user_irq_info irq_info;
+    struct vfio_user_header hdr;
     uint16_t msg_id = 1;
     int irq_fd;
     uint64_t val;
@@ -244,6 +246,28 @@ configure_irqs(int sock)
     }
 
     printf("INTx triggered!\n");
+
+    msg_id++;
+    size = sizeof(irq_info);
+    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &irq_info, &size);
+    if (ret < 0) {
+        fprintf(stderr, "failed to recieve IRQ message: %s\n", strerror(-ret));
+        return ret;
+    }
+    if (irq_info.subindex >= irq_set.count) {
+        fprintf(stderr, "bad IRQ %d, max=%d\n", irq_info.subindex,
+                irq_set.count);
+        return -ENOENT;
+    }
+
+    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VM_INTERRUPT,
+                             NULL, 0, NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to send reply for VFIO_USER_VM_INTERRUPT: "
+                "%s\n", strerror(-ret));
+        return ret;
+    }
+    printf("INTx messaged triggered!\n");
 
     return 0;
 }
@@ -497,7 +521,7 @@ int main(int argc, char *argv[])
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
      * Query interrupts, configure an eventfd to be associated with INTx, and
-     * finally wait for the server to fire the interrupt.     
+     * finally wait for the server to fire the interrupt.
      */
     ret = configure_irqs(sock);
     if (ret < 0) {

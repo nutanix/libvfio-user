@@ -274,6 +274,11 @@ int main(int argc, char *argv[])
                 irq_triggered = false;
                 lm_irq_trigger(lm_ctx, 0);
 
+                ret = lm_irq_message(lm_ctx, 0);
+                if (ret < 0) {
+                    fprintf(stderr, "lm_irq_message() failed: %m\n");
+                }
+
                 ret = do_dma_io(lm_ctx, &server_data);
                 if (ret < 0) {
                     fprintf(stderr, "DMA read/write failed: %m\n");
