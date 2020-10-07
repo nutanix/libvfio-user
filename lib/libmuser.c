@@ -879,6 +879,17 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
     return 0;
 }
 
+static int
+device_reset(lm_ctx_t *lm_ctx)
+{
+    lm_log(lm_ctx, LM_DBG, "Device reset called by client");
+    if (lm_ctx->reset != NULL) {
+        return lm_ctx->reset(lm_ctx->pvt);
+    }
+
+    return 0;
+}
+
 static long
 dev_set_irqs(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
@@ -1125,11 +1136,7 @@ do_muser_ioctl(lm_ctx_t *lm_ctx, struct muser_cmd_ioctl *cmd_ioctl, void *data)
         err = dev_set_irqs(lm_ctx, &cmd_ioctl->data.irq_set, data);
         break;
     case VFIO_DEVICE_RESET:
-        if (lm_ctx->reset != NULL) {
-            return lm_ctx->reset(lm_ctx->pvt);
-        }
-        lm_log(lm_ctx, LM_DBG, "reset called but not reset function present\n");
-        err = 0;
+        err = device_reset(lm_ctx);
         break;
     case VFIO_GROUP_GET_STATUS:
         cmd_ioctl->data.group_status.flags = VFIO_GROUP_FLAGS_VIABLE;
@@ -1907,6 +1914,12 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map
 }
 
 static int
+handle_device_reset(lm_ctx_t *lm_ctx)
+{
+    return device_reset(lm_ctx);
+}
+
+static int
 handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
                      void **data, int *len)
 {
@@ -2056,6 +2069,9 @@ process_request(lm_ctx_t *lm_ctx)
         case VFIO_USER_REGION_WRITE:
             ret = handle_region_access(lm_ctx, &hdr, &data, &len);
             free_data = true;
+            break;
+        case VFIO_USER_DEVICE_RESET:
+            ret = handle_device_reset(lm_ctx);
             break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);
