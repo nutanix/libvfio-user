@@ -2141,22 +2141,23 @@ static int validate_irq_vector(lm_ctx_t *lm_ctx, uint32_t vector)
 }
 
 int
-lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t vector)
+lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex)
 {
     int ret;
     eventfd_t val = 1;
 
-    ret = validate_irq_vector(lm_ctx, vector);
-    if (ret < 0)
+    ret = validate_irq_vector(lm_ctx, subindex);
+    if (ret < 0) {
         return ret;
+    }
 
-    if (lm_ctx->irqs.efds[vector] == -1) {
-        lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", vector);
+    if (lm_ctx->irqs.efds[subindex] == -1) {
+        lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", subindex);
         errno = ENOENT;
         return -1;
     }
 
-    return eventfd_write(lm_ctx->irqs.efds[vector], val);
+    return eventfd_write(lm_ctx->irqs.efds[subindex], val);
 }
 
 int
