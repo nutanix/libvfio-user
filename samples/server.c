@@ -186,6 +186,11 @@ unsigned long map_area(void *pvt, unsigned long off, unsigned long len)
     assert(false);
 }
 
+static int device_reset(void *pvt)
+{
+    printf("device reset callback\n");
+}
+
 int main(int argc, char *argv[])
 {
     int ret;
@@ -249,6 +254,7 @@ int main(int argc, char *argv[])
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
+        .reset = device_reset,
         .map_dma = map_dma,
         .unmap_dma = unmap_dma,
         .pvt = &server_data

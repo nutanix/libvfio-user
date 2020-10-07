@@ -105,6 +105,15 @@ out:
 }
 
 static int
+send_device_reset(int sock)
+{
+    int ret, msg_id = 1;
+
+    return send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_RESET,
+                                  NULL, 0, NULL, 0, NULL, NULL, 0);
+}
+
+static int
 get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
 {
     struct vfio_region_info region_info;
@@ -473,6 +482,12 @@ int main(int argc, char *argv[])
 
     /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
     ret = get_device_region_info(sock, &client_dev_info);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* XXX VFIO_USER_DEVICE_RESET */
+    ret = send_device_reset(sock);
     if (ret < 0) {
         return ret;
     }
