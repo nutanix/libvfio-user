@@ -126,13 +126,18 @@ muser_dma_unmap(lm_ctx_t*, struct muser_cmd*);
 static void
 free_sparse_mmap_areas(lm_reg_info_t*);
 
-static inline int recv_retry(int sock, void *buf, size_t len, int flags)
+static inline int recv_blocking(int sock, void *buf, size_t len, int flags)
 {
-    int ret;
+    int f = fcntl(sock, F_GETFL, 0);
+    int ret, fret;
 
-    do {
-        ret = recv(sock, buf, len, flags);
-    } while(ret < 0 && (errno == EINTR || errno == EAGAIN));
+    fret = fcntl(sock, F_SETFL, f & ~O_NONBLOCK);
+    assert(fret != -1);
+
+    ret = recv(sock, buf, len, flags);
+
+    fret = fcntl(sock, F_SETFL, f);
+    assert(fret != -1);
 
     return ret;
 }
@@ -363,7 +368,7 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
 {
     int ret;
 
-    ret = recv_retry(sock, hdr, sizeof(*hdr), 0);
+    ret = recv_blocking(sock, hdr, sizeof(*hdr), 0);
     if (ret == -1) {
         return -errno;
     }
@@ -394,7 +399,8 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
-        ret = recv_retry(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len), 0);
+        ret = recv_blocking(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len),
+                            0);
         if (ret < 0) {
             return ret;
         }
@@ -424,7 +430,7 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
     if (data == NULL) {
         return -errno;
     }
-    ret = recv_retry(sock, data, hdr.msg_size, 0);
+    ret = recv_blocking(sock, data, hdr.msg_size, 0);
     if (ret == -1) {
         return -errno;
     }
