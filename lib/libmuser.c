@@ -126,6 +126,17 @@ muser_dma_unmap(lm_ctx_t*, struct muser_cmd*);
 static void
 free_sparse_mmap_areas(lm_reg_info_t*);
 
+static inline int recv_retry(int sock, void *buf, size_t len, int flags)
+{
+    int ret;
+
+    do {
+        ret = recv(sock, buf, len, flags);
+    } while(ret < 0 && (errno == EINTR || errno == EAGAIN));
+
+    return ret;
+}
+
 static int
 dev_detach(lm_ctx_t *lm_ctx)
 {
@@ -352,7 +363,7 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
 {
     int ret;
 
-    ret = recv(sock, hdr, sizeof(*hdr), 0);
+    ret = recv_retry(sock, hdr, sizeof(*hdr), 0);
     if (ret == -1) {
         return -errno;
     }
@@ -383,7 +394,7 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
-        ret = recv(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len), 0);
+        ret = recv_retry(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len), 0);
         if (ret < 0) {
             return ret;
         }
@@ -413,7 +424,7 @@ recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
     if (data == NULL) {
         return -errno;
     }
-    ret = recv(sock, data, hdr.msg_size, 0);
+    ret = recv_retry(sock, data, hdr.msg_size, 0);
     if (ret == -1) {
         return -errno;
     }
