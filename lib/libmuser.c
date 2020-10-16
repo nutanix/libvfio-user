@@ -2479,15 +2479,14 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     err = 0;
 
     // Attach to the muser control device.
+    lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
-        lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
         if (lm_ctx->conn_fd < 0) {
-                err = lm_ctx->conn_fd;
-                if (err != EINTR) {
-                    lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
-                           strerror(-err));
-                }
-                goto out;
+            err = lm_ctx->conn_fd;
+            if (err != EINTR) {
+                lm_log(lm_ctx, LM_ERR, "failed to attach: %s", strerror(-err));
+            }
+            goto out;
         }
     }
 
