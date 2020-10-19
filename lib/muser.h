@@ -303,11 +303,10 @@ typedef struct {
     lm_trans_t      trans;
 
     /*
-     * Attaching to the transport is non-blocking. The library will attempt to
-     * attach during context creation time and if attaching fails because the
-     * transport is not ready then the error will be ingored. The caller must
-     * then manually call lm_try_ctx_attach, which is non-blocking, as many
-     * times as necessary.
+     * Attaching to the transport is non-blocking. The library will not attempt
+     * to attach during context creation time. The caller must then manually
+     * call lm_ctx_try_attach(), which is non-blocking, as many times as
+     * necessary.
      */
 #define LM_FLAG_ATTACH_NB  (1 << 0)
     uint64_t         flags;

@@ -2478,7 +2478,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
     err = 0;
 
-    // Attach to the muser control device.
+    // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
+    // always expected to call lm_ctx_try_attach().
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
         lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
         if (lm_ctx->conn_fd < 0) {
