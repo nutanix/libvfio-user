@@ -305,7 +305,7 @@ typedef struct {
     /*
      * Attaching to the transport is non-blocking. The library will attempt to
      * attach during context creation time and if attaching fails because the
-     * transport is not ready then the error will be ignored. The caller must
+     * transport is not ready then the error will be ingored. The caller must
      * then manually call lm_try_ctx_attach, which is non-blocking, as many
      * times as necessary.
      */
