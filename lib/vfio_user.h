@@ -103,3 +103,5 @@ struct vfio_user_irq_info {
 } __attribute__((packed));
 
 #endif
+
+/* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
