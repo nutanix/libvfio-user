@@ -190,13 +190,6 @@ get_request_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd,
 }
 
 static int
-send_response_kernel(lm_ctx_t *lm_ctx, struct vfio_user_header *cmd)
-{
-    assert(false);
-    return ioctl(lm_ctx->fd, MUSER_DEV_CMD_DONE, &cmd);
-}
-
-static int
 init_sock(lm_ctx_t *lm_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
@@ -580,12 +573,6 @@ get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     return ret;
 }
 
-static int
-send_response_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr)
-{
-    return write(lm_ctx->conn_fd, hdr, sizeof *hdr);
-}
-
 static void
 get_path_from_fd(int fd, char *buf)
 {
@@ -621,7 +608,6 @@ static struct transport_ops {
     int (*attach)(lm_ctx_t*);
     int(*detach)(lm_ctx_t*);
     int (*get_request)(lm_ctx_t*, struct vfio_user_header*, int *fds, int *nr_fds);
-    int (*send_response)(lm_ctx_t*, struct vfio_user_header*);
     ssize_t (*recv_fds)(lm_ctx_t*, void *buf, size_t size);
 } transports_ops[] = {
     [LM_TRANS_KERNEL] = {
@@ -630,7 +616,6 @@ static struct transport_ops {
         .detach = dev_detach,
         .recv_fds = recv_fds_kernel,
         .get_request = get_request_kernel,
-        .send_response = send_response_kernel
     },
     [LM_TRANS_SOCK] = {
         .init = init_sock,
@@ -638,7 +623,6 @@ static struct transport_ops {
         .detach = close_sock,
         .recv_fds = recv_fds_sock,
         .get_request = get_request_sock,
-        .send_response = send_response_sock
     }
 };
 
