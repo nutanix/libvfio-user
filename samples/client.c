@@ -296,18 +296,22 @@ access_bar0(int sock)
         .t = time(NULL)
     };
     uint16_t msg_id = 1;
+    const int sleep_time = 1;
+    struct vfio_user_region_access region_access = {};
     int ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_WRITE,
-                                      &data, sizeof data, NULL, 0, NULL, NULL, 0);
+                                      &data, sizeof data, NULL, 0, NULL,
+                                      &region_access, sizeof region_access);
     if (ret < 0) {
         fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
         return ret;
     }
+    assert(region_access.count == sizeof data.t);
 
     printf("wrote to BAR0: %ld\n", data.t);
 
-    sleep(2);
-
     msg_id++;
+
+    sleep(sleep_time);
 
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_READ,
                                   &data.region_access, sizeof data.region_access,
@@ -319,6 +323,8 @@ access_bar0(int sock)
     assert(data.region_access.count == sizeof data.t);
 
     printf("read from BAR0: %ld\n", data.t);
+
+    assert(data.t >= sleep_time);
 
     return 0;
 }
