@@ -194,16 +194,9 @@ init_sock(lm_ctx_t *lm_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int ret, unix_sock;
-    unsigned long iommu_grp;
-    char *endptr;
     mode_t mode;
 
     assert(lm_ctx != NULL);
-
-    iommu_grp = strtoul(basename(lm_ctx->uuid), &endptr, 10);
-    if (*endptr != '\0' || (iommu_grp == ULONG_MAX && errno == ERANGE)) {
-        return -EINVAL;
-    }
 
     lm_ctx->iommu_dir = strdup(lm_ctx->uuid);
     if (!lm_ctx->iommu_dir) {
