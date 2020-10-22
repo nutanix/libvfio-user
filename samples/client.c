@@ -38,6 +38,7 @@
 #include <sys/eventfd.h>
 #include <time.h>
 #include <err.h>
+#include <assert.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -310,11 +311,12 @@ access_bar0(int sock)
 
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_READ,
                                   &data.region_access, sizeof data.region_access,
-                                  NULL, 0, NULL, &data.t, sizeof data.t);
+                                  NULL, 0, NULL, &data, sizeof data);
     if (ret < 0) {
         fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
         return ret;
     }
+    assert(data.region_access.count == sizeof data.t);
 
     printf("read from BAR0: %ld\n", data.t);
 

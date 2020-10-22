@@ -1559,17 +1559,19 @@ static inline int
 muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
              void **data)
 {
+    struct vfio_user_region_access *region_access;
     char *rwbuf;
     int err;
     size_t count = 0, _count;
     ssize_t ret;
 
     /* TODO how big do we expect count to be? Can we use alloca(3) instead? */
-    rwbuf = calloc(1, cmd->rw.count);
-    if (rwbuf == NULL) {
+    region_access = calloc(1, sizeof(*region_access) + cmd->rw.count);
+    if (region_access == NULL) {
         lm_log(lm_ctx, LM_ERR, "failed to allocate memory\n");
         return -1;
     }
+    rwbuf = (char*)(region_access + 1);
 
     lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx\n", is_write ? "W" : "R", cmd->rw.pos,
            cmd->rw.pos + cmd->rw.count - 1);
@@ -1610,12 +1612,17 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
     count -= _count;
     ret = lm_access(lm_ctx, rwbuf + count, _count, &cmd->rw.pos,
                     is_write);
-    if (!is_write && ret >= 0) {
+    if (ret >= 0) {
         ret += count;
         if (data != NULL) {
-            *data = rwbuf;
+            /*
+             * FIXME the spec doesn't specify whether the reset of the
+             * region_access struct needs to be populated.
+             */
+            region_access->count = ret;
+            *data = region_access;
             return ret;
-        } else {
+        } else if (!is_write) {
             err = post_read(lm_ctx, rwbuf, ret);
 #ifdef LM_VERBOSE_LOGGING
             if (err == ret) {
@@ -1626,7 +1633,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
     }
 
 out:
-    free(rwbuf);
+    free(region_access);
 
     return ret;
 }
@@ -1959,7 +1966,10 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     }
     assert(muser_cmd.err == 0);
 
-    *len = region_access.count;
+    *len = sizeof(region_access);
+    if (hdr->cmd == VFIO_USER_REGION_READ) {
+        *len += region_access.count;
+    }
 
     return 0;
 }
