@@ -542,6 +542,18 @@ int main(int argc, char *argv[])
     }
 
     /*
+     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
+     *
+     * BAR0 in the server does not support memory mapping so it must be accessed
+     * via explicit messages.
+     */
+    ret = access_bar0(sock);
+    if (ret < 0) {
+        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+    /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
      * Query interrupts, configure an eventfd to be associated with INTx, and
      * finally wait for the server to fire the interrupt.
@@ -555,18 +567,6 @@ int main(int argc, char *argv[])
     ret = handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
     if (ret < 0) {
         fprintf(stderr, "DMA IO failed: %s\n", strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
-
-    /*
-     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
-     *
-     * BAR0 in the server does not support memory mapping so it must be accessed
-     * via explicit messages.
-     */
-    ret = access_bar0(sock);
-    if (ret < 0) {
-        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
 
