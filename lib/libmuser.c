@@ -208,7 +208,7 @@ init_sock(lm_ctx_t *lm_ctx)
 
     if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 	    ret = errno;
-	    goto free_iommu_dir;
+        goto out;
     }
 
     if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
@@ -259,9 +259,7 @@ close_iommu_dir_fd:
     close(lm_ctx->iommu_dir_fd);
 close_unix_sock:
     close(unix_sock);
-free_iommu_dir:
-    free(lm_ctx->iommu_dir);
-
+out:
     return -ret;
 }
 
