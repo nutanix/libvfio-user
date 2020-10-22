@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
 
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGUSR1, &act, NULL) == -1) {
-        err(EXIT_FAILURE, "warning: failed to register signal handler: %m\n");
+        err(EXIT_FAILURE, "failed to register signal handler");
     }
 
     lm_ctx = lm_ctx_create(&dev_info);
@@ -272,7 +272,7 @@ int main(int argc, char *argv[])
         if (errno == EINTR) {
             goto out;
         }
-        err(EXIT_FAILURE, "failed to initialize device emulation: %m\n");
+        err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
     do {
