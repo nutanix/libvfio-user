@@ -38,6 +38,7 @@
 #include <sys/eventfd.h>
 #include <time.h>
 #include <err.h>
+#include <assert.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -295,28 +296,35 @@ access_bar0(int sock)
         .t = time(NULL)
     };
     uint16_t msg_id = 1;
+    const int sleep_time = 1;
+    struct vfio_user_region_access region_access = {};
     int ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_WRITE,
-                                      &data, sizeof data, NULL, 0, NULL, NULL, 0);
+                                      &data, sizeof data, NULL, 0, NULL,
+                                      &region_access, sizeof region_access);
     if (ret < 0) {
         fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
         return ret;
     }
+    assert(region_access.count == sizeof data.t);
 
     printf("wrote to BAR0: %ld\n", data.t);
 
-    sleep(2);
-
     msg_id++;
+
+    sleep(sleep_time);
 
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_READ,
                                   &data.region_access, sizeof data.region_access,
-                                  NULL, 0, NULL, &data.t, sizeof data.t);
+                                  NULL, 0, NULL, &data, sizeof data);
     if (ret < 0) {
         fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
         return ret;
     }
+    assert(data.region_access.count == sizeof data.t);
 
     printf("read from BAR0: %ld\n", data.t);
+
+    assert(data.t >= sleep_time);
 
     return 0;
 }
@@ -534,6 +542,18 @@ int main(int argc, char *argv[])
     }
 
     /*
+     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
+     *
+     * BAR0 in the server does not support memory mapping so it must be accessed
+     * via explicit messages.
+     */
+    ret = access_bar0(sock);
+    if (ret < 0) {
+        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+    /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
      * Query interrupts, configure an eventfd to be associated with INTx, and
      * finally wait for the server to fire the interrupt.
@@ -547,18 +567,6 @@ int main(int argc, char *argv[])
     ret = handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
     if (ret < 0) {
         fprintf(stderr, "DMA IO failed: %s\n", strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
-
-    /*
-     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
-     *
-     * BAR0 in the server does not support memory mapping so it must be accessed
-     * via explicit messages.
-     */
-    ret = access_bar0(sock);
-    if (ret < 0) {
-        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
 

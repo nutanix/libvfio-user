@@ -209,12 +209,14 @@ int main(int argc, char *argv[])
                 verbose = true;
                 break;
             default: /* '?' */
-                err(EXIT_FAILURE, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
+                exit(EXIT_FAILURE);
         }
     }
 
     if (optind >= argc) {
-        err(EXIT_FAILURE, "missing MUSER device UUID");
+        fprintf(stderr, "missing MUSER device UUID\n");
+        exit(EXIT_FAILURE);
     }
 
     server_data.bar1 = malloc(sysconf(_SC_PAGESIZE));
@@ -262,7 +264,7 @@ int main(int argc, char *argv[])
 
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGUSR1, &act, NULL) == -1) {
-        err(EXIT_FAILURE, "warning: failed to register signal handler: %m\n");
+        err(EXIT_FAILURE, "failed to register signal handler");
     }
 
     lm_ctx = lm_ctx_create(&dev_info);
@@ -270,7 +272,7 @@ int main(int argc, char *argv[])
         if (errno == EINTR) {
             goto out;
         }
-        err(EXIT_FAILURE, "failed to initialize device emulation: %m\n");
+        err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
     do {
