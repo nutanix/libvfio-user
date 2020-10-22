@@ -553,12 +553,9 @@ get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
         if (size % sizeof(int) != 0) {
             return -EINVAL;
         }
-        int i;
         *nr_fds = (int)(size / sizeof(int));
-        for (i = 0; i < *nr_fds; i++) {
-           //memcpy(fds[i], CMSG_DATA(cmsg) + sizeof(int) * i, sizeof *fds);
-            fds[i] = *(CMSG_DATA(cmsg) + sizeof(int) * i);
-        }
+        memcpy(fds, CMSG_DATA(cmsg), *nr_fds * sizeof(int));
+        break;
     }
 
     return ret;
