@@ -296,7 +296,8 @@ int main(int argc, char *argv[])
         }
     } while (ret == 0);
     if (ret != -ENOTCONN && ret != -EINTR) {
-        fprintf(stderr, "failed to realize device emulation: %m\n");
+        fprintf(stderr, "failed to realize device emulation: %s\n",
+                strerror(-ret));
     }
 out:
     lm_ctx_destroy(lm_ctx);
