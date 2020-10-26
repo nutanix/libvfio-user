@@ -511,6 +511,8 @@ open_sock(lm_ctx_t *lm_ctx)
     if (ret < 0) {
         return ret;
     }
+
+    lm_ctx->conn_fd = conn_fd;
     return conn_fd;
 }
 
