@@ -1990,7 +1990,7 @@ process_request(lm_ctx_t *lm_ctx)
     struct vfio_region_info *dev_reg_info = NULL;
     void *data = NULL;
     bool free_data = false;
-    int len;
+    int len = 0;
 
     assert(lm_ctx != NULL);
 
