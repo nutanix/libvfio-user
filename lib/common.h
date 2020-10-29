@@ -45,6 +45,7 @@
 #define likely(e)   __builtin_expect(!!(e), 1)
 #define unlikely(e) __builtin_expect(e, 0)
 
+/* XXX NB 2nd argument must be power of two */
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
 
