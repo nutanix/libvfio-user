@@ -511,7 +511,7 @@ lm_dma_write(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data);
  */
 
 /**
- * Returns the non-standard part of the PCI configuragion space.
+ * Returns the non-standard part of the PCI configuration space.
  */
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
