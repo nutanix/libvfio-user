@@ -81,6 +81,7 @@ dma_controller_create(lm_ctx_t *lm_ctx, int max_regions)
     dma->max_regions = max_regions;
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
+    dma->dirty_pgsize = 0;
 
     return dma;
 }
@@ -106,6 +107,10 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
     }
 }
 
+/*
+ * FIXME no longer used. Also, it doesn't work for addresses that span two
+ * DMA regions.
+ */
 bool
 dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
                             size_t size)
@@ -328,7 +333,7 @@ dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
                    dma_addr_t dma_addr, uint32_t len,
-                   dma_sg_t *sg, int max_sg)
+                   dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
     int cnt = 0;
@@ -348,6 +353,9 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                     sg[cnt].region = idx;
                     sg[cnt].offset = dma_addr - region->dma_addr;
                     sg[cnt].length = region_len;
+                    if (_dma_should_mark_dirty(dma, prot)) {
+                        _dma_mark_dirty(dma, region, sg);
+                    }
                 }
 
                 cnt++;
@@ -374,6 +382,119 @@ out:
         cnt = -cnt - 1;
     }
     return cnt;
+}
+
+ssize_t _get_bitmap_size(size_t region_size, size_t pgsize)
+{
+    if (pgsize == 0) {
+        return -EINVAL;
+    }
+    if (region_size < pgsize) {
+        return -EINVAL;
+    }
+    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
+    return (nr_pages / CHAR_BIT) + (nr_pages % CHAR_BIT != 0);
+}
+
+int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
+{
+    int i;
+
+    assert(dma != NULL);
+
+    if (pgsize == 0) {
+        return -EINVAL;
+    }
+
+    if (dma->dirty_pgsize > 0) {
+        if (dma->dirty_pgsize != pgsize) {
+            return -EINVAL;
+        }
+        return 0;
+    }
+
+    for (i = 0; i < dma->nregions; i++) {
+        dma_memory_region_t *region = &dma->regions[i];
+        ssize_t bitmap_size = _get_bitmap_size(region->size, pgsize);
+        if (bitmap_size < 0) {
+            return bitmap_size;
+        }
+        region->dirty_bitmap = calloc(bitmap_size, sizeof(char));
+        if (region->dirty_bitmap == NULL) {
+            int j, ret = -errno;
+            for (j = 0; j < i; j++) {
+                free(region->dirty_bitmap);
+                region->dirty_bitmap = NULL;
+            }
+            return ret;
+        }
+    }
+    dma->dirty_pgsize = pgsize;
+    return 0;
+}
+
+int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
+{
+    int i;
+
+    assert(dma != NULL);
+
+    if (dma->dirty_pgsize == 0) {
+        return 0;
+    }
+
+    for (i = 0; i < dma->nregions; i++) {
+        free(dma->regions[i].dirty_bitmap);
+        dma->regions[i].dirty_bitmap = NULL;
+    }
+    dma->dirty_pgsize = 0;
+    return 0;
+}
+
+int
+dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
+                              size_t pgsize, size_t size, char **data)
+{
+    int ret;
+    ssize_t bitmap_size;
+    dma_sg_t sg;
+    dma_memory_region_t *region;
+
+    assert(dma != NULL);
+    assert(data != NULL);
+
+    /*
+     * FIXME for now we support IOVAs that match exactly the DMA region. This
+     * is purely for simplifying the implementation. We MUST allow arbitrary
+     * IOVAs.
+     */
+    ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
+    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
+        return -ENOTSUP;
+    }
+
+    if (pgsize != dma->dirty_pgsize) {
+        return -EINVAL;
+    }
+
+    bitmap_size = _get_bitmap_size(len, pgsize);
+    if (bitmap_size < 0) {
+        return bitmap_size;
+    }
+
+    /*
+     * FIXME they must be equal because this is how much data the client
+     * expects to receive.
+     */
+    if (size != (size_t)bitmap_size) {
+        return -EINVAL;
+    }
+    
+    region = &dma->regions[sg.region];
+
+    *data = region->dirty_bitmap;
+
+    return 0;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

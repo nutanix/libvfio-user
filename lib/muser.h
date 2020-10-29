@@ -159,6 +159,7 @@ enum {
     LM_DEV_NUM_IRQS
 };
 
+/* FIXME these are PCI regions */
 enum {
     LM_DEV_BAR0_REG_IDX,
     LM_DEV_BAR1_REG_IDX,
@@ -169,7 +170,15 @@ enum {
     LM_DEV_ROM_REG_IDX,
     LM_DEV_CFG_REG_IDX,
     LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS = 9
+    /*
+     * FIXME this really belong here, but simplifies implementation for now. A
+     * migration region can exist for non-PCI devices (can its index be
+     * anything?). In any case, we should allow the user to define custom regions
+     * at will, by fixing the migration region in that position we don't allow
+     * this.
+     */
+    LM_DEV_MIGRATION_REG_IDX,
+    LM_DEV_NUM_REGS = 10, /* TODO rename to LM_DEV_NUM_PCI_REGS */
 };
 
 typedef struct {
@@ -426,6 +435,7 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
  * @len: size of memory to be mapped
  * @sg: array that receives the scatter/gather entries to be mapped
  * @max_sg: maximum number of elements in above array
+ * @prot: protection as define in <sys/mman.h>
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
@@ -435,7 +445,7 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
  */
 int
 lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
-              dma_sg_t *sg, int max_sg);
+              dma_sg_t *sg, int max_sg, int prot);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
@@ -488,23 +498,21 @@ lm_get_region(loff_t pos, size_t count, loff_t *off);
  * Read from the dma region exposed by the client.
  *
  * @lm_ctx: the libmuser context
- * @addr: dma address exposed by the client
- * @count: size of the data to read
+ * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to read into
  */
 int
-lm_dma_read(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data);
+lm_dma_read(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Write to the dma region exposed by the client.
  *
  * @lm_ctx: the libmuser context
- * @addr: dma address exposed by the client
- * @count: size of the data to write
+ * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to write
  */
 int
-lm_dma_write(lm_ctx_t *lm_ctx, dma_addr_t addr, size_t count, void *data);
+lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
 
 /*
  * Advanced stuff.

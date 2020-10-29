@@ -39,6 +39,7 @@
 #include <time.h>
 #include <err.h>
 #include <assert.h>
+//#include <sys/uio.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -66,13 +67,16 @@ init_sock(const char *path)
 }
 
 static int
-set_version(int sock, int client_max_fds, int *server_max_fds)
+set_version(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
 {
     int ret, mj, mn;
     uint16_t msg_id;
     char *client_caps = NULL;
 
-    ret = recv_version(sock, &mj, &mn, &msg_id, false, server_max_fds);
+    assert(server_max_fds != NULL);
+    assert(pgsize != NULL);
+
+    ret = recv_version(sock, &mj, &mn, &msg_id, false, server_max_fds, pgsize);
     if (ret < 0) {
         fprintf(stderr, "failed to receive version from server: %s\n",
                 strerror(-ret));
@@ -85,7 +89,8 @@ set_version(int sock, int client_max_fds, int *server_max_fds)
         goto out;
     }
 
-    ret = asprintf(&client_caps, "{max_fds: %d}", client_max_fds);
+    ret = asprintf(&client_caps, "{max_fds: %d, migration: {pgsize: %lu}}",
+                   client_max_fds, sysconf(_SC_PAGESIZE));
     if (ret == -1) {
         client_caps = NULL;
         ret = -ENOMEM; /* FIXME */
@@ -115,14 +120,64 @@ send_device_reset(int sock)
 }
 
 static int
+get_region_vfio_caps(int sock, size_t cap_sz)
+{
+    struct vfio_info_cap_header *header, *_header;
+    struct vfio_region_info_cap_type *type;
+    struct vfio_region_info_cap_sparse_mmap *sparse;
+    int i, ret;
+
+    header = _header = calloc(cap_sz, 1);
+    if (header == NULL) {
+        return -ENOMEM;
+    }
+
+    ret = recv(sock, header, cap_sz, 0);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to receive VFIO cap info");
+    }
+    assert(ret == cap_sz);
+
+    while (true) {
+        switch (header->id) {
+            case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
+                sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
+                fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
+                        sparse->nr_areas);
+                for (i = 0; i < sparse->nr_areas; i++) {
+                    fprintf(stdout, "%s: area %d offset %#lx size %llu\n", __func__,
+                            i, sparse->areas[i].offset, sparse->areas[i].size);
+                }
+                break;
+            case VFIO_REGION_INFO_CAP_TYPE:
+                type = (struct vfio_region_info_cap_type*)header;
+                if (type->type != VFIO_REGION_TYPE_MIGRATION ||
+                    type->subtype != VFIO_REGION_SUBTYPE_MIGRATION) {
+                    fprintf(stderr, "bad region type %d/%d\n", type->type,
+                            type->subtype);
+                    exit(EXIT_FAILURE);
+                }
+                printf("migration region\n");
+                break;
+            default:
+                fprintf(stderr, "bad VFIO cap ID %#x\n", header->id);
+                exit(EXIT_FAILURE);
+        }
+        if (header->next == 0) {
+            break;
+        }
+        header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
+    }
+    free(_header);
+}
+
+static int
 get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
 {
     struct vfio_region_info region_info;
-    struct vfio_region_info_cap_sparse_mmap *sparse;
     struct vfio_user_header hdr;
     uint16_t msg_id = 0;
     size_t cap_sz;
-    int regsz = sizeof(region_info);
     int i, ret;
 
     msg_id = 1;
@@ -133,8 +188,9 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
         msg_id++;
         ret = send_recv_vfio_user_msg(sock, msg_id,
                                       VFIO_USER_DEVICE_GET_REGION_INFO,
-                                      &region_info, regsz, NULL, 0, NULL,
-                                      &region_info, regsz);
+                                      &region_info, sizeof region_info,
+                                      NULL, 0, NULL,
+                                      &region_info, sizeof(region_info));
         if (ret < 0) {
             fprintf(stderr, "failed to get device region info: %s\n",
                     strerror(-ret));
@@ -146,44 +202,26 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
                 "cap_sz %d\n", __func__, i, region_info.offset,
                 region_info.flags, region_info.size, cap_sz);
 	    if (cap_sz) {
-            int j;
-
-            sparse = calloc(cap_sz, 1);
-            if (sparse == NULL) {
-                return -ENOMEM;
-            }
-
-            ret = recv(sock, sparse, cap_sz, 0);
-            if (ret < 0) {
-                ret = -errno;
-		        fprintf(stderr, "%s: failed to receive sparse cap info: %s\n",
-                        __func__, strerror(-ret));
-                free(sparse);
+            ret = get_region_vfio_caps(sock, cap_sz);
+            if (ret != 0) {
                 return ret;
             }
-            fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
-                    sparse->nr_areas);
-            for (j = 0; j < sparse->nr_areas; j++) {
-                fprintf(stdout, "%s: area %d offset %#lx size %llu\n", __func__,
-                        j, sparse->areas[j].offset, sparse->areas[j].size);
-            }
-            free(sparse);
 	    }
     }
+    return 0;
 }
 
 static int get_device_info(int sock, struct vfio_device_info *dev_info)
 {
     struct vfio_user_header hdr;
-    int dev_info_sz = sizeof(*dev_info);
     uint16_t msg_id;
     int ret;
 
-    dev_info->argsz = dev_info_sz;
+    dev_info->argsz = sizeof(*dev_info);
     msg_id = 1;
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_GET_INFO,
-                                  dev_info, dev_info_sz, NULL, 0, NULL,
-                                  dev_info, dev_info_sz);
+                                  dev_info, sizeof(*dev_info), NULL, 0, NULL,
+                                  dev_info, sizeof(*dev_info));
     if (ret < 0) {
         fprintf(stderr, "failed to get device info: %s\n", strerror(-ret));
         return ret;
@@ -197,30 +235,35 @@ static int get_device_info(int sock, struct vfio_device_info *dev_info)
 static int
 configure_irqs(int sock)
 {
-    int i, size;
-    int ret;
+    int i, ret;
+    size_t size;
     struct vfio_irq_set irq_set;
-    struct vfio_user_irq_info irq_info;
+    struct vfio_user_irq_info vfio_user_irq_info;
     struct vfio_user_header hdr;
     uint16_t msg_id = 1;
     int irq_fd;
     uint64_t val;
+    struct iovec iovecs[2];
 
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        struct vfio_irq_info irq_info = {.argsz = sizeof irq_info, .index = i};
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) { /* TODO move body of loop into function */
         int size;
+        struct vfio_irq_info vfio_irq_info = {
+            .argsz = sizeof vfio_irq_info,
+            .index = i
+        };
         ret = send_recv_vfio_user_msg(sock, msg_id,
                                       VFIO_USER_DEVICE_GET_IRQ_INFO,
-                                      &irq_info, sizeof irq_info, NULL, 0, NULL,
-                                      &irq_info, sizeof irq_info);
+                                      &vfio_irq_info, sizeof vfio_irq_info,
+                                      NULL, 0, NULL,
+                                      &vfio_irq_info, sizeof vfio_irq_info);
         if (ret < 0) {
             fprintf(stderr, "failed to get  %s info: %s\n", irq_to_str[i],
                     strerror(-ret));
             return ret;
         }
-        if (irq_info.count > 0) {
+        if (vfio_irq_info.count > 0) {
             printf("IRQ %s: count=%d flags=%#x\n",
-                   irq_to_str[i], irq_info.count, irq_info.flags);
+                   irq_to_str[i], vfio_irq_info.count, vfio_irq_info.flags);
         }
     }
 
@@ -258,14 +301,16 @@ configure_irqs(int sock)
     printf("INTx triggered!\n");
 
     msg_id++;
-    size = sizeof(irq_info);
-    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &irq_info, &size);
+
+    size = sizeof(vfio_user_irq_info);
+    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &vfio_user_irq_info,
+                             &size);
     if (ret < 0) {
-        fprintf(stderr, "failed to recieve IRQ message: %s\n", strerror(-ret));
+        fprintf(stderr, "failed to receive IRQ message: %s\n", strerror(-ret));
         return ret;
     }
-    if (irq_info.subindex >= irq_set.count) {
-        fprintf(stderr, "bad IRQ %d, max=%d\n", irq_info.subindex,
+    if (vfio_user_irq_info.subindex >= irq_set.count) {
+        fprintf(stderr, "bad IRQ %d, max=%d\n", vfio_user_irq_info.subindex,
                 irq_set.count);
         return -ENOENT;
     }
@@ -305,7 +350,10 @@ access_bar0(int sock)
         fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
         return ret;
     }
-    assert(region_access.count == sizeof data.t);
+    if (region_access.count != sizeof data.t) {
+        fprintf(stderr, "bad written data length %d\n", region_access.count);
+        return -EINVAL;
+    }
 
     printf("wrote to BAR0: %ld\n", data.t);
 
@@ -334,7 +382,8 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
 {
     struct vfio_user_dma_region_access dma_access;
     struct vfio_user_header hdr;
-    int ret, size = sizeof(dma_access), i;
+    int ret, i;
+    size_t size = sizeof(dma_access);
     uint16_t msg_id;
     void *data;
 
@@ -371,9 +420,10 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
 
     dma_access.count = 0;
     ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_DMA_WRITE,
-                             &dma_access, sizeof(dma_access), NULL, 0);
+                             &dma_access, sizeof dma_access, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to send reply of DMA write: %m\n");
+        fprintf(stderr, "failed to send reply of DMA write: %s\n",
+                strerror(-ret));
     }
 
 out:
@@ -386,7 +436,8 @@ static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
 {
     struct vfio_user_dma_region_access dma_access, *response;
     struct vfio_user_header hdr;
-    int ret, size = sizeof(dma_access), i, response_sz;
+    int ret, i, response_sz;
+    size_t size = sizeof(dma_access);
     uint16_t msg_id;
     void *data;
 
@@ -449,6 +500,56 @@ static int handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
     return 0;
 }
 
+static int
+get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
+                  int nr_dma_regions)
+{
+    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
+    struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2];
+    int ret, i;
+    struct iovec iovecs[4] = {
+        [1] = {
+            .iov_base = &dirty_bitmap,
+            .iov_len = sizeof dirty_bitmap
+        }
+    };
+    struct vfio_user_header hdr = {0};
+    char data[ARRAY_SIZE(bitmaps)];
+
+    assert(dma_regions != NULL);
+    assert(nr_dma_regions >= ARRAY_SIZE(bitmaps));
+
+    for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
+        bitmaps[i].iova = dma_regions[i].addr;
+        bitmaps[i].size = dma_regions[i].size;
+        bitmaps[i].bitmap.size = 1; /* FIXME calculate based on page and IOVA size, don't hardcode */
+        bitmaps[i].bitmap.pgsize = sysconf(_SC_PAGESIZE);
+        iovecs[(i + 2)].iov_base = &bitmaps[i]; /* FIXME the +2 is because iovecs[0] is the vfio_user_header and iovecs[1] is vfio_iommu_type1_dirty_bitmap */
+        iovecs[(i + 2)].iov_len = sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    }
+
+    /*
+     * FIXME there should be at least two IOVAs. Send single message for two
+     * IOVAs and ensure only one bit is set in first IOVA.
+     */
+    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
+    ret = _send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
+                                  iovecs, ARRAY_SIZE(iovecs),
+                                  NULL, 0,
+                                  &hdr, data, ARRAY_SIZE(data));
+    if (ret != 0) {
+        fprintf(stderr, "failed to start dirty page logging: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
+        printf("%#x-%#x\t%hhu\n", bitmaps[i].iova,
+               bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret, sock;
@@ -461,7 +562,9 @@ int main(int argc, char *argv[])
     int fd;
     const int client_max_fds = 32;
     int server_max_fds;
+    size_t pgsize;
     int nr_dma_regions;
+    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
@@ -478,7 +581,7 @@ int main(int argc, char *argv[])
      * The server proposes version upon connection, we need to send back the
      * version the version we support.
      */
-    if ((ret = set_version(sock, client_max_fds, &server_max_fds)) < 0) {
+    if ((ret = set_version(sock, client_max_fds, &server_max_fds, &pgsize)) < 0) {
         return ret;
     }
 
@@ -503,7 +606,7 @@ int main(int argc, char *argv[])
     /*
      * XXX VFIO_USER_DMA_MAP
      *
-     * Tell the server we have some DMA regions it can access. Each DMA regions
+     * Tell the server we have some DMA regions it can access. Each DMA region
      * is accompanied by a file descriptor, so let's create more (2x) DMA
      * regions that can fit in a message that can be handled by the server.
      */
@@ -531,10 +634,10 @@ int main(int argc, char *argv[])
 
     for (i = 0; i < nr_dma_regions / server_max_fds; i++, msg_id++) {
         ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_MAP,
-                                 dma_regions + (i * server_max_fds),
-                                 sizeof *dma_regions * server_max_fds,
-                                 dma_region_fds + (i * server_max_fds),
-                                 server_max_fds, NULL, NULL, 0);
+                                      dma_regions + (i * server_max_fds),
+                                      sizeof(*dma_regions) * server_max_fds,
+                                      dma_region_fds + (i * server_max_fds),
+                                      server_max_fds, NULL, NULL, 0);
         if (ret < 0) {
             fprintf(stderr, "failed to map DMA regions: %s\n", strerror(-ret));
             return ret;
@@ -550,6 +653,17 @@ int main(int argc, char *argv[])
     ret = access_bar0(sock);
     if (ret < 0) {
         fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+
+    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
+    ret = send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
+                                  &dirty_bitmap, sizeof dirty_bitmap,
+                                  NULL, 0, NULL, NULL, 0);
+    if (ret != 0) {
+        fprintf(stderr, "failed to start dirty page logging: %s\n",
+                strerror(-ret));
         exit(EXIT_FAILURE);
     }
 
@@ -570,6 +684,23 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    ret = get_dirty_bitmaps(sock, dma_regions, nr_dma_regions);
+    if (ret < 0) {
+        fprintf(stderr, "failed to receive dirty bitmaps: %s\n",
+                strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
+    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
+    ret = send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
+                                  &dirty_bitmap, sizeof dirty_bitmap,
+                                  NULL, 0, NULL, NULL, 0);
+    if (ret != 0) {
+        fprintf(stderr, "failed to stop dirty page logging: %s\n",
+                strerror(-ret));
+        exit(EXIT_FAILURE);
+    }
+
     /*
      * FIXME now that region read/write works, change the server implementation
      * to trigger an interrupt after N seconds, where N is the value written to
@@ -577,7 +708,11 @@ int main(int argc, char *argv[])
      */
 
     /* BAR1 can be memory mapped and read directly */
-    /* TODO implement the following: write a value in BAR1, a server timer will increase it every second (SIGALARM) */
+
+    /*
+     * TODO implement the following: write a value in BAR1, a server timer will
+     * increase it every second (SIGALARM)
+     */
 
     /*
      * XXX VFIO_USER_DMA_UNMAP
@@ -585,8 +720,7 @@ int main(int argc, char *argv[])
      * unmap the first group of the DMA regions
      */
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_UNMAP,
-                                  dma_regions,
-                                  sizeof *dma_regions * server_max_fds,
+                                  dma_regions, sizeof *dma_regions * server_max_fds,
                                   NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
         fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));

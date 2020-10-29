@@ -32,6 +32,11 @@
 #define DMA_DMA_H
 
 /*
+ * FIXME check whether DMA regions must be page aligned. If so then the
+ * implementation can be greatly simpified.
+ */
+
+/*
  * This library emulates a DMA controller for a device emulation application to
  * perform DMA operations on a foreign memory space.
  *
@@ -82,12 +87,14 @@ typedef struct {
     off_t offset;               // File offset
     void *virt_addr;            // Virtual address of this region
     int refcnt;                 // Number of users of this region
+    char *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
 
 typedef struct {
     int max_regions;
     int nregions;
     struct lm_ctx *lm_ctx;
+    size_t dirty_pgsize;        // Dirty page granularity
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
@@ -118,7 +125,59 @@ dma_controller_remove_region(dma_controller_t *dma,
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
                    dma_addr_t dma_addr, uint32_t len,
-                   dma_sg_t *sg, int max_sg);
+                   dma_sg_t *sg, int max_sg, int prot);
+
+static bool
+_dma_should_mark_dirty(const dma_controller_t *dma, int prot)
+{
+    assert(dma != NULL);
+
+    return (prot & PROT_WRITE) == PROT_WRITE && dma->dirty_pgsize > 0;
+}
+
+static size_t
+_get_pgstart(size_t pgsize, uint64_t base_addr, uint64_t offset)
+{
+    return (offset - base_addr) / pgsize;
+}
+
+static size_t
+_get_pgend(size_t pgsize, uint64_t len, size_t start)
+{
+    return start + (len / pgsize) + (len % pgsize != 0) - 1;
+}
+
+static void
+_dma_bitmap_get_pgrange(const dma_controller_t *dma,
+                           const dma_memory_region_t *region,
+                           const dma_sg_t *sg, size_t *start, size_t *end)
+{
+    assert(dma != NULL);
+    assert(region != NULL);
+    assert(sg != NULL);
+    assert(start != NULL);
+    assert(end != NULL);
+
+    *start = _get_pgstart(dma->dirty_pgsize, region->dma_addr, sg->offset);
+    *end = _get_pgend(dma->dirty_pgsize, sg->length, *start);
+}
+
+static void
+_dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
+                dma_sg_t *sg)
+{
+    size_t i, start, end;
+
+    assert(dma != NULL);
+    assert(region != NULL);
+    assert(sg != NULL);
+    assert(region->dirty_bitmap != NULL);
+
+    _dma_bitmap_get_pgrange(dma, region, sg, &start, &end);
+    for (i = start; i <= end; i++) {
+        region->dirty_bitmap[i / CHAR_BIT] |= 1 << (i % CHAR_BIT);
+    }
+}
 
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
  * A single linear dma address span may need to be split into multiple
@@ -134,7 +193,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
 static inline int
 dma_addr_to_sg(const dma_controller_t *dma,
                dma_addr_t dma_addr, uint32_t len,
-               dma_sg_t *sg, int max_sg)
+               dma_sg_t *sg, int max_sg, int prot)
 {
     static __thread int region_hint;
     int cnt;
@@ -150,10 +209,13 @@ dma_addr_to_sg(const dma_controller_t *dma,
         sg->region = region_hint;
         sg->offset = dma_addr - region->dma_addr;
         sg->length = len;
+        if (_dma_should_mark_dirty(dma, prot)) {
+            _dma_mark_dirty(dma, region, sg);
+        }
         return 1;
     }
     // Slow path: search through regions.
-    cnt = _dma_addr_sg_split(dma, dma_addr, len, sg, max_sg);
+    cnt = _dma_addr_sg_split(dma, dma_addr, len, sg, max_sg, prot);
     if (likely(cnt > 0)) {
         region_hint = sg->region;
     }
@@ -186,6 +248,7 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
     return 0;
 }
 
+/* FIXME useless define */
 #define UNUSED __attribute__((unused))
 
 static inline void
@@ -215,12 +278,12 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
 }
 
 static inline void *
-dma_map_addr(dma_controller_t *dma, dma_addr_t dma_addr, uint32_t len)
+dma_map_addr(dma_controller_t *dma, dma_addr_t dma_addr, uint32_t len, int prot)
 {
     dma_sg_t sg;
     struct iovec iov;
 
-    if (dma_addr_to_sg(dma, dma_addr, len, &sg, 1) == 1 &&
+    if (dma_addr_to_sg(dma, dma_addr, len, &sg, 1, prot) == 1 &&
         dma_map_sg(dma, &sg, &iov, 1) == 0) {
         return iov.iov_base;
     }
@@ -239,11 +302,21 @@ dma_unmap_addr(dma_controller_t *dma,
     };
     int r;
 
-    r = dma_addr_to_sg(dma, dma_addr, len, &sg, 1);
+    r = dma_addr_to_sg(dma, dma_addr, len, &sg, 1, PROT_NONE);
     assert(r == 1);
 
     dma_unmap_sg(dma, &sg, &iov, 1);
 }
+
+int
+dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize);
+
+int
+dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
+
+int
+dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
+                              size_t pgsize, size_t size, char **data);
 
 bool
 dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,

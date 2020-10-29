@@ -39,6 +39,7 @@
 #include <time.h>
 #include <assert.h>
 #include <openssl/md5.h>
+#include <sys/mman.h>
 
 #include "../lib/muser.h"
 
@@ -146,17 +147,30 @@ void get_md5sum(char *buf, int len, char *md5sum)
     return;
 }
 
+/*
+ * FIXME this function does DMA write/read using messages. This should be done
+ * on a region that is not memory mappable or an area of a region that is not
+ * sparsely memory mappable. We should also have a test where the server does
+ * DMA directly on the client memory.
+ */
 static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
 {
     int count = 4096;
     char buf[count], md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
     int i, ret;
+    dma_sg_t sg;
+
+    assert(lm_ctx != NULL);
+
+    ret = lm_addr_to_sg(lm_ctx, server_data->regions[0].addr, count, &sg,
+                        1, PROT_WRITE);
+    assert(ret == 1); /* FIXME */
 
     memset(buf, 'A', count);
     get_md5sum(buf, count, md5sum1);
     printf("%s: WRITE addr %#lx count %llu\n", __func__,
            server_data->regions[0].addr, count);
-    ret = lm_dma_write(lm_ctx, server_data->regions[0].addr, count, buf);
+    ret = lm_dma_write(lm_ctx, &sg, buf);
     if (ret < 0) {
         fprintf(stderr, "lm_dma_write failed: %s\n", strerror(-ret));
         return ret;
@@ -165,7 +179,7 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
     memset(buf, 0, count);
     printf("%s: READ  addr %#lx count %llu\n", __func__,
 	   server_data->regions[0].addr, count);
-    ret = lm_dma_read(lm_ctx, server_data->regions[0].addr, count, buf);
+    ret = lm_dma_read(lm_ctx, &sg, buf);
     if (ret < 0) {
         fprintf(stderr, "lm_dma_read failed: %s\n", strerror(-ret));
         return ret;
@@ -252,6 +266,11 @@ int main(int argc, char *argv[])
                 .fn = &bar1_access,
                 .mmap_areas = sparse_areas,
 		        .map = map_area
+            },
+            .reg_info[LM_DEV_MIGRATION_REG_IDX] = { /* migration region */
+                .flags = LM_REG_FLAG_RW,
+                .size = sysconf(_SC_PAGESIZE),
+                .mmap_areas = sparse_areas,
             },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },

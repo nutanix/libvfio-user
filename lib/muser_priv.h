@@ -48,13 +48,21 @@ uint64_t
 region_to_offset(uint32_t region);
 
 int
+_send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+                   enum vfio_user_command cmd,
+                   struct iovec *iovecs, size_t nr_iovecs,
+                   int *fds, int count);
+
+int
 send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd, void *data, int len, int *fds,
-                   int count);
+                   enum vfio_user_command cmd,
+                   void *data, size_t data_len,
+                   int *fds, size_t count);
+
 
 int
 recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void *data, int *len);
+                   uint16_t *msg_id, void *data, size_t *len);
 
 int
 send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
@@ -62,14 +70,21 @@ send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
 
 int
 recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
-             int *max_fds);
+             int *max_fds, size_t *pgsize);
+
+int
+_send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                         struct iovec *iovecs, size_t nr_iovecs,
+                         int *send_fds, size_t fd_count,
+                         struct vfio_user_header *hdr,
+                         void *recv_data, size_t recv_len);
 
 int
 send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                        void *send_data, int send_len,
-                        int *send_fds, int fd_count,
+                        void *send_data, size_t send_len,
+                        int *send_fds, size_t fd_count,
                         struct vfio_user_header *hdr,
-                        void *recv_data, int recv_len);
+                        void *recv_data, size_t recv_len);
 
 #endif /* MUSER_PRIV_H */
 
