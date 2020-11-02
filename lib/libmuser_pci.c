@@ -314,6 +314,7 @@ muser_is_pci_hdr_access(loff_t pos)
     return pos - off >= 0 && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 
+/* FIXME this function is misleading, remove it */
 int
 muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
                      loff_t *pos, bool is_write,

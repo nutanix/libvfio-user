@@ -139,6 +139,8 @@ typedef struct  {
 
     /*
      * Callback function that is called when the region is read or written.
+     * Note that the memory of the region is owned by the user, except for the
+     * standard header (first 64 bytes) of the PCI configuration space.
      */
     lm_region_access_t  *fn;
 
@@ -260,6 +262,62 @@ typedef enum {
 
 #define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
+/*
+ * FIXME the names of migration callback functions are probably far too long,
+ * but for now it helps with the implementation.
+ */
+typedef int (lm_migration_callback_t)(void *pvt);
+
+typedef enum {
+    LM_MIGR_STATE_STOP,
+    LM_MIGR_STATE_START,
+    LM_MIGR_STATE_STOP_AND_COPY,
+    LM_MIGR_STATE_PRE_COPY,
+    LM_MIGR_STATE_RESUME
+} lm_migr_state_t;
+
+typedef struct {
+
+    /* migration state transition callback */
+    /* TODO rename to lm_migration_state_transition_callback */
+    /* FIXME maybe we should create a single callback and pass the state? */
+    int (*transition)(void *pvt, lm_migr_state_t state);
+
+    /* Callbacks for saving device state */
+
+    /*
+     * Function that is called to retrieve pending migration data. If migration
+     * data were previously made available (function prepare_data has been
+     * called) then calling this function signifies that they have been read
+     * (e.g. migration data can be discarded). If the function returns 0 then
+     * migration has finished and this function won't be called again.
+     */
+    __u64 (*get_pending_bytes)(void *pvt);
+
+    /*
+     * Function that is called to instruct the device to prepare migration data.
+     * The function must return only after migration data are available at the
+     * specified offset.
+     */
+    int (*prepare_data)(void *pvt, __u64 *offset, __u64 *size);
+
+    /*
+     * Function that is called to read migration data. offset and size can
+     * be any subrange on the offset and size previously returned by
+     * prepare_data. The function must return the amount of data read. This
+     * function can be called even if the migration data can be memory mapped.
+     *
+     * Does this mean that reading data_offset/data_size updates the values?
+     */
+    size_t (*read_data)(void *pvt, void *buf, __u64 count, __u64 offset);
+
+    /* Callback for restoring device state */
+
+    /* Fuction that is called for writing previously stored device state. */
+    size_t (*write_data)(void *pvt, void *data, __u64 size);
+
+} lm_migration_callbacks_t;
+
 /**
  * Device information structure, used to create the lm_ctx.
  * To be filled and passed to lm_ctx_create()
@@ -326,6 +384,7 @@ typedef struct {
     int             nr_caps;
     lm_cap_t        **caps;
 
+    lm_migration_callbacks_t migration_callbacks;
 
 } lm_dev_info_t;
 

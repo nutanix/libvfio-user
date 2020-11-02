@@ -328,51 +328,93 @@ configure_irqs(int sock)
 }
 
 static int
-access_bar0(int sock)
+access_region(int sock, int region, bool is_write, uint64_t offset,
+            void *data, size_t data_len)
 {
+    struct vfio_user_region_access send_region_access = {
+        .offset = offset,
+        .region = region,
+        .count = data_len
+    };
+    struct iovec send_iovecs[3] = {
+        [1] = {
+            .iov_base = &send_region_access,
+            .iov_len = sizeof send_region_access
+        },
+        [2] = {
+            .iov_base = data,
+            .iov_len = data_len
+        }
+    };
     struct {
         struct vfio_user_region_access region_access;
-        time_t t;
-    } __attribute__((packed)) data = {
-        .region_access = {
-            .region = LM_DEV_BAR0_REG_IDX,
-            .count = sizeof(data.t)
-        },
-        .t = time(NULL)
-    };
-    uint16_t msg_id = 1;
+        char data[data_len];
+    } __attribute__((packed)) recv_data;
+    int op, ret;
+    size_t nr_send_iovecs, recv_data_len;
+
+    if (is_write) {
+        op = VFIO_USER_REGION_WRITE;
+        nr_send_iovecs = 3;
+        recv_data_len = sizeof(recv_data.region_access);
+    } else {
+        op = VFIO_USER_REGION_READ;
+        nr_send_iovecs = 2;
+        recv_data_len = sizeof(recv_data);
+    }
+
+    ret = _send_recv_vfio_user_msg(sock, 0, op,
+                                   send_iovecs, nr_send_iovecs,
+                                   NULL, 0, NULL,
+                                   &recv_data, recv_data_len);
+    if (ret != 0) {
+        fprintf(stderr, "failed to %s region %d %#lx-%#lx: %s\n",
+                is_write ? "write to" : "read from", region, offset,
+                offset + data_len - 1, strerror(-ret));
+        return ret;
+    }
+    if (recv_data.region_access.count != data_len) {
+        fprintf(stderr, "bad %s data count, expected=%d, actual=%d\n",
+                is_write ? "write" : "read", data_len,
+                recv_data.region_access.count);
+        return -EINVAL;
+    }
+
+    /*
+     * TODO we could avoid the memcpy if _sed_recv_vfio_user_msg received the
+     * response into an iovec, but it's some work to implement it.
+     */
+    if (!is_write) {
+        memcpy(data, recv_data.data, data_len);
+    }
+    return 0;
+}
+
+static int
+access_bar0(int sock)
+{
+    time_t t = time(NULL);
     const int sleep_time = 1;
-    struct vfio_user_region_access region_access = {};
-    int ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_WRITE,
-                                      &data, sizeof data, NULL, 0, NULL,
-                                      &region_access, sizeof region_access);
+    int ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
+
     if (ret < 0) {
         fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
         return ret;
     }
-    if (region_access.count != sizeof data.t) {
-        fprintf(stderr, "bad written data length %d\n", region_access.count);
-        return -EINVAL;
-    }
 
-    printf("wrote to BAR0: %ld\n", data.t);
-
-    msg_id++;
+    printf("wrote to BAR0: %ld\n", t);
 
     sleep(sleep_time);
 
-    ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_REGION_READ,
-                                  &data.region_access, sizeof data.region_access,
-                                  NULL, 0, NULL, &data, sizeof data);
+    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, &t, sizeof t);
     if (ret < 0) {
         fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
         return ret;
     }
-    assert(data.region_access.count == sizeof data.t);
 
-    printf("read from BAR0: %ld\n", data.t);
+    printf("read from BAR0: %ld\n", t);
 
-    assert(data.t >= sleep_time);
+    assert(t >= sleep_time);
 
     return 0;
 }
@@ -550,6 +592,105 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     return 0;
 }
 
+enum migration {
+    NO_MIGRATION,
+    MIGRATION_SOURCE,
+    MIGRATION_DESTINATION,
+};
+
+static void
+usage(char *path) {
+    fprintf(stderr, "Usage: %s [-h] [-m src|dst] /path/to/socket\n",
+            basename(path));
+}
+
+static int
+migrate_from(int sock)
+{
+    __u32 device_state = VFIO_DEVICE_STATE_SAVING;
+    __u64 pending_bytes, data_offset, data_size;
+    void *data;
+
+    /* XXX set device state to stop-and-copy */
+    int ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                            offsetof(struct vfio_device_migration_info, device_state),
+                            &device_state, sizeof(device_state));
+    if (ret < 0) {
+        fprintf(stderr, "failed to write to device state: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+
+    /* XXX read pending_bytes */
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
+                        offsetof(struct vfio_device_migration_info, pending_bytes),
+                        &pending_bytes, sizeof pending_bytes);
+    if (ret < 0) {
+        fprintf(stderr, "failed to read pending_bytes: %s\n", strerror(-ret));
+        return ret;
+    }
+
+    while (pending_bytes > 0) {
+
+        /* XXX read data_offset and data_size */
+        ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
+                            offsetof(struct vfio_device_migration_info, data_offset),
+                            &data_offset, sizeof data_offset);
+        if (ret < 0) {
+            fprintf(stderr, "failed to read data_offset: %s\n", strerror(-ret));
+            return ret;
+        }
+
+        ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
+                            offsetof(struct vfio_device_migration_info, data_size),
+                            &data_size, sizeof data_size);
+        if (ret < 0) {
+            fprintf(stderr, "failed to read data_size: %s\n", strerror(-ret));
+            return ret;
+        }
+
+        /* XXX read migration data */
+        data = malloc(data_size);
+        if (data == NULL) {
+            return -errno;
+        }
+        ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false, data_offset,
+                            data, data_size);
+        if (ret < 0) {
+            fprintf(stderr, "failed to read migration data: %s\n",
+                    strerror(-ret));
+        }
+
+        /* FIXME send migration data to the destination client process */
+        printf("XXX migration: %#x bytes worth of data\n", data_size);
+
+        /*
+         * XXX read pending_bytes again to indicate to the sever that the
+         * migration data have been consumed.
+         */
+        ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
+                            offsetof(struct vfio_device_migration_info, pending_bytes),
+                            &pending_bytes, sizeof pending_bytes);
+        if (ret < 0) {
+            fprintf(stderr, "failed to read pending_bytes: %s\n", strerror(-ret));
+            return ret;
+        }
+    }
+
+    /* XXX read device state, migration must have finished now */
+    device_state = VFIO_DEVICE_STATE_STOP;
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                        offsetof(struct vfio_device_migration_info, device_state),
+                        &device_state, sizeof(device_state));
+    if (ret < 0) {
+        fprintf(stderr, "failed to write to device state: %s\n",
+                strerror(-ret));
+        return ret;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret, sock;
@@ -565,13 +706,36 @@ int main(int argc, char *argv[])
     size_t pgsize;
     int nr_dma_regions;
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
+    int opt;
+    enum migration migration = NO_MIGRATION;
 
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s /path/to/socket\n", argv[0]);
+    while ((opt = getopt(argc, argv, "hm:")) != -1) {
+        switch (opt) {
+            case 'h':
+                usage(argv[0]);
+                exit(EXIT_SUCCESS);
+            case 'm':
+                if (strcmp(optarg, "src") == 0) {
+                    migration = MIGRATION_SOURCE;
+                } else if (strcmp(optarg, "dst") == 0) {
+                    migration = MIGRATION_DESTINATION;
+                } else {
+                    fprintf(stderr, "invalid migration argument %s\n", optarg);
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            default:
+                usage(argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (argc != optind + 1) {
+        usage(argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    if ((sock = init_sock(argv[1])) < 0) {
+    if ((sock = init_sock(argv[optind])) < 0) {
         return sock;
     }
 
@@ -725,6 +889,10 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
         return ret;
+    }
+
+    if (migration == MIGRATION_SOURCE) {
+       ret = migrate_from(sock);
     }
 
     return 0;

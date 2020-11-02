@@ -40,6 +40,7 @@
 #include <assert.h>
 #include <openssl/md5.h>
 #include <sys/mman.h>
+#include <sys/param.h>
 
 #include "../lib/muser.h"
 
@@ -54,6 +55,11 @@ struct server_data {
     time_t bar0;
     uint8_t *bar1;
     struct dma_regions regions[NR_DMA_REGIONS];
+    struct {
+        int fake_internal_state;
+        __u64 pending_bytes;
+        __u64 data_size;
+    } migration;
 };
 
 static void
@@ -205,8 +211,65 @@ static int device_reset(void *pvt)
     printf("device reset callback\n");
 }
 
-int main(int argc, char *argv[])
+static int
+migration_device_state_transition(void *pvt, lm_migr_state_t state)
 {
+    struct server_data *server_data = pvt;
+
+    printf("migration: transition to device state %d\n", state);
+
+    switch (state) {
+        case LM_MIGR_STATE_STOP_AND_COPY:
+            /* TODO must be less than size of data region in migration region */
+            server_data->migration.pending_bytes = sysconf(_SC_PAGESIZE);
+            break;
+        case LM_MIGR_STATE_STOP:
+            assert(server_data->migration.pending_bytes == 0);
+            break;
+        default:
+            assert(false); /* FIXME */
+    }
+    return 0;
+}
+
+static __u64
+migration_get_pending_bytes(void *pvt)
+{
+    struct server_data *server_data = pvt;
+    if (server_data->migration.data_size > 0) {
+        assert(server_data->migration.data_size <= server_data->migration.pending_bytes);
+        server_data->migration.pending_bytes -= server_data->migration.data_size;
+    }
+    return server_data->migration.pending_bytes;
+}
+
+static int
+migration_prepare_data(void *pvt, __u64 *offset, __u64 *size)
+{
+    struct server_data *server_data = pvt;
+
+    *offset = 0;
+    *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, sysconf(_SC_PAGESIZE) / 4);
+    return 0;
+}
+
+static size_t
+migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
+{
+    struct server_data *server_data = pvt;
+
+    assert(server_data->migration.data_size >= size);
+
+    return 0;
+}
+
+static size_t
+migration_write_data(void *pvt, void *data, __u64 size)
+{
+    assert(false);
+}
+
+int main(int argc, char *argv[]){
     int ret;
     bool trans_sock = false, verbose = false;
     char opt;
@@ -269,7 +332,7 @@ int main(int argc, char *argv[])
             },
             .reg_info[LM_DEV_MIGRATION_REG_IDX] = { /* migration region */
                 .flags = LM_REG_FLAG_RW,
-                .size = sysconf(_SC_PAGESIZE),
+                .size = sizeof(struct vfio_device_migration_info) + sysconf(_SC_PAGESIZE),
                 .mmap_areas = sparse_areas,
             },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
@@ -278,7 +341,14 @@ int main(int argc, char *argv[])
         .reset = device_reset,
         .map_dma = map_dma,
         .unmap_dma = unmap_dma,
-        .pvt = &server_data
+        .pvt = &server_data,
+        .migration_callbacks = {
+            .transition = &migration_device_state_transition,
+            .get_pending_bytes = &migration_get_pending_bytes,
+            .prepare_data = &migration_prepare_data,
+            .read_data = &migration_read_data,
+            .write_data = &migration_write_data
+        }
     };
 
     sigemptyset(&act.sa_mask);
