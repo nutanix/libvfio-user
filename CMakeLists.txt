@@ -34,8 +34,6 @@ include(GNUInstallDirs)
 
 # shared libraries
 add_subdirectory(lib)
-add_subdirectory(libpathtrap)
-add_subdirectory(libvfio)
 
 # kernel module
 #add_subdirectory(kmod)
