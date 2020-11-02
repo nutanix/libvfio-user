@@ -2004,7 +2004,7 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
                      void **data, size_t *len)
 {
     struct vfio_user_region_access region_access;
-    struct muser_cmd muser_cmd = {};
+    struct muser_cmd muser_cmd = { 0, };
     int ret;
 
     assert(lm_ctx != NULL);
@@ -2162,14 +2162,15 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
 static int
 process_request(lm_ctx_t *lm_ctx)
 {
-    struct vfio_user_header hdr = {};
+    struct vfio_user_header hdr = { 0, };
     int ret;
     int *fds = NULL;
     int nr_fds;
     struct vfio_irq_info irq_info;
     struct vfio_device_info dev_info;
     struct vfio_region_info *dev_reg_info = NULL;
-    struct iovec _iovecs[2] = {0}, *iovecs = NULL;
+    struct iovec _iovecs[2] = { { 0, } };
+    struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     bool free_iovec_data = true;
 
