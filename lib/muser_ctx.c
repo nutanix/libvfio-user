@@ -1370,32 +1370,33 @@ handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
     assert(offset != NULL);
 
     if (is_write) {
+        /* FIXME RO register means that we simply ignore the write, right? */
         return -EINVAL;
     }
 
     switch (lm_ctx->migration.iter.state) {
-        case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
-            break;
-        default:
-            /*
-             * FIXME it's not clear whether these registers can be accessed in
-             * other parts of the iteration, need clarification on the
-             * following:
-             *
-             *  Read on data_offset and data_size should return the offset and
-             *  size of the current buffer if the user application reads
-             *  data_offset and data_size more than once here.
-             */
-            return -EINVAL;
+    case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
+        ret = lm_ctx->migration.callbacks.prepare_data(lm_ctx->pvt,
+                                                       &lm_ctx->migration.iter.offset,
+                                                       &lm_ctx->migration.iter.size);
+        if (ret < 0) {
+            return ret;
+        }
+        break;
+    case VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED:
+        /*
+         * data_offset is invariant during an iteration.
+         */
+        break;        
+    default:
+        /*
+         * reading data_offset is undefined out of sequence
+         */
+        *offset = ULLONG_MAX;
+        return -EINVAL;
     }
 
-    ret = lm_ctx->migration.callbacks.prepare_data(lm_ctx->pvt,
-                                                   &lm_ctx->migration.iter.offset,
-                                                   &lm_ctx->migration.iter.size);
-    if (ret < 0) {
-        return ret;
-    }
-
+    
     *offset = lm_ctx->migration.iter.offset + sizeof(struct vfio_device_migration_info);
 
     return ret;
@@ -1408,15 +1409,20 @@ handle_migration_data_size(lm_ctx_t *lm_ctx, __u64 *size, bool is_write)
     assert(size != NULL);
 
     if (is_write) {
+        /* FIXME RO register means that we simply ignore the write, right? */
         return -EINVAL;
     }
 
     switch (lm_ctx->migration.iter.state) {
-        case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
-            break;
-        default:
-            /* FIXME see comment in handle_migration_data_offset */
-            return -EINVAL;
+    case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
+    case VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED:
+        break;
+    default:
+        /*
+         * reading data_size is undefined out of sequence
+         */
+        *size = ULLONG_MAX;
+        return -EINVAL;
     }
 
     *size = lm_ctx->migration.iter.size;
@@ -2091,6 +2097,15 @@ process_request(lm_ctx_t *lm_ctx)
         lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_STOP) {
         return -ESHUTDOWN;
     }
+
+    /*
+     * FIXME if migration device state is VFIO_DEVICE_STATE_STOP then only
+     * migration-related operations should execute. However, some operations
+     * are harmless (e.g. get region info). At the minimum we should fail
+     * accesses to device regions other than the migration region. I'd expect
+     * DMA unmap and get dirty pages to be required even in the stop-and-copy
+     * state.
+     */
 
     nr_fds = lm_ctx->client_max_fds;
     fds = alloca(nr_fds * sizeof(int));
