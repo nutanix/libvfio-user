@@ -711,12 +711,12 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
     case VFIO_PCI_INTX_IRQ_INDEX:
     case VFIO_PCI_MSI_IRQ_INDEX:
     case VFIO_PCI_MSIX_IRQ_INDEX:
-        lm_log(lm_ctx, LM_DBG, "disabling IRQ %s\n", vfio_irq_idx_to_str(index));
+        lm_log(lm_ctx, LM_DBG, "disabling IRQ %s", vfio_irq_idx_to_str(index));
         lm_ctx->irqs.type = IRQ_NONE;
         for (i = 0; i < lm_ctx->irqs.max_ivs; i++) {
             if (lm_ctx->irqs.efds[i] >= 0) {
                 if (close(lm_ctx->irqs.efds[i]) == -1) {
-                    lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n",
+                    lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m",
                            lm_ctx->irqs.efds[i]);
                 }
                 lm_ctx->irqs.efds[i] = -1;
@@ -734,7 +734,7 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
     if (irq_efd != NULL) {
         if (*irq_efd != -1) {
             if (close(*irq_efd) == -1) {
-                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n",
+                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m",
                        *irq_efd);
             }
             *irq_efd = -1;
@@ -742,7 +742,7 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
         return 0;
     }
 
-    lm_log(lm_ctx, LM_DBG, "failed to disable IRQs\n");
+    lm_log(lm_ctx, LM_DBG, "failed to disable IRQs");
     return -EINVAL;
 }
 
@@ -760,7 +760,7 @@ irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to none: %m\n");
+                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to none: %m");
                 return -errno;
             }
         }
@@ -787,7 +787,7 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to bool: %m\n");
+                lm_log(lm_ctx, LM_DBG, "IRQ: failed to set data to bool: %m");
                 return -errno;
             }
         }
@@ -809,7 +809,7 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
         efd = lm_ctx->irqs.efds[i];
         if (efd >= 0) {
             if (close(efd) == -1) {
-                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m\n", efd);
+                lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m", efd);
             }
 
             lm_ctx->irqs.efds[i] = -1;
@@ -817,7 +817,7 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
         if (*d32 >= 0) {
             lm_ctx->irqs.efds[i] = *d32;
         }
-        lm_log(lm_ctx, LM_DBG, "event fd[%d]=%d\n", i, lm_ctx->irqs.efds[i]);
+        lm_log(lm_ctx, LM_DBG, "event fd[%d]=%d", i, lm_ctx->irqs.efds[i]);
     }
 
     return 0;
@@ -835,7 +835,7 @@ irqs_trigger(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
         return irqs_disable(lm_ctx, irq_set->index);
     }
 
-    lm_log(lm_ctx, LM_DBG, "setting IRQ %s flags=0x%x\n",
+    lm_log(lm_ctx, LM_DBG, "setting IRQ %s flags=%#lx",
            vfio_irq_idx_to_str(irq_set->index), irq_set->flags);
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
@@ -1618,15 +1618,16 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, size_t count, loff_t *ppos,
         }
         ret = do_access(lm_ctx, buf, size, *ppos, is_write);
         if (ret <= 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to %s %llx@%lx: %s\n",
-                   is_write ? "write" : "read", size, *ppos, strerror(-ret));
+            lm_log(lm_ctx, LM_ERR, "failed to %s %#lx-%#lx: %s",
+                   is_write ? "write to" : "read from", *ppos, *ppos + size - 1,
+                   strerror(-ret));
             /*
              * TODO if ret < 0 then it might contain a legitimate error code, why replace it with EFAULT?
              */
             return -EFAULT;
         }
         if (ret != (int)size) {
-            lm_log(lm_ctx, LM_DBG, "bad read %d != %d\n", ret, size);
+            lm_log(lm_ctx, LM_DBG, "bad read %d != %d", ret, size);
         }
         count -= size;
         done += size;
@@ -1654,7 +1655,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
     }
     rwbuf = (char*)(region_access + 1);
 
-    lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx\n", is_write ? "W" : "R", cmd->rw.pos,
+    lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx", is_write ? "W" : "R", cmd->rw.pos,
            cmd->rw.pos + cmd->rw.count - 1);
 
     /* copy data to be written from kernel to user space */
@@ -1665,7 +1666,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
          * err != cmd->rw.count
          */
         if (err < 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to read from kernel: %s\n",
+            lm_log(lm_ctx, LM_ERR, "failed to read from kernel: %s",
                    strerror(errno));
             goto out;
         }
@@ -1679,7 +1680,7 @@ muser_access(lm_ctx_t *lm_ctx, struct muser_cmd *cmd, bool is_write,
     cmd->err = muser_pci_hdr_access(lm_ctx, &_count, &cmd->rw.pos,
                                     is_write, rwbuf);
     if (cmd->err) {
-        lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %s\n",
+        lm_log(lm_ctx, LM_ERR, "failed to access PCI header: %s",
                strerror(-cmd->err));
 #ifdef LM_VERBOSE_LOGGING
         dump_buffer("buffer write", rwbuf, _count);
@@ -2024,17 +2025,22 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
 
     hdr->msg_size -= sizeof *hdr;
     if (hdr->msg_size < sizeof region_access) {
+        lm_log(lm_ctx, LM_ERR, "message size too small (%d)", hdr->msg_size);
         return -EINVAL;
     }
 
     ret = recv(lm_ctx->conn_fd, &region_access, sizeof region_access, 0);
     if (ret == -1) {
+        lm_log(lm_ctx, LM_ERR, "failed to recv: %m");
         return -errno;
     }
     if (ret != sizeof region_access) {
+        lm_log(lm_ctx, LM_ERR, "bad region_access size %d", ret);
         return -EINVAL;
     }
     if (region_access.region >= LM_DEV_NUM_REGS || region_access.count <= 0 ) {
+        lm_log(lm_ctx, LM_ERR, "bad region %d and/or count %d",
+               region_access.region, region_access.count);
         return -EINVAL;
     }
     muser_cmd.rw.count = region_access.count;
@@ -2285,12 +2291,14 @@ process_request(lm_ctx_t *lm_ctx)
      * in the reply message.
      */
     if (ret < 0) {
+        lm_log(lm_ctx, LM_ERR, "failed to handle command %d: %s", hdr.cmd,
+               strerror(-ret));
         assert(false); /* FIXME */
     }
     ret = _send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
                              0, iovecs, nr_iovecs, NULL, 0);
     if (unlikely(ret < 0)) {
-        lm_log(lm_ctx, LM_ERR, "failed to complete command: %s\n",
+        lm_log(lm_ctx, LM_ERR, "failed to complete command: %s",
                 strerror(-ret));
     }
     if (iovecs != NULL && iovecs != _iovecs) {
