@@ -2049,7 +2049,13 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     ret = muser_access(lm_ctx, &muser_cmd, hdr->cmd == VFIO_USER_REGION_WRITE,
                        data);
     if (ret != (int)region_access.count) {
-        assert(false); /* FIXME */
+        lm_log(lm_ctx, LM_ERR, "bad region access acount, expected=%d, actual=%d",
+               region_access.count, ret);
+        /* FIXME we should return whatever has been accessed, not an error */
+        if (ret >= 0) {
+            ret = -EINVAL;
+        }
+        return ret;
     }
     assert(muser_cmd.err == 0);
 
