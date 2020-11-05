@@ -2670,6 +2670,15 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     // Bounce the provided pci_info into the context.
     memcpy(&lm_ctx->pci_info, &dev_info->pci_info, sizeof(lm_pci_info_t));
 
+    /*
+     * FIXME above memcpy also copies reg_info->mmap_areas. If pci_config_setup
+     * fails then we try to free reg_info->mmap_areas, which is wrong because
+     * this is a user pointer.
+     */
+    for (i = 0; i < ARRAY_SIZE(lm_ctx->pci_info.reg_info); i++) {
+        lm_ctx->pci_info.reg_info[i].mmap_areas = NULL;
+    }
+
     // Setup the PCI config space for this context.
     err = pci_config_setup(lm_ctx, dev_info);
     if (err != 0) {
