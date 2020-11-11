@@ -2462,7 +2462,7 @@ process_request(lm_ctx_t *lm_ctx)
 
     assert(lm_ctx != NULL);
 
-    if (lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX].size > 0 &&
+    if (lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size > 0 &&
         lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_STOP) {
         return -ESHUTDOWN;
     }
