@@ -33,11 +33,7 @@
 #ifndef LM_PCI_CAP_MSI_H
 #define LM_PCI_CAP_MSI_H
 
-struct mid {
-    unsigned int cid:8;
-    unsigned int next:8;
-} __attribute__ ((packed));
-_Static_assert(sizeof(struct mid) == 0x2, "bad MID size");
+#include "common.h"
 
 struct mc {
     unsigned int msie:1;
@@ -56,7 +52,7 @@ struct ma {
 _Static_assert(sizeof(struct ma) == 0x4, "bad MA size");
 
 struct msicap {
-    struct mid mid;
+    struct cap_hdr hdr;
     struct mc mc;
     struct ma ma;
     uint32_t mua;
@@ -66,6 +62,7 @@ struct msicap {
     uint32_t mpend;
 }  __attribute__ ((packed));
 _Static_assert(sizeof(struct msicap) == 0x18, "bad MSICAP size");
+_Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
 
 #endif /* LM_CAP_MSI_H */
 

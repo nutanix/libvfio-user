@@ -46,6 +46,7 @@ BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
 KDIR ?= "/lib/modules/$(shell uname -r)/build"
+INSTALL_PREFIX ?= /usr/local
 
 PHONY_TARGETS := all realclean buildclean force_cmake export install-export tags
 
@@ -68,6 +69,7 @@ $(BUILD_DIR)/Makefile:
 		-D "CMAKE_C_FLAGS:STRING=$(CFLAGS)" \
 		-D "CMAKE_BUILD_TYPE:STRING=$(CMAKE_BUILD_TYPE)" \
 		-D "KDIR=$(KDIR)" \
+		-D "CMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)" \
 		$(CURDIR)
 
 tags:

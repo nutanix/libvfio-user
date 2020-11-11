@@ -32,11 +32,9 @@ cmake_minimum_required (VERSION 2.6)
 project(muser)
 include(GNUInstallDirs)
 
-# shared library
+# shared libraries
 add_subdirectory(lib)
-
-# kernel module
-add_subdirectory(kmod)
 
 # samples
 add_subdirectory(samples)
+

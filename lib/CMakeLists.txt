@@ -32,14 +32,14 @@ set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -fPIC")
 set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 
 add_library(muser SHARED
-    ../kmod/muser.h
+    vfio_user.h
     muser.h
     muser_priv.h
     common.h)
 
 target_link_libraries(muser muser_ctx muser_pci dma cap)
 set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
-set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h")
+set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
 
 set(UT_CFLAGS "-O0 -ggdb --coverage")
 set(UT_LFLAGS "--coverage")

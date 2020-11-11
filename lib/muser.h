@@ -37,22 +37,27 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
+#include "vfio_user.h"
 #include "pci.h"
+#include "caps/pm.h"
+#include "caps/px.h"
+#include "caps/msi.h"
+#include "caps/msix.h"
 
-/*
- * Influential enviroment variables:
- *
- * LM_TERSE_LOGGING: define to make libmuser log only erroneous PCI accesses.
- *                   (this should really be done with a more fine grained debug
- *                    level)
- */
-#ifndef LM_TERSE_LOGGING
-#define LM_TERSE_LOGGING 0
-#endif
+#define LIB_MUSER_VFIO_USER_VERS_MJ 0
+#define LIB_MUSER_VFIO_USER_VERS_MN 1
+
+#define VFIO_NAME       "vfio"
+#define VFIO_DIR        "/dev/" VFIO_NAME "/"
+#define VFIO_CONTAINER  VFIO_DIR "/" VFIO_NAME
+
+#define MUSER_DIR "/var/run/muser/"
+#define MUSER_SOCK "cntrl"
 
 typedef uint64_t dma_addr_t;
 
 typedef struct {
+    dma_addr_t dma_addr;
     int region;
     int length;
     uint64_t offset;
@@ -134,6 +139,8 @@ typedef struct  {
 
     /*
      * Callback function that is called when the region is read or written.
+     * Note that the memory of the region is owned by the user, except for the
+     * standard header (first 64 bytes) of the PCI configuration space.
      */
     lm_region_access_t  *fn;
 
@@ -149,9 +156,12 @@ enum {
     LM_DEV_INTX_IRQ_IDX,
     LM_DEV_MSI_IRQ_IDX,
     LM_DEV_MSIX_IRQ_IDX,
-    LM_DEV_NUM_IRQS = 3
+    LM_DEV_ERR_IRQ_INDEX,
+    LM_DEV_REQ_IRQ_INDEX,
+    LM_DEV_NUM_IRQS
 };
 
+/* FIXME these are PCI regions */
 enum {
     LM_DEV_BAR0_REG_IDX,
     LM_DEV_BAR1_REG_IDX,
@@ -162,7 +172,15 @@ enum {
     LM_DEV_ROM_REG_IDX,
     LM_DEV_CFG_REG_IDX,
     LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS = 9
+    /*
+     * FIXME this really belong here, but simplifies implementation for now. A
+     * migration region can exist for non-PCI devices (can its index be
+     * anything?). In any case, we should allow the user to define custom regions
+     * at will, by fixing the migration region in that position we don't allow
+     * this.
+     */
+    LM_DEV_MIGRATION_REG_IDX,
+    LM_DEV_NUM_REGS = 10, /* TODO rename to LM_DEV_NUM_PCI_REGS */
 };
 
 typedef struct {
@@ -191,7 +209,7 @@ typedef struct {
 } lm_pci_info_t;
 
 /*
- * Returns a pointer to the non-standard part of the PCI configuration space.
+ * Returns a pointer to the standard part of the PCI configuration space.
  */
 lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
 
@@ -208,7 +226,7 @@ typedef enum {
  *
  * @lm_log_fn_t: typedef for log function.
  */
-typedef void (lm_log_fn_t) (void *pvt, const char *msg);
+typedef void (lm_log_fn_t) (void *pvt, lm_log_lvl_t lvl, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
@@ -228,26 +246,77 @@ typedef ssize_t (lm_cap_access_t) (void *pvt, uint8_t id,
                                    char *buf, size_t count,
                                    loff_t offset, bool is_write);
 
-typedef struct {
-
-    /*
-     * Capability ID, as defined by the PCI specification. Also defined as
-     * PCI_CAP_ID_XXX in <linux/pci_regs.h>.
-     */
-    uint8_t id;
-
-    /*
-     * Size of the capability.
-     */
-    size_t size;
-
-    /*
-     * Function to call back when the capability gets read or written.
-     */
-    lm_cap_access_t *fn;
+/* FIXME does it have to be packed as well? */
+typedef union {
+    struct msicap msi;
+    struct msixcap msix;
+    struct pmcap pm;
+    struct pxcap px;
 } lm_cap_t;
 
+typedef enum {
+    LM_TRANS_KERNEL,
+    LM_TRANS_SOCK,
+    LM_TRANS_MAX
+} lm_trans_t;
+
 #define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
+
+/*
+ * FIXME the names of migration callback functions are probably far too long,
+ * but for now it helps with the implementation.
+ */
+typedef int (lm_migration_callback_t)(void *pvt);
+
+typedef enum {
+    LM_MIGR_STATE_STOP,
+    LM_MIGR_STATE_START,
+    LM_MIGR_STATE_STOP_AND_COPY,
+    LM_MIGR_STATE_PRE_COPY,
+    LM_MIGR_STATE_RESUME
+} lm_migr_state_t;
+
+typedef struct {
+
+    /* migration state transition callback */
+    /* TODO rename to lm_migration_state_transition_callback */
+    /* FIXME maybe we should create a single callback and pass the state? */
+    int (*transition)(void *pvt, lm_migr_state_t state);
+
+    /* Callbacks for saving device state */
+
+    /*
+     * Function that is called to retrieve pending migration data. If migration
+     * data were previously made available (function prepare_data has been
+     * called) then calling this function signifies that they have been read
+     * (e.g. migration data can be discarded). If the function returns 0 then
+     * migration has finished and this function won't be called again.
+     */
+    __u64 (*get_pending_bytes)(void *pvt);
+
+    /*
+     * Function that is called to instruct the device to prepare migration data.
+     * The function must return only after migration data are available at the
+     * specified offset.
+     */
+    int (*prepare_data)(void *pvt, __u64 *offset, __u64 *size);
+
+    /*
+     * Function that is called to read migration data. offset and size can
+     * be any subrange on the offset and size previously returned by
+     * prepare_data. The function must return the amount of data read. This
+     * function can be called even if the migration data can be memory mapped.
+     *
+     * Does this mean that reading data_offset/data_size updates the values?
+     */
+    size_t (*read_data)(void *pvt, void *buf, __u64 count, __u64 offset);
+
+    /* Callback for restoring device state */
+
+    /* Fuction that is called for writing previously stored device state. */
+    size_t (*write_data)(void *pvt, void *data, __u64 size);
+
+} lm_migration_callbacks_t;
 
 /**
  * Device information structure, used to create the lm_ctx.
@@ -287,16 +356,36 @@ typedef struct {
     int (*reset)    (void *pvt);
 
     /*
-     * PCI capabilities. The user needs to only define the ID and size of each
-     * capability. The actual capability is not maintained by libmuser. When a
-     * capability is accessed the appropriate callback function is called.
+     * Function that is called when the guest maps a DMA region. Optional.
      */
-    lm_cap_t        caps[LM_MAX_CAPS];
+    void (*map_dma) (void *pvt, uint64_t iova, uint64_t len);
 
     /*
-     * Number of capabilities in above array.
+     * Function that is called when the guest unmaps a DMA region. The device
+     * must release all references to that region before the callback returns.
+     * This is required if you want to be able to access guest memory.
+     */
+    int (*unmap_dma) (void *pvt, uint64_t iova);
+
+    lm_trans_t      trans;
+
+    /*
+     * Attaching to the transport is non-blocking. The library will not attempt
+     * to attach during context creation time. The caller must then manually
+     * call lm_ctx_try_attach(), which is non-blocking, as many times as
+     * necessary.
+     */
+#define LM_FLAG_ATTACH_NB  (1 << 0)
+    uint64_t         flags;
+
+    /*
+     * PCI capabilities.
      */
     int             nr_caps;
+    lm_cap_t        **caps;
+
+    lm_migration_callbacks_t migration_callbacks;
+
 } lm_dev_info_t;
 
 /**
@@ -339,10 +428,25 @@ int
 lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
+ * Polls, without blocking, an lm_ctx. This is an alternative to using
+ * a thread and making a blocking call to lm_ctx_drive(). Instead, the
+ * application can periodically poll the context directly from one of
+ * its own threads.
+ *
+ * This is only allowed when LM_FLAG_ATTACH_NB is specified during creation.
+ *
+ * @lm_ctx: The libmuser context to poll
+ *
+ * @returns 0 on success, -errno on failure.
+ */
+int
+lm_ctx_poll(lm_ctx_t *lm_ctx);
+
+/**
  * Triggers an interrupt.
  *
- * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
- * needs to specify the sub-index.
+ * libmuser takes care of using the correct IRQ type (IRQ index: INTx or MSI/X),
+ * the caller only needs to specify the sub-index.
  *
  * @lm_ctx: the libmuser context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
@@ -351,6 +455,22 @@ lm_ctx_run(lm_dev_info_t *dev_info);
  */
 int
 lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
+
+/**
+ * Sends message to client to trigger an interrupt.
+ *
+ * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
+ * needs to specify the sub-index.
+ * This api can be used to trigger interrupt by sending message to client.
+ *
+ * @lm_ctx: the libmuser context to trigger interrupt
+ * @subindex: vector subindex to trigger interrupt on
+ *
+ * @returns 0 on success, or -1 on failure. Sets errno.
+ */
+
+int
+lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
 
 /* Helper functions */
 
@@ -366,12 +486,15 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
  * than can be individually mapped in the program's virtual memory.  A single
  * linear guest physical address span may need to be split into multiple
  * scatter/gather regions due to limitations of how memory can be mapped.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @dma_addr: the guest physical address
  * @len: size of memory to be mapped
  * @sg: array that receives the scatter/gather entries to be mapped
  * @max_sg: maximum number of elements in above array
+ * @prot: protection as define in <sys/mman.h>
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
@@ -381,12 +504,14 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
  */
 int
 lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
-              dma_sg_t *sg, int max_sg);
+              dma_sg_t *sg, int max_sg, int prot);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
  * to the program's virtual memory. It is the caller's responsibility to remove
  * the mappings by calling lm_unmap_sg.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @sg: array of scatter/gather entries returned by lm_addr_to_sg
@@ -403,6 +528,8 @@ lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
 /**
  * Unmaps a list scatter/gather entries (previously mapped by lm_map_sg) from
  * the program's virtual memory.
+ * Field unmap_dma must have been provided at context creation time in order
+ * to use this function.
  *
  * @lm_ctx: the libmuser context
  * @sg: array of scatter/gather entries to unmap
@@ -426,15 +553,58 @@ lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
 int
 lm_get_region(loff_t pos, size_t count, loff_t *off);
 
+/**
+ * Read from the dma region exposed by the client.
+ *
+ * @lm_ctx: the libmuser context
+ * @sg: a DMA segment obtained from dma_addr_to_sg
+ * @data: data buffer to read into
+ */
+int
+lm_dma_read(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
+
+/**
+ * Write to the dma region exposed by the client.
+ *
+ * @lm_ctx: the libmuser context
+ * @sg: a DMA segment obtained from dma_addr_to_sg
+ * @data: data buffer to write
+ */
+int
+lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
+
 /*
  * Advanced stuff.
  */
 
 /**
- * Returns the non-standard part of the PCI configuragion space.
+ * Returns the non-standard part of the PCI configuration space.
  */
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
+
+/*
+ * Attempts to attach to the transport. LM_FLAG_ATTACH_NB must be set when
+ * creating the context. Returns 0 on success and -1 on error. If errno is set
+ * to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and the
+ * operation must be retried.
+ */
+int
+lm_ctx_try_attach(lm_ctx_t *lm_ctx);
+
+/*
+ * FIXME need to make sure that there can be at most one capability with a given
+ * ID, otherwise this function will return the first one with this ID.
+ */
+uint8_t *
+lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
+
+void
+lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
+
+/* FIXME */
+int muser_send_fds(int sock, int *fds, size_t count);
+ssize_t muser_recv_fds(int sock, int *fds, size_t count);
 
 #endif /* LIB_MUSER_H */
 

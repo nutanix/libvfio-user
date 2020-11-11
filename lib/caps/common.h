@@ -1,9 +1,7 @@
 /*
- * Copyright (c) 2019 Nutanix Inc. All rights reserved.
+ * Copyright (c) 2020 Nutanix Inc. All rights reserved.
  *
  * Authors: Thanos Makatos <thanos@nutanix.com>
- *          Swapnil Ingle <swapnil.ingle@nutanix.com>
- *          Felipe Franciosi <felipe@nutanix.com>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -30,36 +28,19 @@
  *
  */
 
-#ifndef __CAP_H__
-#define __CAP_H__
+#ifndef LM_PCI_CAP_COMMON_H
+#define LM_PCI_CAP_COMMON_H
 
-#include "muser.h"
+#include <stddef.h>
 
-struct caps;
+struct cap_hdr {
+    uint8_t id;
+    uint8_t next;
+} __attribute__((packed));
+_Static_assert(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
+_Static_assert(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
+_Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
 
-/**
- * Initializes PCI capabilities.
- *
- * Returns <0 on error, 0 if no capabilities are to be added, and >0 if all
- * capabilities have been added.
- */
-struct caps *
-caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
-
-/*
- * Conditionally accesses the PCI capabilities. Returns:
- *  0: if no PCI capabilities are accessed,
- * >0: if a PCI capability was accessed, with the return value indicating the
-       number of bytes accessed, and
- * <0: negative error code on error.
- */
-ssize_t
-cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
-                 loff_t offset);
-
-uint8_t *
-cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id);
-
-#endif /* __CAP_H__ */
+#endif /* LM_PCI_CAP_COMMON_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

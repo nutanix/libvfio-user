@@ -52,7 +52,7 @@ muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
     lm_reg_info_t *reg_info = lm_get_region_info(lm_ctx);
     lm_pci_hdr_t *hdr;
 
-    assert(lm_ctx);
+    assert(lm_ctx != NULL);
 
     if (reg_info[bar_index].size == 0) {
         return;
@@ -86,15 +86,15 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
 {
     uint16_t v;
 
-    assert(ctx);
+    assert(ctx != NULL);
 
     if (count != 2) {
         lm_log(ctx, LM_ERR, "bad write command size %d\n", count);
         return -EINVAL;
     }
 
-    assert(pci);
-    assert(buf);
+    assert(pci != NULL);
+    assert(buf != NULL);
 
     v = *(uint16_t*)buf;
 
@@ -153,17 +153,35 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     if ((v & PCI_COMMAND_INTX_DISABLE) == PCI_COMMAND_INTX_DISABLE) {
         if (!pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x1;
-            lm_log(ctx, LM_INF, "INTx emulation enabled\n");
+            lm_log(ctx, LM_INF, "INTx emulation disabled\n");
         }
         v &= ~PCI_COMMAND_INTX_DISABLE;
     } else {
         if (pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x0;
-            lm_log(ctx, LM_INF, "INTx emulation disabled\n");
+            lm_log(ctx, LM_INF, "INTx emulation enabled\n");
         }
     }
 
-    if (v) {
+    if ((v & PCI_COMMAND_INVALIDATE) == PCI_COMMAND_INVALIDATE) {
+        if (!pci->hdr.cmd.mwie) {
+            pci->hdr.cmd.mwie = 1U;
+            lm_log(ctx, LM_INF, "memory write and invalidate enabled\n");
+        }
+        v &= ~PCI_COMMAND_INVALIDATE;
+    } else {
+        if (pci->hdr.cmd.mwie) {
+            pci->hdr.cmd.mwie = 0;
+            lm_log(ctx, LM_INF, "memory write and invalidate disabled");
+        }
+    }
+
+    if ((v & PCI_COMMAND_VGA_PALETTE) == PCI_COMMAND_VGA_PALETTE) {
+        lm_log(ctx, LM_INF, "enabling VGA palette snooping ignored\n");
+        v &= ~PCI_COMMAND_VGA_PALETTE;
+    }
+
+    if (v != 0) {
         lm_log(ctx, LM_ERR, "unconsumed command flags %x\n", v);
         return -EINVAL;
     }
@@ -177,8 +195,8 @@ handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
 {
     uint32_t v;
 
-    assert(ctx);
-    assert(pci);
+    assert(ctx != NULL);
+    assert(pci != NULL);
 
     if (count != 0x4) {
         lm_log(ctx, LM_ERR, "bad EROM count %d\n", count);
@@ -207,8 +225,8 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
     lm_pci_config_space_t *pci;
     int ret = 0;
 
-    assert(lm_ctx);
-    assert(buf);
+    assert(lm_ctx != NULL);
+    assert(buf != NULL);
 
     pci = lm_get_pci_config_space(lm_ctx);
 
@@ -248,8 +266,8 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
         ret = -EINVAL;
     }
 
-#ifndef LM_TERSE_LOGGING
-    dump_buffer(lm_ctx, "PCI header", pci->hdr.raw, 0xff);
+#ifdef LM_VERBOSE_LOGGING
+    dump_buffer("PCI header", (char*)pci->hdr.raw, 0xff);
 #endif
 
     return ret;
@@ -263,18 +281,18 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
  * @count: output parameter that receives the number of bytes read/written
  */
 static inline int
-muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
-                        loff_t *pos, bool is_write,
+muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
+                        uint64_t *pos, bool is_write,
                         char *buf)
 {
-    size_t _count;
+    uint32_t _count;
     loff_t _pos;
     int err = 0;
 
-    assert(lm_ctx);
-    assert(count);
-    assert(pos);
-    assert(buf);
+    assert(lm_ctx != NULL);
+    assert(count != NULL);
+    assert(pos != NULL);
+    assert(buf != NULL);
 
     _pos = *pos - region_to_offset(LM_DEV_CFG_REG_IDX);
     _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
@@ -290,20 +308,21 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
 }
 
 static inline bool
-muser_is_pci_hdr_access(loff_t pos)
+muser_is_pci_hdr_access(uint64_t pos)
 {
-    const off_t off = (loff_t) region_to_offset(LM_DEV_CFG_REG_IDX);
-    return pos - off >= 0 && pos - off < PCI_STD_HEADER_SIZEOF;
+    const uint64_t off = region_to_offset(LM_DEV_CFG_REG_IDX);
+    return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 
+/* FIXME this function is misleading, remove it */
 int
-muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
-                     loff_t *pos, bool is_write,
+muser_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
+                     uint64_t *pos, bool is_write,
                      char *buf)
 {
-    assert(lm_ctx);
-    assert(count);
-    assert(pos);
+    assert(lm_ctx != NULL);
+    assert(count != NULL);
+    assert(pos != NULL);
 
     if (!muser_is_pci_hdr_access(*pos)) {
         return 0;
