@@ -281,11 +281,11 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
  * @count: output parameter that receives the number of bytes read/written
  */
 static inline int
-muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
-                        loff_t *pos, bool is_write,
+muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
+                        uint64_t *pos, bool is_write,
                         char *buf)
 {
-    size_t _count;
+    uint32_t _count;
     loff_t _pos;
     int err = 0;
 
@@ -308,16 +308,16 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
 }
 
 static inline bool
-muser_is_pci_hdr_access(loff_t pos)
+muser_is_pci_hdr_access(uint64_t pos)
 {
-    const off_t off = (loff_t) region_to_offset(LM_DEV_CFG_REG_IDX);
-    return pos - off >= 0 && pos - off < PCI_STD_HEADER_SIZEOF;
+    const uint64_t off = region_to_offset(LM_DEV_CFG_REG_IDX);
+    return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 
 /* FIXME this function is misleading, remove it */
 int
-muser_pci_hdr_access(lm_ctx_t *lm_ctx, size_t *count,
-                     loff_t *pos, bool is_write,
+muser_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
+                     uint64_t *pos, bool is_write,
                      char *buf)
 {
     assert(lm_ctx != NULL);

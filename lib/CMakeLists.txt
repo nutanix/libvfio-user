@@ -29,7 +29,6 @@
 #
 
 add_library(muser SHARED
-    ../kmod/muser.h
     vfio_user.h
     muser.h
     muser_priv.h
