@@ -84,7 +84,7 @@ struct vfio_user_dma_region {
     uint64_t    offset;
     uint32_t    prot;
     uint32_t    flags;
-#define VFIO_USER_F_DMA_REGION_MAPPABLE (0x0)
+#define VFIO_USER_F_DMA_REGION_MAPPABLE (1 << 0)
 } __attribute__((packed));
 
 struct vfio_user_region_access {
