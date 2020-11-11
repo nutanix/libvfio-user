@@ -35,9 +35,6 @@ include(GNUInstallDirs)
 # shared libraries
 add_subdirectory(lib)
 
-# kernel module
-#add_subdirectory(kmod)
-
 # samples
 add_subdirectory(samples)
 

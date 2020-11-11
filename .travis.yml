@@ -10,7 +10,6 @@ before_install:
   - git remote add origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
   - git fetch --depth 1 origin v5.2.21
   - git checkout FETCH_HEAD
-  - patch -p1 < "${muser_dir}/patches/vfio.diff"
   - make olddefconfig
   - make prepare
   - cd "${muser_dir}"
