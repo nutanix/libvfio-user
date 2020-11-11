@@ -2648,12 +2648,13 @@ lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
                 lm_ctx->fd, offset);
 }
 
-static int validate_irq_vector(lm_ctx_t *lm_ctx, uint32_t vector)
+static int validate_irq_subindex(lm_ctx_t *lm_ctx, uint32_t subindex)
 {
 
-    if ((lm_ctx == NULL) || (vector >= lm_ctx->irqs.max_ivs)) {
-        lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", vector,
+    if ((lm_ctx == NULL) || (subindex >= lm_ctx->irqs.max_ivs)) {
+        lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", subindex,
                lm_ctx->irqs.max_ivs);
+        /* FIXME should return -errno */
         errno = EINVAL;
         return -1;
     }
@@ -2667,13 +2668,14 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex)
     int ret;
     eventfd_t val = 1;
 
-    ret = validate_irq_vector(lm_ctx, subindex);
+    ret = validate_irq_subindex(lm_ctx, subindex);
     if (ret < 0) {
         return ret;
     }
 
     if (lm_ctx->irqs.efds[subindex] == -1) {
         lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", subindex);
+        /* FIXME should return -errno */
         errno = ENOENT;
         return -1;
     }
@@ -2687,7 +2689,7 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex)
     int ret, msg_id = 1;
     struct vfio_user_irq_info irq_info;
 
-    ret = validate_irq_vector(lm_ctx, subindex);
+    ret = validate_irq_subindex(lm_ctx, subindex);
     if (ret < 0) {
         return -1;
     }
@@ -2698,6 +2700,7 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex)
                                   &irq_info, sizeof irq_info,
                                   NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
+        /* FIXME should return -errno */
 	    errno = -ret;
 	    return -1;
     }

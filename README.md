@@ -41,6 +41,17 @@ future we plan to make libmuser multi-threaded. The application can be
 implemented in whatever way is convenient, e.g. as a Python script using
 bindings, on the cloud, etc. There's also experimental support for polling.
 
+There is also an ongoing effort to define a protocol based on VFIO that will be
+officially supported by QEMU so the kernel module won't be necessary.  This
+protocol (tentatively named VFIO-over-socket and soon to be renamed to
+vfio-user) has been discussed as an RFC in qemu-devel:
+https://lists.gnu.org/archive/html/qemu-devel/2020-03/msg07900.html,
+and is now in the process of being reviewed:
+https://www.mail-archive.com/qemu-devel@nongnu.org/msg723773.html.
+In the RFC email thread it is explained how to run the GPIO sample without the
+MUSER kernel module, where to get sources etc. Please refer to the RFC email
+thread for more information.
+
 
 Memory Mapping the Device
 -------------------------
