@@ -56,9 +56,8 @@
 static int
 test_read(int vfio_dev_fd, off_t offset)
 {
-    size_t bytes;
+    size_t bytes, i;
     char buf[256];
-    int i;
 
     memset(buf, 0, sizeof(buf));
     printf("* Reading %zd bytes at %#zx\n", sizeof(buf), offset);
@@ -69,7 +68,7 @@ test_read(int vfio_dev_fd, off_t offset)
 
     for (i = 0; i < sizeof(buf); i++) {
         if (i % 16 == 0) {
-            printf("%04X:", i);
+            printf("%04lX:", i);
         }
         printf(" %02hhX", buf[i]);
         if (i % 16 == 15) {

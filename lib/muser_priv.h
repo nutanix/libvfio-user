@@ -35,6 +35,8 @@
 
 #include "muser.h"
 
+#define UNUSED __attribute__((unused))
+
 extern char *irq_to_str[];
 
 int

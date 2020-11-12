@@ -41,9 +41,10 @@
 #include <string.h>
 
 #include "../lib/muser.h"
+#include "../lib/muser_priv.h"
 
 static void
-null_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
+null_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
 {
 	fprintf(stderr, "muser: %s", msg);
 }
