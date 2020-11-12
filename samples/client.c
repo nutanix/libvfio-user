@@ -52,7 +52,7 @@ init_sock(const char *path)
 	struct sockaddr_un addr = {.sun_family = AF_UNIX};
 
 	/* TODO path should be defined elsewhere */
-	ret = snprintf(addr.sun_path, sizeof addr.sun_path, path);
+	ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", path);
 
 	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		perror("failed to open socket");
@@ -113,7 +113,7 @@ out:
 static int
 send_device_reset(int sock)
 {
-    int ret, msg_id = 1;
+    int msg_id = 1;
 
     return send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_RESET,
                                   NULL, 0, NULL, 0, NULL, NULL, 0);
@@ -125,7 +125,8 @@ get_region_vfio_caps(int sock, size_t cap_sz)
     struct vfio_info_cap_header *header, *_header;
     struct vfio_region_info_cap_type *type;
     struct vfio_region_info_cap_sparse_mmap *sparse;
-    int i, ret;
+    unsigned int i;
+    ssize_t ret;
 
     header = _header = calloc(cap_sz, 1);
     if (header == NULL) {
@@ -136,7 +137,7 @@ get_region_vfio_caps(int sock, size_t cap_sz)
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to receive VFIO cap info");
     }
-    assert(ret == cap_sz);
+    assert((size_t)ret == cap_sz);
 
     while (true) {
         switch (header->id) {
@@ -145,7 +146,7 @@ get_region_vfio_caps(int sock, size_t cap_sz)
                 fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
                         sparse->nr_areas);
                 for (i = 0; i < sparse->nr_areas; i++) {
-                    fprintf(stdout, "%s: area %d offset %#lx size %llu\n", __func__,
+                    fprintf(stdout, "%s: area %d offset %#llx size %llu\n", __func__,
                             i, sparse->areas[i].offset, sparse->areas[i].size);
                 }
                 break;
@@ -169,16 +170,18 @@ get_region_vfio_caps(int sock, size_t cap_sz)
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
     free(_header);
+
+    return 0;
 }
 
 static int
 get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
 {
     struct vfio_region_info region_info;
-    struct vfio_user_header hdr;
     uint16_t msg_id = 0;
     size_t cap_sz;
-    int i, ret;
+    int ret;
+    unsigned int i;
 
     msg_id = 1;
     for (i = 0; i < client_dev_info->num_regions; i++) {
@@ -198,8 +201,8 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
         }
 
 	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
-        fprintf(stdout, "%s: region_info[%d] offset %#lx flags %#x size %llu "
-                "cap_sz %d\n", __func__, i, region_info.offset,
+        fprintf(stdout, "%s: region_info[%d] offset %#llx flags %#x size %llu "
+                "cap_sz %lu\n", __func__, i, region_info.offset,
                 region_info.flags, region_info.size, cap_sz);
 	    if (cap_sz) {
             ret = get_region_vfio_caps(sock, cap_sz);
@@ -213,7 +216,6 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
 
 static int get_device_info(int sock, struct vfio_device_info *dev_info)
 {
-    struct vfio_user_header hdr;
     uint16_t msg_id;
     int ret;
 
@@ -243,10 +245,8 @@ configure_irqs(int sock)
     uint16_t msg_id = 1;
     int irq_fd;
     uint64_t val;
-    struct iovec iovecs[2];
 
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) { /* TODO move body of loop into function */
-        int size;
         struct vfio_irq_info vfio_irq_info = {
             .argsz = sizeof vfio_irq_info,
             .index = i
@@ -374,7 +374,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         return ret;
     }
     if (recv_data.region_access.count != data_len) {
-        fprintf(stderr, "bad %s data count, expected=%d, actual=%d\n",
+        fprintf(stderr, "bad %s data count, expected=%lu, actual=%d\n",
                 is_write ? "write" : "read", data_len,
                 recv_data.region_access.count);
         return -EINVAL;
@@ -452,7 +452,7 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
             ret = pwrite(dma_region_fds[i], data, dma_access.count,
                          dma_regions[i].offset);
             if (ret < 0) {
-                fprintf(stderr, "failed to write data at %#lu: %m\n",
+                fprintf(stderr, "failed to write data at %lu: %m\n",
                         dma_regions[i].offset);
                 goto out;
             }
@@ -503,7 +503,7 @@ static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
             ret = pread(dma_region_fds[i], data, dma_access.count,
                          dma_regions[i].offset);
             if (ret < 0) {
-                fprintf(stderr, "failed to write data at %#lu: %m\n",
+                fprintf(stderr, "failed to write data at %lu: %m\n",
                         dma_regions[i].offset);
                 goto out;
             }
@@ -548,7 +548,8 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
 {
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
     struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2];
-    int ret, i;
+    int ret;
+    size_t i;
     struct iovec iovecs[4] = {
         [1] = {
             .iov_base = &dirty_bitmap,
@@ -559,7 +560,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     char data[ARRAY_SIZE(bitmaps)];
 
     assert(dma_regions != NULL);
-    assert(nr_dma_regions >= ARRAY_SIZE(bitmaps));
+    assert(nr_dma_regions >= (int)ARRAY_SIZE(bitmaps));
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
         bitmaps[i].iova = dma_regions[i].addr;
@@ -586,7 +587,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("%#x-%#x\t%hhu\n", bitmaps[i].iova,
+        printf("%#llx-%#llx\t%hhu\n", bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
     return 0;
@@ -662,7 +663,7 @@ migrate_from(int sock)
         }
 
         /* FIXME send migration data to the destination client process */
-        printf("XXX migration: %#x bytes worth of data\n", data_size);
+        printf("XXX migration: %#llx bytes worth of data\n", data_size);
 
         /*
          * XXX read pending_bytes again to indicate to the sever that the
@@ -700,7 +701,6 @@ int main(int argc, char *argv[])
     uint16_t msg_id = 1;
     int i;
     FILE *fp;
-    int fd;
     const int client_max_fds = 32;
     int server_max_fds;
     size_t pgsize;
