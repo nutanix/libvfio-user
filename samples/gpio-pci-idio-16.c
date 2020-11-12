@@ -42,16 +42,17 @@
 #include <errno.h>
 
 #include "../lib/muser.h"
+#include "../lib/muser_priv.h"
 
 static void
-_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
+_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
 {
     fprintf(stderr, "gpio: %s\n", msg);
 }
 
 ssize_t
-bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
-           const bool is_write)
+bar2_access(UNUSED void *pvt, char * const buf, size_t count, loff_t offset,
+            const bool is_write)
 {
     static char n;
 
@@ -61,7 +62,7 @@ bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
     return count;
 }
 
-static void _sa_handler(int signum __attribute__((unused)))
+static void _sa_handler(UNUSED int signum)
 {
 }
 

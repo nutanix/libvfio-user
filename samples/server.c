@@ -43,6 +43,7 @@
 #include <sys/param.h>
 
 #include "../lib/muser.h"
+#include "../lib/muser_priv.h"
 
 struct dma_regions {
     uint64_t addr;
@@ -63,7 +64,7 @@ struct server_data {
 };
 
 static void
-_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
+_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
 {
     fprintf(stderr, "server: %s\n", msg);
 }
@@ -91,8 +92,8 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
 }
 
 ssize_t
-bar1_access(void *pvt, char * const buf, size_t count, loff_t offset,
-            const bool is_write)
+bar1_access(UNUSED void *pvt, UNUSED char * const buf, UNUSED size_t count,
+            UNUSED loff_t offset, UNUSED const bool is_write)
 {
     assert(false);
 }
@@ -142,7 +143,7 @@ static int unmap_dma(void *pvt, uint64_t iova)
     return -EINVAL;
 }
 
-void get_md5sum(char *buf, int len, char *md5sum)
+void get_md5sum(unsigned char *buf, int len, unsigned char *md5sum)
 {
 	MD5_CTX ctx;
 
@@ -162,7 +163,8 @@ void get_md5sum(char *buf, int len, char *md5sum)
 static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
 {
     int count = 4096;
-    char buf[count], md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
+    unsigned char buf[count];
+    unsigned char md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
     int i, ret;
     dma_sg_t sg;
 
@@ -174,7 +176,7 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
 
     memset(buf, 'A', count);
     get_md5sum(buf, count, md5sum1);
-    printf("%s: WRITE addr %#lx count %llu\n", __func__,
+    printf("%s: WRITE addr %#lx count %d\n", __func__,
            server_data->regions[0].addr, count);
     ret = lm_dma_write(lm_ctx, &sg, buf);
     if (ret < 0) {
@@ -183,8 +185,8 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
     }
 
     memset(buf, 0, count);
-    printf("%s: READ  addr %#lx count %llu\n", __func__,
-	   server_data->regions[0].addr, count);
+    printf("%s: READ  addr %#lx count %d\n", __func__,
+           server_data->regions[0].addr, count);
     ret = lm_dma_read(lm_ctx, &sg, buf);
     if (ret < 0) {
         fprintf(stderr, "lm_dma_read failed: %s\n", strerror(-ret));
@@ -201,14 +203,17 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
     return 0;
 }
 
-unsigned long map_area(void *pvt, unsigned long off, unsigned long len)
+unsigned long map_area(UNUSED void *pvt, UNUSED unsigned long off,
+                       UNUSED unsigned long len)
 {
     assert(false);
 }
 
-static int device_reset(void *pvt)
+static int device_reset(UNUSED void *pvt)
 {
     printf("device reset callback\n");
+
+    return 0;
 }
 
 static int
@@ -254,7 +259,8 @@ migration_prepare_data(void *pvt, __u64 *offset, __u64 *size)
 }
 
 static size_t
-migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
+migration_read_data(void *pvt, UNUSED void *buf, __u64 size,
+                    UNUSED __u64 offset)
 {
     struct server_data *server_data = pvt;
 
@@ -264,14 +270,14 @@ migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
 }
 
 static size_t
-migration_write_data(void *pvt, void *data, __u64 size)
+migration_write_data(UNUSED void *pvt, UNUSED void *data, UNUSED __u64 size)
 {
     assert(false);
 }
 
 int main(int argc, char *argv[]){
     int ret;
-    bool trans_sock = false, verbose = false;
+    bool verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     struct server_data server_data = {0};

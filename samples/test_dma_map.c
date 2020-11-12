@@ -48,6 +48,7 @@
 #include <sys/ioctl.h>
 #include <inttypes.h>
 #include <err.h>
+#include "../lib/muser_priv.h"
 
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof(*array))
 
@@ -74,8 +75,7 @@ pci_group_id(const char *bdf)
 }
 
 static void*
-test_map_dma(const int fd, void *vaddr, unsigned long size, unsigned long iova,
-             bool huge)
+test_map_dma(const int fd, void *vaddr, unsigned long size, unsigned long iova)
 {
 	int err;
 	struct vfio_iommu_type1_dma_map dma_map = {
@@ -121,7 +121,6 @@ get_container_fd(const char *path)
 {
 	int err, vfio_ctr_fd, vfio_grp_fd, vfio_dev_fd;
 	char *grp_path;
-	struct vfio_iommu_type1_info iommu_info;
 
 	vfio_ctr_fd = open(VFIO_CTR_PATH, O_RDWR);
 	assert(vfio_ctr_fd >= 0);
@@ -151,12 +150,12 @@ get_container_fd(const char *path)
 int main(int argc, char * argv[])
 {
 	int vfio_ctr_fd;
-	void *dma_map_addr = NULL;
+	void *dma_map_addr;
 	struct iovec dma_regions[] = {
 		{.iov_base = (void*)0x0, .iov_len = 1 << 21},
 		{.iov_base = (void*)(1 << 21), .iov_len = 1 << 21},
 	};
-	int i;
+	size_t i;
 	bool huge = true;
 	int fd;
 	int flags = MAP_SHARED;
@@ -179,7 +178,7 @@ int main(int argc, char * argv[])
 
 	ret = lseek(fd, size, SEEK_END);
 	if (ret == -1) {
-		err(EXIT_FAILURE, "failed to seek at %zu", size);
+		err(EXIT_FAILURE, "failed to seek at %lu", size);
 	}
 
 	/*
@@ -200,8 +199,7 @@ int main(int argc, char * argv[])
 		}
 		dma_map_addr = test_map_dma(vfio_ctr_fd, vaddr,
 		                            dma_regions[i].iov_len,
-		                            (unsigned long)dma_regions[i].iov_base,
-		                            huge);
+		                            (unsigned long)dma_regions[i].iov_base);
 		if (!dma_map_addr)
 			exit(EXIT_FAILURE);
 	}
