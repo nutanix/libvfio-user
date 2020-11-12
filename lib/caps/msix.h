@@ -35,12 +35,6 @@
 
 #include <linux/pci_regs.h>
 
-struct mxid {
-    unsigned int cid:8;
-    unsigned int next:8;
-} __attribute__ ((packed));
-_Static_assert(sizeof(struct mxid) == 0x2, "bad MXID size");
-
 struct mxc {
 	unsigned int ts:11;
 	unsigned int reserved:3;
@@ -63,12 +57,13 @@ _Static_assert(sizeof(struct mtab) == PCI_MSIX_PBA - PCI_MSIX_TABLE,
                "bad MPBA size");
 
 struct msixcap {
-	struct mxid mxid;
+    struct cap_hdr hdr;
 	struct mxc mxc;
 	struct mtab mtab;
 	struct mpba mpba;
 } __attribute__ ((packed)) __attribute__ ((aligned(4)));
 _Static_assert(sizeof(struct msixcap) == PCI_CAP_MSIX_SIZEOF, "bad MSI-X size");
+_Static_assert(offsetof(struct msixcap, hdr) == 0, "bad offset");
 
 #endif /* LM_CAP_MSIX_H */
 

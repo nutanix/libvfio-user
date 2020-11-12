@@ -33,11 +33,7 @@
 #ifndef LM_PCI_CAP_PM_H
 #define LM_PCI_CAP_PM_H
 
-struct pid {
-    unsigned int cid:8;
-    unsigned int next:8;
-} __attribute__((packed));
-_Static_assert(sizeof(struct pid) == 0x2, "bad PID size");
+#include "common.h"
 
 struct pc {
     unsigned int vs:3;
@@ -60,15 +56,16 @@ struct pmcs {
     unsigned int dse:4;
     unsigned int dsc:2;
     unsigned int pmes:1;
-};
-_Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
+} __attribute__((packed));
+_Static_assert(sizeof(struct pc) == 0x2, "bad PMCS size");
 
 struct pmcap {
-    struct pid pid;
+    struct cap_hdr hdr;
     struct pc pc;
     struct pmcs pmcs;
-} __attribute__((packed))  __attribute__ ((aligned(8)));
+} __attribute__((packed)) __attribute__ ((aligned(8))); /* FIXME why does it need to be aligned? */
 _Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad PC size");
+_Static_assert(offsetof(struct pmcap, hdr) == 0, "bad offset");
 
 #endif /* LM_CAP_PM_H */
 

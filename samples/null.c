@@ -31,102 +31,77 @@
  *
  */
 
-/* gpio-pci-idio-16 */
+/* null PCI device, doesn't do anything */
 
 #include <stdio.h>
 #include <err.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <signal.h>
+#include <pthread.h>
 #include <errno.h>
+#include <string.h>
 
 #include "../lib/muser.h"
 
 static void
-_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
+null_log(void *pvt, lm_log_lvl_t lvl __attribute__((unused)), char const *msg)
 {
-    fprintf(stderr, "gpio: %s\n", msg);
+	fprintf(stderr, "muser: %s", msg);
 }
 
-ssize_t
-bar2_access(void *pvt, char * const buf, size_t count, loff_t offset,
-           const bool is_write)
+
+static void* null_drive(void *arg)
 {
-    static char n;
-
-    if (offset == 0 && !is_write)
-        buf[0] = n++ / 3;
-
-    return count;
+    lm_ctx_t *lm_ctx = (lm_ctx_t*)arg;
+    int ret = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    if (ret != 0) {
+        fprintf(stderr, "failed to enable cancel state: %s\n", strerror(ret));
+        return NULL;
+    }
+    ret = pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+    if (ret != 0) {
+        fprintf(stderr, "failed to enable cancel type: %s\n", strerror(ret));
+        return NULL;
+    }
+    printf("starting device emulation\n");
+    lm_ctx_drive(lm_ctx);
+    return NULL;
 }
 
-static void _sa_handler(int signum __attribute__((unused)))
-{
-}
-
-int main(int argc, char *argv[])
+int main(int argc, char **argv)
 {
     int ret;
-    bool trans_sock = false, verbose = false;
-    char opt;
-    struct sigaction act = {.sa_handler = _sa_handler};
-    lm_ctx_t *lm_ctx;
+    pthread_t thread;
 
-    while ((opt = getopt(argc, argv, "sv")) != -1) {
-        switch (opt) {
-            case 's':
-                trans_sock = true;
-                break;
-            case 'v':
-                verbose = true;
-                break;
-            default: /* '?' */
-                fprintf(stderr, "Usage: %s [-s] [-d] <IOMMU group>\n", argv[0]);
-                exit(EXIT_FAILURE);
-        }
-    }
-
-    if (optind >= argc) {
+    if (argc != 2) {
         err(EXIT_FAILURE, "missing MUSER device UUID");
     }
 
-    lm_dev_info_t dev_info = {
-        .trans = trans_sock ? LM_TRANS_SOCK : LM_TRANS_KERNEL,
-        .log = verbose ? _log : NULL,
-        .log_lvl = LM_DBG,
-        .pci_info = {
-            .id = {.vid = 0x494F, .did = 0x0DC8 },
-            .reg_info[LM_DEV_BAR2_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = 0x100,
-                .fn = &bar2_access
-            },
-        },
-        .uuid = argv[optind],
-    };
+    lm_dev_info_t dev_info = {.uuid = argv[1], .log = null_log, .log_lvl = LM_DBG };
 
-    sigemptyset(&act.sa_mask);
-    if (sigaction(SIGINT, &act, NULL) == -1) {
-        fprintf(stderr, "warning: failed to register signal handler: %m\n");
-    }
-
-    lm_ctx = lm_ctx_create(&dev_info);
+    lm_ctx_t *lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
-        if (errno == EINTR) {
-            goto out;
-        }
-        fprintf(stderr, "failed to initialize device emulation: %m\n");
-        return -1;
+        err(EXIT_FAILURE, "failed to create libmuser context");
     }
-    ret = lm_ctx_drive(lm_ctx);
+
+    ret = pthread_create(&thread, NULL, null_drive, lm_ctx);
     if (ret != 0) {
-        if (ret != -ENOTCONN && ret != -EINTR) {
-            fprintf(stderr, "failed to realize device emulation: %m\n");
-        }
+        errno = ret;
+        err(EXIT_FAILURE, "failed to create pthread");
     }
-out:
+
+    printf("press enter to stop device emulation and clean up\n");
+    getchar();
+
+    ret = pthread_cancel(thread);
+    if (ret != 0) {
+        errno = ret;
+        err(EXIT_FAILURE, "failed to create pthread");
+    }
     lm_ctx_destroy(lm_ctx);
+
+    printf("device emulation stopped and cleaned up, press enter to exit\n");
+    getchar();
+
     return ret;
 }
 

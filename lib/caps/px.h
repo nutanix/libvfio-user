@@ -33,11 +33,7 @@
 #ifndef LM_PCI_CAP_PX_H
 #define LM_PCI_CAP_PX_H
 
-struct pxid {
-    unsigned int cid:8;
-    unsigned int next:8;
-} __attribute__((packed));
-_Static_assert(sizeof(struct pxid) == 0x2, "bad PXID size");
+#include "common.h"
 
 struct pxcaps {
     unsigned int ver:4;
@@ -133,7 +129,7 @@ _Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
  * the whole struct.
  */
 struct pxcap {
-    struct pxid pxid;
+    struct cap_hdr hdr;
     struct pxcaps pxcaps;
     struct pxdcap pxdcap;
     union pxdc pxdc;
@@ -147,6 +143,7 @@ struct pxcap {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxcap) == 0x2a,
 		"bad PCI Express Capability size");
+_Static_assert(offsetof(struct pxcap, hdr) == 0, "bad offset");
 
 #endif /* LM_PCI_CAP_PX_H */
 

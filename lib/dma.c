@@ -66,7 +66,7 @@ fds_are_same_file(int fd1, int fd2)
 }
 
 dma_controller_t *
-dma_controller_create(int max_regions)
+dma_controller_create(lm_ctx_t *lm_ctx, int max_regions)
 {
     dma_controller_t *dma;
 
@@ -77,37 +77,89 @@ dma_controller_create(int max_regions)
         return dma;
     }
 
+    dma->lm_ctx = lm_ctx;
     dma->max_regions = max_regions;
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
+    dma->dirty_pgsize = 0;
 
     return dma;
 }
 
 static void
-_dma_controller_do_remove_region(dma_memory_region_t *region)
+_dma_controller_do_remove_region(dma_controller_t *dma,
+                                 dma_memory_region_t *region)
 {
-    assert(region);
-    dma_unmap_region(region, region->virt_addr, region->size);
-    (void)close(region->fd);
+    int err;
+
+    assert(dma != NULL);
+    assert(region != NULL);
+
+    err = dma_unmap_region(region, region->virt_addr, region->size);
+    if (err != 0) {
+        lm_log(dma->lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
+               region->fd, region->virt_addr, region->size);
+    }
+    if (region->fd != -1) {
+        if (close(region->fd) == -1) {
+            lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n", region->fd);
+        }
+    }
+}
+
+/*
+ * FIXME no longer used. Also, it doesn't work for addresses that span two
+ * DMA regions.
+ */
+bool
+dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
+                            size_t size)
+{
+    dma_memory_region_t *region;
+    int i;
+
+    for (i = 0; i < dma->nregions; i++) {
+        region = &dma->regions[i];
+        if (dma_addr == region->dma_addr && size <= region->size) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /* FIXME not thread safe */
 int
-dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
-                             size_t size, int fd)
+dma_controller_remove_region(dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size,
+                             int (*unmap_dma) (void*, uint64_t), void *data)
 {
     int idx;
     dma_memory_region_t *region;
+    int err;
 
-    assert(dma);
+    assert(dma != NULL);
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
-        if (region->dma_addr == dma_addr && region->size == size &&
-            fds_are_same_file(region->fd, fd)) {
-            _dma_controller_do_remove_region(region);
+        if (region->dma_addr == dma_addr && region->size == size) {
+            if (region->refcnt > 0) {
+                err = unmap_dma(data, region->dma_addr);
+                if (err != 0) {
+                    lm_log(dma->lm_ctx, LM_ERR,
+                           "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
+                           region->dma_addr, region->dma_addr + region->size,
+                           strerror(-err));
+                    return err;
+                }
+                assert(region->refcnt == 0);
+            }
+            _dma_controller_do_remove_region(dma, region);
             if (dma->nregions > 1)
+                /*
+                 * FIXME valgrind complains with 'Source and destination overlap in memcpy',
+                 * check whether memmove eliminates this warning.
+                 */
                 memcpy(region, &dma->regions[dma->nregions - 1],
                        sizeof *region);
             dma->nregions--;
@@ -118,7 +170,7 @@ dma_controller_remove_region(dma_controller_t *dma, dma_addr_t dma_addr,
 }
 
 static inline void
-dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
+dma_controller_remove_regions(dma_controller_t *dma)
 {
     int i;
 
@@ -127,26 +179,26 @@ dma_controller_remove_regions(lm_ctx_t *ctx, dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        lm_log(ctx, LM_INF, "unmap vaddr=%lx IOVA=%lx\n",
+        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%#lx IOVA=%#lx",
                region->virt_addr, region->dma_addr);
 
-        _dma_controller_do_remove_region(region);
+        _dma_controller_do_remove_region(dma, region);
     }
 }
 
 void
-dma_controller_destroy(lm_ctx_t *lm_ctx, dma_controller_t *dma)
+dma_controller_destroy(dma_controller_t *dma)
 {
     if (dma == NULL) {
         return;
     }
 
-    dma_controller_remove_regions(lm_ctx, dma);
+    dma_controller_remove_regions(dma);
     free(dma);
 }
 
 int
-dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
+dma_controller_add_region(dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
                           int fd, off_t offset)
 {
@@ -160,8 +212,8 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
         /* First check if this is the same exact region. */
         if (region->dma_addr == dma_addr && region->size == size) {
             if (offset != region->offset) {
-                lm_log(lm_ctx, LM_ERR, "bad offset for new DMA region %lx+%lx, "
-                       "want=%d, existing=%d\n",
+                lm_log(dma->lm_ctx, LM_ERR,
+                       "bad offset for new DMA region %#lx+%#lx, want=%d, existing=%d\n",
                        dma_addr, size, offset, region->offset);
                 goto err;
             }
@@ -172,8 +224,9 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
                  * the same file, however in the majority of cases we'll be
                  * using a single fd.
                  */
-                lm_log(lm_ctx, LM_ERR, "bad fd=%d for new DMA region %lx-%lx, "
-                       "existing fd=%d\n", fd, region->fd);
+                lm_log(dma->lm_ctx, LM_ERR,
+                       "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
+                       fd, region->fd);
                 goto err;
             }
             return idx;
@@ -184,16 +237,17 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
              dma_addr < region->dma_addr + region->size) ||
             (region->dma_addr >= dma_addr &&
              region->dma_addr < dma_addr + size)) {
-            lm_log(lm_ctx, LM_INF, "new DMA region %lx+%lx overlaps with DMA "
-                   "region %lx-%lx\n", dma_addr, size, region->dma_addr,
-                   region->size);
+            lm_log(dma->lm_ctx, LM_INF,
+                   "new DMA region %#lx+%#lx overlaps with DMA region %#lx-%#lx\n",
+                   dma_addr, size, region->dma_addr, region->size);
             goto err;
         }
     }
 
     if (dma->nregions == dma->max_regions) {
         idx = dma->max_regions;
-        lm_log(lm_ctx, LM_ERR, "reached maxed regions, recompile with higher number of DMA regions\n");
+        lm_log(dma->lm_ctx, LM_ERR,
+               "reached maxed regions, recompile with higher number of DMA regions\n");
         goto err;
     }
 
@@ -202,7 +256,7 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
 
     page_size = fd_get_blocksize(fd);
     if (page_size < 0) {
-        lm_log(lm_ctx, LM_ERR, "bad page size %d\n", page_size);
+        lm_log(dma->lm_ctx, LM_ERR, "bad page size %d\n", page_size);
         goto err;
     }
     page_size = MAX(page_size, getpagesize());
@@ -211,20 +265,21 @@ dma_controller_add_region(lm_ctx_t *lm_ctx, dma_controller_t *dma,
     region->size = size;
     region->page_size = page_size;
     region->offset = offset;
-
-    region->fd = dup(fd);       // dup the fd to get our own private copy
-    if (region->fd < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to duplicate file descriptor: %s\n",
-               strerror(errno));
-        goto err;
-    }
+    region->fd = fd;
+    region->refcnt = 0;
 
     region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
                                        0, region->size);
     if (region->virt_addr == MAP_FAILED) {
-        lm_log(lm_ctx, LM_ERR, "failed to memory map DMA region %lx-%lx: %s\n",
+        lm_log(dma->lm_ctx, LM_ERR,
+               "failed to memory map DMA region %#lx-%#lx: %s\n",
                dma_addr, dma_addr + size, strerror(errno));
-        close(region->fd);
+        if (region->fd != -1) {
+            if (close(region->fd) == -1) {
+                lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n",
+                       region->fd);
+            }
+        }
         goto err;
     }
     dma->nregions++;
@@ -269,17 +324,17 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
     return mmap_base + (offset - mmap_offset);
 }
 
-void
+int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
 {
     mmap_round((size_t *)&virt_addr, &len, region->page_size);
-    munmap(virt_addr, len);
+    return munmap(virt_addr, len);
 }
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
                    dma_addr_t dma_addr, uint32_t len,
-                   dma_sg_t *sg, int max_sg)
+                   dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
     int cnt = 0;
@@ -295,9 +350,13 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
+                    sg[cnt].dma_addr = region->dma_addr;
                     sg[cnt].region = idx;
                     sg[cnt].offset = dma_addr - region->dma_addr;
                     sg[cnt].length = region_len;
+                    if (_dma_should_mark_dirty(dma, prot)) {
+                        _dma_mark_dirty(dma, region, sg);
+                    }
                 }
 
                 cnt++;
@@ -324,6 +383,119 @@ out:
         cnt = -cnt - 1;
     }
     return cnt;
+}
+
+ssize_t _get_bitmap_size(size_t region_size, size_t pgsize)
+{
+    if (pgsize == 0) {
+        return -EINVAL;
+    }
+    if (region_size < pgsize) {
+        return -EINVAL;
+    }
+    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
+    return (nr_pages / CHAR_BIT) + (nr_pages % CHAR_BIT != 0);
+}
+
+int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
+{
+    int i;
+
+    assert(dma != NULL);
+
+    if (pgsize == 0) {
+        return -EINVAL;
+    }
+
+    if (dma->dirty_pgsize > 0) {
+        if (dma->dirty_pgsize != pgsize) {
+            return -EINVAL;
+        }
+        return 0;
+    }
+
+    for (i = 0; i < dma->nregions; i++) {
+        dma_memory_region_t *region = &dma->regions[i];
+        ssize_t bitmap_size = _get_bitmap_size(region->size, pgsize);
+        if (bitmap_size < 0) {
+            return bitmap_size;
+        }
+        region->dirty_bitmap = calloc(bitmap_size, sizeof(char));
+        if (region->dirty_bitmap == NULL) {
+            int j, ret = -errno;
+            for (j = 0; j < i; j++) {
+                free(region->dirty_bitmap);
+                region->dirty_bitmap = NULL;
+            }
+            return ret;
+        }
+    }
+    dma->dirty_pgsize = pgsize;
+    return 0;
+}
+
+int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
+{
+    int i;
+
+    assert(dma != NULL);
+
+    if (dma->dirty_pgsize == 0) {
+        return 0;
+    }
+
+    for (i = 0; i < dma->nregions; i++) {
+        free(dma->regions[i].dirty_bitmap);
+        dma->regions[i].dirty_bitmap = NULL;
+    }
+    dma->dirty_pgsize = 0;
+    return 0;
+}
+
+int
+dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
+                              size_t pgsize, size_t size, char **data)
+{
+    int ret;
+    ssize_t bitmap_size;
+    dma_sg_t sg;
+    dma_memory_region_t *region;
+
+    assert(dma != NULL);
+    assert(data != NULL);
+
+    /*
+     * FIXME for now we support IOVAs that match exactly the DMA region. This
+     * is purely for simplifying the implementation. We MUST allow arbitrary
+     * IOVAs.
+     */
+    ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
+    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
+        return -ENOTSUP;
+    }
+
+    if (pgsize != dma->dirty_pgsize) {
+        return -EINVAL;
+    }
+
+    bitmap_size = _get_bitmap_size(len, pgsize);
+    if (bitmap_size < 0) {
+        return bitmap_size;
+    }
+
+    /*
+     * FIXME they must be equal because this is how much data the client
+     * expects to receive.
+     */
+    if (size != (size_t)bitmap_size) {
+        return -EINVAL;
+    }
+    
+    region = &dma->regions[sg.region];
+
+    *data = region->dirty_bitmap;
+
+    return 0;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
