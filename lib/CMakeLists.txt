@@ -46,7 +46,7 @@ set(UT_LFLAGS "--coverage")
 
 function(add_library_ut lib)
     add_library(${lib} ${ARGN})
-    string(CONCAT lib_ut ${lib} "_ut")
+    set(lib_ut ${lib}_ut)
     add_library(${lib_ut} ${ARGN})
     set_target_properties(${lib_ut} PROPERTIES COMPILE_FLAGS ${UT_CFLAGS})
     set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
