@@ -40,7 +40,6 @@ add_library(muser SHARED
     libmuser_pci.c
     cap.c
     cap.h)
-set(CMAKE_C_FLAGS "-Wall -Wextra -Werror")
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
 set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 install(TARGETS muser
