@@ -887,6 +887,24 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
     return 0;
 }
 
+static size_t
+get_vfio_caps_size(uint32_t reg_index, struct lm_sparse_mmap_areas *m)
+{
+    size_t type_size = 0;
+    size_t sparse_size = 0;
+
+    if (reg_index == LM_DEV_MIGRATION_REG_IDX) {
+        type_size = sizeof(struct vfio_region_info_cap_type);
+    }
+
+    if (m != NULL) {
+        sparse_size = sizeof(struct vfio_region_info_cap_sparse_mmap)
+                      + (m->nr_mmap_areas * sizeof(struct vfio_region_sparse_mmap_area));
+    }
+
+    return type_size + sparse_size;
+}
+
 /*
  * Populate the sparse mmap capability information to vfio-client.
  * Sparse mmap information stays after struct vfio_region_info and cap_offest
@@ -900,22 +918,11 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, int reg_index,
     struct vfio_region_info_cap_type *type = NULL;
     struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
     struct lm_sparse_mmap_areas *mmap_areas;
-    int nr_mmap_areas, i;
-    size_t type_size = 0;
-    size_t sparse_size = 0;
+    int i;
     size_t cap_size;
     void *cap_ptr;
 
-    if (reg_index == LM_DEV_MIGRATION_REG_IDX) {
-        type_size = sizeof(struct vfio_region_info_cap_type);
-    } 
-
-    if (lm_reg->mmap_areas != NULL) {
-        nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
-        sparse_size = sizeof(*sparse) + (nr_mmap_areas * sizeof(*sparse->areas));
-    }
-
-    cap_size = type_size + sparse_size;
+    cap_size = get_vfio_caps_size(reg_index, lm_reg->mmap_areas);
     if (cap_size == 0) {
         return 0;
     }
@@ -937,6 +944,7 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, int reg_index,
     }
 
     if (lm_reg->mmap_areas != NULL) {
+        int nr_mmap_areas = lm_reg->mmap_areas->nr_mmap_areas;
         if (type != NULL) {
             type->header.next = (*vfio_reg)->cap_offset + sizeof(struct vfio_region_info_cap_type);
             sparse = (struct vfio_region_info_cap_sparse_mmap*)(type + 1);
@@ -949,8 +957,6 @@ dev_get_sparse_mmap_cap(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, int reg_index,
         sparse->header.next = 0;
         sparse->nr_areas = nr_mmap_areas;
 
-        lm_log(lm_ctx, LM_DBG, "%s: capsize %llu, nr_mmap_areas %u", __func__,
-               sparse_size, nr_mmap_areas);
         mmap_areas = lm_reg->mmap_areas;
         for (i = 0; i < nr_mmap_areas; i++) {
             sparse->areas[i].offset = mmap_areas->areas[i].start;
