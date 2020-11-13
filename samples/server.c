@@ -390,7 +390,7 @@ int main(int argc, char *argv[]){
             }
         }
     } while (ret == 0);
-    if (ret != -ENOTCONN && ret != -EINTR) {
+    if (ret != -ENOTCONN && ret != -EINTR && ret != -ESHUTDOWN) {
         fprintf(stderr, "failed to realize device emulation: %s\n",
                 strerror(-ret));
     }
