@@ -1907,6 +1907,23 @@ handle_device_reset(lm_ctx_t *lm_ctx)
     return device_reset(lm_ctx);
 }
 
+static bool
+migration_available(lm_ctx_t *lm_ctx)
+{
+    assert(lm_ctx != NULL);
+
+    return lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size > 0;
+}
+
+static bool
+migration_is_stop_and_copy(lm_ctx_t *lm_ctx)
+{
+    assert(lm_ctx != NULL);
+
+    return migration_available(lm_ctx) &&
+           lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_SAVING;
+}
+
 static int
 handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
                      void **data, size_t *len)
@@ -1949,6 +1966,15 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
                region_access.region, region_access.count);
         return -EINVAL;
     }
+
+    if (migration_is_stop_and_copy(lm_ctx) &&
+        region_access.region != LM_DEV_MIGRATION_REG_IDX) {
+        lm_log(lm_ctx, LM_ERR,
+               "cannot access region %d while device in stop-and-copy state",
+               region_access.region);
+        return -EINVAL;
+    }
+
     count = region_access.count;
     offset = region_to_offset(region_access.region) + region_access.offset;
 
@@ -2093,7 +2119,7 @@ process_request(lm_ctx_t *lm_ctx)
 
     assert(lm_ctx != NULL);
 
-    if (lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size > 0 &&
+    if (migration_available(lm_ctx) &&
         lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_STOP) {
         return -ESHUTDOWN;
     }
@@ -2153,6 +2179,13 @@ process_request(lm_ctx_t *lm_ctx)
      * that data. We should eliminate duplicating this common code and move it
      * here.
      */
+
+    if (migration_is_stop_and_copy(lm_ctx)
+        && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
+        lm_log(lm_ctx, LM_ERR,
+               "bad command %d while device in stop-and-copy state", hdr.cmd);
+        return -EINVAL;
+    }
 
     switch (hdr.cmd) {
         case VFIO_USER_DMA_MAP:
