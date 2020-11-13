@@ -61,8 +61,6 @@
 
 #define MAX_FDS 8
 
-#define IOMMU_GRP_NAME "iommu_group"
-
 typedef enum {
     IRQ_NONE = 0,
     IRQ_INTX,
@@ -112,8 +110,6 @@ struct lm_ctx {
 
     /* TODO there should be a void * variable to store transport-specific stuff */
     /* LM_TRANS_SOCK */
-    char                    *iommu_dir;
-    int                     iommu_dir_fd;
     int                     sock_flags;
 
     int                     client_max_fds;
@@ -162,16 +158,11 @@ init_sock(lm_ctx_t *lm_ctx)
 
     assert(lm_ctx != NULL);
 
-    lm_ctx->iommu_dir = strdup(lm_ctx->uuid);
-    if (!lm_ctx->iommu_dir) {
-        return -ENOMEM;
-    }
-
     /* FIXME SPDK can't easily run as non-root */
     mode =  umask(0000);
 
     if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-	    ret = errno;
+	    ret = -errno;
         goto out;
     }
 
@@ -179,52 +170,40 @@ init_sock(lm_ctx_t *lm_ctx)
         ret = fcntl(unix_sock, F_SETFL,
                     fcntl(unix_sock, F_GETFL, 0) | O_NONBLOCK);
         if (ret < 0) {
-            ret = errno;
-            goto close_unix_sock;
+            ret = -errno;
+            goto out;
         }
         lm_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     } else {
         lm_ctx->sock_flags = 0;
     }
 
-    lm_ctx->iommu_dir_fd = open(lm_ctx->iommu_dir, O_DIRECTORY);
-    if (lm_ctx->iommu_dir_fd < 0) {
-        ret = errno;
-        goto close_unix_sock;
-    }
-
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s/" MUSER_SOCK,
-		   lm_ctx->iommu_dir);
+    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", lm_ctx->uuid);
     if (ret >= (int)sizeof addr.sun_path) {
-        ret = ENAMETOOLONG;
-        goto close_iommu_dir_fd;
+        ret = -ENAMETOOLONG;
     }
     if (ret < 0) {
-        goto close_iommu_dir_fd;
+        goto out;
     }
 
     /* start listening business */
     ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
     if (ret < 0) {
 	    ret = errno;
-        goto close_iommu_dir_fd;
     }
 
     ret = listen(unix_sock, 0);
     if (ret < 0) {
-        ret = errno;
-        goto close_iommu_dir_fd;
+        ret = -errno;
     }
 
-    umask(mode);
-    return unix_sock;
-
-close_iommu_dir_fd:
-    close(lm_ctx->iommu_dir_fd);
-close_unix_sock:
-    close(unix_sock);
 out:
-    return -ret;
+    umask(mode);
+    if (ret != 0) {
+        close(unix_sock);
+        return ret;
+    }
+    return unix_sock;
 }
 
 static void
@@ -2393,43 +2372,12 @@ free_sparse_mmap_areas(lm_reg_info_t *reg_info)
 void
 lm_ctx_destroy(lm_ctx_t *lm_ctx)
 {
-    int ret;
 
     if (lm_ctx == NULL) {
         return;
     }
 
     free(lm_ctx->uuid);
-
-    /*
-     * FIXME The following cleanup can be dangerous depending on how lm_ctx_destroy
-     * is called since it might delete files it did not create. Improve by
-     * acquiring a lock on the directory.
-     */
-
-    if (lm_ctx->iommu_dir_fd != -1) {
-        if ((ret = unlinkat(lm_ctx->iommu_dir_fd, IOMMU_GRP_NAME, 0)) == -1
-            && errno != ENOENT) {
-            lm_log(lm_ctx, LM_DBG, "failed to remove " IOMMU_GRP_NAME ": "
-                   "%m\n");
-        }
-        if ((ret = unlinkat(lm_ctx->iommu_dir_fd, MUSER_SOCK, 0)) == -1 &&
-            errno != ENOENT) {
-            lm_log(lm_ctx, LM_DBG, "failed to remove " MUSER_SOCK ": %m\n");
-        }
-        if (close(lm_ctx->iommu_dir_fd) == -1) {
-            lm_log(lm_ctx, LM_DBG, "failed to close IOMMU dir fd %d: %m\n",
-                   lm_ctx->iommu_dir_fd);
-        }
-    }
-    if (lm_ctx->iommu_dir != NULL) {
-        if ((ret = rmdir(lm_ctx->iommu_dir)) == -1 && errno != ENOENT) {
-            lm_log(lm_ctx, LM_DBG, "failed to remove %s: %m\n",
-                   lm_ctx->iommu_dir);
-        }
-        free(lm_ctx->iommu_dir);
-    }
-
     free(lm_ctx->pci_config_space);
     transports_ops[lm_ctx->trans].detach(lm_ctx);
     if (lm_ctx->dma != NULL) {
@@ -2631,8 +2579,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
     lm_ctx->trans = dev_info->trans;
-
-    lm_ctx->iommu_dir_fd = -1;
 
     // Set context irq information.
     for (i = 0; i < max_ivs; i++) {

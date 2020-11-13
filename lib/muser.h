@@ -47,13 +47,6 @@
 #define LIB_MUSER_VFIO_USER_VERS_MJ 0
 #define LIB_MUSER_VFIO_USER_VERS_MN 1
 
-#define VFIO_NAME       "vfio"
-#define VFIO_DIR        "/dev/" VFIO_NAME "/"
-#define VFIO_CONTAINER  VFIO_DIR "/" VFIO_NAME
-
-#define MUSER_DIR "/var/run/muser/"
-#define MUSER_SOCK "cntrl"
-
 typedef uint64_t dma_addr_t;
 
 typedef struct {
