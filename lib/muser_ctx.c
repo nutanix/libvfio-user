@@ -2105,6 +2105,45 @@ validate_header(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, size_t size)
     }
 
     return 0;
+} 
+
+/*
+ * Populates @hdr to contain the header for the next command to be processed.
+ * Stores any passed FDs into @fds and the number in @nr_fds.
+ *
+ * Returns 0 if there is no command to process, -errno if an error occured, or
+ * the number of bytes read.
+ */
+static int
+get_next_command(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, int *fds,
+                 int *nr_fds)
+{
+    int ret;
+
+    /* FIXME get request shouldn't set errno, it should return it as -errno */
+    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, hdr, fds, nr_fds);
+    if (unlikely(ret < 0)) {
+        if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
+            return 0;
+        }
+        if (ret != -EINTR) {
+            lm_log(lm_ctx, LM_ERR, "failed to receive request: %s",
+                   strerror(-ret));
+        }
+        return ret;
+    }
+    if (unlikely(ret == 0)) {
+        if (errno == EINTR) {
+            return -EINTR;
+        }
+        if (errno == 0) {
+            lm_log(lm_ctx, LM_INF, "vfio-user client closed connection");
+        } else {
+            lm_log(lm_ctx, LM_ERR, "end of file: %m");
+        }
+        return -ENOTCONN;
+    }
+    return ret;
 }
 
 static int
@@ -2141,27 +2180,9 @@ process_request(lm_ctx_t *lm_ctx)
     nr_fds = lm_ctx->client_max_fds;
     fds = alloca(nr_fds * sizeof(int));
 
-    /* FIXME get request shouldn't set errno, it should return it as -errno */
-    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, &hdr, fds, &nr_fds);
-    if (unlikely(ret < 0)) {
-        if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
-            return 0;
-        }
-        if (ret != -EINTR) {
-            lm_log(lm_ctx, LM_ERR, "failed to receive request: %s", strerror(-ret));
-        }
+    ret = get_next_command(lm_ctx, &hdr, fds, &nr_fds);
+    if (ret <= 0) {
         return ret;
-    }
-    if (unlikely(ret == 0)) {
-        if (errno == EINTR) {
-            return -EINTR;
-        }
-        if (errno == 0) {
-            lm_log(lm_ctx, LM_INF, "VFIO client closed connection");
-        } else {
-            lm_log(lm_ctx, LM_ERR, "end of file: %m");
-        }
-        return -ENOTCONN;
     }
 
     ret = validate_header(lm_ctx, &hdr, ret);
