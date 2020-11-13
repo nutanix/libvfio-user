@@ -2081,6 +2081,32 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
  * other times we return -errno. Fix.
  */
 
+/*
+ * Returns 0 if the header is valid, -errno otherwise.
+ */
+static int
+validate_header(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, size_t size)
+{
+    assert(hdr != NULL);
+
+    if (size < sizeof hdr) {
+        lm_log(lm_ctx, LM_ERR, "short header read %u", size);
+        return -EINVAL;
+    }
+
+    if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
+        lm_log(lm_ctx, LM_ERR, "header not a request");
+        return -EINVAL;
+    }
+
+    if (hdr->msg_size < sizeof hdr) {
+        lm_log(lm_ctx, LM_ERR, "bad size in header %d", hdr->msg_size);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 static int
 process_request(lm_ctx_t *lm_ctx)
 {
@@ -2138,19 +2164,9 @@ process_request(lm_ctx_t *lm_ctx)
         return -ENOTCONN;
     }
 
-    if (ret < (int)sizeof hdr) {
-        lm_log(lm_ctx, LM_ERR, "short header read %d", ret);
-        return -EINVAL;
-    }
-
-    if (hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        lm_log(lm_ctx, LM_ERR, "header not a request");
-        return -EINVAL;
-    }
-
-    if (hdr.msg_size < sizeof hdr) {
-        lm_log(lm_ctx, LM_ERR, "bad size in header %d", hdr.msg_size);
-        return -EINVAL;
+    ret = validate_header(lm_ctx, &hdr, ret);
+    if (ret < 0) {
+        return ret;
     }
 
     /* FIXME in most of the following function we check that hdr.count is >=
