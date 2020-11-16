@@ -1921,6 +1921,7 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
                                      (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
                                      size - sizeof *dirty_bitmap);
     } else {
+        lm_log(lm_ctx, LM_ERR, "bad flags %#x", dirty_bitmap->flags);
         ret = -EINVAL;
     }
 
