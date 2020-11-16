@@ -1577,18 +1577,23 @@ handle_device_get_region_info(lm_ctx_t *lm_ctx, uint32_t size,
                               struct vfio_region_info *reg_info_in,
                               struct vfio_region_info **reg_info_out)
 {
-    if (size != sizeof(*reg_info_in)) {
+    if (size != sizeof(*reg_info_in) || size != reg_info_in->argsz) {
         return -EINVAL;
     }
 
     return dev_get_reginfo(lm_ctx, reg_info_in->index, reg_info_out);
 }
 
-static void
-handle_device_get_info(lm_ctx_t *lm_ctx, struct vfio_device_info *dev_info)
+static int
+handle_device_get_info(lm_ctx_t *lm_ctx, uint32_t size,
+                       struct vfio_device_info *dev_info)
 {
     assert(lm_ctx != NULL);
     assert(dev_info != NULL);
+
+    if (size != sizeof *dev_info) {
+        return -EINVAL;
+    }
 
     dev_info->argsz = sizeof *dev_info;
     dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
@@ -1597,6 +1602,8 @@ handle_device_get_info(lm_ctx_t *lm_ctx, struct vfio_device_info *dev_info)
 
     lm_log(lm_ctx, LM_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
            " %d", dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
+
+    return 0;
 }
 
 static int
@@ -1608,7 +1615,7 @@ handle_device_get_irq_info(lm_ctx_t *lm_ctx, uint32_t size,
     assert(irq_info_in != NULL);
     assert(irq_info_out != NULL);
 
-    if (size != sizeof *irq_info_in) {
+    if (size != sizeof *irq_info_in || size != irq_info_in->argsz) {
         return -EINVAL;
     }
 
@@ -1899,12 +1906,10 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
     assert(nr_iovecs != NULL);
     assert(dirty_bitmap != NULL);
 
-    if (size < sizeof *dirty_bitmap) {
+    if (size < sizeof *dirty_bitmap || size != dirty_bitmap->argsz) {
         lm_log(lm_ctx, LM_ERR, "invalid header size %lu", size);
         return -EINVAL;
     }
-
-    /* FIXME must also check argsz */
 
     if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
         ret = dma_controller_dirty_page_logging_start(lm_ctx->dma,
@@ -1916,6 +1921,7 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
                                      (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
                                      size - sizeof *dirty_bitmap);
     } else {
+        lm_log(lm_ctx, LM_ERR, "bad flags %#x", dirty_bitmap->flags);
         ret = -EINVAL;
     }
 
@@ -2054,13 +2060,13 @@ process_request(lm_ctx_t *lm_ctx)
             ret = -errno;
             goto reply;
         }
+        if (ret != (int)hdr.msg_size) {
+            lm_log(lm_ctx, LM_ERR, "short read, expected=%d, actual=%d",
+                   hdr.msg_size, ret);
+            ret = -EINVAL;
+            goto reply;
+        }
     }
-
-    /* FIXME in most of the following function we check that hdr.count is >=
-     * than the command-specific struct and there is an additional recv(2) for
-     * that data. We should eliminate duplicating this common code and move it
-     * here.
-     */
 
     if (migration_is_stop_and_copy(lm_ctx)
         && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
@@ -2078,11 +2084,13 @@ process_request(lm_ctx_t *lm_ctx)
                                           fds, nr_fds, cmd_data);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
-            handle_device_get_info(lm_ctx, &dev_info);
-            _iovecs[1].iov_base = &dev_info;
-            _iovecs[1].iov_len = dev_info.argsz;
-            iovecs = _iovecs;
-            nr_iovecs = 2;
+            ret = handle_device_get_info(lm_ctx, hdr.msg_size, &dev_info);
+            if (ret >= 0) {
+                _iovecs[1].iov_base = &dev_info;
+                _iovecs[1].iov_len = dev_info.argsz;
+                iovecs = _iovecs;
+                nr_iovecs = 2;
+            }
             break;
         case VFIO_USER_DEVICE_GET_REGION_INFO:
             ret = handle_device_get_region_info(lm_ctx, hdr.msg_size, cmd_data,
