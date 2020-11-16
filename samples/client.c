@@ -904,6 +904,14 @@ int main(int argc, char *argv[])
        ret = migrate_from(sock);
     }
 
+    /*
+     * Try to touch BAR0, we should get an error as the device is stopped.
+     */
+    ret = access_bar0(sock);
+    if (ret != EINVAL) {
+        fprintf(stderr, "expected an error, got %d instead\n", ret);
+    }
+
     return 0;
 }
 
