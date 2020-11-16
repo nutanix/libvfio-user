@@ -229,6 +229,12 @@ static int get_device_info(int sock, struct vfio_device_info *dev_info)
         return ret;
     }
 
+    if (dev_info->num_regions != 10) {
+        fprintf(stderr, "bad number of device regions %d\n",
+                dev_info->num_regions);
+        return -EINVAL;
+    }
+
     printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
            dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
     return 0;

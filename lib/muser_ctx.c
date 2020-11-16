@@ -831,17 +831,6 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
     return 0;
 }
 
-static int
-device_reset(lm_ctx_t *lm_ctx)
-{
-    lm_log(lm_ctx, LM_DBG, "Device reset called by client");
-    if (lm_ctx->reset != NULL) {
-        return lm_ctx->reset(lm_ctx->pvt);
-    }
-
-    return 0;
-}
-
 static long
 dev_set_irqs(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 {
@@ -867,22 +856,25 @@ dev_set_irqs(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 }
 
 static long
-dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info)
+dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info_in,
+                struct vfio_irq_info *irq_info_out)
 {
     assert(lm_ctx != NULL);
-    assert(irq_info != NULL);
+    assert(irq_info_in != NULL);
+    assert(irq_info_out != NULL);
+
     lm_pci_info_t *pci_info = &lm_ctx->pci_info;
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
-    if ((irq_info->argsz < sizeof(struct vfio_irq_info)) ||
-        (irq_info->index >= LM_DEV_NUM_IRQS)) {
+    if ((irq_info_in->argsz < sizeof(struct vfio_irq_info)) ||
+        (irq_info_in->index >= LM_DEV_NUM_IRQS)) {
         lm_log(lm_ctx, LM_DBG, "bad irq_info (size=%d index=%d)\n",
-               irq_info->argsz, irq_info->index);
+               irq_info_in->argsz, irq_info_in->index);
         return -EINVAL;
     }
 
-    irq_info->count = pci_info->irq_count[irq_info->index];
-    irq_info->flags = VFIO_IRQ_INFO_EVENTFD;
+    irq_info_out->count = pci_info->irq_count[irq_info_in->index];
+    irq_info_out->flags = VFIO_IRQ_INFO_EVENTFD;
 
     return 0;
 }
@@ -1050,24 +1042,6 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
     return 0;
 }
 
-static long
-dev_get_info(lm_ctx_t *lm_ctx, struct vfio_device_info *dev_info)
-{
-    assert(lm_ctx != NULL);
-    assert(dev_info != NULL);
-
-    // Ensure provided argsz is sufficiently big.
-    if (dev_info->argsz < sizeof(struct vfio_device_info)) {
-        return -EINVAL;
-    }
-
-    dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
-    dev_info->num_regions = LM_DEV_NUM_REGS;
-    dev_info->num_irqs = LM_DEV_NUM_IRQS;
-
-    return 0;
-}
-
 int
 muser_send_fds(int sock, int *fds, size_t count) {
 	struct msghdr msg = { 0 };
@@ -1131,24 +1105,6 @@ muser_recv_fds(int sock, int *fds, size_t count)
     memcpy((void*)fds, CMSG_DATA(cmsg), cmsg->cmsg_len - sizeof *cmsg);
 
     return fds_size / sizeof(int);
-}
-
-/*
- * Returns the number of bytes sent (may be less than ret), or a negative
- * number on error.
- */
-static int
-post_read(lm_ctx_t *lm_ctx, char *rwbuf, ssize_t count)
-{
-    ssize_t ret;
-
-    ret = write(lm_ctx->conn_fd, rwbuf, count);
-    if (ret != count) {
-        lm_log(lm_ctx, LM_ERR, "%s: bad muser write: %lu/%lu, %s\n",
-               __func__, ret, count, strerror(errno));
-    }
-
-    return ret;
 }
 
 int
@@ -1567,45 +1523,24 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, uint32_t count, uint64_t *ppos,
 }
 
 static inline int
-muser_access(lm_ctx_t *lm_ctx, bool is_write, void **data, uint32_t count,
+muser_access(lm_ctx_t *lm_ctx, bool is_write, char *rwbuf, uint32_t count,
              uint64_t *pos)
 {
-    struct vfio_user_region_access *region_access;
-    char *rwbuf;
-    int err;
     uint32_t processed = 0, _count;
     int ret;
 
+    assert(lm_ctx != NULL);
+    assert(rwbuf != NULL);
     assert(pos != NULL);
-
-    /* TODO how big do we expect count to be? Can we use alloca(3) instead? */
-    region_access = calloc(1, sizeof(*region_access) + count);
-    if (region_access == NULL) {
-        lm_log(lm_ctx, LM_ERR, "failed to allocate memory\n");
-        return -1;
-    }
-    rwbuf = (char*)(region_access + 1);
 
     lm_log(lm_ctx, LM_DBG, "%s %#lx-%#lx", is_write ? "W" : "R", *pos,
            *pos + count - 1);
 
-    /* receive data to be written */
-    if (is_write) {
-        err = read(lm_ctx->conn_fd, rwbuf, count);
-        /*
-         * FIXME this is wrong, we should be checking for
-         * err != count
-         */
-        if (err < 0) {
-            lm_log(lm_ctx, LM_ERR, "failed to receive write payload: %s",
-                   strerror(errno));
-            goto out;
-        }
-        err = 0;
 #ifdef LM_VERBOSE_LOGGING
+    if (is_write) {
         dump_buffer("buffer write", rwbuf, count);
-#endif
     }
+#endif
 
     _count = count;
     ret = muser_pci_hdr_access(lm_ctx, &_count, pos, is_write, rwbuf);
@@ -1626,142 +1561,73 @@ muser_access(lm_ctx_t *lm_ctx, bool is_write, void **data, uint32_t count,
     ret = lm_access(lm_ctx, rwbuf + processed, _count, pos, is_write);
     if (ret >= 0) {
         ret += processed;
-        if (data != NULL) {
-            /*
-             * FIXME the spec doesn't specify whether the reset of the
-             * region_access struct needs to be populated.
-             */
-            region_access->count = ret;
-            *data = region_access;
-            return ret;
-        } else if (!is_write) {
-            err = post_read(lm_ctx, rwbuf, ret);
 #ifdef LM_VERBOSE_LOGGING
-            if (err == ret) {
-                dump_buffer("buffer read", rwbuf, ret);
-            }
-#endif
+        if (!is_write && err == ret) {
+            dump_buffer("buffer read", rwbuf, ret);
         }
+#endif
     }
-
-out:
-    free(region_access);
 
     return ret;
 }
 
-static int handle_device_get_region_info(lm_ctx_t *lm_ctx,
-                                         struct vfio_user_header *hdr,
-                                         struct vfio_region_info **dev_reg_info)
+/* TODO merge with dev_get_reginfo */
+static int
+handle_device_get_region_info(lm_ctx_t *lm_ctx, uint32_t size,
+                              struct vfio_region_info *reg_info_in,
+                              struct vfio_region_info **reg_info_out)
 {
-    struct vfio_region_info *reg_info;
-    int ret;
-
-    reg_info = calloc(sizeof(*reg_info), 1);
-    if (reg_info == NULL) {
-        return -ENOMEM;
-    }
-
-    if ((hdr->msg_size - sizeof(*hdr)) != sizeof(*reg_info)) {
-        ret = -EINVAL;
-        goto out;
-    }
-
-    ret = recv(lm_ctx->conn_fd, reg_info, sizeof(*reg_info), 0);
-    if (ret < 0) {
-        ret = -errno;
-        goto out;
-    }
-
-    ret = dev_get_reginfo(lm_ctx, reg_info->index, dev_reg_info);
-    if (ret < 0) {
-        goto out;
-    }
-out:
-    free(reg_info);
-    return ret;
-}
-
-static int handle_device_get_info(lm_ctx_t *lm_ctx,
-                                  struct vfio_user_header *hdr,
-                                  struct vfio_device_info *dev_info)
-{
-    int ret;
-
-    if ((hdr->msg_size - sizeof(*hdr)) != sizeof(*dev_info)) {
+    if (size != sizeof(*reg_info_in)) {
         return -EINVAL;
     }
 
-    ret = recv(lm_ctx->conn_fd, dev_info, sizeof(*dev_info), 0);
-    if (ret < 0) {
-        return -errno;
-    }
+    return dev_get_reginfo(lm_ctx, reg_info_in->index, reg_info_out);
+}
 
-    ret = dev_get_info(lm_ctx, dev_info);
-    if (ret < 0) {
-        return ret;
-    }
+static void
+handle_device_get_info(lm_ctx_t *lm_ctx, struct vfio_device_info *dev_info)
+{
+    assert(lm_ctx != NULL);
+    assert(dev_info != NULL);
+
+    dev_info->argsz = sizeof *dev_info;
+    dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
+    dev_info->num_regions = LM_DEV_NUM_REGS;
+    dev_info->num_irqs = LM_DEV_NUM_IRQS;
 
     lm_log(lm_ctx, LM_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
            " %d", dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
-    return ret;
 }
 
 static int
-handle_device_get_irq_info(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                           struct vfio_irq_info *irq_info)
+handle_device_get_irq_info(lm_ctx_t *lm_ctx, uint32_t size,
+                           struct vfio_irq_info *irq_info_in,
+                           struct vfio_irq_info *irq_info_out)
 {
-    int ret;
-
     assert(lm_ctx != NULL);
-    assert(irq_info != NULL);
+    assert(irq_info_in != NULL);
+    assert(irq_info_out != NULL);
 
-    hdr->msg_size -= sizeof *hdr;
-
-    if (hdr->msg_size != sizeof *irq_info) {
+    if (size != sizeof *irq_info_in) {
         return -EINVAL;
     }
 
-    ret = recv(lm_ctx->conn_fd, irq_info, hdr->msg_size, 0);
-    if (ret < 0) {
-        return -errno;
-    }
-    if (ret != (int)hdr->msg_size) {
-        assert(false); /* FIXME */
-    }
-
-    return dev_get_irqinfo(lm_ctx, irq_info);
+    return dev_get_irqinfo(lm_ctx, irq_info_in, irq_info_out);
 }
 
 static int
-handle_device_set_irqs(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                       int *fds, int nr_fds)
+handle_device_set_irqs(lm_ctx_t *lm_ctx, uint32_t size,
+                       int *fds, int nr_fds, struct vfio_irq_set *irq_set)
 {
-    int ret;
-    struct vfio_irq_set *irq_set;
     void *data;
 
     assert(lm_ctx != NULL);
-    assert(hdr != NULL);
+    assert(irq_set != NULL);
 
-    hdr->msg_size -= sizeof *hdr;
-
-    if (hdr->msg_size < sizeof *irq_set) {
+    if (size < sizeof *irq_set || size != irq_set->argsz) {
         return -EINVAL;
     }
 
-    irq_set = alloca(hdr->msg_size); /* FIXME */
-
-    ret = recv(lm_ctx->conn_fd, irq_set, hdr->msg_size, 0);
-    if (ret < 0) {
-        return -errno;
-    }
-    if (ret != (int)hdr->msg_size) {
-        assert(false); /* FIXME */
-    }
-    if (ret != (int)irq_set->argsz) {
-        assert(false); /* FIXME */
-    }
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
         case VFIO_IRQ_SET_DATA_EVENTFD:
             data = fds;
@@ -1778,36 +1644,25 @@ handle_device_set_irqs(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
 }
 
 static int
-handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map,
-                        int *fds, int nr_fds)
+handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
+                        int *fds, int nr_fds,
+                        struct vfio_user_dma_region *dma_regions)
 {
     int ret, i;
     int nr_dma_regions;
-    struct vfio_user_dma_region *dma_regions;
 
     assert(lm_ctx != NULL);
-    assert(hdr != NULL);
 
-    hdr->msg_size -= sizeof *hdr;
-
-    if (hdr->msg_size % sizeof(struct vfio_user_dma_region) != 0) {
-        lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", hdr->msg_size);
+    if (size % sizeof(struct vfio_user_dma_region) != 0) {
+        lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", size);
         return -EINVAL;
     }
 
-    nr_dma_regions = (int)(hdr->msg_size / sizeof(struct vfio_user_dma_region));
+    nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
     if (map && nr_dma_regions != nr_fds) {
         lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
                nr_dma_regions, nr_fds);
         return -EINVAL;
-    }
-
-    dma_regions = alloca(nr_dma_regions * sizeof(*dma_regions));
-
-    ret = recv(lm_ctx->conn_fd, dma_regions, hdr->msg_size, 0);
-    if (ret == -1) {
-        lm_log(lm_ctx, LM_ERR, "failed to receive DMA region entries: %m");
-        return -errno;
     }
 
     if (lm_ctx->dma == NULL) {
@@ -1874,7 +1729,11 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, bool map
 static int
 handle_device_reset(lm_ctx_t *lm_ctx)
 {
-    return device_reset(lm_ctx);
+    lm_log(lm_ctx, LM_DBG, "Device reset called by client");
+    if (lm_ctx->reset != NULL) {
+        return lm_ctx->reset(lm_ctx->pvt);
+    }
+    return 0;
 }
 
 static bool
@@ -1895,64 +1754,83 @@ migration_is_stop_and_copy(lm_ctx_t *lm_ctx)
 }
 
 static int
-handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                     void **data, size_t *len)
+validate_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
+                       struct vfio_user_region_access *region_access)
 {
-    struct vfio_user_region_access region_access;
-    uint64_t count, offset;
-    int ret;
+    assert(region_access != NULL);
 
-    assert(lm_ctx != NULL);
-    assert(hdr != NULL);
-    assert(data != NULL);
-
-    /* 
-     * TODO Since muser_access doesn't have to handle the kernel case any more,
-     * we can avoid having to do an additional read/recv inside muser_access
-     * (one recv for struct region_access and another for the write data) by
-     * doing a single recvmsg here with an iovec where the first element of the
-     * array will be struct vfio_user_region_access and the second a buffer if
-     * it's a write.  The size of the write buffer is: hdr->msg_size - sizeof
-     * *hdr - sizeof region_access, and should be equal to region_access.count.
-     */
-
-    hdr->msg_size -= sizeof *hdr;
-    if (hdr->msg_size < sizeof region_access) {
-        lm_log(lm_ctx, LM_ERR, "message size too small (%d)", hdr->msg_size);
+    if (size < sizeof *region_access) {
+        lm_log(lm_ctx, LM_ERR, "message size too small (%d)", size);
         return -EINVAL;
     }
 
-    ret = recv(lm_ctx->conn_fd, &region_access, sizeof region_access, 0);
-    if (ret == -1) {
-        lm_log(lm_ctx, LM_ERR, "failed to recv: %m");
-        return -errno;
-    }
-    if (ret != sizeof region_access) {
-        lm_log(lm_ctx, LM_ERR, "bad region_access size %d", ret);
-        return -EINVAL;
-    }
-    if (region_access.region >= LM_DEV_NUM_REGS || region_access.count <= 0 ) {
+    if (region_access->region >= LM_DEV_NUM_REGS || region_access->count <= 0 ) {
         lm_log(lm_ctx, LM_ERR, "bad region %d and/or count %d",
-               region_access.region, region_access.count);
+               region_access->region, region_access->count);
         return -EINVAL;
     }
 
     if (migration_is_stop_and_copy(lm_ctx) &&
-        region_access.region != LM_DEV_MIGRATION_REG_IDX) {
+        region_access->region != LM_DEV_MIGRATION_REG_IDX) {
         lm_log(lm_ctx, LM_ERR,
                "cannot access region %d while device in stop-and-copy state",
-               region_access.region);
+               region_access->region);
         return -EINVAL;
     }
 
-    count = region_access.count;
-    offset = region_to_offset(region_access.region) + region_access.offset;
+    if (cmd == VFIO_USER_REGION_WRITE &&
+        size - sizeof *region_access != region_access->count)
+    {
+        lm_log(lm_ctx, LM_ERR, "bad region access, expected %d, actual %d",
+               size - sizeof *region_access, region_access->count);
+        return -EINVAL;
+    }
 
-    ret = muser_access(lm_ctx, hdr->cmd == VFIO_USER_REGION_WRITE,
-                       data, count, &offset);
-    if (ret != (int)region_access.count) {
-        lm_log(lm_ctx, LM_ERR, "bad region access acount, expected=%d, actual=%d",
-               region_access.count, ret);
+    return 0;
+}
+
+static int
+handle_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
+                     void **data, size_t *len,
+                     struct vfio_user_region_access *region_access)
+{
+    uint64_t count, offset;
+    int ret;
+    char *buf;
+
+    assert(lm_ctx != NULL);
+    assert(data != NULL);
+    assert(region_access != NULL);
+
+    ret = validate_region_access(lm_ctx, size, cmd, region_access);
+    if (ret < 0) {
+        return ret;
+    }
+
+    *len = sizeof *region_access;
+    if (cmd == VFIO_USER_REGION_READ) {
+        *len += region_access->count;
+    }
+    *data = malloc(*len);
+    if (*data == NULL) {
+        return -ENOMEM;
+    }
+    if (cmd == VFIO_USER_REGION_READ) {
+        buf = (char*)(((struct vfio_user_region_access*)(*data)) + 1);
+    } else {
+        buf = (char*)(region_access + 1);
+    }
+
+    count = region_access->count;
+    offset = region_to_offset(region_access->region) + region_access->offset;
+
+    ret = muser_access(lm_ctx, cmd == VFIO_USER_REGION_WRITE,
+                       buf, count, &offset);
+    if (ret != (int)region_access->count) {
+        lm_log(lm_ctx, LM_ERR, "failed to %s %#lx-%#lx: %d",
+               cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
+               region_access->count,
+               region_access->offset + region_access->count - 1, ret);
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
             ret = -EINVAL;
@@ -1960,49 +1838,33 @@ handle_region_access(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
         return ret;
     }
 
-    *len = sizeof(region_access);
-    if (hdr->cmd == VFIO_USER_REGION_READ) {
-        *len += region_access.count;
-    }
+    region_access = *data;
+    region_access->count = ret;
 
     return 0;
 }
 
 static int
-handle_dirty_pages_get(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                       struct iovec **iovecs, size_t *nr_iovecs)
+handle_dirty_pages_get(lm_ctx_t *lm_ctx,
+                       struct iovec **iovecs, size_t *nr_iovecs,
+                       struct vfio_iommu_type1_dirty_bitmap_get *ranges,
+                       uint32_t size)
 {
-    int size, ret;
+    int ret;
     size_t i;
-    struct vfio_iommu_type1_dirty_bitmap_get *ranges;
 
     assert(lm_ctx != NULL);
-    assert(hdr != NULL);
     assert(iovecs != NULL);
     assert(nr_iovecs != NULL);
+    assert(ranges != NULL);
 
-    size = hdr->msg_size - sizeof(*hdr) - sizeof(struct vfio_iommu_type1_dirty_bitmap);
     if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
         return -EINVAL;
-    }
-    ranges = malloc(size);
-    if (ranges == NULL) {
-        return -errno;
-    }
-    ret = recv(lm_ctx->conn_fd, ranges, size, 0);
-    if (ret == -1) {
-        ret = -errno;
-        goto out;
-    }
-    if (ret != size) {
-        ret = -EINVAL;
-        goto out;
     }
     *nr_iovecs = 1 + size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
-        ret = -errno;
-        goto out;
+        return -ENOMEM;
     }
    
     for (i = 1; i < *nr_iovecs; i++) {
@@ -2022,44 +1884,37 @@ out:
             *iovecs = NULL;
         }
     }
-    free(ranges);
     return ret;
 }
 
 static int
-handle_dirty_pages(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                   struct iovec **iovecs, size_t *nr_iovecs)
+handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
+                   struct iovec **iovecs, size_t *nr_iovecs,
+                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
 {
-    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap;
     int ret;
 
     assert(lm_ctx != NULL);
-    assert(hdr != NULL);
     assert(iovecs != NULL);
     assert(nr_iovecs != NULL);
+    assert(dirty_bitmap != NULL);
 
-    if (hdr->msg_size - sizeof *hdr < sizeof dirty_bitmap) {
-        lm_log(lm_ctx, LM_ERR, "invalid header size %lu", hdr->msg_size);
+    if (size < sizeof *dirty_bitmap) {
+        lm_log(lm_ctx, LM_ERR, "invalid header size %lu", size);
         return -EINVAL;
     }
 
     /* FIXME must also check argsz */
 
-    ret = recv(lm_ctx->conn_fd, &dirty_bitmap, sizeof dirty_bitmap, 0);
-    if (ret == -1) {
-        return -errno;
-    }
-    if ((size_t)ret < sizeof dirty_bitmap) {
-        return -EINVAL;
-    }
-
-    if (dirty_bitmap.flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
+    if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
         ret = dma_controller_dirty_page_logging_start(lm_ctx->dma,
                                                       lm_ctx->migration.pgsize);
-    } else if (dirty_bitmap.flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
+    } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
         ret = dma_controller_dirty_page_logging_stop(lm_ctx->dma);
-    } else if (dirty_bitmap.flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
-        ret = handle_dirty_pages_get(lm_ctx, hdr, iovecs, nr_iovecs);
+    } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
+        ret = handle_dirty_pages_get(lm_ctx, iovecs, nr_iovecs,
+                                     (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
+                                     size - sizeof *dirty_bitmap);
     } else {
         ret = -EINVAL;
     }
@@ -2151,6 +2006,7 @@ process_request(lm_ctx_t *lm_ctx)
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     bool free_iovec_data = true;
+    void *cmd_data = NULL;
 
     assert(lm_ctx != NULL);
 
@@ -2181,6 +2037,25 @@ process_request(lm_ctx_t *lm_ctx)
         return ret;
     }
 
+    /*
+     * TODO from now on if an error occurs we still need to reply. Move this
+     * code into a separate function so that we don't have to use goto.
+     */
+
+    hdr.msg_size -= sizeof(hdr);
+    if (hdr.msg_size > 0) {
+        cmd_data = malloc(hdr.msg_size);
+        if (cmd_data == NULL) {
+            ret = -ENOMEM;
+            goto reply;
+        }
+        ret = recv(lm_ctx->conn_fd, cmd_data, hdr.msg_size, 0);
+        if (ret < 0) {
+            ret = -errno;
+            goto reply;
+        }
+    }
+
     /* FIXME in most of the following function we check that hdr.count is >=
      * than the command-specific struct and there is an additional recv(2) for
      * that data. We should eliminate duplicating this common code and move it
@@ -2191,27 +2066,27 @@ process_request(lm_ctx_t *lm_ctx)
         && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
         lm_log(lm_ctx, LM_ERR,
                "bad command %d while device in stop-and-copy state", hdr.cmd);
-        return -EINVAL;
+        ret = -EINVAL;
+        goto reply;
     }
 
     switch (hdr.cmd) {
         case VFIO_USER_DMA_MAP:
         case VFIO_USER_DMA_UNMAP:
-            ret = handle_dma_map_or_unmap(lm_ctx, &hdr,
+            ret = handle_dma_map_or_unmap(lm_ctx, hdr.msg_size,
                                           hdr.cmd == VFIO_USER_DMA_MAP,
-                                          fds, nr_fds);
+                                          fds, nr_fds, cmd_data);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
-            ret = handle_device_get_info(lm_ctx, &hdr, &dev_info);
-            if (ret == 0) {
-                _iovecs[1].iov_base = &dev_info;
-                _iovecs[1].iov_len = dev_info.argsz;
-                iovecs = _iovecs;
-                nr_iovecs = 2;
-            }
+            handle_device_get_info(lm_ctx, &dev_info);
+            _iovecs[1].iov_base = &dev_info;
+            _iovecs[1].iov_len = dev_info.argsz;
+            iovecs = _iovecs;
+            nr_iovecs = 2;
             break;
         case VFIO_USER_DEVICE_GET_REGION_INFO:
-            ret = handle_device_get_region_info(lm_ctx, &hdr, &dev_reg_info);
+            ret = handle_device_get_region_info(lm_ctx, hdr.msg_size, cmd_data,
+                                                &dev_reg_info);
             if (ret == 0) {
                 _iovecs[1].iov_base = dev_reg_info;
                 _iovecs[1].iov_len = dev_reg_info->argsz;
@@ -2220,7 +2095,8 @@ process_request(lm_ctx_t *lm_ctx)
             }
             break;
         case VFIO_USER_DEVICE_GET_IRQ_INFO:
-            ret = handle_device_get_irq_info(lm_ctx, &hdr, &irq_info);
+            ret = handle_device_get_irq_info(lm_ctx, hdr.msg_size, cmd_data,
+                                             &irq_info);
             if (ret == 0) {
                 _iovecs[1].iov_base = &irq_info;
                 _iovecs[1].iov_len = sizeof irq_info;
@@ -2229,29 +2105,34 @@ process_request(lm_ctx_t *lm_ctx)
             }
             break;
         case VFIO_USER_DEVICE_SET_IRQS:
-            ret = handle_device_set_irqs(lm_ctx, &hdr, fds, nr_fds);
+            ret = handle_device_set_irqs(lm_ctx, hdr.msg_size, fds, nr_fds,
+                                         cmd_data);
             break;
         case VFIO_USER_REGION_READ:
         case VFIO_USER_REGION_WRITE:
             iovecs = _iovecs;
-            ret = handle_region_access(lm_ctx, &hdr, &iovecs[1].iov_base,
-                                       &iovecs[1].iov_len);
+            ret = handle_region_access(lm_ctx, hdr.msg_size, hdr.cmd,
+                                       &iovecs[1].iov_base, &iovecs[1].iov_len,
+                                       cmd_data);
             nr_iovecs = 2;
             break;
         case VFIO_USER_DEVICE_RESET:
             ret = handle_device_reset(lm_ctx);
             break;
         case VFIO_USER_DIRTY_PAGES:
-            ret = handle_dirty_pages(lm_ctx, &hdr, &iovecs, &nr_iovecs);
+            ret = handle_dirty_pages(lm_ctx, hdr.msg_size, &iovecs, &nr_iovecs,
+                                     cmd_data);
             if (ret >= 0) {
                 free_iovec_data = false;
             }
             break;
         default:
             lm_log(lm_ctx, LM_ERR, "bad command %d", hdr.cmd);
-            return -EINVAL;
+            ret = -EINVAL;
+            goto reply;
     }
 
+reply:
     /*
      * TODO: In case of error during command handling set errno respectively
      * in the reply message.
@@ -2276,6 +2157,7 @@ process_request(lm_ctx_t *lm_ctx)
         }
         free(iovecs);
     }
+    free(cmd_data);
 
     return ret;
 }
