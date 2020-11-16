@@ -2062,12 +2062,6 @@ process_request(lm_ctx_t *lm_ctx)
         }
     }
 
-    /* FIXME in most of the following function we check that hdr.count is >=
-     * than the command-specific struct and there is an additional recv(2) for
-     * that data. We should eliminate duplicating this common code and move it
-     * here.
-     */
-
     if (migration_is_stop_and_copy(lm_ctx)
         && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
         lm_log(lm_ctx, LM_ERR,
