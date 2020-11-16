@@ -53,7 +53,7 @@ int
 _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                    enum vfio_user_command cmd,
                    struct iovec *iovecs, size_t nr_iovecs,
-                   int *fds, int count);
+                   int *fds, int count, int err);
 
 int
 send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,

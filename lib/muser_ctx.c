@@ -224,7 +224,7 @@ int
 _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                    enum vfio_user_command cmd,
                    struct iovec *iovecs, size_t nr_iovecs,
-                   int *fds, int count)
+                   int *fds, int count, int err)
 {
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
@@ -240,6 +240,10 @@ _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 
     if (is_reply) {
         hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
+        if (err != 0) {
+            hdr.flags.error = 1U;
+            hdr.error_no = err;
+        }
     } else {
         hdr.cmd = cmd;
         hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
@@ -290,7 +294,7 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
         }
     };
     return _send_vfio_user_msg(sock, msg_id, is_reply, cmd, iovecs,
-                               ARRAY_SIZE(iovecs), fds, count);
+                               ARRAY_SIZE(iovecs), fds, count, 0);
 }
 
 int
@@ -406,7 +410,7 @@ _send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
                          void *recv_data, size_t recv_len)
 {
     int ret = _send_vfio_user_msg(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                                  send_fds, fd_count);
+                                  send_fds, fd_count, 0);
     if (ret < 0) {
         return ret;
     }
@@ -2155,10 +2159,11 @@ reply:
     if (ret < 0) {
         lm_log(lm_ctx, LM_ERR, "failed to handle command %d: %s", hdr.cmd,
                strerror(-ret));
-        assert(false); /* FIXME */
+    } else {
+        ret = 0;
     }
     ret = _send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
-                             0, iovecs, nr_iovecs, NULL, 0);
+                             0, iovecs, nr_iovecs, NULL, 0, -ret);
     if (unlikely(ret < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s",
                 strerror(-ret));
