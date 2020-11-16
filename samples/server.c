@@ -41,6 +41,7 @@
 #include <openssl/md5.h>
 #include <sys/mman.h>
 #include <sys/param.h>
+#include <sys/time.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -53,6 +54,7 @@ struct dma_regions {
 #define NR_DMA_REGIONS  96
 
 struct server_data {
+    lm_ctx_t *lm_ctx;
     time_t bar0;
     uint8_t *bar1;
     struct dma_regions regions[NR_DMA_REGIONS];
@@ -82,6 +84,13 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
     }
 
     if (is_write) {
+        struct itimerval new = {.it_value.tv_sec = *(time_t*)buf};
+        lm_log(server_data->lm_ctx, LM_DBG,
+               "arming timer to trigger in %d seconds", new.it_value.tv_sec);
+        if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
+            lm_log(server_data->lm_ctx, LM_ERR, "failed to arm timer: %m");
+            return -1;
+        }
         memcpy(&server_data->bar0, buf, count);
     } else {
         time_t delta = time(NULL) - server_data->bar0;
@@ -104,7 +113,7 @@ bool irq_triggered = false;
 static void _sa_handler(int signum)
 {
     int _errno = errno;
-    if (signum == SIGUSR1) {
+    if (signum == SIGALRM) {
         irq_triggered = true;
     }
     errno = _errno;
@@ -365,13 +374,11 @@ int main(int argc, char *argv[]){
     };
 
     sigemptyset(&act.sa_mask);
-    if (sigaction(SIGUSR1, &act, NULL) == -1) {
-        fprintf(stderr, "failed to register signal handler\n");
-        ret = -EFAULT;
-        goto out;
+    if (sigaction(SIGALRM, &act, NULL) == -1) {
+        err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    lm_ctx = lm_ctx_create(&dev_info);
+    server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
         fprintf(stderr, "failed to initialize device emulation\n");
         ret = -1;

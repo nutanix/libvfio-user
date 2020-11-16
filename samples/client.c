@@ -243,13 +243,9 @@ static int
 configure_irqs(int sock)
 {
     int i, ret;
-    size_t size;
     struct vfio_irq_set irq_set;
-    struct vfio_user_irq_info vfio_user_irq_info;
-    struct vfio_user_header hdr;
     uint16_t msg_id = 1;
     int irq_fd;
-    uint64_t val;
 
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) { /* TODO move body of loop into function */
         struct vfio_irq_info vfio_irq_info = {
@@ -293,43 +289,7 @@ configure_irqs(int sock)
         return ret;
     }
 
-    printf("client waiting for server to trigger INTx\n");
-    printf("(send SIGUSR1 to the server trigger INTx)\n");
-
-    ret = read(irq_fd, &val, sizeof val);
-    if (ret == -1) {
-        ret = -errno;
-        perror("server failed to trigger IRQ");
-        return ret;
-    }
-
-    printf("INTx triggered!\n");
-
-    msg_id++;
-
-    size = sizeof(vfio_user_irq_info);
-    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &vfio_user_irq_info,
-                             &size);
-    if (ret < 0) {
-        fprintf(stderr, "failed to receive IRQ message: %s\n", strerror(-ret));
-        return ret;
-    }
-    if (vfio_user_irq_info.subindex >= irq_set.count) {
-        fprintf(stderr, "bad IRQ %d, max=%d\n", vfio_user_irq_info.subindex,
-                irq_set.count);
-        return -ENOENT;
-    }
-
-    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VM_INTERRUPT,
-                             NULL, 0, NULL, 0);
-    if (ret < 0) {
-        fprintf(stderr, "failed to send reply for VFIO_USER_VM_INTERRUPT: "
-                "%s\n", strerror(-ret));
-        return ret;
-    }
-    printf("INTx messaged triggered!\n");
-
-    return 0;
+    return irq_fd;
 }
 
 static int
@@ -396,10 +356,49 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
 }
 
 static int
-access_bar0(int sock)
+wait_for_irqs(int sock, int irq_fd)
 {
-    time_t t = time(NULL);
-    const int sleep_time = 1;
+    int ret;
+    uint64_t val;
+    size_t size;
+    struct vfio_user_irq_info vfio_user_irq_info;
+    struct vfio_user_header hdr;
+    uint16_t msg_id = 1;
+
+    ret = read(irq_fd, &val, sizeof val);
+    if (ret == -1) {
+        return -1;
+    }
+    printf("INTx triggered!\n");
+
+    size = sizeof(vfio_user_irq_info);
+    ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &vfio_user_irq_info,
+                             &size);
+    if (ret < 0) {
+        fprintf(stderr, "failed to receive IRQ message: %s\n", strerror(-ret));
+        return ret;
+    }
+    if (vfio_user_irq_info.subindex >= 1) {
+        fprintf(stderr, "bad IRQ %d, max=1\n", vfio_user_irq_info.subindex);
+        return -ENOENT;
+    }
+
+    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VM_INTERRUPT,
+                             NULL, 0, NULL, 0);
+    if (ret < 0) {
+        fprintf(stderr, "failed to send reply for VFIO_USER_VM_INTERRUPT: "
+                "%s\n", strerror(-ret));
+        return ret;
+    }
+    printf("INTx messaged triggered!\n");
+
+    return 0;
+}
+
+static int
+access_bar0(int sock, int irq_fd)
+{
+    time_t t = 1;
     int ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
 
     if (ret < 0) {
@@ -409,8 +408,6 @@ access_bar0(int sock)
 
     printf("wrote to BAR0: %ld\n", t);
 
-    sleep(sleep_time);
-
     ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, &t, sizeof t);
     if (ret < 0) {
         fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
@@ -419,7 +416,7 @@ access_bar0(int sock)
 
     printf("read from BAR0: %ld\n", t);
 
-    assert(t >= sleep_time);
+    ret = wait_for_irqs(sock, irq_fd);
 
     return 0;
 }
@@ -701,7 +698,7 @@ migrate_from(int sock)
 
 int main(int argc, char *argv[])
 {
-	int ret, sock;
+	int ret, sock, irq_fd;
     struct vfio_user_dma_region *dma_regions;
     struct vfio_device_info client_dev_info = {0};
     int *dma_region_fds;
@@ -755,6 +752,17 @@ int main(int argc, char *argv[])
     if ((ret = set_version(sock, client_max_fds, &server_max_fds, &pgsize)) < 0) {
         return ret;
     }
+
+    /* try to access a bogus region, we should het an error */
+    ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof ret);
+    if (ret != -EINVAL) {
+        fprintf(stderr,
+                "expected -EINVAL accessing bogus region, got %d instead\n",
+                ret);
+        return ret;
+    }
+
+
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
     ret = get_device_info(sock, &client_dev_info);
@@ -816,17 +824,15 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
-     *
-     * BAR0 in the server does not support memory mapping so it must be accessed
-     * via explicit messages.
+     * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
+     * Query interrupts and configure an eventfd to be associated with INTx.
      */
-    ret = access_bar0(sock);
+    ret = configure_irqs(sock);
     if (ret < 0) {
-        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
+        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
-
+    irq_fd = ret;
 
     dirty_bitmap.argsz = sizeof dirty_bitmap;
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
@@ -840,13 +846,14 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
-     * Query interrupts, configure an eventfd to be associated with INTx, and
-     * finally wait for the server to fire the interrupt.
+     * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
+     *
+     * BAR0 in the server does not support memory mapping so it must be accessed
+     * via explicit messages.
      */
-    ret = configure_irqs(sock);
+    ret = access_bar0(sock, irq_fd);
     if (ret < 0) {
-        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
+        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
         exit(EXIT_FAILURE);
     }
 
@@ -902,14 +909,6 @@ int main(int argc, char *argv[])
 
     if (migration == MIGRATION_SOURCE) {
        ret = migrate_from(sock);
-    }
-
-    /*
-     * Try to touch BAR0, we should get an error as the device is stopped.
-     */
-    ret = access_bar0(sock);
-    if (ret != EINVAL) {
-        fprintf(stderr, "expected an error, got %d instead\n", ret);
     }
 
     return 0;
