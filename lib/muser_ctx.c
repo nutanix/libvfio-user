@@ -2054,6 +2054,12 @@ process_request(lm_ctx_t *lm_ctx)
             ret = -errno;
             goto reply;
         }
+        if (ret != (int)hdr.msg_size) {
+            lm_log(lm_ctx, LM_ERR, "short read, expected=%d, actual=%d",
+                   hdr.msg_size, ret);
+            ret = -EINVAL;
+            goto reply;
+        }
     }
 
     /* FIXME in most of the following function we check that hdr.count is >=
