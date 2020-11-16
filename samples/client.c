@@ -581,6 +581,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
      * FIXME there should be at least two IOVAs. Send single message for two
      * IOVAs and ensure only one bit is set in first IOVA.
      */
+    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
     ret = _send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                                   iovecs, ARRAY_SIZE(iovecs),
@@ -827,6 +828,7 @@ int main(int argc, char *argv[])
     }
 
 
+    dirty_bitmap.argsz = sizeof dirty_bitmap;
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
     ret = send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                                   &dirty_bitmap, sizeof dirty_bitmap,
@@ -861,6 +863,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    dirty_bitmap.argsz = sizeof dirty_bitmap;
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
     ret = send_recv_vfio_user_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                                   &dirty_bitmap, sizeof dirty_bitmap,
