@@ -32,12 +32,15 @@ set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -fPIC")
 set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 
 add_library(muser SHARED
+    $<TARGET_OBJECTS:cap>
+    $<TARGET_OBJECTS:dma>
+    $<TARGET_OBJECTS:muser_ctx>
+    $<TARGET_OBJECTS:muser_pci>
     vfio_user.h
     muser.h
     muser_priv.h
     common.h)
 
-target_link_libraries(muser muser_ctx muser_pci dma cap)
 set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
 
@@ -45,7 +48,7 @@ set(UT_CFLAGS "-O0 -ggdb --coverage")
 set(UT_LFLAGS "--coverage")
 
 function(add_library_ut lib)
-    add_library(${lib} ${ARGN})
+    add_library(${lib} OBJECT ${ARGN})
     set(lib_ut ${lib}_ut)
     add_library(${lib_ut} ${ARGN})
     set_target_properties(${lib_ut} PROPERTIES COMPILE_FLAGS ${UT_CFLAGS})
