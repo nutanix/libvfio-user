@@ -197,7 +197,8 @@ init_sock(lm_ctx_t *lm_ctx)
     /* start listening business */
     ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
     if (ret < 0) {
-	    ret = errno;
+        ret = -errno;
+        goto out;
     }
 
     ret = listen(unix_sock, 0);
