@@ -1,17 +1,5 @@
 language: c
 dist: bionic
 compiler: gcc
-before_install:
-  - muser_dir=$(pwd)
-  - linux_dir=/tmp/linux
-  - mkdir "${linux_dir}"
-  - cd "${linux_dir}"
-  - git init
-  - git remote add origin git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-  - git fetch --depth 1 origin v5.8
-  - git checkout FETCH_HEAD
-  - make olddefconfig
-  - make prepare
-  - cd "${muser_dir}"
 script:
-  - KDIR=/tmp/linux make
+  - make

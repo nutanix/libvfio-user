@@ -53,8 +53,6 @@ Just do:
 	make && make install
 
 The kernel headers are necessary because VFIO structs and defines are reused.
-To specify an alternative kernel directory set the KDIR environment variable
-accordingly.
 To enable Python bindings set the PYTHON_BINDINGS environment variable to a
 non-empty string.
 
