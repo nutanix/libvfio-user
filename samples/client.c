@@ -39,7 +39,6 @@
 #include <time.h>
 #include <err.h>
 #include <assert.h>
-//#include <sys/uio.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
