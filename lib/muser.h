@@ -248,7 +248,6 @@ typedef union {
 } lm_cap_t;
 
 typedef enum {
-    LM_TRANS_KERNEL,
     LM_TRANS_SOCK,
     LM_TRANS_MAX
 } lm_trans_t;

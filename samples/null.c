@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     pthread_t thread;
 
     if (argc != 2) {
-        err(EXIT_FAILURE, "missing MUSER device UUID");
+        errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
     lm_dev_info_t dev_info = {.uuid = argv[1], .log = null_log, .log_lvl = LM_DBG };
