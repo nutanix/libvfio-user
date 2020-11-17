@@ -299,14 +299,13 @@ int main(int argc, char *argv[]){
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-d] <IOMMU group>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-v] <socketpath>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
 
     if (optind >= argc) {
-        fprintf(stderr, "missing MUSER device UUID\n");
-        exit(EXIT_FAILURE);
+        errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
     server_data.bar1 = malloc(sysconf(_SC_PAGESIZE));

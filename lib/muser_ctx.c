@@ -2481,7 +2481,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     if (dev_info->trans != LM_TRANS_SOCK) {
-            errno = EINVAL;
+            errno = ENOTSUP;
             return NULL;
     }
 
