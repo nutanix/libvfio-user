@@ -217,12 +217,6 @@ out:
     return unix_sock;
 }
 
-static void
-__free_s(char **p)
-{
-    free(*p);
-}
-
 int
 _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                    enum vfio_user_command cmd,
@@ -242,6 +236,7 @@ _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
     memset(&msg, 0, sizeof(msg));
 
     if (is_reply) {
+        // FIXME: SPEC: should the reply include the command? I'd say yes?
         hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
         if (err != 0) {
             hdr.flags.error = 1U;
@@ -276,6 +271,7 @@ _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
         memcpy(CMSG_DATA(cmsg), fds, size);
     }
 
+    // FIXME: this doesn't check the entire data was sent?
     ret = sendmsg(sock, &msg, 0);
     if (ret == -1) {
         return -errno;
@@ -288,8 +284,9 @@ int
 send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                    enum vfio_user_command cmd,
                    void *data, size_t data_len,
-                   int *fds, size_t count) {
-
+                   int *fds, size_t count)
+{
+    /* [0] is for the header. */
     struct iovec iovecs[2] = {
         [1] = {
             .iov_base = data,
@@ -300,25 +297,15 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
                                ARRAY_SIZE(iovecs), fds, count, 0);
 }
 
-int
-send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
-             char *caps)
-{
-    int ret;
-    char *data;
-
-    ret  = asprintf(&data,
-                    "{version: {\"major\": %d, \"minor\": %d}, capabilities: %s}",
-                    major, minor, caps != NULL ? caps : "{}");
-    if (ret == -1) {
-        return -1;
-    }
-    ret = send_vfio_user_msg(sock, msg_id, is_reply, VFIO_USER_VERSION, data,
-                             ret, NULL, 0);
-    free(data);
-    return ret;
-}
-
+/*
+ * Receive a vfio-user message.  If "len" is set to non-zero, the message should
+ * include data of that length, which is stored in the pre-allocated "data"
+ * pointer.
+ *
+ * FIXME: in general, sort out negative err returns - they should only be used
+ * when we're going to return > 0 on success, and even then "errno" might be
+ * better.
+ */
 int
 recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
                    uint16_t *msg_id, void *data, size_t *len)
@@ -369,39 +356,54 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
     return 0;
 }
 
+/*
+ * Like recv_vfio_user_msg(), but will automatically allocate reply data.
+ *
+ * FIXME: this does an unconstrained alloc of client-supplied data.
+ */
 int
-recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
-             int *max_fds, size_t *pgsize)
+recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+                         uint16_t *msg_id, void **datap, size_t *lenp)
 {
+    void *data;
+    size_t len;
     int ret;
-    struct vfio_user_header hdr;
-    char *data __attribute__((__cleanup__(__free_s))) = NULL;
 
-    ret = recv_vfio_user_msg(sock, &hdr, is_reply, msg_id, NULL, NULL);
-    if (ret < 0) {
+    ret = recv_vfio_user_msg(sock, hdr, is_reply, msg_id, NULL, NULL);
+
+    if (ret != 0) {
         return ret;
     }
 
-    hdr.msg_size -= sizeof(hdr);
-    data = malloc(hdr.msg_size);
+    assert(hdr->msg_size >= sizeof (*hdr));
+
+    len = hdr->msg_size - sizeof (*hdr);
+
+    if (len == 0) {
+        *datap = NULL;
+        *lenp = 0;
+        return 0;
+    }
+
+    data = calloc(1, len);
+
     if (data == NULL) {
         return -errno;
     }
-    ret = recv_blocking(sock, data, hdr.msg_size, 0);
-    if (ret == -1) {
+
+    ret = recv_blocking(sock, data, len, 0);
+    if (ret < 0) {
+        free(data);
         return -errno;
     }
-    if (ret < (int)hdr.msg_size) {
+
+    if (len != (size_t)ret) {
+        free(data);
         return -EINVAL;
     }
 
-    /* FIXME use proper parsing */
-    ret = sscanf(data,
-                 "{version: {\"major\": %d, \"minor\": %d}, capabilities: {max_fds: %d, migration: {pgsize: %lu}}}",
-                 major, minor, max_fds, pgsize);
-    if (ret != 4) {
-        return -EINVAL;
-    }
+    *datap = data;
+    *lenp = len;
     return 0;
 }
 
@@ -430,6 +432,7 @@ send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
                         struct vfio_user_header *hdr,
                         void *recv_data, size_t recv_len)
 {
+    /* [0] is for the header. */
     struct iovec iovecs[2] = {
         [1] = {
             .iov_base = send_data,
@@ -441,60 +444,132 @@ send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
                                     hdr, recv_data, recv_len);
 }
 
-static int
-set_version(lm_ctx_t *lm_ctx, int sock)
+int
+recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
+             struct vfio_user_version **versionp)
 {
+    struct vfio_user_version *cversion;
+    struct vfio_user_header hdr;
+    size_t vlen;
     int ret;
-    int client_mj, client_mn;
-    uint16_t msg_id = 0;
-    char *server_caps;
 
-    ret = asprintf(&server_caps, "{max_fds: %d, migration: {pgsize: %ld}}",
-                   MAX_FDS, sysconf(_SC_PAGESIZE));
-    if (ret == -1) {
-        return -ENOMEM;
-    }
+    *versionp = NULL;
 
-    ret = send_version(sock, LIB_MUSER_VFIO_USER_VERS_MJ,
-                       LIB_MUSER_VFIO_USER_VERS_MN, msg_id, false, server_caps);
+    ret = recv_vfio_user_msg_alloc(sock, &hdr, false, msg_idp,
+                                   (void **)&cversion, &vlen);
+
     if (ret < 0) {
-        lm_log(lm_ctx, LM_DBG, "failed to send version: %s", strerror(-ret));
+        lm_log(lm_ctx, LM_ERR, "failed to receive version: %s", strerror(-ret));
         goto out;
     }
 
-    ret = recv_version(sock, &client_mj, &client_mn, &msg_id, true,
-                       &lm_ctx->client_max_fds, &lm_ctx->migration.pgsize);
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_DBG, "failed to receive version: %s", strerror(-ret));
-        goto out;
-    }
-    if (client_mj != LIB_MUSER_VFIO_USER_VERS_MJ ||
-        client_mn != LIB_MUSER_VFIO_USER_VERS_MN) {
-        lm_log(lm_ctx, LM_DBG, "version mismatch,  server=%d.%d, client=%d.%d",
-               LIB_MUSER_VFIO_USER_VERS_MJ, LIB_MUSER_VFIO_USER_VERS_MN,
-               client_mj, client_mn);
-        ret = -EINVAL;
-        goto out;
-    }
-    if (lm_ctx->migration.pgsize == 0) {
-        lm_log(lm_ctx, LM_ERR, "bad migration page size");
+    if (hdr.cmd != VFIO_USER_VERSION) {
+        lm_log(lm_ctx, LM_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
+               *msg_idp, hdr.cmd, VFIO_USER_VERSION);
         ret = -EINVAL;
         goto out;
     }
 
-    /* FIXME need to check max_fds */
+    if (vlen < sizeof (*cversion)) {
+        lm_log(lm_ctx, LM_ERR, "msg%hx (VFIO_USER_VERSION): invalid size %lu",
+               *msg_idp, vlen);
+        ret = -EINVAL;
+        goto out;
+    }
 
-    lm_ctx->migration.pgsize = MIN(lm_ctx->migration.pgsize,
-                                   sysconf(_SC_PAGESIZE));
+    /* FIXME: oracle qemu code has major of 1 currently */
+#if 0
+    if (cversion->major != LIB_MUSER_VFIO_USER_VERS_MJ) {
+        lm_log(lm_ctx, LM_ERR, "unsupported client major %hu (must be %hu)",
+               cversion->major, LIB_MUSER_VFIO_USER_VERS_MJ);
+        ret = -ENOTSUP;
+        goto out;
+    }
+#endif
+
+    // FIXME: incorrect, unspecified means "no migration support", handle this
+    lm_ctx->migration.pgsize = sysconf(_SC_PAGESIZE);
+    lm_ctx->client_max_fds = 1;
+
+    if (vlen > sizeof (*cversion)) {
+        lm_log(lm_ctx, LM_DBG, "ignoring JSON \"%s\"", cversion->data);
+        // FIXME: don't ignore it.
+        lm_ctx->client_max_fds = 128;
+    }
+
 out:
-    free(server_caps);
+    if (ret != 0) {
+        free(cversion);
+        cversion = NULL;
+    }
+
+    *versionp = cversion;
+    return ret;
+}
+
+int
+send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
+             struct vfio_user_version *cversion)
+{
+    struct vfio_user_version sversion;
+    struct iovec iovecs[3] = { { 0 } };
+    char server_caps[1024];
+    int slen;
+
+    slen = snprintf(server_caps, sizeof (server_caps),
+        "{"
+            "\"capabilities\":{"
+                "\"max_fds\":%u,"
+                "\"migration\":{"
+                    "\"pgsize\":%zu"
+                "}"
+            "}"
+         "}", MAX_FDS, lm_ctx->migration.pgsize);
+
+    // FIXME: we should save the client minor here, and check that before trying
+    // to send unsupported things.
+    sversion.major = LIB_MUSER_VFIO_USER_VERS_MJ;
+    sversion.minor = MIN(cversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
+
+     /* [0] is for the header. */
+    iovecs[1].iov_base = &sversion;
+    iovecs[1].iov_len = sizeof (sversion);
+    iovecs[2].iov_base = server_caps;
+    /* Include the NUL. */
+    iovecs[2].iov_len = slen + 1;
+
+    return _send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VERSION, iovecs,
+                               ARRAY_SIZE(iovecs), NULL, 0, 0);
+}
+
+static int
+negotiate(lm_ctx_t *lm_ctx, int sock)
+{
+    struct vfio_user_version *client_version = NULL;
+    uint16_t msg_id;
+    int ret;
+
+    ret = recv_version(lm_ctx, sock, &msg_id, &client_version);
+
+    if (ret < 0) {
+        lm_log(lm_ctx, LM_ERR, "failed to recv version: %s", strerror(-ret));
+        return ret;
+    }
+
+    ret = send_version(lm_ctx, sock, msg_id, client_version);
+
+    free(client_version);
+
+    if (ret < 0) {
+        lm_log(lm_ctx, LM_ERR, "failed to send version: %s", strerror(-ret));
+    }
+
     return ret;
 }
 
 /**
  * lm_ctx: libmuser context
- * iommu_dir: full path to the IOMMU group to create. All parent directories
- *            must already exist.
+ * FIXME: this shouldn't be happening as part of lm_ctx_create().
  */
 static int
 open_sock(lm_ctx_t *lm_ctx)
@@ -509,8 +584,7 @@ open_sock(lm_ctx_t *lm_ctx)
         return conn_fd;
     }
 
-    /* send version and caps */
-    ret = set_version(lm_ctx, conn_fd);
+    ret = negotiate(lm_ctx, conn_fd);
     if (ret < 0) {
         return ret;
     }
