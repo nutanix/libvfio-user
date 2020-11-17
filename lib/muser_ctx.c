@@ -47,624 +47,14 @@
 #include <stdarg.h>
 #include <linux/vfio.h>
 #include <sys/param.h>
-#include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <time.h>
-#include <sys/select.h>
 
+#include "cap.h"
+#include "dma.h"
 #include "muser.h"
 #include "muser_priv.h"
-#include "dma.h"
-#include "cap.h"
-
-#define MAX_FDS 8
-
-typedef enum {
-    IRQ_NONE = 0,
-    IRQ_INTX,
-    IRQ_MSI,
-    IRQ_MSIX,
-} irq_type_t;
-
-char *irq_to_str[] = {
-    [LM_DEV_INTX_IRQ_IDX] = "INTx",
-    [LM_DEV_MSI_IRQ_IDX] = "MSI",
-    [LM_DEV_MSIX_IRQ_IDX] = "MSI-X",
-    [LM_DEV_ERR_IRQ_INDEX] = "ERR",
-    [LM_DEV_REQ_IRQ_INDEX] = "REQ"
-};
-
-typedef struct {
-    irq_type_t  type;       /* irq type this device is using */
-    int         err_efd;    /* eventfd for irq err */
-    int         req_efd;    /* eventfd for irq req */
-    uint32_t    max_ivs;    /* maximum number of ivs supported */
-    int         efds[0];    /* XXX must be last */
-} lm_irqs_t;
-
-enum migration_iteration_state {
-    VFIO_USER_MIGRATION_ITERATION_STATE_INITIAL,
-    VFIO_USER_MIGRATION_ITERATION_STATE_STARTED,
-    VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED,
-    VFIO_USER_MIGRATION_ITERATION_STATE_FINISHED
-};
-
-struct lm_ctx {
-    void                    *pvt;
-    dma_controller_t        *dma;
-    int                     fd;
-    int                     conn_fd;
-    int (*reset)            (void *pvt);
-    lm_log_lvl_t            log_lvl;
-    lm_log_fn_t             *log;
-    lm_pci_info_t           pci_info;
-    lm_pci_config_space_t   *pci_config_space;
-    lm_trans_t              trans;
-    struct caps             *caps;
-    uint64_t                flags;
-    char                    *uuid;
-    void (*map_dma)         (void *pvt, uint64_t iova, uint64_t len);
-    int (*unmap_dma)        (void *pvt, uint64_t iova);
-
-    /* TODO there should be a void * variable to store transport-specific stuff */
-    /* LM_TRANS_SOCK */
-    int                     sock_flags;
-
-    int                     client_max_fds;
-
-    struct {
-        struct vfio_device_migration_info info;
-        size_t pgsize;
-        lm_migration_callbacks_t callbacks;
-        struct {
-            enum migration_iteration_state state;
-            __u64 offset;
-            __u64 size;
-        } iter;
-    } migration;
-
-    lm_irqs_t               irqs; /* XXX must be last */
-};
-
-
-/* function prototypes */
-static void
-free_sparse_mmap_areas(lm_reg_info_t*);
-
-static inline int recv_blocking(int sock, void *buf, size_t len, int flags)
-{
-    int f = fcntl(sock, F_GETFL, 0);
-    int ret, fret;
-
-    fret = fcntl(sock, F_SETFL, f & ~O_NONBLOCK);
-    if (fret == -1) {
-        ret = -errno;
-        fprintf(stderr, "failed to set O_NONBLOCK: %m\n");
-        goto out;
-    }
-
-    ret = recv(sock, buf, len, flags);
-
-    /* FIXME if ret == -1 then fcntl can overwrite recv's errno */
-
-    fret = fcntl(sock, F_SETFL, f);
-    if (fret == -1) {
-        ret = -errno;
-        fprintf(stderr, "failed to unset O_NONBLOCK: %m\n");
-    }
-
-out:
-    return ret;
-}
-
-static int
-init_sock(lm_ctx_t *lm_ctx)
-{
-    struct sockaddr_un addr = { .sun_family = AF_UNIX };
-    int ret, unix_sock;
-    mode_t mode;
-
-    assert(lm_ctx != NULL);
-
-    /* FIXME SPDK can't easily run as non-root */
-    mode =  umask(0000);
-
-    if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-	    ret = -errno;
-        goto out;
-    }
-
-    if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
-        ret = fcntl(unix_sock, F_SETFL,
-                    fcntl(unix_sock, F_GETFL, 0) | O_NONBLOCK);
-        if (ret < 0) {
-            ret = -errno;
-            goto out;
-        }
-        lm_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
-    } else {
-        lm_ctx->sock_flags = 0;
-    }
-
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", lm_ctx->uuid);
-    if (ret >= (int)sizeof addr.sun_path) {
-        ret = -ENAMETOOLONG;
-    }
-    if (ret < 0) {
-        goto out;
-    }
-
-    /* start listening business */
-    ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
-    if (ret < 0) {
-        ret = -errno;
-        goto out;
-    }
-
-    ret = listen(unix_sock, 0);
-    if (ret < 0) {
-        ret = -errno;
-    }
-
-out:
-    umask(mode);
-    if (ret != 0) {
-        close(unix_sock);
-        return ret;
-    }
-    return unix_sock;
-}
-
-int
-_send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   struct iovec *iovecs, size_t nr_iovecs,
-                   int *fds, int count, int err)
-{
-    int ret;
-    struct vfio_user_header hdr = {.msg_id = msg_id};
-    struct msghdr msg;
-    size_t i;
-
-    if (nr_iovecs == 0) {
-        iovecs = alloca(sizeof(*iovecs));
-        nr_iovecs = 1;
-    }
-
-    memset(&msg, 0, sizeof(msg));
-
-    if (is_reply) {
-        // FIXME: SPEC: should the reply include the command? I'd say yes?
-        hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
-        if (err != 0) {
-            hdr.flags.error = 1U;
-            hdr.error_no = err;
-        }
-    } else {
-        hdr.cmd = cmd;
-        hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
-    }
-
-    iovecs[0].iov_base = &hdr;
-    iovecs[0].iov_len = sizeof(hdr);
-
-    for (i = 0; i < nr_iovecs; i++) {
-        hdr.msg_size += iovecs[i].iov_len;
-    }
-
-    msg.msg_iovlen = nr_iovecs;
-    msg.msg_iov = iovecs;
-
-    if (fds != NULL) {
-        size_t size = count * sizeof *fds;
-        char *buf = alloca(CMSG_SPACE(size));
-
-        msg.msg_control = buf;
-        msg.msg_controllen = CMSG_SPACE(size);
-
-        struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
-        cmsg->cmsg_level = SOL_SOCKET;
-        cmsg->cmsg_type = SCM_RIGHTS;
-        cmsg->cmsg_len = CMSG_LEN(size);
-        memcpy(CMSG_DATA(cmsg), fds, size);
-    }
-
-    // FIXME: this doesn't check the entire data was sent?
-    ret = sendmsg(sock, &msg, 0);
-    if (ret == -1) {
-        return -errno;
-    }
-
-    return 0;
-}
-
-int
-send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   void *data, size_t data_len,
-                   int *fds, size_t count)
-{
-    /* [0] is for the header. */
-    struct iovec iovecs[2] = {
-        [1] = {
-            .iov_base = data,
-            .iov_len = data_len
-        }
-    };
-    return _send_vfio_user_msg(sock, msg_id, is_reply, cmd, iovecs,
-                               ARRAY_SIZE(iovecs), fds, count, 0);
-}
-
-/*
- * Receive a vfio-user message.  If "len" is set to non-zero, the message should
- * include data of that length, which is stored in the pre-allocated "data"
- * pointer.
- *
- * FIXME: in general, sort out negative err returns - they should only be used
- * when we're going to return > 0 on success, and even then "errno" might be
- * better.
- */
-int
-recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void *data, size_t *len)
-{
-    int ret;
-
-    ret = recv_blocking(sock, hdr, sizeof(*hdr), 0);
-    if (ret == -1) {
-        return -errno;
-    }
-    if (ret < (int)sizeof(*hdr)) {
-        return -EINVAL;
-    }
-
-    if (is_reply) {
-        if (hdr->msg_id != *msg_id) {
-            return -EINVAL;
-        }
-
-        if (hdr->flags.type != VFIO_USER_F_TYPE_REPLY) {
-            return -EINVAL;
-        }
-
-        if (hdr->flags.error == 1U) {
-            if (hdr->error_no <= 0) {
-                hdr->error_no = EINVAL;
-            }
-            return -hdr->error_no;
-        }
-    } else {
-        if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-            return -EINVAL;
-        }
-        *msg_id = hdr->msg_id;
-    }
-
-    if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
-        ret = recv_blocking(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len),
-                            0);
-        if (ret < 0) {
-            return ret;
-        }
-        if (*len != (size_t)ret) { /* FIXME we should allow receiving less */
-            return -EINVAL;
-        }
-        *len = ret;
-    }
-    return 0;
-}
-
-/*
- * Like recv_vfio_user_msg(), but will automatically allocate reply data.
- *
- * FIXME: this does an unconstrained alloc of client-supplied data.
- */
-int
-recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
-                         uint16_t *msg_id, void **datap, size_t *lenp)
-{
-    void *data;
-    size_t len;
-    int ret;
-
-    ret = recv_vfio_user_msg(sock, hdr, is_reply, msg_id, NULL, NULL);
-
-    if (ret != 0) {
-        return ret;
-    }
-
-    assert(hdr->msg_size >= sizeof (*hdr));
-
-    len = hdr->msg_size - sizeof (*hdr);
-
-    if (len == 0) {
-        *datap = NULL;
-        *lenp = 0;
-        return 0;
-    }
-
-    data = calloc(1, len);
-
-    if (data == NULL) {
-        return -errno;
-    }
-
-    ret = recv_blocking(sock, data, len, 0);
-    if (ret < 0) {
-        free(data);
-        return -errno;
-    }
-
-    if (len != (size_t)ret) {
-        free(data);
-        return -EINVAL;
-    }
-
-    *datap = data;
-    *lenp = len;
-    return 0;
-}
-
-int
-_send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                         struct iovec *iovecs, size_t nr_iovecs,
-                         int *send_fds, size_t fd_count,
-                         struct vfio_user_header *hdr,
-                         void *recv_data, size_t recv_len)
-{
-    int ret = _send_vfio_user_msg(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                                  send_fds, fd_count, 0);
-    if (ret < 0) {
-        return ret;
-    }
-    if (hdr == NULL) {
-        hdr = alloca(sizeof *hdr);
-    }
-    return recv_vfio_user_msg(sock, hdr, true, &msg_id, recv_data, &recv_len);
-}
-
-int
-send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                        void *send_data, size_t send_len,
-                        int *send_fds, size_t fd_count,
-                        struct vfio_user_header *hdr,
-                        void *recv_data, size_t recv_len)
-{
-    /* [0] is for the header. */
-    struct iovec iovecs[2] = {
-        [1] = {
-            .iov_base = send_data,
-            .iov_len = send_len
-        }
-    };
-    return _send_recv_vfio_user_msg(sock, msg_id, cmd, iovecs,
-                                    ARRAY_SIZE(iovecs), send_fds, fd_count,
-                                    hdr, recv_data, recv_len);
-}
-
-int
-recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
-             struct vfio_user_version **versionp)
-{
-    struct vfio_user_version *cversion;
-    struct vfio_user_header hdr;
-    size_t vlen;
-    int ret;
-
-    *versionp = NULL;
-
-    ret = recv_vfio_user_msg_alloc(sock, &hdr, false, msg_idp,
-                                   (void **)&cversion, &vlen);
-
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to receive version: %s", strerror(-ret));
-        goto out;
-    }
-
-    if (hdr.cmd != VFIO_USER_VERSION) {
-        lm_log(lm_ctx, LM_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
-               *msg_idp, hdr.cmd, VFIO_USER_VERSION);
-        ret = -EINVAL;
-        goto out;
-    }
-
-    if (vlen < sizeof (*cversion)) {
-        lm_log(lm_ctx, LM_ERR, "msg%hx (VFIO_USER_VERSION): invalid size %lu",
-               *msg_idp, vlen);
-        ret = -EINVAL;
-        goto out;
-    }
-
-    /* FIXME: oracle qemu code has major of 1 currently */
-#if 0
-    if (cversion->major != LIB_MUSER_VFIO_USER_VERS_MJ) {
-        lm_log(lm_ctx, LM_ERR, "unsupported client major %hu (must be %hu)",
-               cversion->major, LIB_MUSER_VFIO_USER_VERS_MJ);
-        ret = -ENOTSUP;
-        goto out;
-    }
-#endif
-
-    // FIXME: incorrect, unspecified means "no migration support", handle this
-    lm_ctx->migration.pgsize = sysconf(_SC_PAGESIZE);
-    lm_ctx->client_max_fds = 1;
-
-    if (vlen > sizeof (*cversion)) {
-        lm_log(lm_ctx, LM_DBG, "ignoring JSON \"%s\"", cversion->data);
-        // FIXME: don't ignore it.
-        lm_ctx->client_max_fds = 128;
-    }
-
-out:
-    if (ret != 0) {
-        free(cversion);
-        cversion = NULL;
-    }
-
-    *versionp = cversion;
-    return ret;
-}
-
-int
-send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
-             struct vfio_user_version *cversion)
-{
-    struct vfio_user_version sversion;
-    struct iovec iovecs[3] = { { 0 } };
-    char server_caps[1024];
-    int slen;
-
-    slen = snprintf(server_caps, sizeof (server_caps),
-        "{"
-            "\"capabilities\":{"
-                "\"max_fds\":%u,"
-                "\"migration\":{"
-                    "\"pgsize\":%zu"
-                "}"
-            "}"
-         "}", MAX_FDS, lm_ctx->migration.pgsize);
-
-    // FIXME: we should save the client minor here, and check that before trying
-    // to send unsupported things.
-    sversion.major = LIB_MUSER_VFIO_USER_VERS_MJ;
-    sversion.minor = MIN(cversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
-
-     /* [0] is for the header. */
-    iovecs[1].iov_base = &sversion;
-    iovecs[1].iov_len = sizeof (sversion);
-    iovecs[2].iov_base = server_caps;
-    /* Include the NUL. */
-    iovecs[2].iov_len = slen + 1;
-
-    return _send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VERSION, iovecs,
-                               ARRAY_SIZE(iovecs), NULL, 0, 0);
-}
-
-static int
-negotiate(lm_ctx_t *lm_ctx, int sock)
-{
-    struct vfio_user_version *client_version = NULL;
-    uint16_t msg_id;
-    int ret;
-
-    ret = recv_version(lm_ctx, sock, &msg_id, &client_version);
-
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to recv version: %s", strerror(-ret));
-        return ret;
-    }
-
-    ret = send_version(lm_ctx, sock, msg_id, client_version);
-
-    free(client_version);
-
-    if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to send version: %s", strerror(-ret));
-    }
-
-    return ret;
-}
-
-/**
- * lm_ctx: libmuser context
- * FIXME: this shouldn't be happening as part of lm_ctx_create().
- */
-static int
-open_sock(lm_ctx_t *lm_ctx)
-{
-    int ret;
-    int conn_fd;
-
-    assert(lm_ctx != NULL);
-
-    conn_fd = accept(lm_ctx->fd, NULL, NULL);
-    if (conn_fd == -1) {
-        return conn_fd;
-    }
-
-    ret = negotiate(lm_ctx, conn_fd);
-    if (ret < 0) {
-        return ret;
-    }
-
-    lm_ctx->conn_fd = conn_fd;
-    return conn_fd;
-}
-
-static int
-close_sock(lm_ctx_t *lm_ctx)
-{
-    return close(lm_ctx->conn_fd);
-}
-
-static int
-get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
-                 int *fds, int *nr_fds)
-{
-    int ret;
-    struct iovec iov = {.iov_base = hdr, .iov_len = sizeof *hdr};
-    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
-    struct cmsghdr *cmsg;
-
-    msg.msg_controllen = CMSG_SPACE(sizeof(int) * *nr_fds);
-    msg.msg_control = alloca(msg.msg_controllen);
-
-    /*
-     * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
-     * faster (?). I tried that and get short reads, so we need to store the
-     * partially received buffer somewhere and retry.
-     */
-    ret = recvmsg(lm_ctx->conn_fd, &msg, lm_ctx->sock_flags);
-    if (ret == -1) {
-        return -errno;
-    }
-
-    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-        if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
-            continue;
-        }
-        if (cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
-            return -EINVAL;
-        }
-        int size = cmsg->cmsg_len - CMSG_LEN(0);
-        if (size % sizeof(int) != 0) {
-            return -EINVAL;
-        }
-        *nr_fds = (int)(size / sizeof(int));
-        memcpy(fds, CMSG_DATA(cmsg), *nr_fds * sizeof(int));
-        break;
-    }
-
-    return ret;
-}
-
-static ssize_t
-recv_fds_sock(lm_ctx_t *lm_ctx, void *buf, size_t size)
-{
-    ssize_t ret = muser_recv_fds(lm_ctx->conn_fd, buf, size / sizeof(int));
-    if (ret < 0) {
-	    return ret;
-    }
-    return ret * sizeof(int);
-}
-
-static struct transport_ops {
-    int (*init)(lm_ctx_t*);
-    int (*attach)(lm_ctx_t*);
-    int(*detach)(lm_ctx_t*);
-    int (*get_request)(lm_ctx_t*, struct vfio_user_header*, int *fds, int *nr_fds);
-    ssize_t (*recv_fds)(lm_ctx_t*, void *buf, size_t size);
-} transports_ops[] = {
-    [LM_TRANS_SOCK] = {
-        .init = init_sock,
-        .attach = open_sock,
-        .detach = close_sock,
-        .recv_fds = recv_fds_sock,
-        .get_request = get_request_sock,
-    }
-};
+#include "tran_sock.h"
 
 #define LM2VFIO_IRQT(type) (type - 1)
 
@@ -1128,71 +518,6 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
            (*vfio_reg)->size, (*vfio_reg)->argsz);
 
     return 0;
-}
-
-int
-muser_send_fds(int sock, int *fds, size_t count) {
-	struct msghdr msg = { 0 };
-	size_t size = count * sizeof *fds;
-	char buf[CMSG_SPACE(size)];
-	memset(buf, '\0', sizeof(buf));
-
-	/* XXX requires at least one byte */
-	struct iovec io = { .iov_base = "\0", .iov_len = 1 };
-
-	msg.msg_iov = &io;
-	msg.msg_iovlen = 1;
-	msg.msg_control = buf;
-	msg.msg_controllen = sizeof(buf);
-
-	struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type = SCM_RIGHTS;
-	cmsg->cmsg_len = CMSG_LEN(size);
-	memcpy(CMSG_DATA(cmsg), fds, size);
-	msg.msg_controllen = CMSG_SPACE(size);
-	return sendmsg(sock, &msg, 0);
-}
-
-ssize_t
-muser_recv_fds(int sock, int *fds, size_t count)
-{
-    int ret;
-    struct cmsghdr *cmsg;
-    size_t fds_size;
-    char msg_buf[sysconf(_SC_PAGESIZE)];
-    struct iovec io = {.iov_base = msg_buf, .iov_len = sizeof(msg_buf)};
-    char cmsg_buf[sysconf(_SC_PAGESIZE)];
-    struct msghdr msg = {
-        .msg_iov = &io,
-        .msg_iovlen = 1,
-        .msg_control = cmsg_buf,
-        .msg_controllen = sizeof(cmsg_buf)
-    };
-
-    if (fds == NULL || count <= 0) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    ret = recvmsg(sock, &msg, 0);
-    if (ret == -1) {
-        return ret;
-    }
-
-    cmsg = CMSG_FIRSTHDR(&msg);
-    if (cmsg == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-    fds_size = cmsg->cmsg_len - sizeof *cmsg;
-    if ((fds_size % sizeof(int)) != 0 || fds_size / sizeof (int) > count) {
-        errno = EINVAL;
-        return -1;
-    }
-    memcpy((void*)fds, CMSG_DATA(cmsg), cmsg->cmsg_len - sizeof *cmsg);
-
-    return fds_size / sizeof(int);
 }
 
 int
@@ -2162,7 +1487,7 @@ get_next_command(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, int *fds,
     int ret;
 
     /* FIXME get request shouldn't set errno, it should return it as -errno */
-    ret = transports_ops[lm_ctx->trans].get_request(lm_ctx, hdr, fds, nr_fds);
+    ret = lm_ctx->trans->get_request(lm_ctx, hdr, fds, nr_fds);
     if (unlikely(ret < 0)) {
         if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
@@ -2244,6 +1569,7 @@ process_request(lm_ctx_t *lm_ctx)
             ret = -ENOMEM;
             goto reply;
         }
+        // FIXME: should be transport op
         ret = recv(lm_ctx->conn_fd, cmd_data, hdr.msg_size, 0);
         if (ret < 0) {
             ret = -errno;
@@ -2487,7 +1813,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
 
     free(lm_ctx->uuid);
     free(lm_ctx->pci_config_space);
-    transports_ops[lm_ctx->trans].detach(lm_ctx);
+    lm_ctx->trans->detach(lm_ctx);
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx->dma);
     }
@@ -2646,7 +1972,7 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx)
         errno = EINVAL;
         return -1;
     }
-    return transports_ops[lm_ctx->trans].attach(lm_ctx);
+    return lm_ctx->trans->attach(lm_ctx);
 }
 
 lm_ctx_t *
@@ -2686,7 +2012,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     if (lm_ctx == NULL) {
         return NULL;
     }
-    lm_ctx->trans = dev_info->trans;
+    lm_ctx->trans = &sock_transport_ops;
 
     // Set context irq information.
     for (i = 0; i < max_ivs; i++) {
@@ -2735,8 +2061,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         goto out;
     }
 
-    if (transports_ops[dev_info->trans].init != NULL) {
-        err = transports_ops[dev_info->trans].init(lm_ctx);
+    if (lm_ctx->trans->init != NULL) {
+        err = lm_ctx->trans->init(lm_ctx);
         if (err < 0) {
             goto out;
         }
@@ -2747,7 +2073,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
     // always expected to call lm_ctx_try_attach().
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
-        lm_ctx->conn_fd = transports_ops[dev_info->trans].attach(lm_ctx);
+        lm_ctx->conn_fd = lm_ctx->trans->attach(lm_ctx);
         if (lm_ctx->conn_fd < 0) {
                 err = lm_ctx->conn_fd;
                 if (err != EINTR) {

@@ -33,11 +33,80 @@
 #ifndef MUSER_PRIV_H
 #define MUSER_PRIV_H
 
-#include "muser.h"
+#include "dma.h"
 
-#define UNUSED __attribute__((unused))
+#ifdef LM_VERBOSE_LOGGING
+void
+dump_buffer(const char *prefix, const char *buf, uint32_t count);
+#else
+#define dump_buffer(prefix, buf, count)
+#endif
 
-extern char *irq_to_str[];
+struct transport_ops {
+    int (*init)(lm_ctx_t*);
+    int (*attach)(lm_ctx_t*);
+    int(*detach)(lm_ctx_t*);
+    int (*get_request)(lm_ctx_t*, struct vfio_user_header*, int *fds, int *nr_fds);
+};
+
+typedef enum {
+    IRQ_NONE = 0,
+    IRQ_INTX,
+    IRQ_MSI,
+    IRQ_MSIX,
+} irq_type_t;
+
+typedef struct {
+    irq_type_t  type;       /* irq type this device is using */
+    int         err_efd;    /* eventfd for irq err */
+    int         req_efd;    /* eventfd for irq req */
+    uint32_t    max_ivs;    /* maximum number of ivs supported */
+    int         efds[0];    /* XXX must be last */
+} lm_irqs_t;
+
+enum migration_iteration_state {
+    VFIO_USER_MIGRATION_ITERATION_STATE_INITIAL,
+    VFIO_USER_MIGRATION_ITERATION_STATE_STARTED,
+    VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED,
+    VFIO_USER_MIGRATION_ITERATION_STATE_FINISHED
+};
+
+struct lm_ctx {
+    void                    *pvt;
+    dma_controller_t        *dma;
+    int                     fd;
+    int                     conn_fd;
+    int (*reset)            (void *pvt);
+    lm_log_lvl_t            log_lvl;
+    lm_log_fn_t             *log;
+    lm_pci_info_t           pci_info;
+    lm_pci_config_space_t   *pci_config_space;
+    struct transport_ops    *trans;
+    struct caps             *caps;
+    uint64_t                flags;
+    char                    *uuid;
+    void (*map_dma)         (void *pvt, uint64_t iova, uint64_t len);
+    int (*unmap_dma)        (void *pvt, uint64_t iova);
+
+    /* TODO there should be a void * variable to store transport-specific stuff */
+    /* LM_TRANS_SOCK */
+    int                     sock_flags;
+
+    int                     client_max_fds;
+
+    struct {
+        struct vfio_device_migration_info info;
+        size_t pgsize;
+        lm_migration_callbacks_t callbacks;
+        struct {
+            enum migration_iteration_state state;
+            __u64 offset;
+            __u64 size;
+        } iter;
+    } migration;
+
+    lm_irqs_t               irqs; /* XXX must be last */
+};
 
 int
 muser_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
@@ -48,41 +117,6 @@ lm_get_region_info(lm_ctx_t *lm_ctx);
 
 uint64_t
 region_to_offset(uint32_t region);
-
-int
-_send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   struct iovec *iovecs, size_t nr_iovecs,
-                   int *fds, int count, int err);
-
-int
-send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   void *data, size_t data_len,
-                   int *fds, size_t count);
-
-
-int
-recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void *data, size_t *len);
-
-int
-recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void **datap, size_t *lenp);
-
-int
-_send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                         struct iovec *iovecs, size_t nr_iovecs,
-                         int *send_fds, size_t fd_count,
-                         struct vfio_user_header *hdr,
-                         void *recv_data, size_t recv_len);
-
-int
-send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                        void *send_data, size_t send_len,
-                        int *send_fds, size_t fd_count,
-                        struct vfio_user_header *hdr,
-                        void *recv_data, size_t recv_len);
 
 /* FIXME copied from include/linux/stddef.h, is this OK license-wise? */
 #define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))

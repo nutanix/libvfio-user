@@ -600,10 +600,6 @@ lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
 void
 lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
 
-/* FIXME */
-int muser_send_fds(int sock, int *fds, size_t count);
-ssize_t muser_recv_fds(int sock, int *fds, size_t count);
-
 #endif /* LIB_MUSER_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/eventfd.h>
@@ -41,9 +42,27 @@
 #include <assert.h>
 #include <sys/stat.h>
 
-#include "../lib/muser.h"
-#include "../lib/muser_priv.h"
 #include "../lib/common.h"
+#include "../lib/muser.h"
+#include "../lib/tran_sock.h"
+
+static char *irq_to_str[] = {
+    [LM_DEV_INTX_IRQ_IDX] = "INTx",
+    [LM_DEV_MSI_IRQ_IDX] = "MSI",
+    [LM_DEV_MSIX_IRQ_IDX] = "MSI-X",
+    [LM_DEV_ERR_IRQ_INDEX] = "ERR",
+    [LM_DEV_REQ_IRQ_INDEX] = "REQ"
+};
+
+void
+lm_log(UNUSED lm_ctx_t *lm_ctx, UNUSED lm_log_lvl_t lvl, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+}
 
 static int
 init_sock(const char *path)

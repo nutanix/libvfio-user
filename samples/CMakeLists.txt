@@ -30,7 +30,8 @@
 
 add_executable(server server.c)
 target_link_libraries(server muser ssl crypto)
-add_executable(client client.c ../lib/muser_ctx.c ../lib/muser_pci.c ../lib/dma.c ../lib/cap.c)
+add_executable(client client.c
+                      ../lib/tran_sock.c)
 
 add_executable(null null.c)
 target_link_libraries(null muser pthread)

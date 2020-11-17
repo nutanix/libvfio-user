@@ -36,10 +36,12 @@ add_library(muser SHARED
     $<TARGET_OBJECTS:dma>
     $<TARGET_OBJECTS:muser_ctx>
     $<TARGET_OBJECTS:muser_pci>
-    vfio_user.h
+    $<TARGET_OBJECTS:tran_sock>
+    common.h
     muser.h
     muser_priv.h
-    common.h)
+    tran_sock.h
+    vfio_user.h)
 
 set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
@@ -55,10 +57,11 @@ function(add_library_ut lib)
     set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
 endfunction(add_library_ut)
 
-add_library_ut(muser_ctx muser_ctx.c muser.h)
-add_library_ut(muser_pci muser_pci.c pci.h)
 add_library_ut(cap cap.c cap.h)
 add_library_ut(dma dma.c dma.h)
+add_library_ut(muser_ctx muser_ctx.c muser.h)
+add_library_ut(muser_pci muser_pci.c pci.h)
+add_library_ut(tran_sock tran_sock.c tran_sock.h)
 
 set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 

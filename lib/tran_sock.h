@@ -30,31 +30,55 @@
  *
  */
 
+#ifndef TRAN_SOCK_H
+#define TRAN_SOCK_H
+
+#include "muser.h"
+
 /*
- * Private utilities used by the library and sample/test code.
+ * These are not public routines, but for convenience, they are used by the
+ * sample/test code as well as privately within libmuser.
+ *
+ * Note there is currently only one transport - talking over a UNIX socket.
  */
 
-#ifndef __COMMON_H__
-#define __COMMON_H__
+extern struct transport_ops sock_transport_ops;
 
-#include <stdint.h>
+int
+_send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+                   enum vfio_user_command cmd,
+                   struct iovec *iovecs, size_t nr_iovecs,
+                   int *fds, int count, int err);
 
-#define UNUSED __attribute__((unused))
+int
+send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+                   enum vfio_user_command cmd,
+                   void *data, size_t data_len,
+                   int *fds, size_t count);
 
-#define PAGE_SIZE           sysconf(_SC_PAGE_SIZE)
-#define PAGE_ALIGNED(x)		(((x) & ((typeof(x))(PAGE_SIZE) - 1)) == 0)
 
-#define BIT(nr)             (1UL << (nr))
+int
+recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id, void *data, size_t *len);
 
-#define ARRAY_SIZE(array)   (sizeof(array) / sizeof((array)[0]))
+int
+recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id, void **datap, size_t *lenp);
 
-#define likely(e)   __builtin_expect(!!(e), 1)
-#define unlikely(e) __builtin_expect(e, 0)
+int
+_send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                         struct iovec *iovecs, size_t nr_iovecs,
+                         int *send_fds, size_t fd_count,
+                         struct vfio_user_header *hdr,
+                         void *recv_data, size_t recv_len);
 
-/* XXX NB 2nd argument must be power of two */
-#define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
-#define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
+int
+send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                        void *send_data, size_t send_len,
+                        int *send_fds, size_t fd_count,
+                        struct vfio_user_header *hdr,
+                        void *recv_data, size_t recv_len);
 
-#endif /* __COMMON_H__ */
+#endif /* TRAN_SOCK_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
