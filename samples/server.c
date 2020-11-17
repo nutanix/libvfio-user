@@ -96,6 +96,8 @@ bar1_access(UNUSED void *pvt, UNUSED char * const buf, UNUSED size_t count,
             UNUSED loff_t offset, UNUSED const bool is_write)
 {
     assert(false);
+
+    return -ENOTSUP;
 }
 
 bool irq_triggered = false;
@@ -207,6 +209,8 @@ unsigned long map_area(UNUSED void *pvt, UNUSED unsigned long off,
                        UNUSED unsigned long len)
 {
     assert(false);
+
+    return 0;
 }
 
 static int device_reset(UNUSED void *pvt)
@@ -264,7 +268,9 @@ migration_read_data(void *pvt, UNUSED void *buf, __u64 size,
 {
     struct server_data *server_data = pvt;
 
-    assert(server_data->migration.data_size >= size);
+    if (server_data->migration.data_size < size) {
+        assert(false);
+    }
 
     return 0;
 }
@@ -273,6 +279,8 @@ static size_t
 migration_write_data(UNUSED void *pvt, UNUSED void *data, UNUSED __u64 size)
 {
     assert(false);
+
+    return 0;
 }
 
 int main(int argc, char *argv[]){
@@ -283,7 +291,6 @@ int main(int argc, char *argv[]){
     struct server_data server_data = {0};
     int nr_sparse_areas = 2, size = 1024, i;
     struct lm_sparse_mmap_areas *sparse_areas;
-
     lm_ctx_t *lm_ctx;
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
@@ -310,7 +317,8 @@ int main(int argc, char *argv[]){
     sparse_areas = calloc(1, sizeof(*sparse_areas) +
 			  (nr_sparse_areas * sizeof(struct lm_mmap_area)));
     if (sparse_areas == NULL) {
-        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM");
+        ret = -ENOMEM;
+        fprintf(stderr, "MMAP sparse areas ENOMEM\n");
         goto out;
     }
     sparse_areas->nr_mmap_areas = nr_sparse_areas;
@@ -359,15 +367,16 @@ int main(int argc, char *argv[]){
 
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGUSR1, &act, NULL) == -1) {
-        err(EXIT_FAILURE, "failed to register signal handler");
+        fprintf(stderr, "failed to register signal handler\n");
+        ret = -EFAULT;
+        goto out;
     }
 
     lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
-        if (errno == EINTR) {
-            goto out;
-        }
-        err(EXIT_FAILURE, "failed to initialize device emulation");
+        fprintf(stderr, "failed to initialize device emulation\n");
+        ret = -1;
+        goto out;
     }
 
     do {
@@ -394,8 +403,9 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "failed to realize device emulation: %s\n",
                 strerror(-ret));
     }
-out:
     lm_ctx_destroy(lm_ctx);
+
+out:
     free(server_data.bar1);
     free(sparse_areas);
     return ret;

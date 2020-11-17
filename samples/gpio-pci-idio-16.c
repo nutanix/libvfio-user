@@ -114,9 +114,6 @@ int main(int argc, char *argv[])
 
     lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
-        if (errno == EINTR) {
-            goto out;
-        }
         fprintf(stderr, "failed to initialize device emulation: %m\n");
         return -1;
     }
@@ -126,7 +123,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "failed to realize device emulation: %m\n");
         }
     }
-out:
+
     lm_ctx_destroy(lm_ctx);
     return ret;
 }

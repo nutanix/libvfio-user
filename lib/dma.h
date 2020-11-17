@@ -303,7 +303,9 @@ dma_unmap_addr(dma_controller_t *dma,
     int r;
 
     r = dma_addr_to_sg(dma, dma_addr, len, &sg, 1, PROT_NONE);
-    assert(r == 1);
+    if (r != 1) {
+        assert(false);
+    }
 
     dma_unmap_sg(dma, &sg, &iov, 1);
 }

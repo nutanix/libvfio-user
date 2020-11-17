@@ -550,7 +550,7 @@ static int handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
 
 static int
 get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
-                  int nr_dma_regions)
+                  UNUSED int nr_dma_regions)
 {
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
     struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2];
@@ -566,7 +566,8 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     char data[ARRAY_SIZE(bitmaps)];
 
     assert(dma_regions != NULL);
-    assert(nr_dma_regions >= (int)ARRAY_SIZE(bitmaps));
+    //FIXME: Is below assert correct?
+    //assert(nr_dma_regions >= (int)ARRAY_SIZE(bitmaps));
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
         bitmaps[i].iova = dma_regions[i].addr;
