@@ -67,12 +67,8 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
                    uint16_t *msg_id, void *data, size_t *len);
 
 int
-send_version(int sock, int major, int minor, uint16_t msg_id, bool is_reply,
-             char *caps);
-
-int
-recv_version(int sock, int *major, int *minor, uint16_t *msg_id, bool is_reply,
-             int *max_fds, size_t *pgsize);
+recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id, void **datap, size_t *lenp);
 
 int
 _send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,

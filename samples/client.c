@@ -65,36 +65,107 @@ init_sock(const char *path)
 }
 
 static void
-set_version(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
+send_version(int sock, int client_max_fds)
 {
-    int ret, mj, mn;
-    uint16_t msg_id;
-    char *client_caps = NULL;
+    struct vfio_user_version cversion;
+    struct iovec iovecs[3] = { { 0 } };
+    char client_caps[1024];
+    int msg_id = 0;
+    int slen;
+    int ret;
 
-    assert(server_max_fds != NULL);
-    assert(pgsize != NULL);
 
-    ret = recv_version(sock, &mj, &mn, &msg_id, false, server_max_fds, pgsize);
+    slen = snprintf(client_caps, sizeof (client_caps),
+        "{"
+            "\"capabilities\":{"
+                "\"max_fds\":%u,"
+                "\"migration\":{"
+                    "\"pgsize\":%zu"
+                "}"
+            "}"
+         "}", client_max_fds, sysconf(_SC_PAGESIZE));
+
+    if (slen == -1) {
+        errx(EXIT_FAILURE, "failed to alloc client_caps");
+    }
+
+    cversion.major = LIB_MUSER_VFIO_USER_VERS_MJ;
+    cversion.minor = LIB_MUSER_VFIO_USER_VERS_MN;
+
+    /* [0] is for the header. */
+    iovecs[1].iov_base = &cversion;
+    iovecs[1].iov_len = sizeof (cversion);
+    iovecs[2].iov_base = client_caps;
+    /* Include the NUL. */
+    iovecs[2].iov_len = slen + 1;
+
+    ret = _send_vfio_user_msg(sock, msg_id, false, VFIO_USER_VERSION,
+                              iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
+
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to receive version from server: %s",
-             strerror(-ret));
+        err(EXIT_FAILURE, "failed to send client version message");
     }
+}
 
-    if (mj != LIB_MUSER_VFIO_USER_VERS_MJ || mn != LIB_MUSER_VFIO_USER_VERS_MN) {
-        errx(EXIT_FAILURE, "bad server version %d.%d\n", mj, mn);
-    }
+static void
+recv_version(int sock, int *server_max_fds, size_t *pgsize)
+{
+    struct vfio_user_version *sversion = NULL;
+    struct vfio_user_header hdr;
+    uint16_t msg_id = 0;
+    size_t vlen;
+    int ret;
 
-    if (asprintf(&client_caps, "{max_fds: %d, migration: {pgsize: %lu}}",
-                 client_max_fds, sysconf(_SC_PAGESIZE)) == -1) {
-        err(EXIT_FAILURE, NULL);
-    }
+    ret = recv_vfio_user_msg_alloc(sock, &hdr, true, &msg_id,
+                                   (void **)&sversion, &vlen);
 
-    ret = send_version(sock, mj, mn, msg_id, true, client_caps);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to send version to server: %s",
-             strerror(-ret));
+        errx(EXIT_FAILURE, "failed to receive version: %s", strerror(-ret));
     }
-    free(client_caps);
+
+// FIXME: are we out of spec? reply cmd's are zero
+#if 0
+    if (hdr.cmd != VFIO_USER_VERSION) {
+        errx(EXIT_FAILURE, "msg%hx: invalid cmd %hu (expected %hu)",
+               msg_id, hdr.cmd, VFIO_USER_VERSION);
+    }
+#endif
+
+    if (vlen < sizeof (*sversion)) {
+        errx(EXIT_FAILURE, "msg%hx (VFIO_USER_VERSION): invalid size %lu",
+               msg_id, vlen);
+    }
+
+    if (sversion->major != LIB_MUSER_VFIO_USER_VERS_MJ) {
+        errx(EXIT_FAILURE, "unsupported server major %hu (must be %hu)",
+               sversion->major, LIB_MUSER_VFIO_USER_VERS_MJ);
+    }
+
+    /*
+     * The server is supposed to tell us the minimum agreed version.
+     */
+    if (sversion->minor > LIB_MUSER_VFIO_USER_VERS_MN) {
+        errx(EXIT_FAILURE, "unsupported server minor %hu (must be %hu)",
+               sversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
+    }
+
+    *server_max_fds = 1;
+    *pgsize = sysconf(_SC_PAGESIZE);
+
+    if (vlen > sizeof (*sversion)) {
+        fprintf(stderr, "ignoring JSON \"%s\"", sversion->data);
+        // FIXME: don't ignore it.
+        *server_max_fds = 8;
+    }
+
+    free(sversion);
+}
+
+static void
+negotiate(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
+{
+    send_version(sock, client_max_fds);
+    recv_version(sock, server_max_fds, pgsize);
 }
 
 static void
@@ -701,7 +772,7 @@ migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
     /* connect to the destination server */
     sock = init_sock(sock_path);
 
-    set_version(sock, client_max_fds, server_max_fds, pgsize);
+    negotiate(sock, client_max_fds, server_max_fds, pgsize);
 
     /* XXX set device state to resuming */
     ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
@@ -810,12 +881,11 @@ int main(int argc, char *argv[])
     sock = init_sock(argv[optind]);
 
     /*
-     * XXX VFIO_USER_VERSION
+     * VFIO_USER_VERSION
      *
-     * The server proposes version upon connection, we need to send back the
-     * version the version we support.
+     * Do intial negotiation with the server, and discover parameters.
      */
-    set_version(sock, client_max_fds, &server_max_fds, &pgsize);
+    negotiate(sock, client_max_fds, &server_max_fds, &pgsize);
 
     /* try to access a bogus region, we should het an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof ret);

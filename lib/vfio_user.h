@@ -78,6 +78,12 @@ struct vfio_user_header {
     uint32_t    error_no;
 } __attribute__((packed));
 
+struct vfio_user_version {
+    uint16_t    major;
+    uint16_t    minor;
+    uint8_t     data[];
+} __attribute__((packed));
+
 struct vfio_user_dma_region {
     uint64_t    addr;
     uint64_t    size;
