@@ -718,7 +718,7 @@ handle_migration_pending_bytes(lm_ctx_t *lm_ctx, __u64 *pending_bytes,
 static ssize_t
 handle_migration_data_offset_when_saving(lm_ctx_t *lm_ctx, bool is_write)
 {
-    int ret;
+    int ret = 0;
 
     if (is_write) {
         lm_log(lm_ctx, LM_ERR, "data_offset is RO when saving");
@@ -738,7 +738,7 @@ handle_migration_data_offset_when_saving(lm_ctx_t *lm_ctx, bool is_write)
         /*
          * data_offset is invariant during an iteration.
          */
-	    ret = 0;
+        break;
         break;
     default:
         lm_log(lm_ctx, LM_ERR, "reading data_offset out of sequence is undefined");
@@ -1159,6 +1159,9 @@ handle_device_set_irqs(lm_ctx_t *lm_ctx, uint32_t size,
         case VFIO_IRQ_SET_DATA_BOOL:
             data = irq_set + 1;
             break;
+        default:
+            // FIXME?
+            return -EINVAL;
     }
 
     return dev_set_irqs(lm_ctx, irq_set, data);
@@ -1371,7 +1374,7 @@ handle_dirty_pages_get(lm_ctx_t *lm_ctx,
                        struct vfio_iommu_type1_dirty_bitmap_get *ranges,
                        uint32_t size)
 {
-    int ret;
+    int ret = -EINVAL;
     size_t i;
 
     assert(lm_ctx != NULL);

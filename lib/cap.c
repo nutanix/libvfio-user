@@ -411,7 +411,7 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
     uint8_t *prev;
     uint8_t next;
     lm_pci_config_space_t *config_space;
-    struct caps *caps;
+    struct caps *caps = NULL;
 
     if (nr_caps <= 0 || nr_caps >= LM_MAX_CAPS) {
         errno = EINVAL;

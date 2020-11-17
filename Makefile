@@ -35,7 +35,6 @@ ifeq ($(BUILD_TYPE), dbg)
     CFLAGS += -DDEBUG
 else
 	CMAKE_BUILD_TYPE = Release
-	CFLAGS += -DNDEBUG
 endif
 
 ifeq ($(VERBOSE),)

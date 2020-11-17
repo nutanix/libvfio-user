@@ -32,9 +32,6 @@ cmake_minimum_required (VERSION 2.6)
 project(muser)
 include(GNUInstallDirs)
 
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wextra")
-
 # shared libraries
 add_subdirectory(lib)
 
