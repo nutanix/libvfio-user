@@ -28,13 +28,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-set(CMAKE_C_FLAGS "-Wall -Wextra -Werror -fPIC")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
-#
-# NB: this intentionally does not define NDEBUG: we want our assert()s even in a
-# release build.
-#
-set(CMAKE_C_FLAGS_RELEASE "-O3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 
 add_library(muser SHARED
     $<TARGET_OBJECTS:cap>

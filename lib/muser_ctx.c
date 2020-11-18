@@ -739,7 +739,6 @@ handle_migration_data_offset_when_saving(lm_ctx_t *lm_ctx, bool is_write)
          * data_offset is invariant during an iteration.
          */
         break;
-        break;
     default:
         lm_log(lm_ctx, LM_ERR, "reading data_offset out of sequence is undefined");
         return -EINVAL;
