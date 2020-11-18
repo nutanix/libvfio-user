@@ -39,6 +39,7 @@
 #include <time.h>
 #include <err.h>
 #include <assert.h>
+#include <sys/stat.h>
 
 #include "../lib/muser.h"
 #include "../lib/muser_priv.h"
@@ -365,28 +366,28 @@ wait_for_irqs(int sock, int irq_fd)
     printf("INTx messaged triggered!\n");
 }
 
-static int
-access_bar0(int sock, int irq_fd)
+static void
+access_bar0(int sock, int irq_fd, time_t *t)
 {
-    time_t t = 1;
-    int ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
+    int ret;
 
+    assert(t != NULL);
+
+    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, t, sizeof *t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
-    printf("wrote to BAR0: %ld\n", t);
+    printf("wrote to BAR0: %ld\n", *t);
 
-    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, &t, sizeof t);
+    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, t, sizeof *t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to read from BAR0: %s", strerror(-ret));
     }
 
-    printf("read from BAR0: %ld\n", t);
+    printf("read from BAR0: %ld\n", *t);
 
-    ret = wait_for_irqs(sock, irq_fd);
-
-    return 0;
+    wait_for_irqs(sock, irq_fd);
 }
 
 static void
@@ -561,7 +562,6 @@ migrate_from(int sock, void **data, __u64 *len)
 {
     __u32 device_state = VFIO_DEVICE_STATE_SAVING;
     __u64 pending_bytes, data_offset, data_size;
-    void *data;
 
     /* XXX set device state to stop-and-copy */
     int ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
@@ -579,6 +579,21 @@ migrate_from(int sock, void **data, __u64 *len)
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to read pending_bytes: %s",
              strerror(-ret));
+    }
+
+    /* We do expect some migration data. */
+    assert(pending_bytes > 0);
+
+    /*
+     * The only expectation about pending_bytes is whether it's zero or
+     * non-zero, therefore it must be considered volatile, even acrosss
+     * iterantions. In the sample server we know it's static so it's fairly
+     * straightforward.
+     */
+    *len = pending_bytes;
+    *data = malloc(*len);
+    if (*data == NULL) {
+        err(EXIT_FAILURE, "failed to allocate migration buffer");
     }
 
     while (pending_bytes > 0) {
@@ -600,20 +615,18 @@ migrate_from(int sock, void **data, __u64 *len)
                  strerror(-ret));
         }
 
+        assert(data_offset - sizeof(struct vfio_device_migration_info) + data_size <= *len);
+
         /* XXX read migration data */
-        data = malloc(data_size);
-        if (data == NULL) {
-            return -errno;
-        }
         ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false, data_offset,
-                            data, data_size);
+                            (char*)*data + data_offset - sizeof(struct vfio_device_migration_info),
+                            data_size);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to read migration data: %s",
                  strerror(-ret));
         }
 
         /* FIXME send migration data to the destination client process */
-        printf("XXX migration: %#llx bytes worth of data\n", data_size);
 
         /*
          * XXX read pending_bytes again to indicate to the sever that the
@@ -637,8 +650,126 @@ migrate_from(int sock, void **data, __u64 *len)
         errx(EXIT_FAILURE, "failed to write to device state: %s",
              strerror(-ret));
     }
+}
 
-    return 0;
+static int
+migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
+           size_t *pgsize, void *migr_data, __u64 migr_data_len)
+{
+    int ret, sock;
+    char *sock_path;
+    struct stat sb;
+    __u32 device_state = VFIO_DEVICE_STATE_RESUMING;
+    __u64 data_offset;
+
+    assert(old_sock_path != NULL);
+
+    ret = asprintf(&sock_path, "%s_migrated", old_sock_path);
+    if (ret == -1) {
+        err(EXIT_FAILURE, "failed to asprintf");
+    }
+
+    ret = fork();
+    if (ret == -1) {
+        err(EXIT_FAILURE, "failed to fork");
+    }
+    if (ret > 0) { /* child (destination server) */
+        char *_argv[] = {
+            "build/dbg/samples/server",
+            "-v",
+            sock_path,
+            NULL
+        };    
+        ret = execvp(_argv[0] , _argv);
+        if (ret != 0) {
+            err(EXIT_FAILURE, "failed to start destination sever");
+        }
+    }
+
+    /* parent (client) */
+
+    /* wait for the server to come up */
+    while (stat(sock_path, &sb) == -1) {
+        if (errno != ENOENT) {
+            err(EXIT_FAILURE, "failed to stat %s", sock_path);
+        }
+    }
+   if ((sb.st_mode & S_IFMT) != S_IFSOCK) {
+       errx(EXIT_FAILURE, "%s: not a socket", sock_path);
+   }
+
+    /* connect to the destination server */
+    sock = init_sock(sock_path);
+
+    set_version(sock, client_max_fds, server_max_fds, pgsize);
+
+    /* XXX set device state to resuming */
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                            offsetof(struct vfio_device_migration_info, device_state),
+                            &device_state, sizeof(device_state));
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to set device state to resuming: %s",
+             strerror(-ret));
+    }
+
+    /* XXX read data offset */
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
+                            offsetof(struct vfio_device_migration_info, data_offset),
+                            &data_offset, sizeof(data_offset));
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to read data offset: %s", strerror(-ret));
+    }
+
+    /* XXX write migration data */
+
+    /*
+     * TODO write half of migration data via regular write and other half via
+     * memopy map.
+     */
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                        data_offset, migr_data, migr_data_len);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to write migration data: %s",
+             strerror(-ret));
+    }
+
+    /* XXX write data_size */
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                        offsetof(struct vfio_device_migration_info, data_size),
+                        &migr_data_len, sizeof migr_data_len);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to write data size: %s", strerror(-ret));
+    }
+
+    /* XXX set device state to running */
+    device_state = VFIO_DEVICE_STATE_RUNNING;
+    ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, true,
+                            offsetof(struct vfio_device_migration_info, device_state),
+                            &device_state, sizeof(device_state));
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to set device state to running: %s",
+             strerror(-ret));
+    }
+
+    return sock;
+}
+
+static void
+map_dma_regions(int sock, int max_fds, struct vfio_user_dma_region *dma_regions,
+                int *dma_region_fds, int nr_dma_regions) 
+{
+    int i, ret;
+
+    for (i = 0; i < nr_dma_regions / max_fds; i++) {
+        ret = send_recv_vfio_user_msg(sock, i, VFIO_USER_DMA_MAP,
+                                      dma_regions + (i * max_fds),
+                                      sizeof(*dma_regions) * max_fds,
+                                      dma_region_fds + (i * max_fds),
+                                      max_fds, NULL, NULL, 0);
+        if (ret < 0) {
+            errx(EXIT_FAILURE, "failed to map DMA regions: %s", strerror(-ret));
+        }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -656,23 +787,15 @@ int main(int argc, char *argv[])
     int nr_dma_regions;
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
     int opt;
-    enum migration migration = NO_MIGRATION;
+    time_t t;
+    void *migr_data;
+    __u64 migr_data_len;
 
-    while ((opt = getopt(argc, argv, "hm:")) != -1) {
+    while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
             case 'h':
                 usage(argv[0]);
                 exit(EXIT_SUCCESS);
-            case 'm':
-                if (strcmp(optarg, "src") == 0) {
-                    migration = MIGRATION_SOURCE;
-                } else if (strcmp(optarg, "dst") == 0) {
-                    migration = MIGRATION_DESTINATION;
-                } else {
-                    fprintf(stderr, "invalid migration argument %s\n", optarg);
-                    exit(EXIT_FAILURE);
-                }
-                break;
             default:
                 usage(argv[0]);
                 exit(EXIT_FAILURE);
@@ -701,8 +824,6 @@ int main(int argc, char *argv[])
              "expected -EINVAL accessing bogus region, got %d instead",
              ret);
     }
-
-
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
     get_device_info(sock, &client_dev_info);
@@ -742,17 +863,8 @@ int main(int argc, char *argv[])
         dma_region_fds[i] = fileno(fp);
     }
 
-    for (i = 0; i < nr_dma_regions / server_max_fds; i++, msg_id++) {
-        ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DMA_MAP,
-                                      dma_regions + (i * server_max_fds),
-                                      sizeof(*dma_regions) * server_max_fds,
-                                      dma_region_fds + (i * server_max_fds),
-                                      server_max_fds, NULL, NULL, 0);
-        if (ret < 0) {
-            fprintf(stderr, "failed to map DMA regions: %s\n", strerror(-ret));
-            return ret;
-        }
-    }
+    map_dma_regions(sock, server_max_fds, dma_regions, dma_region_fds,
+                    nr_dma_regions);
 
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
@@ -776,11 +888,10 @@ int main(int argc, char *argv[])
      * BAR0 in the server does not support memory mapping so it must be accessed
      * via explicit messages.
      */
-    ret = access_bar0(sock, irq_fd);
-    if (ret < 0) {
-        fprintf(stderr, "failed to access BAR0: %s\n", strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
+    t = time(NULL) + 1;
+    access_bar0(sock, irq_fd, &t);
+    
+    /* FIXME check that above took at least 1s */
 
     handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
 
@@ -796,18 +907,7 @@ int main(int argc, char *argv[])
              strerror(-ret));
     }
 
-    /*
-     * FIXME now that region read/write works, change the server implementation
-     * to trigger an interrupt after N seconds, where N is the value written to
-     * BAR0 by the client.
-     */
-
     /* BAR1 can be memory mapped and read directly */
-
-    /*
-     * TODO implement the following: write a value in BAR1, a server timer will
-     * increase it every second (SIGALARM)
-     */
 
     /*
      * XXX VFIO_USER_DMA_UNMAP
@@ -821,10 +921,68 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "failed to unmap DMA regions: %s", strerror(-ret));
     }
 
-    if (migration == MIGRATION_SOURCE) {
-       ret = migrate_from(sock);
+    /*
+     * Schedule an interrupt in 2 seconds from now in the old server and then
+     * immediatelly migrate the device. The new server should deliver the
+     * interrupt. Hopefully 2 seconds should be enough for migration to finish.
+     * TODO make this value a command line option.
+     */
+    t = time(NULL) + 2;
+    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
+    /*
+     * By sleeping here for 1s after migration finishes on the source server
+     * (but not yet started on the destination server), the timer should be be
+     * armed on the destination server for 2-1=1 seconds. If we don't sleep
+     * then it will be armed for 2 seconds, which isn't as interesting.
+     */
+    sleep(1);
+
+    migrate_from(sock, &migr_data, &migr_data_len);
+
+    /*
+     * Normally the client would now send the device state to the destination
+     * client and then exit. We don't demonstrate how this works as this is a
+     * client implementation detail. Instead, the client starts the destination
+     * server and then applies the mgiration data.
+     */
+
+    sock = migrate_to(argv[optind], client_max_fds, &server_max_fds, &pgsize,
+                      migr_data, migr_data_len);
+
+    /*
+     * Now we must reconfigure the destination server.
+     */
+
+    /*
+     * XXX reconfigure DMA regions, note that the first half of the has been
+     * unmapped.
+     */
+    map_dma_regions(sock, server_max_fds, dma_regions + server_max_fds,
+                    dma_region_fds + server_max_fds,
+                    nr_dma_regions - server_max_fds);
+
+    /* 
+     * XXX reconfigure IRQs.
+     * FIXME is this something the client needs to do? I would expect so since
+     * it's the client that creates and provides the FD. Do we need to save some
+     * state in the migration data?
+     */
+    ret = configure_irqs(sock);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to configure IRQs on destination server: %s",
+             strerror(-ret));
+    }
+    irq_fd = ret;
+
+    wait_for_irqs(sock, irq_fd);
+
+    handle_dma_io(sock, dma_regions + server_max_fds,
+                  nr_dma_regions - server_max_fds,
+                  dma_region_fds + server_max_fds);
     return 0;
 }
 

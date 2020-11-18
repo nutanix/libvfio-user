@@ -59,9 +59,11 @@ struct server_data {
     uint8_t *bar1;
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
-        int fake_internal_state;
         __u64 pending_bytes;
         __u64 data_size;
+        void *migr_data;
+        size_t migr_data_len;
+        lm_migr_state_t state; 
     } migration;
 };
 
@@ -71,7 +73,19 @@ _log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
     fprintf(stderr, "server: %s\n", msg);
 }
 
-/* returns time in seconds since Epoch */
+static int
+arm_timer(struct server_data *server_data, time_t t)
+{
+    struct itimerval new = {.it_value.tv_sec = t - time(NULL) };
+    lm_log(server_data->lm_ctx, LM_DBG,
+           "arming timer to trigger in %d seconds", new.it_value.tv_sec);
+    if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
+        lm_log(server_data->lm_ctx, LM_ERR, "failed to arm timer: %m");
+        return -errno;
+    }
+    return 0;
+}
+
 ssize_t
 bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
             const bool is_write)
@@ -79,17 +93,18 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
     struct server_data *server_data = pvt;
 
     if (count != sizeof(time_t) || offset != 0) {
+        lm_log(server_data->lm_ctx, LM_ERR, "bad BAR0 access %#lx-%#lx",
+               offset, offset + count - 1);
         errno = EINVAL;
         return -1;
     }
 
     if (is_write) {
-        struct itimerval new = {.it_value.tv_sec = *(time_t*)buf};
-        lm_log(server_data->lm_ctx, LM_DBG,
-               "arming timer to trigger in %d seconds", new.it_value.tv_sec);
-        if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
-            lm_log(server_data->lm_ctx, LM_ERR, "failed to arm timer: %m");
-            return -1;
+        if (server_data->migration.state == LM_MIGR_STATE_RUNNING) {
+            int ret = arm_timer(server_data, *(time_t*)buf);
+            if (ret < 0) {
+                return ret;
+            }
         }
         memcpy(&server_data->bar0, buf, count);
     } else {
@@ -230,6 +245,7 @@ static int device_reset(UNUSED void *pvt)
 static int
 migration_device_state_transition(void *pvt, lm_migr_state_t state)
 {
+    int ret;
     struct server_data *server_data = pvt;
 
     printf("migration: transition to device state %d\n", state);
@@ -242,9 +258,18 @@ migration_device_state_transition(void *pvt, lm_migr_state_t state)
         case LM_MIGR_STATE_STOP:
             assert(server_data->migration.pending_bytes == 0);
             break;
+        case LM_MIGR_STATE_RESUME:
+            break;
+        case LM_MIGR_STATE_RUNNING:
+            ret = arm_timer(server_data, server_data->bar0);
+            if (ret < 0) {
+                return ret;
+            }
+            break;
         default:
             assert(false); /* FIXME */
     }
+    server_data->migration.state = state;
     return 0;
 }
 
@@ -265,27 +290,76 @@ migration_prepare_data(void *pvt, __u64 *offset, __u64 *size)
     struct server_data *server_data = pvt;
 
     *offset = 0;
-    *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, sysconf(_SC_PAGESIZE) / 4);
+    *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
     return 0;
 }
 
 static size_t
-migration_read_data(void *pvt, UNUSED void *buf, __u64 size,
-                    UNUSED __u64 offset)
+migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
 {
     struct server_data *server_data = pvt;
 
     if (server_data->migration.data_size < size) {
-        assert(false);
+        lm_log(server_data->lm_ctx, LM_ERR,
+               "invalid migration data read %#lx-%#lx",
+               offset, offset + size - 1);
+        return -EINVAL;
     }
+
+    /* FIXME implement, client should be able to write any byte range */
+    assert((offset == 0 && size >= sizeof server_data->bar0)
+           || offset >= sizeof server_data->bar0);
+
+    if (offset == 0 && size >= sizeof server_data->bar0) {
+        memcpy(buf, &server_data->bar0, sizeof server_data->bar0);
+    }
+    return size;
+}
+
+static size_t
+migration_write_data(void *pvt, void *data, __u64 size, __u64 offset)
+{
+    struct server_data *server_data = pvt;
+
+    assert(server_data != NULL);
+    assert(data != NULL);
+
+    if (offset + size > server_data->migration.migr_data_len) {
+        lm_log(server_data->lm_ctx, LM_ERR,
+               "invalid write %#llx-%#llx", offset, offset + size - 1);
+    }
+
+    memcpy(server_data->migration.migr_data + offset, data, size);
 
     return 0;
 }
 
-static size_t
-migration_write_data(UNUSED void *pvt, UNUSED void *data, UNUSED __u64 size)
+
+static int
+migration_data_written(void *pvt, __u64 count, __u64 offset)
 {
-    assert(false);
+    int ret;
+    struct server_data *server_data = pvt;
+
+    assert(server_data != NULL);
+
+    if (offset + count > server_data->migration.migr_data_len) {
+        lm_log(server_data->lm_ctx, LM_ERR,
+               "bad migration data range %#llx-%#llx",
+               offset, offset + count - 1);
+        return -EINVAL;
+    }
+
+    if (offset == 0 && count >= sizeof server_data->bar0) {
+
+        /* apply device state */
+        /* FIXME must arm timer only after device is resumed!!! */
+        ret = bar0_access(pvt, server_data->migration.migr_data,
+                          sizeof server_data->bar0, 0, true);
+        if (ret < 0) {
+            return ret;
+        }
+    }
 
     return 0;
 }
@@ -295,7 +369,13 @@ int main(int argc, char *argv[]){
     bool verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    struct server_data server_data = {0};
+    struct server_data server_data = {
+        .migration = {
+            /* one page so that we can memory map it */
+            .migr_data_len = sysconf(_SC_PAGESIZE),
+            .state = LM_MIGR_STATE_RUNNING
+        }
+    };
     int nr_sparse_areas = 2, size = 1024, i;
     struct lm_sparse_mmap_areas *sparse_areas;
     lm_ctx_t *lm_ctx;
@@ -349,7 +429,12 @@ int main(int argc, char *argv[]){
             },
             .reg_info[LM_DEV_MIGRATION_REG_IDX] = { /* migration region */
                 .flags = LM_REG_FLAG_RW,
-                .size = sizeof(struct vfio_device_migration_info) + sysconf(_SC_PAGESIZE),
+                /* 
+                 * FIXME don't declare support for migration via a region, this
+                 * is a VFIO artifact, make it something different. We still
+                 * have to make the migration data memory mappable.
+                 */
+                .size = sizeof(struct vfio_device_migration_info) + server_data.migration.migr_data_len,
                 .mmap_areas = sparse_areas,
             },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
@@ -364,6 +449,7 @@ int main(int argc, char *argv[]){
             .get_pending_bytes = &migration_get_pending_bytes,
             .prepare_data = &migration_prepare_data,
             .read_data = &migration_read_data,
+            .data_written = &migration_data_written,
             .write_data = &migration_write_data
         }
     };
@@ -376,6 +462,12 @@ int main(int argc, char *argv[]){
     server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
+    }
+
+    server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,
+                                                    server_data.migration.migr_data_len);
+    if (server_data.migration.migr_data == NULL) {
+        errx(EXIT_FAILURE, "failed to allocate migration data");
     }
 
     do {
