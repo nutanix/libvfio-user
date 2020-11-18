@@ -262,7 +262,7 @@ typedef int (lm_migration_callback_t)(void *pvt);
 
 typedef enum {
     LM_MIGR_STATE_STOP,
-    LM_MIGR_STATE_START,
+    LM_MIGR_STATE_RUNNING,
     LM_MIGR_STATE_STOP_AND_COPY,
     LM_MIGR_STATE_PRE_COPY,
     LM_MIGR_STATE_RESUME
@@ -303,10 +303,16 @@ typedef struct {
      */
     size_t (*read_data)(void *pvt, void *buf, __u64 count, __u64 offset);
 
-    /* Callback for restoring device state */
+    /* Callbacks for restoring device state */
+
+    /*
+     * Function that is called when client has written some previously stored
+     * device state.
+     */
+    int (*data_written)(void *pvt, __u64 count, __u64 offset);
 
     /* Fuction that is called for writing previously stored device state. */
-    size_t (*write_data)(void *pvt, void *data, __u64 size);
+    size_t (*write_data)(void *pvt, void *buf, __u64 count, __u64 offset);
 
 } lm_migration_callbacks_t;
 
