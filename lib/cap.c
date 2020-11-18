@@ -209,6 +209,7 @@ handle_pm_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
 			return -EINVAL;
 		}
         assert(false); /* FIXME implement */
+        break;
 	case offsetof(struct pmcap, pmcs):
 		if (count != sizeof(struct pmcs)) {
 			return -EINVAL;
@@ -413,14 +414,15 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
     struct caps *caps;
 
     if (nr_caps <= 0 || nr_caps >= LM_MAX_CAPS) {
-        err = EINVAL;
-        goto out;
+        errno = EINVAL;
+        return NULL;
     }
 
     assert(lm_caps != NULL);
 
     caps = calloc(1, sizeof *caps);
     if (caps == NULL) {
+        err = ENOMEM;
         goto out;
     }
 
@@ -466,6 +468,7 @@ out:
     if (err) {
         free(caps);
         caps = NULL;
+        errno = err;
     }
     return caps;
 }

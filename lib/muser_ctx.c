@@ -139,13 +139,21 @@ static inline int recv_blocking(int sock, void *buf, size_t len, int flags)
     int ret, fret;
 
     fret = fcntl(sock, F_SETFL, f & ~O_NONBLOCK);
-    assert(fret != -1);
+    if (fret == -1) {
+        ret = -errno;
+        fprintf(stderr, "failed to set O_NONBLOCK: %m\n");
+        goto out;
+    }
 
     ret = recv(sock, buf, len, flags);
 
     fret = fcntl(sock, F_SETFL, f);
-    assert(fret != -1);
+    if (fret == -1) {
+        ret = -errno;
+        fprintf(stderr, "failed to unset O_NONBLOCK: %m\n");
+    }
 
+out:
     return ret;
 }
 
@@ -693,7 +701,6 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
     eventfd_t val;
 
     assert(data != NULL);
-
     for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
         efd = lm_ctx->irqs.efds[i];
@@ -1314,7 +1321,8 @@ handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
         /*
          * data_offset is invariant during an iteration.
          */
-        break;        
+	    ret = 0;
+        break;
     default:
         /*
          * reading data_offset is undefined out of sequence
@@ -1323,7 +1331,6 @@ handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
         return -EINVAL;
     }
 
-    
     *offset = lm_ctx->migration.iter.offset + sizeof(struct vfio_device_migration_info);
 
     return ret;
@@ -1361,7 +1368,7 @@ static ssize_t
 handle_migration_region_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
                                loff_t pos, bool is_write)
 {
-    int ret;
+    int ret = -EINVAL;
 
     assert(lm_ctx != NULL);
     assert(buf != NULL);
@@ -1626,7 +1633,7 @@ static int
 handle_device_set_irqs(lm_ctx_t *lm_ctx, uint32_t size,
                        int *fds, int nr_fds, struct vfio_irq_set *irq_set)
 {
-    void *data;
+    void *data = NULL;
 
     assert(lm_ctx != NULL);
     assert(irq_set != NULL);
