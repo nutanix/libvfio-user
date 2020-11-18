@@ -79,7 +79,7 @@ programmed interrupt is delivered by the destination server.
 
 Start the source server as follows (pick whatever you like for `/tmp/mysock`):
 
-    rm -f /tmp/mysock && build/dbg/samples/server -v /tmp/mysock
+    rm -f /tmp/mysock* && build/dbg/samples/server -v /tmp/mysock
 
 And then the client:
 
