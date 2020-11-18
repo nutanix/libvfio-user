@@ -147,6 +147,8 @@ static inline int recv_blocking(int sock, void *buf, size_t len, int flags)
 
     ret = recv(sock, buf, len, flags);
 
+    /* FIXME if ret == -1 then fcntl can overwrite recv's errno */
+
     fret = fcntl(sock, F_SETFL, f);
     if (fret == -1) {
         ret = -errno;
@@ -1209,11 +1211,15 @@ handle_migration_device_state(lm_ctx_t *lm_ctx, __u32 *device_state,
     }
 
     if (*device_state & ~VFIO_DEVICE_STATE_MASK) {
+        lm_log(lm_ctx, LM_ERR, "bad device state %#x", *device_state);
         return -EINVAL;
     }
 
     if (!_migration_state_transition_is_valid(lm_ctx->migration.info.device_state,
                                               *device_state)) {
+        /* TODO print descriptive device state names instead of raw value */
+        lm_log(lm_ctx, LM_ERR, "bad transition from state %d to state %d",
+               lm_ctx->migration.info.device_state, *device_state);
         return -EINVAL;
     }
 
@@ -1245,11 +1251,14 @@ handle_migration_device_state(lm_ctx_t *lm_ctx, __u32 *device_state,
                                                          LM_MIGR_STATE_RESUME);
             break;
         default:
-            ret = -EINVAL;
+            assert(false);
     }
 
     if (ret == 0) {
         lm_ctx->migration.info.device_state = *device_state;
+    } else if (ret < 0) {
+        lm_log(lm_ctx, LM_ERR, "failed to transition to state %d: %s",
+               *device_state, strerror(-ret));
     }
 
     return ret;
@@ -1300,6 +1309,13 @@ handle_migration_pending_bytes(lm_ctx_t *lm_ctx, __u64 *pending_bytes,
     return 0;
 }
 
+/*
+ * FIXME reading or writing migration registers with the wrong device state or
+ * out of sequence is undefined, but should not result in EINVAL, it should
+ * simply be ignored. However this way it's easier to catch development errors.
+ * Make this behavior conditional.
+ */
+
 static ssize_t
 handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
 {
@@ -1309,7 +1325,7 @@ handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
     assert(offset != NULL);
 
     if (is_write) {
-        /* FIXME RO register means that we simply ignore the write, right? */
+        lm_log(lm_ctx, LM_ERR, "data_offset is RO when saving");
         return -EINVAL;
     }
 
@@ -1329,10 +1345,7 @@ handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
 	    ret = 0;
         break;
     default:
-        /*
-         * reading data_offset is undefined out of sequence
-         */
-        *offset = ULLONG_MAX;
+        lm_log(lm_ctx, LM_ERR, "reading data_offset out of sequence is undefined");
         return -EINVAL;
     }
 
@@ -1348,7 +1361,8 @@ handle_migration_data_size(lm_ctx_t *lm_ctx, __u64 *size, bool is_write)
     assert(size != NULL);
 
     if (is_write) {
-        /* FIXME RO register means that we simply ignore the write, right? */
+        /* TODO improve error message */
+        lm_log(lm_ctx, LM_ERR, "data_size is RO when saving");
         return -EINVAL;
     }
 
@@ -1357,11 +1371,9 @@ handle_migration_data_size(lm_ctx_t *lm_ctx, __u64 *size, bool is_write)
     case VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED:
         break;
     default:
-        /*
-         * reading data_size is undefined out of sequence
-         */
-        *size = ULLONG_MAX;
-        return -EINVAL;
+        /* TODO improve error message */
+        lm_log(lm_ctx, LM_ERR, "bad access to data_size");
+        ret = -EINVAL;
     }
 
     *size = lm_ctx->migration.iter.size;
@@ -2487,8 +2499,8 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     if (dev_info->trans != LM_TRANS_SOCK) {
-            errno = ENOTSUP;
-            return NULL;
+        errno = ENOTSUP;
+        return NULL;
     }
 
     /*
