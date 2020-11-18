@@ -29,6 +29,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <err.h>
 #include <stdlib.h>
