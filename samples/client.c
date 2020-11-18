@@ -130,11 +130,11 @@ get_region_vfio_caps(int sock, size_t cap_sz)
         switch (header->id) {
             case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
                 sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
-                fprintf(stdout, "%s: Sparse cap nr_mmap_areas %d\n", __func__,
-                        sparse->nr_areas);
+                printf("%s: Sparse cap nr_mmap_areas %d\n", __func__,
+                       sparse->nr_areas);
                 for (i = 0; i < sparse->nr_areas; i++) {
-                    fprintf(stdout, "%s: area %d offset %#llx size %llu\n", __func__,
-                            i, sparse->areas[i].offset, sparse->areas[i].size);
+                    printf("%s: area %d offset %#llx size %llu\n", __func__,
+                           i, sparse->areas[i].offset, sparse->areas[i].size);
                 }
                 break;
             case VFIO_REGION_INFO_CAP_TYPE:
@@ -183,9 +183,9 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
         }
 
 	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
-        fprintf(stdout, "%s: region_info[%d] offset %#llx flags %#x size %llu "
-                "cap_sz %lu\n", __func__, i, region_info.offset,
-                region_info.flags, region_info.size, cap_sz);
+        printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
+               "cap_sz %lu\n", __func__, i, region_info.offset,
+               region_info.flags, region_info.size, cap_sz);
 	    if (cap_sz) {
             get_region_vfio_caps(sock, cap_sz);
 	    }
