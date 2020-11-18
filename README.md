@@ -57,3 +57,34 @@ To enable Python bindings set the PYTHON_BINDINGS environment variable to a
 non-empty string.
 
 Finally build your program and link it to libmuser.so.
+
+Example
+=======
+
+Directory samples/ contains a client/server implementation. The server
+implements a device that can be programmed to trigger interrupts (INTx) to the
+client. This is done by writing the desired time in seconds since Epoch. The
+server then trigger an evenfd-based IRQ and then a message-based one (in order
+to demonstrate how it's done when passing of file descriptors isn't
+possible/desirable).
+
+The client excersices all commands in the vfio-protocol, and then proceeds
+to perform live migration. The client spawns the destination server (this would
+be normally done by libvirt) and then migrates the device state, before
+switching entirely to the destination server. We re-use the source client
+instead of spawning a destination one as this is something libvirt/QEMU would
+normally do. To spice things up, the client programmes the source server to
+trigger an interrupt and then quickly migrates to the destination server; the
+programmed interrupt is delivered by the destination server.
+
+Start the source server as follows (pick whatever you like for `/tmp/mysock`):
+
+    rm -f /tmp/mysock && build/dbg/samples/server -v /tmp/mysock
+
+And then the client:
+
+    build/dbg/samples/client /tmp/mysock
+
+After a couple of seconds the client will start live migration. The source
+server will exit and the destination server will start, watch the client
+terminal for destination server messages.
