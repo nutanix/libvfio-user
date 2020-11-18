@@ -125,9 +125,9 @@ out:
 
 int
 _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   struct iovec *iovecs, size_t nr_iovecs,
-                   int *fds, int count, int err)
+                    enum vfio_user_command cmd,
+                    struct iovec *iovecs, size_t nr_iovecs,
+                    int *fds, int count, int err)
 {
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
@@ -395,7 +395,10 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
     }
 #endif
 
-    // FIXME: incorrect, unspecified means "no migration support", handle this
+    /*
+     * FIXME: incorrect, if the client doesn't give a pgsize value, it means "no
+     * migration support", handle this
+     */
     lm_ctx->migration.pgsize = sysconf(_SC_PAGESIZE);
     lm_ctx->client_max_fds = 1;
 
