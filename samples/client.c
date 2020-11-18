@@ -54,18 +54,16 @@ init_sock(const char *path)
 	ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", path);
 
 	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-		perror("failed to open socket");
-		return sock;
+		err(EXIT_FAILURE, "failed to open socket %s", path);
 	}
 
 	if ((ret = connect(sock, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
-		perror("failed to connect server");
-        return ret;
+		err(EXIT_FAILURE, "failed to connect server");
 	}
 	return sock;
 }
 
-static int
+static void
 set_version(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
 {
     int ret, mj, mn;
@@ -77,48 +75,38 @@ set_version(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
 
     ret = recv_version(sock, &mj, &mn, &msg_id, false, server_max_fds, pgsize);
     if (ret < 0) {
-        fprintf(stderr, "failed to receive version from server: %s\n",
-                strerror(-ret));
-        goto out;
+        errx(EXIT_FAILURE, "failed to receive version from server: %s",
+             strerror(-ret));
     }
 
     if (mj != LIB_MUSER_VFIO_USER_VERS_MJ || mn != LIB_MUSER_VFIO_USER_VERS_MN) {
-        fprintf(stderr, "bad server version %d.%d\n", mj, mn);
-        ret = -EINVAL;
-        goto out;
+        errx(EXIT_FAILURE, "bad server version %d.%d\n", mj, mn);
     }
 
-    ret = asprintf(&client_caps, "{max_fds: %d, migration: {pgsize: %lu}}",
-                   client_max_fds, sysconf(_SC_PAGESIZE));
-    if (ret == -1) {
-        client_caps = NULL;
-        ret = -ENOMEM; /* FIXME */
-        goto out;
+    if (asprintf(&client_caps, "{max_fds: %d, migration: {pgsize: %lu}}",
+                 client_max_fds, sysconf(_SC_PAGESIZE)) == -1) {
+        err(EXIT_FAILURE, NULL);
     }
 
     ret = send_version(sock, mj, mn, msg_id, true, client_caps);
     if (ret < 0) {
-        fprintf(stderr, "failed to send version to server: %s\n",
-                strerror(-ret));
-        goto out;
+        errx(EXIT_FAILURE, "failed to send version to server: %s",
+             strerror(-ret));
     }
-    ret = 0;
-
-out:
     free(client_caps);
-    return ret;
 }
 
-static int
+static void
 send_device_reset(int sock)
 {
-    int msg_id = 1;
-
-    return send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_RESET,
-                                  NULL, 0, NULL, 0, NULL, NULL, 0);
+    int ret = send_recv_vfio_user_msg(sock, 1, VFIO_USER_DEVICE_RESET,
+                                      NULL, 0, NULL, 0, NULL, NULL, 0);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to reset device: %s\n", strerror(-ret));
+    }
 }
 
-static int
+static void
 get_region_vfio_caps(int sock, size_t cap_sz)
 {
     struct vfio_info_cap_header *header, *_header;
@@ -129,7 +117,7 @@ get_region_vfio_caps(int sock, size_t cap_sz)
 
     header = _header = calloc(cap_sz, 1);
     if (header == NULL) {
-        return -ENOMEM;
+        err(EXIT_FAILURE, NULL);
     }
 
     ret = recv(sock, header, cap_sz, 0);
@@ -153,15 +141,13 @@ get_region_vfio_caps(int sock, size_t cap_sz)
                 type = (struct vfio_region_info_cap_type*)header;
                 if (type->type != VFIO_REGION_TYPE_MIGRATION ||
                     type->subtype != VFIO_REGION_SUBTYPE_MIGRATION) {
-                    fprintf(stderr, "bad region type %d/%d\n", type->type,
-                            type->subtype);
-                    exit(EXIT_FAILURE);
+                    errx(EXIT_FAILURE, "bad region type %d/%d", type->type,
+                         type->subtype);
                 }
                 printf("migration region\n");
                 break;
             default:
-                fprintf(stderr, "bad VFIO cap ID %#x\n", header->id);
-                exit(EXIT_FAILURE);
+                errx(EXIT_FAILURE, "bad VFIO cap ID %#x", header->id);
         }
         if (header->next == 0) {
             break;
@@ -169,11 +155,9 @@ get_region_vfio_caps(int sock, size_t cap_sz)
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
     free(_header);
-
-    return 0;
 }
 
-static int
+static void
 get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
 {
     struct vfio_region_info region_info;
@@ -194,9 +178,8 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
                                       NULL, 0, NULL,
                                       &region_info, sizeof(region_info));
         if (ret < 0) {
-            fprintf(stderr, "failed to get device region info: %s\n",
+            errx(EXIT_FAILURE, "failed to get device region info: %s",
                     strerror(-ret));
-            return ret;
         }
 
 	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
@@ -204,16 +187,13 @@ get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
                 "cap_sz %lu\n", __func__, i, region_info.offset,
                 region_info.flags, region_info.size, cap_sz);
 	    if (cap_sz) {
-            ret = get_region_vfio_caps(sock, cap_sz);
-            if (ret != 0) {
-                return ret;
-            }
+            get_region_vfio_caps(sock, cap_sz);
 	    }
     }
-    return 0;
 }
 
-static int get_device_info(int sock, struct vfio_device_info *dev_info)
+static void
+get_device_info(int sock, struct vfio_device_info *dev_info)
 {
     uint16_t msg_id;
     int ret;
@@ -224,19 +204,16 @@ static int get_device_info(int sock, struct vfio_device_info *dev_info)
                                   dev_info, sizeof(*dev_info), NULL, 0, NULL,
                                   dev_info, sizeof(*dev_info));
     if (ret < 0) {
-        fprintf(stderr, "failed to get device info: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
     }
 
     if (dev_info->num_regions != 10) {
-        fprintf(stderr, "bad number of device regions %d\n",
+        errx(EXIT_FAILURE, "bad number of device regions %d",
                 dev_info->num_regions);
-        return -EINVAL;
     }
 
     printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
            dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
-    return 0;
 }
 
 static int
@@ -258,9 +235,8 @@ configure_irqs(int sock)
                                       NULL, 0, NULL,
                                       &vfio_irq_info, sizeof vfio_irq_info);
         if (ret < 0) {
-            fprintf(stderr, "failed to get  %s info: %s\n", irq_to_str[i],
-                    strerror(-ret));
-            return ret;
+            errx(EXIT_FAILURE, "failed to get  %s info: %s", irq_to_str[i],
+                 strerror(-ret));
         }
         if (vfio_irq_info.count > 0) {
             printf("IRQ %s: count=%d flags=%#x\n",
@@ -277,16 +253,14 @@ configure_irqs(int sock)
     irq_set.count = 1;
     irq_fd = eventfd(0, 0);
     if (irq_fd == -1) {
-        perror("failed to create eventfd");
-        return -1;
+        err(EXIT_FAILURE, "failed to create eventfd");
     }
     ret = send_recv_vfio_user_msg(sock, msg_id, VFIO_USER_DEVICE_SET_IRQS,
                                   &irq_set, sizeof irq_set, &irq_fd, 1, NULL,
                                   NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to send configure IRQs message: %s\n",
-                strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to send configure IRQs message: %s",
+             strerror(-ret));
     }
 
     return irq_fd;
@@ -333,15 +307,15 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
                                    NULL, 0, NULL,
                                    &recv_data, recv_data_len);
     if (ret != 0) {
-        fprintf(stderr, "failed to %s region %d %#lx-%#lx: %s\n",
-                is_write ? "write to" : "read from", region, offset,
-                offset + data_len - 1, strerror(-ret));
+        warnx("failed to %s region %d %#lx-%#lx: %s",
+             is_write ? "write to" : "read from", region, offset,
+             offset + data_len - 1, strerror(-ret));
         return ret;
     }
     if (recv_data.region_access.count != data_len) {
-        fprintf(stderr, "bad %s data count, expected=%lu, actual=%d\n",
-                is_write ? "write" : "read", data_len,
-                recv_data.region_access.count);
+        warnx("bad %s data count, expected=%lu, actual=%d",
+             is_write ? "write" : "read", data_len,
+             recv_data.region_access.count);
         return -EINVAL;
     }
 
@@ -355,7 +329,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     return 0;
 }
 
-static int
+static void
 wait_for_irqs(int sock, int irq_fd)
 {
     int ret;
@@ -365,9 +339,8 @@ wait_for_irqs(int sock, int irq_fd)
     struct vfio_user_header hdr;
     uint16_t msg_id = 1;
 
-    ret = read(irq_fd, &val, sizeof val);
-    if (ret == -1) {
-        return -1;
+    if (read(irq_fd, &val, sizeof val) == -1) {
+        err(EXIT_FAILURE, "failed to read from irqfd");
     }
     printf("INTx triggered!\n");
 
@@ -375,24 +348,21 @@ wait_for_irqs(int sock, int irq_fd)
     ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &vfio_user_irq_info,
                              &size);
     if (ret < 0) {
-        fprintf(stderr, "failed to receive IRQ message: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to receive IRQ message: %s",
+             strerror(-ret));
     }
     if (vfio_user_irq_info.subindex >= 1) {
-        fprintf(stderr, "bad IRQ %d, max=1\n", vfio_user_irq_info.subindex);
-        return -ENOENT;
+        errx(EXIT_FAILURE, "bad IRQ %d, max=1\n", vfio_user_irq_info.subindex);
     }
 
     ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VM_INTERRUPT,
                              NULL, 0, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to send reply for VFIO_USER_VM_INTERRUPT: "
-                "%s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE,
+             "failed to send reply for VFIO_USER_VM_INTERRUPT: %s",
+             strerror(-ret));
     }
     printf("INTx messaged triggered!\n");
-
-    return 0;
 }
 
 static int
@@ -402,16 +372,14 @@ access_bar0(int sock, int irq_fd)
     int ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
 
     if (ret < 0) {
-        fprintf(stderr, "failed to write to BAR0: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
     printf("wrote to BAR0: %ld\n", t);
 
     ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, &t, sizeof t);
     if (ret < 0) {
-        fprintf(stderr, "failed to read from BAR0: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to read from BAR0: %s", strerror(-ret));
     }
 
     printf("read from BAR0: %ld\n", t);
@@ -421,8 +389,9 @@ access_bar0(int sock, int irq_fd)
     return 0;
 }
 
-static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
-                            int nr_dma_regions, int *dma_region_fds)
+static void
+handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
+                 int nr_dma_regions, int *dma_region_fds)
 {
     struct vfio_user_dma_region_access dma_access;
     struct vfio_user_header hdr;
@@ -434,19 +403,16 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
     msg_id = 1;
     ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &dma_access, &size);
     if (ret < 0) {
-        fprintf(stderr, "failed to recieve DMA read: %m\n");
-        return ret;
+        errx(EXIT_FAILURE, "failed to receive DMA read: %s", strerror(-ret));
     }
 
     data = calloc(dma_access.count, 1);
     if (data == NULL) {
-        return -ENOMEM;
+        err(EXIT_FAILURE, NULL);
     }
 
-    ret = recv(sock, data, dma_access.count, 0);
-    if (ret < 0) {
-        fprintf(stderr, "failed to recieve DMA read data: %m\n");
-        goto out;
+    if (recv(sock, data, dma_access.count, 0) == -1) {
+        err(EXIT_FAILURE, "failed to recieve DMA read data");
     }
 
     for (i = 0; i < nr_dma_regions; i++) {
@@ -454,9 +420,11 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
             ret = pwrite(dma_region_fds[i], data, dma_access.count,
                          dma_regions[i].offset);
             if (ret < 0) {
-                fprintf(stderr, "failed to write data at %lu: %m\n",
-                        dma_regions[i].offset);
-                goto out;
+                err(EXIT_FAILURE,
+                    "failed to write data to fd=%d at %#lx-%#lx",
+                        dma_region_fds[i],
+                        dma_regions[i].offset,
+                        dma_regions[i].offset + dma_access.count - 1);
             }
             break;
 	    }
@@ -466,17 +434,15 @@ static int handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
     ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_DMA_WRITE,
                              &dma_access, sizeof dma_access, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to send reply of DMA write: %s\n",
-                strerror(-ret));
+        errx(EXIT_FAILURE, "failed to send reply of DMA write: %s",
+             strerror(-ret));
     }
-
-out:
     free(data);
-    return ret;
 }
 
-static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
-                            int nr_dma_regions, int *dma_region_fds)
+static void
+handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
+                int nr_dma_regions, int *dma_region_fds)
 {
     struct vfio_user_dma_region_access dma_access, *response;
     struct vfio_user_header hdr;
@@ -488,26 +454,23 @@ static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
     msg_id = 1;
     ret = recv_vfio_user_msg(sock, &hdr, false, &msg_id, &dma_access, &size);
     if (ret < 0) {
-        fprintf(stderr, "failed to recieve DMA read: %m\n");
-        return ret;
+        errx(EXIT_FAILURE, "failed to recieve DMA read");
     }
 
     response_sz = sizeof(dma_access) + dma_access.count;
     response = calloc(response_sz, 1);
     if (response == NULL) {
-        return -ENOMEM;
+        err(EXIT_FAILURE, NULL);
     }
     response->count = dma_access.count;
     data = (char *)response->data;
 
     for (i = 0; i < nr_dma_regions; i++) {
         if (dma_regions[i].addr == dma_access.addr) {
-            ret = pread(dma_region_fds[i], data, dma_access.count,
-                         dma_regions[i].offset);
-            if (ret < 0) {
-                fprintf(stderr, "failed to write data at %lu: %m\n",
-                        dma_regions[i].offset);
-                goto out;
+            if (pread(dma_region_fds[i], data, dma_access.count, dma_regions[i].offset) == -1) {
+                err(EXIT_FAILURE, "failed to write data at %#lx-%#lx",
+                    dma_regions[i].offset,
+                    dma_regions[i].offset + dma_access.count);
             }
             break;
 	    }
@@ -516,35 +479,21 @@ static int handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
     ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_DMA_READ,
                              response, response_sz, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to send reply of DMA write: %m\n");
+        errx(EXIT_FAILURE, "failed to send reply of DMA write: %s",
+             strerror(-ret));
     }
-
-out:
     free(response);
-    return ret;
 }
 
-static int handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
-                     int nr_dma_regions, int *dma_region_fds)
+static void
+handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
+              int nr_dma_regions, int *dma_region_fds)
 {
-    int ret;
-
-    ret = handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
-    if (ret < 0) {
-        fprintf(stderr, "failed to handle DMA write data: %m\n");
-        return ret;
-    }
-
-    ret = handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
-    if (ret < 0) {
-        fprintf(stderr, "failed to handle DMA read data: %m\n");
-        return ret;
-    }
-
-    return 0;
+    handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
 }
 
-static int
+static void
 get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
                   UNUSED int nr_dma_regions)
 {
@@ -585,16 +534,14 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
                                   NULL, 0,
                                   &hdr, data, ARRAY_SIZE(data));
     if (ret != 0) {
-        fprintf(stderr, "failed to start dirty page logging: %s\n",
-                strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to start dirty page logging: %s",
+             strerror(-ret));
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
         printf("%#llx-%#llx\t%hhu\n", bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
-    return 0;
 }
 
 enum migration {
@@ -609,8 +556,8 @@ usage(char *path) {
             basename(path));
 }
 
-static int
-migrate_from(int sock)
+static void
+migrate_from(int sock, void **data, __u64 *len)
 {
     __u32 device_state = VFIO_DEVICE_STATE_SAVING;
     __u64 pending_bytes, data_offset, data_size;
@@ -621,9 +568,8 @@ migrate_from(int sock)
                             offsetof(struct vfio_device_migration_info, device_state),
                             &device_state, sizeof(device_state));
     if (ret < 0) {
-        fprintf(stderr, "failed to write to device state: %s\n",
-                strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to write to device state: %s",
+             strerror(-ret));
     }
 
     /* XXX read pending_bytes */
@@ -631,8 +577,8 @@ migrate_from(int sock)
                         offsetof(struct vfio_device_migration_info, pending_bytes),
                         &pending_bytes, sizeof pending_bytes);
     if (ret < 0) {
-        fprintf(stderr, "failed to read pending_bytes: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to read pending_bytes: %s",
+             strerror(-ret));
     }
 
     while (pending_bytes > 0) {
@@ -642,16 +588,16 @@ migrate_from(int sock)
                             offsetof(struct vfio_device_migration_info, data_offset),
                             &data_offset, sizeof data_offset);
         if (ret < 0) {
-            fprintf(stderr, "failed to read data_offset: %s\n", strerror(-ret));
-            return ret;
+            errx(EXIT_FAILURE, "failed to read data_offset: %s",
+                 strerror(-ret));
         }
 
         ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false,
                             offsetof(struct vfio_device_migration_info, data_size),
                             &data_size, sizeof data_size);
         if (ret < 0) {
-            fprintf(stderr, "failed to read data_size: %s\n", strerror(-ret));
-            return ret;
+            errx(EXIT_FAILURE, "failed to read data_size: %s",
+                 strerror(-ret));
         }
 
         /* XXX read migration data */
@@ -662,8 +608,8 @@ migrate_from(int sock)
         ret = access_region(sock, LM_DEV_MIGRATION_REG_IDX, false, data_offset,
                             data, data_size);
         if (ret < 0) {
-            fprintf(stderr, "failed to read migration data: %s\n",
-                    strerror(-ret));
+            errx(EXIT_FAILURE, "failed to read migration data: %s",
+                 strerror(-ret));
         }
 
         /* FIXME send migration data to the destination client process */
@@ -677,8 +623,8 @@ migrate_from(int sock)
                             offsetof(struct vfio_device_migration_info, pending_bytes),
                             &pending_bytes, sizeof pending_bytes);
         if (ret < 0) {
-            fprintf(stderr, "failed to read pending_bytes: %s\n", strerror(-ret));
-            return ret;
+            errx(EXIT_FAILURE, "failed to read pending_bytes: %s",
+                 strerror(-ret));
         }
     }
 
@@ -688,9 +634,8 @@ migrate_from(int sock)
                         offsetof(struct vfio_device_migration_info, device_state),
                         &device_state, sizeof(device_state));
     if (ret < 0) {
-        fprintf(stderr, "failed to write to device state: %s\n",
-                strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to write to device state: %s",
+             strerror(-ret));
     }
 
     return 0;
@@ -739,9 +684,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if ((sock = init_sock(argv[optind])) < 0) {
-        return sock;
-    }
+    sock = init_sock(argv[optind]);
 
     /*
      * XXX VFIO_USER_VERSION
@@ -749,38 +692,26 @@ int main(int argc, char *argv[])
      * The server proposes version upon connection, we need to send back the
      * version the version we support.
      */
-    if ((ret = set_version(sock, client_max_fds, &server_max_fds, &pgsize)) < 0) {
-        return ret;
-    }
+    set_version(sock, client_max_fds, &server_max_fds, &pgsize);
 
     /* try to access a bogus region, we should het an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof ret);
     if (ret != -EINVAL) {
-        fprintf(stderr,
-                "expected -EINVAL accessing bogus region, got %d instead\n",
-                ret);
-        return ret;
+        errx(EXIT_FAILURE,
+             "expected -EINVAL accessing bogus region, got %d instead",
+             ret);
     }
 
 
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
-    ret = get_device_info(sock, &client_dev_info);
-    if (ret < 0) {
-        return ret;
-    }
-
+    get_device_info(sock, &client_dev_info);
+   
     /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
-    ret = get_device_region_info(sock, &client_dev_info);
-    if (ret < 0) {
-        return ret;
-    }
-
+    get_device_region_info(sock, &client_dev_info);
+   
     /* XXX VFIO_USER_DEVICE_RESET */
-    ret = send_device_reset(sock);
-    if (ret < 0) {
-        return ret;
-    }
+    send_device_reset(sock);
 
     /*
      * XXX VFIO_USER_DMA_MAP
@@ -796,7 +727,7 @@ int main(int argc, char *argv[])
     }
 
     if ((ret = ftruncate(fileno(fp), nr_dma_regions * sysconf(_SC_PAGESIZE))) == -1) {
-        err(EXIT_FAILURE,"failed to truncate file");
+        err(EXIT_FAILURE, "failed to truncate file");
     }
 
     dma_regions = alloca(sizeof *dma_regions * nr_dma_regions);
@@ -827,12 +758,7 @@ int main(int argc, char *argv[])
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
      * Query interrupts and configure an eventfd to be associated with INTx.
      */
-    ret = configure_irqs(sock);
-    if (ret < 0) {
-        fprintf(stderr, "failed to configure IRQs: %s\n", strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
-    irq_fd = ret;
+    irq_fd = configure_irqs(sock);
 
     dirty_bitmap.argsz = sizeof dirty_bitmap;
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
@@ -840,9 +766,8 @@ int main(int argc, char *argv[])
                                   &dirty_bitmap, sizeof dirty_bitmap,
                                   NULL, 0, NULL, NULL, 0);
     if (ret != 0) {
-        fprintf(stderr, "failed to start dirty page logging: %s\n",
-                strerror(-ret));
-        exit(EXIT_FAILURE);
+        errx(EXIT_FAILURE, "failed to start dirty page logging: %s",
+             strerror(-ret));
     }
 
     /*
@@ -857,18 +782,9 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    ret = handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
-    if (ret < 0) {
-        fprintf(stderr, "DMA IO failed: %s\n", strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
+    handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
 
-    ret = get_dirty_bitmaps(sock, dma_regions, nr_dma_regions);
-    if (ret < 0) {
-        fprintf(stderr, "failed to receive dirty bitmaps: %s\n",
-                strerror(-ret));
-        exit(EXIT_FAILURE);
-    }
+    get_dirty_bitmaps(sock, dma_regions, nr_dma_regions);
 
     dirty_bitmap.argsz = sizeof dirty_bitmap;
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
@@ -876,9 +792,8 @@ int main(int argc, char *argv[])
                                   &dirty_bitmap, sizeof dirty_bitmap,
                                   NULL, 0, NULL, NULL, 0);
     if (ret != 0) {
-        fprintf(stderr, "failed to stop dirty page logging: %s\n",
-                strerror(-ret));
-        exit(EXIT_FAILURE);
+        errx(EXIT_FAILURE, "failed to stop dirty page logging: %s",
+             strerror(-ret));
     }
 
     /*
@@ -903,8 +818,7 @@ int main(int argc, char *argv[])
                                   dma_regions, sizeof *dma_regions * server_max_fds,
                                   NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to unmap DMA regions: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "failed to unmap DMA regions: %s", strerror(-ret));
     }
 
     if (migration == MIGRATION_SOURCE) {
