@@ -130,8 +130,7 @@ static void map_dma(void *pvt, uint64_t iova, uint64_t len)
             break;
     }
     if (idx >= NR_DMA_REGIONS) {
-        fprintf(stderr, "Failed to add dma region, slots full\n");
-        return;
+        errx(EXIT_FAILURE, "Failed to add dma region, slots full\n");
     }
 
     server_data->regions[idx].addr = iova;
@@ -171,7 +170,7 @@ void get_md5sum(unsigned char *buf, int len, unsigned char *md5sum)
  * sparsely memory mappable. We should also have a test where the server does
  * DMA directly on the client memory.
  */
-static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
+static void do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
 {
     int count = 4096;
     unsigned char buf[count];
@@ -183,7 +182,11 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
 
     ret = lm_addr_to_sg(lm_ctx, server_data->regions[0].addr, count, &sg,
                         1, PROT_WRITE);
-    assert(ret == 1); /* FIXME */
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to map %#lx-%#lx: %s\n",
+             server_data->regions[0].addr,
+             server_data->regions[0].addr + count -1, strerror(-ret));
+    }
 
     memset(buf, 'A', count);
     get_md5sum(buf, count, md5sum1);
@@ -191,8 +194,7 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
            server_data->regions[0].addr, count);
     ret = lm_dma_write(lm_ctx, &sg, buf);
     if (ret < 0) {
-        fprintf(stderr, "lm_dma_write failed: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "lm_dma_write failed: %s\n", strerror(-ret));
     }
 
     memset(buf, 0, count);
@@ -200,18 +202,14 @@ static int do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
            server_data->regions[0].addr, count);
     ret = lm_dma_read(lm_ctx, &sg, buf);
     if (ret < 0) {
-        fprintf(stderr, "lm_dma_read failed: %s\n", strerror(-ret));
-        return ret;
+        errx(EXIT_FAILURE, "lm_dma_read failed: %s\n", strerror(-ret));
     }
     get_md5sum(buf, count, md5sum2);
     for(i = 0; i < MD5_DIGEST_LENGTH; i++) {
         if (md5sum2[i] != md5sum1[i]) {
-            fprintf(stderr, "DMA write and DMA read mismatch\n");
-            return -EIO;
+            errx(EXIT_FAILURE, "DMA write and DMA read mismatch\n");
         }
     }
-
-    return 0;
 }
 
 unsigned long map_area(UNUSED void *pvt, UNUSED unsigned long off,
@@ -308,8 +306,7 @@ int main(int argc, char *argv[]){
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-v] <socketpath>\n", argv[0]);
-                exit(EXIT_FAILURE);
+                errx(EXIT_FAILURE, "Usage: %s [-v] <socketpath>\n", argv[0]);
         }
     }
 
@@ -325,9 +322,7 @@ int main(int argc, char *argv[]){
     sparse_areas = calloc(1, sizeof(*sparse_areas) +
 			  (nr_sparse_areas * sizeof(struct lm_mmap_area)));
     if (sparse_areas == NULL) {
-        ret = -ENOMEM;
-        fprintf(stderr, "MMAP sparse areas ENOMEM\n");
-        goto out;
+        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM\n");
     }
     sparse_areas->nr_mmap_areas = nr_sparse_areas;
     for (i = 0; i < nr_sparse_areas; i++) {
@@ -380,9 +375,7 @@ int main(int argc, char *argv[]){
 
     server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
-        fprintf(stderr, "failed to initialize device emulation\n");
-        ret = -1;
-        goto out;
+        err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
     do {
@@ -394,24 +387,19 @@ int main(int argc, char *argv[]){
 
                 ret = lm_irq_message(lm_ctx, 0);
                 if (ret < 0) {
-                    fprintf(stderr, "lm_irq_message() failed: %m\n");
+                    err(EXIT_FAILURE, "lm_irq_message() failed");
                 }
 
-                ret = do_dma_io(lm_ctx, &server_data);
-                if (ret < 0) {
-                    fprintf(stderr, "DMA read/write failed: %m\n");
-                }
+                do_dma_io(lm_ctx, &server_data);
                 ret = 0;
             }
         }
     } while (ret == 0);
     if (ret != -ENOTCONN && ret != -EINTR && ret != -ESHUTDOWN) {
-        fprintf(stderr, "failed to realize device emulation: %s\n",
-                strerror(-ret));
+        errx(EXIT_FAILURE, "failed to realize device emulation: %s\n",
+             strerror(-ret));
     }
     lm_ctx_destroy(lm_ctx);
-
-out:
     free(server_data.bar1);
     free(sparse_areas);
     return ret;
