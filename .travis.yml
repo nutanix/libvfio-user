@@ -3,3 +3,4 @@ dist: bionic
 compiler: gcc
 script:
   - make
+  - make BUILD_TYPE=rel

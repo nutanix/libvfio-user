@@ -67,7 +67,8 @@ static void _sa_handler(UNUSED int signum)
 {
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
@@ -107,23 +108,28 @@ int main(int argc, char *argv[])
 
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGINT, &act, NULL) == -1) {
-        fprintf(stderr, "warning: failed to register signal handler: %m\n");
+        err(EXIT_FAILURE, "failed to register signal handler");
     }
 
     lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
-        fprintf(stderr, "failed to initialize device emulation: %m\n");
-        return -1;
+        if (errno == EINTR) {
+            printf("interrupted\n");
+            exit(EXIT_SUCCESS);
+        }
+        err(EXIT_FAILURE, "failed to initialize device emulation");
     }
+
     ret = lm_ctx_drive(lm_ctx);
+
     if (ret != 0) {
         if (ret != -ENOTCONN && ret != -EINTR) {
-            fprintf(stderr, "failed to realize device emulation: %m\n");
+            err(EXIT_FAILURE, "failed to realize device emulation");
         }
     }
 
     lm_ctx_destroy(lm_ctx);
-    return ret;
+    return EXIT_SUCCESS;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

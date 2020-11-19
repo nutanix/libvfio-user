@@ -356,9 +356,9 @@ int
 recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
              struct vfio_user_version **versionp)
 {
-    struct vfio_user_version *cversion;
+    struct vfio_user_version *cversion = NULL;
     struct vfio_user_header hdr;
-    size_t vlen;
+    size_t vlen = 0;
     int ret;
 
     *versionp = NULL;

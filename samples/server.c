@@ -366,7 +366,8 @@ migration_data_written(void *pvt, __u64 count, __u64 offset)
     return 0;
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
     int ret;
     bool verbose = false;
     char opt;
@@ -404,7 +405,7 @@ int main(int argc, char *argv[]){
     sparse_areas = calloc(1, sizeof(*sparse_areas) +
 			  (nr_sparse_areas * sizeof(struct lm_mmap_area)));
     if (sparse_areas == NULL) {
-        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM\n");
+        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM");
     }
     sparse_areas->nr_mmap_areas = nr_sparse_areas;
     for (i = 0; i < nr_sparse_areas; i++) {
@@ -489,14 +490,16 @@ int main(int argc, char *argv[]){
             }
         }
     } while (ret == 0);
+
     if (ret != -ENOTCONN && ret != -EINTR && ret != -ESHUTDOWN) {
         errx(EXIT_FAILURE, "failed to realize device emulation: %s\n",
              strerror(-ret));
     }
+
     lm_ctx_destroy(lm_ctx);
     free(server_data.bar1);
     free(sparse_areas);
-    return ret;
+    return EXIT_SUCCESS;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
