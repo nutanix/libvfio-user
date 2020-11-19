@@ -64,12 +64,7 @@ typedef struct {
     int         efds[0];    /* XXX must be last */
 } lm_irqs_t;
 
-enum migration_iteration_state {
-    VFIO_USER_MIGRATION_ITERATION_STATE_INITIAL,
-    VFIO_USER_MIGRATION_ITERATION_STATE_STARTED,
-    VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED,
-    VFIO_USER_MIGRATION_ITERATION_STATE_FINISHED
-};
+struct migration;
 
 struct lm_ctx {
     void                    *pvt;
@@ -94,16 +89,7 @@ struct lm_ctx {
 
     int                     client_max_fds;
 
-    struct {
-        struct vfio_device_migration_info info;
-        size_t pgsize;
-        lm_migration_callbacks_t callbacks;
-        struct {
-            enum migration_iteration_state state;
-            __u64 offset;
-            __u64 size;
-        } iter;
-    } migration;
+    struct migration        *migration;
 
     lm_irqs_t               irqs; /* XXX must be last */
 };
