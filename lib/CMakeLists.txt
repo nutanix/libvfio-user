@@ -36,6 +36,7 @@ add_library(muser SHARED
     $<TARGET_OBJECTS:muser_ctx>
     $<TARGET_OBJECTS:muser_pci>
     $<TARGET_OBJECTS:tran_sock>
+    $<TARGET_OBJECTS:migration>
     common.h
     muser.h
     muser_priv.h
@@ -61,6 +62,7 @@ add_library_ut(dma dma.c dma.h)
 add_library_ut(muser_ctx muser_ctx.c muser.h)
 add_library_ut(muser_pci muser_pci.c pci.h)
 add_library_ut(tran_sock tran_sock.c tran_sock.h)
+add_library_ut(migration migration.c migration.h)
 
 set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 

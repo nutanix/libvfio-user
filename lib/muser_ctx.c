@@ -55,6 +55,7 @@
 #include "muser.h"
 #include "muser_priv.h"
 #include "tran_sock.h"
+#include "migration.h"
 
 #define LM2VFIO_IRQT(type) (type - 1)
 
@@ -569,365 +570,6 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
     return count;
 }
 
-/* valid migration state transitions */
-__u32 migration_states[VFIO_DEVICE_STATE_MASK] = {
-    [VFIO_DEVICE_STATE_STOP] = 1 << VFIO_DEVICE_STATE_STOP,
-    [VFIO_DEVICE_STATE_RUNNING] = /* running */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
-        (1 << VFIO_DEVICE_STATE_RESUMING),
-    [VFIO_DEVICE_STATE_SAVING] = /* stop-and-copy */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = /* pre-copy */
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RESUMING] = /* resuming */
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_RESUMING)
-};
-
-static bool
-_migration_state_transition_is_valid(__u32 from, __u32 to)
-{
-    return migration_states[from] & (1 << to);
-}
-
-static ssize_t
-handle_migration_device_state(lm_ctx_t *lm_ctx, __u32 *device_state,
-                              bool is_write) {
-
-    int ret;
-
-    assert(lm_ctx != NULL);
-    assert(device_state != NULL);
-
-    if (!is_write) {
-        *device_state = lm_ctx->migration.info.device_state;
-        return 0;
-    }
-
-    if (*device_state & ~VFIO_DEVICE_STATE_MASK) {
-        lm_log(lm_ctx, LM_ERR, "bad device state %#x", *device_state);
-        return -EINVAL;
-    }
-
-    if (!_migration_state_transition_is_valid(lm_ctx->migration.info.device_state,
-                                              *device_state)) {
-        /* TODO print descriptive device state names instead of raw value */
-        lm_log(lm_ctx, LM_ERR, "bad transition from state %d to state %d",
-               lm_ctx->migration.info.device_state, *device_state);
-        return -EINVAL;
-    }
-
-    switch (*device_state) {
-        case VFIO_DEVICE_STATE_STOP:
-            ret = lm_ctx->migration.callbacks.transition(lm_ctx->pvt,
-                                                         LM_MIGR_STATE_STOP);
-            break;
-        case VFIO_DEVICE_STATE_RUNNING:
-            ret = lm_ctx->migration.callbacks.transition(lm_ctx->pvt,
-                                                         LM_MIGR_STATE_RUNNING);
-            break;
-        case VFIO_DEVICE_STATE_SAVING:
-            /*
-             * FIXME How should the device operate during the stop-and-copy
-             * phase? Should we only allow the migration data to be read from
-             * the migration region? E.g. Access to any other region should be
-             * failed? This might be a good question to send to LKML.
-             */
-            ret = lm_ctx->migration.callbacks.transition(lm_ctx->pvt,
-                                                         LM_MIGR_STATE_STOP_AND_COPY);
-            break;
-        case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-            ret = lm_ctx->migration.callbacks.transition(lm_ctx->pvt,
-                                                         LM_MIGR_STATE_PRE_COPY);
-            break;
-        case VFIO_DEVICE_STATE_RESUMING:
-            ret = lm_ctx->migration.callbacks.transition(lm_ctx->pvt,
-                                                         LM_MIGR_STATE_RESUME);
-            break;
-        default:
-            assert(false);
-    }
-
-    if (ret == 0) {
-        lm_ctx->migration.info.device_state = *device_state;
-    } else if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to transition to state %d: %s",
-               *device_state, strerror(-ret));
-    }
-
-    return ret;
-}
-
-static ssize_t
-handle_migration_pending_bytes(lm_ctx_t *lm_ctx, __u64 *pending_bytes,
-                               bool is_write)
-{
-    assert(lm_ctx != NULL);
-    assert(pending_bytes != NULL);
-
-    if (is_write) {
-        return -EINVAL;
-    }
-
-    if (lm_ctx->migration.iter.state == VFIO_USER_MIGRATION_ITERATION_STATE_FINISHED) {
-        *pending_bytes = 0;
-        return 0;
-    }
-
-    *pending_bytes = lm_ctx->migration.callbacks.get_pending_bytes(lm_ctx->pvt);
-
-    switch (lm_ctx->migration.iter.state) {
-        case VFIO_USER_MIGRATION_ITERATION_STATE_INITIAL:
-        case VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED:
-            /*
-             * FIXME what happens if data haven't been consumed in the previous
-             * iteration? Ask on LKML.
-             */
-            if (*pending_bytes == 0) {
-                lm_ctx->migration.iter.state = VFIO_USER_MIGRATION_ITERATION_STATE_FINISHED;
-            } else {
-                lm_ctx->migration.iter.state = VFIO_USER_MIGRATION_ITERATION_STATE_STARTED;
-            }
-            break;
-        case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
-            /*
-             * Repeated reads of pending_bytes should not have any side effects.
-             * FIXME does it have to be the same as the previous value? Can it
-             * increase or even decrease? I suppose it can't be lower than
-             * data_size? Ask on LKML.
-             */
-            break;
-        default:
-            return -EINVAL;
-    }
-    return 0;
-}
-
-/*
- * FIXME reading or writing migration registers with the wrong device state or
- * out of sequence is undefined, but should not result in EINVAL, it should
- * simply be ignored. However this way it's easier to catch development errors.
- * Make this behavior conditional.
- */
-
-static ssize_t
-handle_migration_data_offset_when_saving(lm_ctx_t *lm_ctx, bool is_write)
-{
-    int ret = 0;
-
-    if (is_write) {
-        lm_log(lm_ctx, LM_ERR, "data_offset is RO when saving");
-        return -EINVAL;
-    }
-
-    switch (lm_ctx->migration.iter.state) {
-    case VFIO_USER_MIGRATION_ITERATION_STATE_STARTED:
-        ret = lm_ctx->migration.callbacks.prepare_data(lm_ctx->pvt,
-                                                       &lm_ctx->migration.iter.offset,
-                                                       &lm_ctx->migration.iter.size);
-        if (ret < 0) {
-            return ret;
-        }
-        break;
-    case VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED:
-        /*
-         * data_offset is invariant during an iteration.
-         */
-        break;
-    default:
-        lm_log(lm_ctx, LM_ERR, "reading data_offset out of sequence is undefined");
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-static ssize_t
-handle_migration_data_offset(lm_ctx_t *lm_ctx, __u64 *offset, bool is_write)
-{
-    int ret;
-
-    assert(lm_ctx != NULL);
-
-    switch (lm_ctx->migration.info.device_state) {
-    case VFIO_DEVICE_STATE_SAVING:
-    case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-        ret = handle_migration_data_offset_when_saving(lm_ctx, is_write);
-        break;
-    case VFIO_DEVICE_STATE_RESUMING:
-        if (is_write) {
-            lm_log(lm_ctx, LM_ERR, "bad write to migration data_offset");
-            ret = -EINVAL;
-        } else {
-            ret = 0;
-        }
-        break;
-    default:
-        /* TODO improve error message */
-        lm_log(lm_ctx, LM_ERR, "bad access to migration data_offset in state %d",
-                lm_ctx->migration.info.device_state);
-        ret = -EINVAL;
-    }
-
-    if (ret == 0 && !is_write) {
-        *offset = lm_ctx->migration.iter.offset + sizeof(struct vfio_device_migration_info);
-    }
-
-    return ret;
-}
-
-static ssize_t
-handle_migration_data_size_when_saving(lm_ctx_t *lm_ctx, bool is_write)
-{
-    assert(lm_ctx != NULL);
-
-    if (is_write) {
-        /* TODO improve error message */
-        lm_log(lm_ctx, LM_ERR, "data_size is RO when saving");
-        return -EINVAL;
-    }
-
-    if (lm_ctx->migration.iter.state != VFIO_USER_MIGRATION_ITERATION_STATE_STARTED &&
-        lm_ctx->migration.iter.state != VFIO_USER_MIGRATION_ITERATION_STATE_DATA_PREPARED) {
-        lm_log(lm_ctx, LM_ERR, "reading data_size ouf of sequence is undefined");
-        return -EINVAL;
-    }
-    return 0;
-}
-
-static ssize_t
-handle_migration_data_size_when_resuming(lm_ctx_t *lm_ctx, __u64 size,
-                                         bool is_write)
-{
-    int ret = 0;
-
-    assert(lm_ctx != NULL);
-
-    if (is_write) {
-        ret = lm_ctx->migration.callbacks.data_written(lm_ctx->pvt,
-                                                       size,
-                                                       lm_ctx->migration.info.data_offset);
-        lm_ctx->migration.info.data_size = size;
-        lm_ctx->migration.info.data_offset += size;
-    }
-    return ret;
-}
-
-static ssize_t
-handle_migration_data_size(lm_ctx_t *lm_ctx, __u64 *size, bool is_write)
-{
-    int ret;
-
-    assert(lm_ctx != NULL);
-    assert(size != NULL);
-
-    switch (lm_ctx->migration.info.device_state){
-    case VFIO_DEVICE_STATE_SAVING:
-    case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-        ret = handle_migration_data_size_when_saving(lm_ctx, is_write);
-        break;
-    case VFIO_DEVICE_STATE_RESUMING:
-        ret = handle_migration_data_size_when_resuming(lm_ctx, *size, is_write);
-        break;
-    default:
-        /* TODO improve error message */
-        lm_log(lm_ctx, LM_ERR, "bad access to data_size");
-        ret = -EINVAL;
-    }
-
-    if (ret == 0 && !is_write) {
-        *size = lm_ctx->migration.iter.size;
-    }
-
-    return 0;
-}
-
-static ssize_t
-handle_migration_region_access_registers(lm_ctx_t *lm_ctx, char *buf,
-                                         size_t count, loff_t pos,
-                                         bool is_write)
-{
-    int ret;
-
-    assert(lm_ctx != NULL);
-
-    switch (pos) {
-    case offsetof(struct vfio_device_migration_info, device_state):
-        if (count != sizeof(lm_ctx->migration.info.device_state)) {
-            lm_log(lm_ctx, LM_ERR, "bad device_state access size %d", count);
-            return -EINVAL;
-        }
-        ret = handle_migration_device_state(lm_ctx, (__u32*)buf, is_write);
-        break;
-    case offsetof(struct vfio_device_migration_info, pending_bytes):
-        if (count != sizeof(lm_ctx->migration.info.pending_bytes)) {
-            lm_log(lm_ctx, LM_ERR, "bad pending_bytes access size %d", count);
-            return -EINVAL;
-        }
-        ret = handle_migration_pending_bytes(lm_ctx, (__u64*)buf, is_write);
-        break;
-    case offsetof(struct vfio_device_migration_info, data_offset):
-        if (count != sizeof(lm_ctx->migration.info.data_offset)) {
-            lm_log(lm_ctx, LM_ERR, "bad data_offset access size %d", count);
-            return -EINVAL;
-        }
-        ret = handle_migration_data_offset(lm_ctx, (__u64*)buf, is_write);
-        break;
-    case offsetof(struct vfio_device_migration_info, data_size):
-        if (count != sizeof(lm_ctx->migration.info.data_size)) {
-            lm_log(lm_ctx, LM_ERR, "bad data_size access size %d", count);
-            return -EINVAL;
-        }
-        ret = handle_migration_data_size(lm_ctx, (__u64*)buf, is_write);
-        break;
-    default:
-        lm_log(lm_ctx, LM_ERR, "bad migration region register offset %#lx",
-               pos);
-        return -EINVAL;
-    }
-    return ret;
-}
-
-static ssize_t
-handle_migration_region_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
-                               loff_t pos, bool is_write)
-{
-    int ret = -EINVAL;
-
-    assert(lm_ctx != NULL);
-    assert(buf != NULL);
-
-    if (pos + count > lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size) {
-        lm_log(lm_ctx, LM_ERR, "read %#x-%#x past end of migration region",
-               pos, pos + count - 1);
-        return -EINVAL;
-    }
-
-    if (pos + count <= sizeof(struct vfio_device_migration_info)) {
-        ret = handle_migration_region_access_registers(lm_ctx, buf, count,
-                                                       pos, is_write);
-    } else {
-        pos -= sizeof(struct vfio_device_migration_info);
-        if (is_write) {
-            ret = lm_ctx->migration.callbacks.write_data(lm_ctx->pvt,
-                                                         buf, count, pos);
-        } else {
-            ret = lm_ctx->migration.callbacks.read_data(lm_ctx->pvt,
-                                                        buf, count, pos);
-        }
-    }
-
-    if (ret == 0) {
-        ret = count;
-    }
-    return ret;
-}
-
 static ssize_t
 do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_write)
 {
@@ -957,8 +599,15 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
     }
 
     if (idx == LM_DEV_MIGRATION_REG_IDX) {
-        return handle_migration_region_access(lm_ctx, buf, count, offset,
-                                              is_write);
+        if (offset + count > lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size) {
+            lm_log(lm_ctx, LM_ERR, "read %#x-%#x past end of migration region (%#lx)",
+                   offset, offset + count - 1,
+                   lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size);
+            return -EINVAL;
+        }
+        return handle_migration_region_access(lm_ctx, lm_ctx->pvt,
+                                              lm_ctx->migration,
+                                              buf, count, offset, is_write);
     }
 
     /*
@@ -1259,23 +908,6 @@ handle_device_reset(lm_ctx_t *lm_ctx)
     return 0;
 }
 
-static bool
-migration_available(lm_ctx_t *lm_ctx)
-{
-    assert(lm_ctx != NULL);
-
-    return lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size > 0;
-}
-
-static bool
-migration_is_stop_and_copy(lm_ctx_t *lm_ctx)
-{
-    assert(lm_ctx != NULL);
-
-    return migration_available(lm_ctx) &&
-           lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_SAVING;
-}
-
 static int
 validate_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
                        struct vfio_user_region_access *region_access)
@@ -1293,7 +925,7 @@ validate_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
         return -EINVAL;
     }
 
-    if (migration_is_stop_and_copy(lm_ctx) &&
+    if (device_is_stopped_and_copying(lm_ctx->migration) &&
         region_access->region != LM_DEV_MIGRATION_REG_IDX) {
         lm_log(lm_ctx, LM_ERR,
                "cannot access region %d while device in stop-and-copy state",
@@ -1429,7 +1061,7 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
 
     if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
         ret = dma_controller_dirty_page_logging_start(lm_ctx->dma,
-                                                      lm_ctx->migration.pgsize);
+                                                      migration_get_pgsize(lm_ctx->migration));
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
         ret = dma_controller_dirty_page_logging_stop(lm_ctx->dma);
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
@@ -1532,8 +1164,7 @@ process_request(lm_ctx_t *lm_ctx)
 
     assert(lm_ctx != NULL);
 
-    if (migration_available(lm_ctx) &&
-        lm_ctx->migration.info.device_state == VFIO_DEVICE_STATE_STOP) {
+    if (device_is_stopped(lm_ctx->migration)) {
         return -ESHUTDOWN;
     }
 
@@ -1585,7 +1216,7 @@ process_request(lm_ctx_t *lm_ctx)
         }
     }
 
-    if (migration_is_stop_and_copy(lm_ctx)
+    if (device_is_stopped_and_copying(lm_ctx->migration)
         && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
         lm_log(lm_ctx, LM_ERR,
                "bad command %d while device in stop-and-copy state", hdr.cmd);
@@ -1821,6 +1452,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     }
     free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
     free(lm_ctx->caps);
+    free(lm_ctx->migration);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
@@ -1904,6 +1536,7 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     if (dev_info->nr_caps > 0) {
         lm_ctx->caps = caps_create(lm_ctx, dev_info->caps, dev_info->nr_caps);
         if (lm_ctx->caps == NULL) {
+            /* FIXME is this safe? lm_ctx might not have been fully initialized */
             lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %m\n");
             goto err;
         }
@@ -1917,20 +1550,10 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
      */
     migr_reg = &lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX];
     if (migr_reg->size > 0) {
-        if (migr_reg->size < sizeof(struct vfio_device_migration_info)) {
-            return -EINVAL;
-        }
-
-        /* FIXME this should be done in lm_ctx_run or poll */
-        lm_ctx->migration.info.device_state = VFIO_DEVICE_STATE_RUNNING; 
-
-        lm_ctx->migration.callbacks = dev_info->migration_callbacks;
-        if (lm_ctx->migration.callbacks.transition == NULL ||
-            lm_ctx->migration.callbacks.get_pending_bytes == NULL ||
-            lm_ctx->migration.callbacks.prepare_data == NULL ||
-            lm_ctx->migration.callbacks.read_data == NULL ||
-            lm_ctx->migration.callbacks.write_data == NULL) {
-            return -EINVAL;
+        lm_ctx->migration = init_migration(migr_reg->size,
+                                           &dev_info->migration_callbacks);
+        if (lm_ctx->migration == NULL) {
+            goto err;
         }
     }
 

@@ -45,6 +45,7 @@
 #include "muser.h"
 #include "muser_priv.h"
 #include "tran_sock.h"
+#include "migration.h"
 
 #define MAX_FDS 8
 
@@ -395,11 +396,6 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
     }
 #endif
 
-    /*
-     * FIXME: incorrect, if the client doesn't give a pgsize value, it means "no
-     * migration support", handle this
-     */
-    lm_ctx->migration.pgsize = sysconf(_SC_PAGESIZE);
     lm_ctx->client_max_fds = 1;
 
     if (vlen > sizeof (*cversion)) {
@@ -434,7 +430,7 @@ send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
                            "\"pgsize\":%zu"
                        "}"
                    "}"
-               "}", MAX_FDS, lm_ctx->migration.pgsize);
+               "}", MAX_FDS, migration_get_pgsize(lm_ctx->migration));
 
     if (ret == -1) {
         ret = -ENOMEM;
