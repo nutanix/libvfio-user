@@ -44,8 +44,9 @@
 #include <sys/param.h>
 #include <sys/time.h>
 
+#include "../lib/common.h"
 #include "../lib/muser.h"
-#include "../lib/muser_priv.h"
+#include "../lib/tran_sock.h"
 
 struct dma_regions {
     uint64_t addr;
