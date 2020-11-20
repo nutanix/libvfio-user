@@ -165,15 +165,7 @@ enum {
     LM_DEV_ROM_REG_IDX,
     LM_DEV_CFG_REG_IDX,
     LM_DEV_VGA_REG_IDX,
-    /*
-     * FIXME this really belong here, but simplifies implementation for now. A
-     * migration region can exist for non-PCI devices (can its index be
-     * anything?). In any case, we should allow the user to define custom regions
-     * at will, by fixing the migration region in that position we don't allow
-     * this.
-     */
-    LM_DEV_MIGRATION_REG_IDX,
-    LM_DEV_NUM_REGS = 10, /* TODO rename to LM_DEV_NUM_PCI_REGS */
+    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
 };
 
 typedef struct {
@@ -316,6 +308,12 @@ typedef struct {
 
 } lm_migration_callbacks_t;
 
+typedef struct {
+    size_t                      size;
+    lm_migration_callbacks_t    callbacks;
+    struct lm_sparse_mmap_areas *mmap_areas;
+} lm_migration_t;
+
 /**
  * Device information structure, used to create the lm_ctx.
  * To be filled and passed to lm_ctx_create()
@@ -382,7 +380,7 @@ typedef struct {
     int             nr_caps;
     lm_cap_t        **caps;
 
-    lm_migration_callbacks_t migration_callbacks;
+    lm_migration_t  migration;
 
 } lm_dev_info_t;
 
