@@ -39,12 +39,9 @@ struct caps;
 
 /**
  * Initializes PCI capabilities.
- *
- * Returns <0 on error, 0 if no capabilities are to be added, and >0 if all
- * capabilities have been added.
  */
-struct caps *
-caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
+struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps,
+                         int *err);
 
 /*
  * Conditionally accesses the PCI capabilities. Returns:

@@ -1176,19 +1176,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
         }
     }
 
-    // Initialise PCI capabilities.
-    if (dev_info->nr_caps > 0) {
-        lm_ctx->caps = caps_create(lm_ctx, dev_info->caps, dev_info->nr_caps);
-        if (lm_ctx->caps == NULL) {
-            /* FIXME is this safe? lm_ctx might not have been fully initialized */
-            lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %m\n");
-            goto err;
-        }
-
-        lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
-        lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
-    }
-
     return 0;
 
 err:
@@ -1393,6 +1380,33 @@ int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
     memcpy(&config_space->hdr.cc, cc, sizeof(lm_pci_hdr_cc_t));
 
     //TODO: supported extended PCI config space.
+
+    return 0;
+}
+
+int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
+{
+    int ret;
+
+    if (lm_ctx->caps != NULL) {
+        lm_log(lm_ctx, LM_ERR, "capabilities are already setup");
+        return ERROR(EEXIST);
+    }
+
+    if (caps == NULL || nr_caps == 0) {
+        lm_log(lm_ctx, LM_ERR, "Invalid args passed");
+        return ERROR(EINVAL);
+    }
+
+    lm_ctx->caps = caps_create(lm_ctx, caps, nr_caps, &ret);
+    if (lm_ctx->caps == NULL) {
+        lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %s",
+               strerror(ret));
+        return ERROR(ret);
+    }
+
+    lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
+    lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
 
     return 0;
 }

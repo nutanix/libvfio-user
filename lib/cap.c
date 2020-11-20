@@ -404,17 +404,18 @@ cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
                                                  offset - (loff_t)(cap - config_space->raw));
 }
 
-struct caps *
-caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
+struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps,
+                         int *err)
 {
-    int i, err = 0;
+    int i;
     uint8_t *prev;
     uint8_t next;
     lm_pci_config_space_t *config_space;
     struct caps *caps = NULL;
 
+    *err = 0;
     if (nr_caps <= 0 || nr_caps >= LM_MAX_CAPS) {
-        errno = EINVAL;
+        *err = EINVAL;
         return NULL;
     }
 
@@ -422,8 +423,8 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
 
     caps = calloc(1, sizeof *caps);
     if (caps == NULL) {
-        err = ENOMEM;
-        goto out;
+        *err = ENOMEM;
+        goto err_out;
     }
 
     config_space = lm_get_pci_config_space(lm_ctx);
@@ -439,14 +440,14 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
         size_t size;
 
         if (!cap_is_valid(id)) {
-            err = EINVAL;
-            goto out;
+            *err = EINVAL;
+            goto err_out;
         }
 
         size = cap_handlers[id].size;
         if (size == 0) {
-            err = EINVAL;
-            goto out;
+            *err = EINVAL;
+            goto err_out;
         }
 
         caps->caps[i].start = next;
@@ -464,13 +465,11 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
     }
     caps->nr_caps = nr_caps;
 
-out:
-    if (err) {
-        free(caps);
-        caps = NULL;
-        errno = err;
-    }
     return caps;
+
+err_out:
+    free(caps);
+    return NULL;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

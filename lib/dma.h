@@ -73,6 +73,7 @@
 #include <sys/mman.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "muser.h"
 #include "common.h"

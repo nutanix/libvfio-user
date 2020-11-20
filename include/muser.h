@@ -363,14 +363,7 @@ typedef struct {
 #define LM_FLAG_ATTACH_NB  (1 << 0)
     uint64_t         flags;
 
-    /*
-     * PCI capabilities.
-     */
-    int             nr_caps;
-    lm_cap_t        **caps;
-
     lm_migration_t  migration;
-
 } lm_dev_info_t;
 
 /**
@@ -395,6 +388,15 @@ lm_ctx_create(const lm_dev_info_t *dev_info);
  */
 int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
                      lm_pci_hdr_cc_t *cc, bool extended);
+
+//TODO: Support variable size capabilities.
+/**
+ * Setup PCI capabilities.
+ * @lm_ctx: the libmuser context
+ * @caps: array of (lm_cap_t *)
+ * *nr_caps: number of elements in @caps
+ */
+int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
 
 /**
  * Destroys libmuser context.
