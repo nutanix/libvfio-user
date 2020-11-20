@@ -1689,6 +1689,18 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
     err = 0;
 
+    lm_ctx->map_dma = dev_info->map_dma;
+    lm_ctx->unmap_dma = dev_info->unmap_dma;
+
+    // Create the internal DMA controller.
+    if (lm_ctx->unmap_dma != NULL) {
+        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
+        if (lm_ctx->dma == NULL) {
+            err = errno;
+            goto out;
+        }
+    }
+
     // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
     // always expected to call lm_ctx_try_attach().
     if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
@@ -1700,18 +1712,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
                            strerror(-err));
                 }
                 goto out;
-        }
-    }
-
-    lm_ctx->map_dma = dev_info->map_dma;
-    lm_ctx->unmap_dma = dev_info->unmap_dma;
-
-    // Create the internal DMA controller.
-    if (lm_ctx->unmap_dma != NULL) {
-        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
-        if (lm_ctx->dma == NULL) {
-            err = errno;
-            goto out;
         }
     }
 
