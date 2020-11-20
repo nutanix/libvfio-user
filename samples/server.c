@@ -382,6 +382,9 @@ int main(int argc, char *argv[])
     int nr_sparse_areas = 2, size = 1024, i;
     struct lm_sparse_mmap_areas *sparse_areas;
     lm_ctx_t *lm_ctx;
+    lm_pci_hdr_id_t id = {.raw = 0xdeadbeef};
+    lm_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
+    lm_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -419,9 +422,6 @@ int main(int argc, char *argv[])
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
         .pci_info = {
-            .id.raw = 0xdeadbeef,
-            .ss.raw = 0xcafebabe,
-            .cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef},
             .reg_info[LM_DEV_BAR0_REG_IDX] = {
                 .flags = LM_REG_FLAG_RW,
                 .size = sizeof(time_t),
@@ -463,6 +463,11 @@ int main(int argc, char *argv[])
     server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
+    }
+
+    ret = lm_setup_pci_hdr(lm_ctx, &id, &ss, &cc, false);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to setup PCI header");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,

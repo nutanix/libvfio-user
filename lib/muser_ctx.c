@@ -1149,11 +1149,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
         return -1;
     }
 
-    // Bounce misc PCI basic header data.
-    lm_ctx->pci_config_space->hdr.id = dev_info->pci_info.id;
-    lm_ctx->pci_config_space->hdr.cc = dev_info->pci_info.cc;
-    lm_ctx->pci_config_space->hdr.ss = dev_info->pci_info.ss;
-
     // Reflect on the config space whether INTX is available.
     if (dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
         lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
@@ -1376,6 +1371,30 @@ out:
     }
 
     return lm_ctx;
+}
+
+static inline int ERROR(int err)
+{
+    errno = err;
+    return -1;
+}
+
+int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
+                     lm_pci_hdr_cc_t *cc, UNUSED bool extended)
+{
+    lm_pci_config_space_t *config_space = lm_ctx->pci_config_space;
+
+    if (id == NULL || ss == NULL || cc == NULL) {
+        return ERROR(EINVAL);
+    }
+
+    memcpy(&config_space->hdr.id, id, sizeof(lm_pci_hdr_id_t));
+    memcpy(&config_space->hdr.ss, ss, sizeof(lm_pci_hdr_ss_t));
+    memcpy(&config_space->hdr.cc, cc, sizeof(lm_pci_hdr_cc_t));
+
+    //TODO: supported extended PCI config space.
+
+    return 0;
 }
 
 /*

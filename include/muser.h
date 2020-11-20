@@ -180,21 +180,6 @@ typedef struct {
      * unsupported regions should be left to 0.
      */
     lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
-
-    /*
-     * Device and vendor ID.
-     */
-    lm_pci_hdr_id_t     id;
-
-    /*
-     * Subsystem vendor and device ID.
-     */
-    lm_pci_hdr_ss_t     ss;
-
-    /*
-     * Class code.
-     */
-    lm_pci_hdr_cc_t     cc;
 } lm_pci_info_t;
 
 /*
@@ -397,6 +382,19 @@ typedef struct {
  */
 lm_ctx_t *
 lm_ctx_create(const lm_dev_info_t *dev_info);
+
+//TODO: Check other PCI header registers suitable to be filled by device.
+//      Or should we pass whole lm_pci_hdr_t to be filled by user.
+/**
+ * Setup PCI header data.
+ * @lm_ctx: the libmuser context
+ * @id: Device and vendor ID
+ * @ss: Subsystem vendor and device ID
+ * @cc: Class code
+ * @extended: support extented PCI config space
+ */
+int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
+                     lm_pci_hdr_cc_t *cc, bool extended);
 
 /**
  * Destroys libmuser context.
