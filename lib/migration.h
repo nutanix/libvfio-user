@@ -33,7 +33,7 @@
 #include "muser.h"
 
 struct migration*
-init_migration(size_t size, const lm_migration_callbacks_t * const migr_callbacks);
+init_migration(const lm_migration_t * const lm_migr);
 
 ssize_t
 handle_migration_region_access(lm_ctx_t *lm_ctx, void *pvt,

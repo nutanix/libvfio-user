@@ -356,12 +356,12 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info_in,
 }
 
 static size_t
-get_vfio_caps_size(uint32_t reg_index, struct lm_sparse_mmap_areas *m)
+get_vfio_caps_size(bool is_migr_reg, struct lm_sparse_mmap_areas *m)
 {
     size_t type_size = 0;
     size_t sparse_size = 0;
 
-    if (reg_index == LM_DEV_MIGRATION_REG_IDX) {
+    if (is_migr_reg) {
         type_size = sizeof(struct vfio_region_info_cap_type);
     }
 
@@ -379,7 +379,7 @@ get_vfio_caps_size(uint32_t reg_index, struct lm_sparse_mmap_areas *m)
  * points accordingly.
  */
 static void
-dev_get_caps(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, int reg_index,
+dev_get_caps(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, bool is_migr_reg,
              struct vfio_region_info *vfio_reg)
 {
     struct vfio_info_cap_header *header;
@@ -392,7 +392,7 @@ dev_get_caps(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, int reg_index,
 
     header = (struct vfio_info_cap_header*)(vfio_reg + 1);
 
-    if (reg_index == LM_DEV_MIGRATION_REG_IDX) {
+    if (is_migr_reg) {
         type = (struct vfio_region_info_cap_type*)header;
         type->header.id = VFIO_REGION_INFO_CAP_TYPE;
         type->header.version = 1;
@@ -475,6 +475,12 @@ dump_buffer(const char *prefix, const char *buf, uint32_t count)
 #define dump_buffer(prefix, buf, count)
 #endif
 
+static bool
+is_migr_reg(lm_ctx_t *lm_ctx, int index)
+{
+    return &lm_ctx->reg_info[index] == lm_ctx->migr_reg;
+}
+
 static long
 dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
                 struct vfio_region_info **vfio_reg)
@@ -488,12 +494,12 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
 
     lm_reg = &lm_ctx->reg_info[index];
 
-    if (index >= LM_DEV_NUM_REGS) {
+    if (index >= lm_ctx->nr_regions) {
         lm_log(lm_ctx, LM_DBG, "bad region index %d", index);
         return -EINVAL;
     }
 
-    caps_size = get_vfio_caps_size(index, lm_reg->mmap_areas);
+    caps_size = get_vfio_caps_size(is_migr_reg(lm_ctx, index), lm_reg->mmap_areas);
     argsz = caps_size + sizeof(struct vfio_region_info);
     *vfio_reg = calloc(1, argsz);
     if (!*vfio_reg) {
@@ -507,7 +513,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
     (*vfio_reg)->size = lm_reg->size;
 
     if (caps_size > 0) {
-        dev_get_caps(lm_ctx, lm_reg, index, *vfio_reg);
+        dev_get_caps(lm_ctx, lm_reg, is_migr_reg(lm_ctx, index), *vfio_reg);
     }
 
     lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %#lx flags %#x size %llu "
@@ -579,12 +585,12 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
 
     idx = lm_get_region(pos, count, &offset);
     if (idx < 0) {
-        lm_log(lm_ctx, LM_ERR, "invalid region %d\n", idx);
+        lm_log(lm_ctx, LM_ERR, "invalid region %d", idx);
         return idx;
     }
 
-    if (idx < 0 || idx >= LM_DEV_NUM_REGS) {
-        lm_log(lm_ctx, LM_ERR, "bad region %d\n", idx);
+    if (idx < 0 || idx >= (int)lm_ctx->nr_regions) {
+        lm_log(lm_ctx, LM_ERR, "bad region %d", idx);
         return -EINVAL;
     }
 
@@ -593,11 +599,11 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
                                               is_write);
     }
 
-    if (idx == LM_DEV_MIGRATION_REG_IDX) {
-        if (offset + count > lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX].size) {
+    if (is_migr_reg(lm_ctx, idx)) {
+        if (offset + count > lm_ctx->reg_info[idx].size) {
             lm_log(lm_ctx, LM_ERR, "read %#x-%#x past end of migration region (%#lx)",
                    offset, offset + count - 1,
-                   lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX].size);
+                   lm_ctx->reg_info[idx].size);
             return -EINVAL;
         }
         return handle_migration_region_access(lm_ctx, lm_ctx->pvt,
@@ -616,7 +622,7 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
                                           is_write);
     }
 
-    lm_log(lm_ctx, LM_ERR, "no callback for region %d\n", idx);
+    lm_log(lm_ctx, LM_ERR, "no callback for region %d", idx);
 
     return -EINVAL;
 }
@@ -754,7 +760,7 @@ handle_device_get_info(lm_ctx_t *lm_ctx, uint32_t size,
 
     dev_info->argsz = sizeof *dev_info;
     dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
-    dev_info->num_regions = LM_DEV_NUM_REGS;
+    dev_info->num_regions = lm_ctx->nr_regions;
     dev_info->num_irqs = LM_DEV_NUM_IRQS;
 
     lm_log(lm_ctx, LM_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
@@ -914,14 +920,14 @@ validate_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
         return -EINVAL;
     }
 
-    if (region_access->region >= LM_DEV_NUM_REGS || region_access->count <= 0 ) {
+    if (region_access->region > lm_ctx->nr_regions ||  region_access->count <= 0) {
         lm_log(lm_ctx, LM_ERR, "bad region %d and/or count %d",
                region_access->region, region_access->count);
         return -EINVAL;
     }
 
     if (device_is_stopped_and_copying(lm_ctx->migration) &&
-        region_access->region != LM_DEV_MIGRATION_REG_IDX) {
+        !is_migr_reg(lm_ctx, region_access->region)) {
         lm_log(lm_ctx, LM_ERR,
                "cannot access region %d while device in stop-and-copy state",
                region_access->region);
@@ -1423,12 +1429,14 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex)
 }
 
 static void
-free_sparse_mmap_areas(lm_reg_info_t *reg_info)
+free_sparse_mmap_areas(lm_ctx_t *lm_ctx)
 {
     int i;
 
-    for (i = 0; i < LM_DEV_NUM_REGS; i++)
-        free(reg_info[i].mmap_areas);
+    assert(lm_ctx != NULL);
+
+    for (i = 0; i < (int)lm_ctx->nr_regions; i++)
+        free(lm_ctx->reg_info[i].mmap_areas);
 }
 
 void
@@ -1445,44 +1453,55 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx->dma);
     }
-    free_sparse_mmap_areas(lm_ctx->reg_info);
+    free_sparse_mmap_areas(lm_ctx);
     free(lm_ctx->caps);
     free(lm_ctx->migration);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
 
+struct lm_sparse_mmap_areas*
+copy_sparse_mmap_area(struct lm_sparse_mmap_areas *src)
+{
+    struct lm_sparse_mmap_areas *dest;
+    size_t size;
+
+    assert(src != NULL);
+
+    size = sizeof(*dest) + (src->nr_mmap_areas * sizeof(struct lm_mmap_area));
+    dest = calloc(1, size);
+    if (dest != NULL) {
+        memcpy(dest, src, size);
+    }
+    return dest;
+}
+
 static int
 copy_sparse_mmap_areas(lm_reg_info_t *dst, const lm_reg_info_t *src)
 {
-    struct lm_sparse_mmap_areas *mmap_areas;
-    int nr_mmap_areas;
-    size_t size;
     int i;
+
+    assert(dst != NULL);
+    assert(src != NULL);
 
     for (i = 0; i < LM_DEV_NUM_REGS; i++) {
         if (!src[i].mmap_areas)
             continue;
-
-        nr_mmap_areas = src[i].mmap_areas->nr_mmap_areas;
-        size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct lm_mmap_area));
-        mmap_areas = calloc(1, size);
-        if (!mmap_areas)
+        dst[i].mmap_areas = copy_sparse_mmap_area(src[i].mmap_areas);
+        if (dst[i].mmap_areas == NULL) {
             return -ENOMEM;
-
-        memcpy(mmap_areas, src[i].mmap_areas, size);
-        dst[i].mmap_areas = mmap_areas;
+        }
     }
 
     return 0;
 }
 
 static int
-pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
+pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info,
+                 const lm_migration_t *migr)
 {
     lm_reg_info_t *cfg_reg;
     const lm_reg_info_t zero_reg = { 0 };
-    lm_reg_info_t *migr_reg;
     int i;
 
     assert(lm_ctx != NULL);
@@ -1528,7 +1547,20 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
         }
     }
 
-    // Initialise capabilities.
+    if (migr != NULL) {
+        /* FIXME hacky, find a more robust way to allocate a region index */
+        lm_ctx->migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
+        lm_ctx->migr_reg->flags = LM_REG_FLAG_RW;
+        lm_ctx->migr_reg->size = sizeof(struct vfio_device_migration_info) + dev_info->migration.size;
+        /* FIXME is there are sparse areas need to setup flags accordingly */
+        lm_ctx->migr_reg->mmap_areas = copy_sparse_mmap_area(migr->mmap_areas);
+        lm_ctx->migration = init_migration(&dev_info->migration);
+        if (lm_ctx->migration == NULL) {
+            goto err;
+        }
+    }
+
+    // Initialise PCI capabilities.
     if (dev_info->nr_caps > 0) {
         lm_ctx->caps = caps_create(lm_ctx, dev_info->caps, dev_info->nr_caps);
         if (lm_ctx->caps == NULL) {
@@ -1539,18 +1571,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
 
         lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
         lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
-    }
-
-    /*
-     * Check the migration region.
-     */
-    migr_reg = &lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX];
-    if (migr_reg->size > 0) {
-        lm_ctx->migration = init_migration(migr_reg->size,
-                                           &dev_info->migration_callbacks);
-        if (lm_ctx->migration == NULL) {
-            goto err;
-        }
     }
 
     return 0;
@@ -1656,6 +1676,16 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         goto out;
     }
 
+    lm_ctx->nr_regions = LM_DEV_NUM_REGS;
+    if (dev_info->migration.size > 0) {
+        lm_ctx->nr_regions += 1;
+    }
+    lm_ctx->reg_info = calloc(lm_ctx->nr_regions, sizeof *lm_ctx->reg_info);
+    if (lm_ctx->reg_info == NULL) {
+        err = -ENOMEM;
+        goto out;
+    }
+
     // Bounce the provided pci_info into the context.
     pci_info_bounce(lm_ctx, &dev_info->pci_info);
 
@@ -1664,12 +1694,12 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
      * fails then we try to free reg_info->mmap_areas, which is wrong because
      * this is a user pointer.
      */
-    for (i = 0; i < ARRAY_SIZE(lm_ctx->reg_info); i++) {
+    for (i = 0; i < lm_ctx->nr_regions; i++) {
         lm_ctx->reg_info[i].mmap_areas = NULL;
     }
 
     // Setup the PCI config space for this context.
-    err = pci_config_setup(lm_ctx, dev_info);
+    err = pci_config_setup(lm_ctx, dev_info, &dev_info->migration);
     if (err != 0) {
         goto out;
     }

@@ -75,7 +75,8 @@ struct lm_ctx {
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
     uint32_t                irq_count[LM_DEV_NUM_IRQS];
-    lm_reg_info_t           reg_info[LM_DEV_NUM_REGS];
+    size_t                  nr_regions;
+    lm_reg_info_t           *reg_info;
     lm_pci_config_space_t   *pci_config_space;
     struct transport_ops    *trans;
     struct caps             *caps;
@@ -90,6 +91,7 @@ struct lm_ctx {
 
     int                     client_max_fds;
 
+    lm_reg_info_t           *migr_reg;
     struct migration        *migration;
 
     lm_irqs_t               irqs; /* XXX must be last */

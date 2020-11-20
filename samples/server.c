@@ -433,16 +433,6 @@ int main(int argc, char *argv[])
                 .mmap_areas = sparse_areas,
 		        .map = map_area
             },
-            .reg_info[LM_DEV_MIGRATION_REG_IDX] = { /* migration region */
-                .flags = LM_REG_FLAG_RW,
-                /* 
-                 * FIXME don't declare support for migration via a region, this
-                 * is a VFIO artifact, make it something different. We still
-                 * have to make the migration data memory mappable.
-                 */
-                .size = sizeof(struct vfio_device_migration_info) + server_data.migration.migr_data_len,
-                .mmap_areas = sparse_areas,
-            },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
@@ -450,13 +440,17 @@ int main(int argc, char *argv[])
         .map_dma = map_dma,
         .unmap_dma = unmap_dma,
         .pvt = &server_data,
-        .migration_callbacks = {
-            .transition = &migration_device_state_transition,
-            .get_pending_bytes = &migration_get_pending_bytes,
-            .prepare_data = &migration_prepare_data,
-            .read_data = &migration_read_data,
-            .data_written = &migration_data_written,
-            .write_data = &migration_write_data
+        .migration = {
+            .size = server_data.migration.migr_data_len,
+            .mmap_areas = sparse_areas,
+            .callbacks = {
+                .transition = &migration_device_state_transition,
+                .get_pending_bytes = &migration_get_pending_bytes,
+                .prepare_data = &migration_prepare_data,
+                .read_data = &migration_read_data,
+                .data_written = &migration_data_written,
+                .write_data = &migration_write_data
+            }
         }
     };
 

@@ -75,11 +75,11 @@ static const __u32 migr_states[VFIO_DEVICE_STATE_MASK] = {
 };
 
 struct migration*
-init_migration(size_t size, const lm_migration_callbacks_t * const migr_callbacks)
+init_migration(const lm_migration_t * const lm_migr)
 {
     struct migration *migr;
 
-    if (size < sizeof(struct vfio_device_migration_info)) {
+    if (lm_migr->size < sizeof(struct vfio_device_migration_info)) {
         errno = EINVAL;
         return NULL;
     }
@@ -99,7 +99,7 @@ init_migration(size_t size, const lm_migration_callbacks_t * const migr_callback
     /* FIXME this should be done in lm_ctx_run or poll */
     migr->info.device_state = VFIO_DEVICE_STATE_RUNNING; 
 
-    migr->callbacks = *migr_callbacks;
+    migr->callbacks = lm_migr->callbacks;
     if (migr->callbacks.transition == NULL ||
         migr->callbacks.get_pending_bytes == NULL ||
         migr->callbacks.prepare_data == NULL ||
