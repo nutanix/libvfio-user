@@ -884,6 +884,7 @@ int main(int argc, char *argv[])
     void *migr_data;
     __u64 migr_data_len;
     char *path_to_server = NULL;
+    lm_pci_hdr_t config_space;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -923,6 +924,17 @@ int main(int argc, char *argv[])
    
     /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
     get_device_region_info(sock, &client_dev_info);
+
+    ret = access_region(sock, LM_DEV_CFG_REG_IDX, false, 0, &config_space,
+                        sizeof config_space);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to read PCI configuration space: %s\n",
+             strerror(-ret));
+    }
+    assert(config_space.id.raw == 0xdeadbeef);
+    assert(config_space.ss.raw == 0xcafebabe);
+    assert(config_space.cc.pi == 0xab && config_space.cc.scc == 0xcd
+           && config_space.cc.bcc == 0xef);
    
     /* XXX VFIO_USER_DEVICE_RESET */
     send_device_reset(sock);

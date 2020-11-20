@@ -249,7 +249,6 @@ irqs_trigger(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
 static long
 dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
 {
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
     uint32_t a_type, d_type;
 
     assert(lm_ctx != NULL);
@@ -282,8 +281,8 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
         return -EINVAL;
     }
     // Ensure irq_set's start and count are within bounds.
-    if ((irq_set->start >= pci_info->irq_count[irq_set->index]) ||
-        (irq_set->start + irq_set->count > pci_info->irq_count[irq_set->index])) {
+    if ((irq_set->start >= lm_ctx->irq_count[irq_set->index]) ||
+        (irq_set->start + irq_set->count > lm_ctx->irq_count[irq_set->index])) {
         lm_log(lm_ctx, LM_DBG, "bad IRQ start/count\n");
         return -EINVAL;
     }
@@ -342,8 +341,6 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info_in,
     assert(irq_info_in != NULL);
     assert(irq_info_out != NULL);
 
-    lm_pci_info_t *pci_info = &lm_ctx->pci_info;
-
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info_in->argsz < sizeof(struct vfio_irq_info)) ||
         (irq_info_in->index >= LM_DEV_NUM_IRQS)) {
@@ -352,7 +349,7 @@ dev_get_irqinfo(lm_ctx_t *lm_ctx, struct vfio_irq_info *irq_info_in,
         return -EINVAL;
     }
 
-    irq_info_out->count = pci_info->irq_count[irq_info_in->index];
+    irq_info_out->count = lm_ctx->irq_count[irq_info_in->index];
     irq_info_out->flags = VFIO_IRQ_INFO_EVENTFD;
 
     return 0;
@@ -489,7 +486,7 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
     assert(lm_ctx != NULL);
     assert(vfio_reg != NULL);
 
-    lm_reg = &lm_ctx->pci_info.reg_info[index];
+    lm_reg = &lm_ctx->reg_info[index];
 
     if (index >= LM_DEV_NUM_REGS) {
         lm_log(lm_ctx, LM_DBG, "bad region index %d", index);
@@ -541,7 +538,7 @@ static uint32_t
 region_size(lm_ctx_t *lm_ctx, int region)
 {
         assert(region >= LM_DEV_BAR0_REG_IDX && region <= LM_DEV_VGA_REG_IDX);
-        return lm_ctx->pci_info.reg_info[region].size;
+        return lm_ctx->reg_info[region].size;
 }
 
 static uint32_t
@@ -575,13 +572,11 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
 {
     int idx;
     loff_t offset;
-    lm_pci_info_t *pci_info;
 
     assert(lm_ctx != NULL);
     assert(buf != NULL);
     assert(count == 1 || count == 2 || count == 4 || count == 8);
 
-    pci_info = &lm_ctx->pci_info;
     idx = lm_get_region(pos, count, &offset);
     if (idx < 0) {
         lm_log(lm_ctx, LM_ERR, "invalid region %d\n", idx);
@@ -599,10 +594,10 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
     }
 
     if (idx == LM_DEV_MIGRATION_REG_IDX) {
-        if (offset + count > lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size) {
+        if (offset + count > lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX].size) {
             lm_log(lm_ctx, LM_ERR, "read %#x-%#x past end of migration region (%#lx)",
                    offset, offset + count - 1,
-                   lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX].size);
+                   lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX].size);
             return -EINVAL;
         }
         return handle_migration_region_access(lm_ctx, lm_ctx->pvt,
@@ -616,8 +611,8 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
      * region to be used, so the user of the library can simply leave the
      * callback NULL in lm_ctx_create.
      */
-    if (pci_info->reg_info[idx].fn != NULL) {
-        return pci_info->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
+    if (lm_ctx->reg_info[idx].fn != NULL) {
+        return lm_ctx->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
                                           is_write);
     }
 
@@ -1450,7 +1445,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx->dma);
     }
-    free_sparse_mmap_areas(lm_ctx->pci_info.reg_info);
+    free_sparse_mmap_areas(lm_ctx->reg_info);
     free(lm_ctx->caps);
     free(lm_ctx->migration);
     free(lm_ctx);
@@ -1494,9 +1489,10 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     assert(dev_info != NULL);
 
     // Convenience pointer.
-    cfg_reg = &lm_ctx->pci_info.reg_info[LM_DEV_CFG_REG_IDX];
+    cfg_reg = &lm_ctx->reg_info[LM_DEV_CFG_REG_IDX];
 
     // Set a default config region if none provided.
+    /* TODO should it be enough to check that the size of region is 0? */
     if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
         cfg_reg->flags = LM_REG_FLAG_RW;
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
@@ -1548,7 +1544,7 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     /*
      * Check the migration region.
      */
-    migr_reg = &lm_ctx->pci_info.reg_info[LM_DEV_MIGRATION_REG_IDX];
+    migr_reg = &lm_ctx->reg_info[LM_DEV_MIGRATION_REG_IDX];
     if (migr_reg->size > 0) {
         lm_ctx->migration = init_migration(migr_reg->size,
                                            &dev_info->migration_callbacks);
@@ -1567,25 +1563,24 @@ err:
 }
 
 static void
-pci_info_bounce(lm_pci_info_t *dst, const lm_pci_info_t *src)
+pci_info_bounce(lm_ctx_t *lm_ctx, const lm_pci_info_t *pci_info)
 {
     int i;
 
+    assert(lm_ctx != NULL);
+    assert(pci_info != NULL);
+
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        dst->irq_count[i] = src->irq_count[i];
+        lm_ctx->irq_count[i] = pci_info->irq_count[i];
     }
 
     for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        dst->reg_info[i].flags = src->reg_info[i].flags;
-        dst->reg_info[i].size  = src->reg_info[i].size;
-        dst->reg_info[i].fn    = src->reg_info[i].fn;
-        dst->reg_info[i].map   = src->reg_info[i].map;
+        lm_ctx->reg_info[i].flags = pci_info->reg_info[i].flags;
+        lm_ctx->reg_info[i].size  = pci_info->reg_info[i].size;
+        lm_ctx->reg_info[i].fn    = pci_info->reg_info[i].fn;
+        lm_ctx->reg_info[i].map   = pci_info->reg_info[i].map;
         // Sparse map data copied by copy_sparse_mmap_areas().
     }
-
-    dst->id = src->id;
-    dst->ss = src->ss;
-    dst->cc = src->cc;
 }
 
 int
@@ -1662,15 +1657,15 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     // Bounce the provided pci_info into the context.
-    pci_info_bounce(&lm_ctx->pci_info, &dev_info->pci_info);
+    pci_info_bounce(lm_ctx, &dev_info->pci_info);
 
     /*
      * FIXME above memcpy also copies reg_info->mmap_areas. If pci_config_setup
      * fails then we try to free reg_info->mmap_areas, which is wrong because
      * this is a user pointer.
      */
-    for (i = 0; i < ARRAY_SIZE(lm_ctx->pci_info.reg_info); i++) {
-        lm_ctx->pci_info.reg_info[i].mmap_areas = NULL;
+    for (i = 0; i < ARRAY_SIZE(lm_ctx->reg_info); i++) {
+        lm_ctx->reg_info[i].mmap_areas = NULL;
     }
 
     // Setup the PCI config space for this context.
@@ -1680,8 +1675,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     // Bounce info for the sparse mmap areas.
-    err = copy_sparse_mmap_areas(lm_ctx->pci_info.reg_info,
-                                 dev_info->pci_info.reg_info);
+    err = copy_sparse_mmap_areas(lm_ctx->reg_info, dev_info->pci_info.reg_info);
     if (err) {
         goto out;
     }
@@ -1757,7 +1751,7 @@ inline lm_reg_info_t *
 lm_get_region_info(lm_ctx_t *lm_ctx)
 {
     assert(lm_ctx != NULL);
-    return lm_ctx->pci_info.reg_info;
+    return lm_ctx->reg_info;
 }
 
 inline int

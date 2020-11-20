@@ -418,6 +418,9 @@ int main(int argc, char *argv[])
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
         .pci_info = {
+            .id.raw = 0xdeadbeef,
+            .ss.raw = 0xcafebabe,
+            .cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef},
             .reg_info[LM_DEV_BAR0_REG_IDX] = {
                 .flags = LM_REG_FLAG_RW,
                 .size = sizeof(time_t),
