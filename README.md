@@ -52,6 +52,10 @@ Just do:
 
 	make && make install
 
+By default a debug build is created, to create a release build do:
+
+	make BUILD_TYPE=rel
+
 The kernel headers are necessary because VFIO structs and defines are reused.
 To enable Python bindings set the PYTHON_BINDINGS environment variable to a
 non-empty string.
