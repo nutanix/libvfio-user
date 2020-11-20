@@ -41,6 +41,7 @@
 #include <err.h>
 #include <assert.h>
 #include <sys/stat.h>
+#include <libgen.h>
 
 #include "../lib/common.h"
 #include "../lib/muser.h"
@@ -744,7 +745,8 @@ migrate_from(int sock, void **data, __u64 *len)
 
 static int
 migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
-           size_t *pgsize, void *migr_data, __u64 migr_data_len)
+           size_t *pgsize, void *migr_data, __u64 migr_data_len,
+           char *path_to_server)
 {
     int ret, sock;
     char *sock_path;
@@ -765,14 +767,15 @@ migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
     }
     if (ret > 0) { /* child (destination server) */
         char *_argv[] = {
-            "build/dbg/samples/server",
+            path_to_server,
             "-v",
             sock_path,
             NULL
-        };    
+        };
         ret = execvp(_argv[0] , _argv);
         if (ret != 0) {
-            err(EXIT_FAILURE, "failed to start destination sever");
+            err(EXIT_FAILURE, "failed to start destination sever (%s)",
+                              path_to_server);
         }
     }
 
@@ -880,6 +883,7 @@ int main(int argc, char *argv[])
     time_t t;
     void *migr_data;
     __u64 migr_data_len;
+    char *path_to_server = NULL;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1038,9 +1042,12 @@ int main(int argc, char *argv[])
      * client implementation detail. Instead, the client starts the destination
      * server and then applies the mgiration data.
      */
+    if (asprintf(&path_to_server, "%s/server", dirname(argv[0])) == -1) {
+        err(EXIT_FAILURE, "failed to asprintf");
+    }
 
     sock = migrate_to(argv[optind], client_max_fds, &server_max_fds, &pgsize,
-                      migr_data, migr_data_len);
+                      migr_data, migr_data_len, path_to_server);
 
     /*
      * Now we must reconfigure the destination server.
