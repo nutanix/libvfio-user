@@ -74,7 +74,8 @@ struct lm_ctx {
     int (*reset)            (void *pvt);
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
-    lm_pci_info_t           pci_info;
+    uint32_t                irq_count[LM_DEV_NUM_IRQS];
+    lm_reg_info_t           reg_info[LM_DEV_NUM_REGS];
     lm_pci_config_space_t   *pci_config_space;
     struct transport_ops    *trans;
     struct caps             *caps;
