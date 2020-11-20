@@ -41,7 +41,7 @@
 
 #define UNUSED __attribute__((unused))
 
-#define PAGE_SIZE           sysconf(_SC_PAGE_SIZE)
+#define PAGE_SIZE           (size_t)sysconf(_SC_PAGE_SIZE)
 #define PAGE_ALIGNED(x)		(((x) & ((typeof(x))(PAGE_SIZE) - 1)) == 0)
 
 #define BIT(nr)             (1UL << (nr))

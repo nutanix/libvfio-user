@@ -32,6 +32,9 @@ cmake_minimum_required (VERSION 2.6)
 project(muser)
 include(GNUInstallDirs)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSON REQUIRED json-c)
+
 set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 #
 # NB: this intentionally does not define NDEBUG: we want our assert()s even in a
@@ -39,6 +42,10 @@ set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 #
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 
+#
+# "include_directories" does *not* work here.
+#
+include_directories(${JSON_INCLUDE_DIRS})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wextra")
 
 
@@ -47,4 +54,3 @@ add_subdirectory(lib)
 
 # samples
 add_subdirectory(samples)
-

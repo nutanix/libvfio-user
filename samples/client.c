@@ -47,6 +47,8 @@
 #include "../lib/muser.h"
 #include "../lib/tran_sock.h"
 
+#define CLIENT_MAX_FDS (32)
+
 static char *irq_to_str[] = {
     [LM_DEV_INTX_IRQ_IDX] = "INTx",
     [LM_DEV_MSI_IRQ_IDX] = "MSI",
@@ -85,7 +87,7 @@ init_sock(const char *path)
 }
 
 static void
-send_version(int sock, int client_max_fds)
+send_version(int sock)
 {
     struct vfio_user_version cversion;
     struct iovec iovecs[3] = { { 0 } };
@@ -93,7 +95,6 @@ send_version(int sock, int client_max_fds)
     int msg_id = 0;
     int slen;
     int ret;
-
 
     slen = snprintf(client_caps, sizeof (client_caps),
         "{"
@@ -103,11 +104,7 @@ send_version(int sock, int client_max_fds)
                     "\"pgsize\":%zu"
                 "}"
             "}"
-         "}", client_max_fds, sysconf(_SC_PAGESIZE));
-
-    if (slen == -1) {
-        errx(EXIT_FAILURE, "failed to alloc client_caps");
-    }
+         "}", CLIENT_MAX_FDS, sysconf(_SC_PAGESIZE));
 
     cversion.major = LIB_MUSER_VFIO_USER_VERS_MJ;
     cversion.minor = LIB_MUSER_VFIO_USER_VERS_MN;
@@ -173,18 +170,27 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
     *pgsize = sysconf(_SC_PAGESIZE);
 
     if (vlen > sizeof (*sversion)) {
-        fprintf(stderr, "ignoring JSON \"%s\"", sversion->data);
-        // FIXME: don't ignore it.
-        *server_max_fds = 8;
+        const char *json_str = (const char *)sversion->data;
+        size_t len = vlen - sizeof (*sversion);
+
+        if (json_str[len - 1] != '\0') {
+            errx(EXIT_FAILURE, "ignoring invalid JSON from server");
+        }
+
+        ret = parse_version_json(json_str, server_max_fds, pgsize);
+
+        if (ret < 0) {
+            errx(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
+        }
     }
 
     free(sversion);
 }
 
 static void
-negotiate(int sock, int client_max_fds, int *server_max_fds, size_t *pgsize)
+negotiate(int sock, int *server_max_fds, size_t *pgsize)
 {
-    send_version(sock, client_max_fds);
+    send_version(sock);
     recv_version(sock, server_max_fds, pgsize);
 }
 
@@ -750,7 +756,7 @@ migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
 }
 
 static int
-migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
+migrate_to(char *old_sock_path, int *server_max_fds,
            size_t *pgsize, void *migr_data, __u64 migr_data_len,
            char *path_to_server, int migr_reg_index)
 {
@@ -800,7 +806,7 @@ migrate_to(char *old_sock_path, int client_max_fds, int *server_max_fds,
     /* connect to the destination server */
     sock = init_sock(sock_path);
 
-    negotiate(sock, client_max_fds, server_max_fds, pgsize);
+    negotiate(sock, server_max_fds, pgsize);
 
     /* XXX set device state to resuming */
     ret = access_region(sock, migr_reg_index, true,
@@ -880,7 +886,6 @@ int main(int argc, char *argv[])
     uint16_t msg_id = 1;
     int i;
     FILE *fp;
-    const int client_max_fds = 32;
     int server_max_fds;
     size_t pgsize;
     int nr_dma_regions;
@@ -916,7 +921,7 @@ int main(int argc, char *argv[])
      *
      * Do intial negotiation with the server, and discover parameters.
      */
-    negotiate(sock, client_max_fds, &server_max_fds, &pgsize);
+    negotiate(sock, &server_max_fds, &pgsize);
 
     /* try to access a bogus region, we should het an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof ret);
@@ -928,7 +933,7 @@ int main(int argc, char *argv[])
 
     /* XXX VFIO_USER_DEVICE_GET_INFO */
     get_device_info(sock, &client_dev_info);
-   
+
     /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
     migr_reg_index = get_device_region_info(sock, &client_dev_info);
     if (migr_reg_index == -1) {
@@ -945,7 +950,7 @@ int main(int argc, char *argv[])
     assert(config_space.ss.raw == 0xcafebabe);
     assert(config_space.cc.pi == 0xab && config_space.cc.scc == 0xcd
            && config_space.cc.bcc == 0xef);
-   
+
     /* XXX VFIO_USER_DEVICE_RESET */
     send_device_reset(sock);
 
@@ -1068,7 +1073,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to asprintf");
     }
 
-    sock = migrate_to(argv[optind], client_max_fds, &server_max_fds, &pgsize,
+    sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
                       migr_data, migr_data_len, path_to_server, migr_reg_index);
 
     /*

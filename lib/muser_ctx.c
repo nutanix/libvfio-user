@@ -954,6 +954,7 @@ process_request(lm_ctx_t *lm_ctx)
             ret = handle_device_reset(lm_ctx);
             break;
         case VFIO_USER_DIRTY_PAGES:
+            // FIXME: don't allow migration calls if migration == NULL
             ret = handle_dirty_pages(lm_ctx, hdr.msg_size, &iovecs, &nr_iovecs,
                                      cmd_data);
             if (ret >= 0) {

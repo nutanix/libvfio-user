@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <json.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/param.h>
@@ -47,7 +48,8 @@
 #include "tran_sock.h"
 #include "migration.h"
 
-#define MAX_FDS 8
+// FIXME: is this the value we want?
+#define SERVER_MAX_FDS 8
 
 static inline int
 recv_blocking(int sock, void *buf, size_t len, int flags)
@@ -57,6 +59,8 @@ recv_blocking(int sock, void *buf, size_t len, int flags)
 
     fret = fcntl(sock, F_SETFL, f & ~O_NONBLOCK);
     assert(fret != -1);
+
+    // FIXME: be more explicit about EOF
 
     ret = recv(sock, buf, len, flags);
 
@@ -355,6 +359,84 @@ send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
                                     hdr, recv_data, recv_len);
 }
 
+/*
+ * Expected JSON is of the form:
+ *
+ * {
+ *     "capabilities": {
+ *         "max_fds": 32,
+ *         "migration": {
+ *             "pgsize": 4096
+ *         }
+ *     }
+ * }
+ *
+ * with everything being optional. Note that json_object_get_uint64() is only
+ * available in newer library versions, so we don't use it.
+ */
+int
+parse_version_json(const char *json_str, int *client_max_fdsp, size_t *pgsizep)
+{
+    struct json_object *jo_caps = NULL;
+    struct json_object *jo_top = NULL;
+    struct json_object *jo = NULL;
+    int ret = -EINVAL;
+
+    if ((jo_top = json_tokener_parse(json_str)) == NULL) {
+        goto out;
+    }
+
+    if (!json_object_object_get_ex(jo_top, "capabilities", &jo_caps)) {
+        ret = 0;
+        goto out;
+    }
+
+    if (json_object_get_type(jo_caps) != json_type_object) {
+        goto out;
+    }
+
+    if (json_object_object_get_ex(jo_caps, "max_fds", &jo)) {
+        if (json_object_get_type(jo) != json_type_int) {
+            goto out;
+        }
+
+        errno = 0;
+        *client_max_fdsp = (int)json_object_get_int64(jo);
+
+        if (errno != 0) {
+            goto out;
+        }
+    }
+
+    if (json_object_object_get_ex(jo_caps, "migration", &jo)) {
+        struct json_object *jo2 = NULL;
+
+        if (json_object_get_type(jo) != json_type_object) {
+            goto out;
+        }
+
+        if (json_object_object_get_ex(jo, "pgsize", &jo2)) {
+            if (json_object_get_type(jo2) != json_type_int) {
+                goto out;
+            }
+
+            errno = 0;
+            *pgsizep = (size_t)json_object_get_int64(jo2);
+
+            if (errno != 0) {
+                goto out;
+            }
+        }
+    }
+
+    ret = 0;
+
+out:
+    /* We just need to put our top-level object. */
+    json_object_put(jo_top);
+    return ret;
+}
+
 int
 recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
              struct vfio_user_version **versionp)
@@ -388,22 +470,57 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
         goto out;
     }
 
-    /* FIXME: oracle qemu code has major of 1 currently */
-#if 0
     if (cversion->major != LIB_MUSER_VFIO_USER_VERS_MJ) {
         lm_log(lm_ctx, LM_ERR, "unsupported client major %hu (must be %hu)",
                cversion->major, LIB_MUSER_VFIO_USER_VERS_MJ);
         ret = -ENOTSUP;
         goto out;
     }
-#endif
 
     lm_ctx->client_max_fds = 1;
 
     if (vlen > sizeof (*cversion)) {
-        lm_log(lm_ctx, LM_DBG, "ignoring JSON \"%s\"", cversion->data);
-        // FIXME: don't ignore it.
-        lm_ctx->client_max_fds = 128;
+        const char *json_str = (const char *)cversion->data;
+        size_t len = vlen - sizeof (*cversion);
+        size_t pgsize = 0;
+
+        if (json_str[len - 1] != '\0') {
+            lm_log(lm_ctx, LM_ERR, "ignoring invalid JSON from client");
+            ret = -EINVAL;
+            goto out;
+        }
+
+        ret = parse_version_json(json_str, &lm_ctx->client_max_fds, &pgsize);
+
+        if (ret < 0) {
+            /* No client-supplied strings in the log for release build. */
+#ifdef DEBUG
+            lm_log(lm_ctx, LM_ERR, "failed to parse client JSON \"%s\"",
+                   json_str);
+#else
+            lm_log(lm_ctx, LM_ERR, "failed to parse client JSON");
+#endif
+            goto out;
+        }
+
+        if (lm_ctx->migration != NULL && pgsize != 0) {
+            ret = migration_set_pgsize(lm_ctx->migration, pgsize);
+
+            if (ret != 0) {
+                lm_log(lm_ctx, LM_ERR, "refusing client page size of %zu",
+                       pgsize);
+                goto out;
+            }
+        }
+
+        // FIXME: is the code resilient against ->client_max_fds == 0?
+        if (lm_ctx->client_max_fds < 0 ||
+            lm_ctx->client_max_fds > MUSER_CLIENT_MAX_FDS_LIMIT) {
+            lm_log(lm_ctx, LM_ERR, "refusing client max_fds of %d",
+                   lm_ctx->client_max_fds);
+            ret = -EINVAL;
+            goto out;
+        }
     }
 
 out:
@@ -420,49 +537,44 @@ int
 send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
              struct vfio_user_version *cversion)
 {
-    struct vfio_user_version *sversion = NULL;
-    char *server_caps = NULL;
-    size_t len;
-    int ret;
+    struct vfio_user_version sversion = { 0 };
+    struct iovec iovecs[3] = { { 0 } };
+    char server_caps[1024];
+    int slen;
 
-    ret = asprintf(&server_caps, "{"
-                   "\"capabilities\":{"
-                       "\"max_fds\":%u,"
-                       "\"migration\":{"
-                           "\"pgsize\":%zu"
-                       "}"
-                   "}"
-               "}", MAX_FDS, migration_get_pgsize(lm_ctx->migration));
-
-    if (ret == -1) {
-        ret = -ENOMEM;
-        goto out;
-    }
-
-    len = sizeof (*sversion) + ret + 1;
-    sversion = calloc(1, len);
-
-    if (sversion == NULL) {
-        ret = -ENOMEM;
-        goto out;
+    if (lm_ctx->migration == NULL) {
+        slen = snprintf(server_caps, sizeof (server_caps),
+            "{"
+                "\"capabilities\":{"
+                    "\"max_fds\":%u"
+                "}"
+             "}", SERVER_MAX_FDS);
+    } else {
+        slen = snprintf(server_caps, sizeof (server_caps),
+            "{"
+                "\"capabilities\":{"
+                    "\"max_fds\":%u,"
+                    "\"migration\":{"
+                        "\"pgsize\":%zu"
+                    "}"
+                "}"
+             "}", SERVER_MAX_FDS, migration_get_pgsize(lm_ctx->migration));
     }
 
     // FIXME: we should save the client minor here, and check that before trying
     // to send unsupported things.
-    sversion->major =  LIB_MUSER_VFIO_USER_VERS_MJ;
-    sversion->minor = MIN(cversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
+    sversion.major =  LIB_MUSER_VFIO_USER_VERS_MJ;
+    sversion.minor = MIN(cversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
 
-    // FIXME: strcpy sucks
-    strcpy(((char *)sversion) + offsetof(struct vfio_user_version, data),
-           server_caps);
+    /* [0] is for the header. */
+    iovecs[1].iov_base = &sversion;
+    iovecs[1].iov_len = sizeof (sversion);
+    iovecs[2].iov_base = server_caps;
+    /* Include the NUL. */
+    iovecs[2].iov_len = slen + 1;
 
-    ret = send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VERSION, sversion,
-                             len, NULL, 0);
-
-out:
-    free(server_caps);
-    free(sversion);
-    return ret;
+    return _send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VERSION,
+                               iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 static int

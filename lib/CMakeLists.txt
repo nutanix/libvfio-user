@@ -48,6 +48,8 @@ add_library(muser SHARED
 set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
 set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
 
+target_link_libraries(muser json-c pthread)
+
 set(UT_CFLAGS "-O0 -ggdb --coverage")
 set(UT_LFLAGS "--coverage")
 
