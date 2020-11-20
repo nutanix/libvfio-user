@@ -467,7 +467,7 @@ static int
 negotiate(lm_ctx_t *lm_ctx, int sock)
 {
     struct vfio_user_version *client_version = NULL;
-    uint16_t msg_id;
+    uint16_t msg_id = 1;
     int ret;
 
     ret = recv_version(lm_ctx, sock, &msg_id, &client_version);
