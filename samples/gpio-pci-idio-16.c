@@ -98,13 +98,6 @@ main(int argc, char *argv[])
         .trans = LM_TRANS_SOCK,
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
-        .pci_info = {
-            .reg_info[LM_DEV_BAR2_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = 0x100,
-                .fn = &bar2_access
-            },
-        },
         .uuid = argv[optind],
     };
 
@@ -125,6 +118,13 @@ main(int argc, char *argv[])
     ret = lm_setup_pci_hdr(lm_ctx, &id, &ss, &cc, false);
     if (ret < 0) {
         fprintf(stderr, "failed to setup pci header\n");
+        goto out;
+    }
+
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR2_REG_IDX, 0x100, &bar2_access,
+                          LM_REG_FLAG_RW, NULL, NULL);
+    if (ret < 0) {
+        fprintf(stderr, "failed to setup region\n");
         goto out;
     }
 

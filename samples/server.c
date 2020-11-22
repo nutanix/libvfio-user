@@ -422,18 +422,6 @@ int main(int argc, char *argv[])
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
         .pci_info = {
-            .reg_info[LM_DEV_BAR0_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = sizeof(time_t),
-                .fn = &bar0_access
-            },
-            .reg_info[LM_DEV_BAR1_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = sysconf(_SC_PAGESIZE),
-                .fn = &bar1_access,
-                .mmap_areas = sparse_areas,
-		        .map = map_area
-            },
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
@@ -468,6 +456,18 @@ int main(int argc, char *argv[])
     ret = lm_setup_pci_hdr(lm_ctx, &id, &ss, &cc, false);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to setup PCI header");
+    }
+
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR0_REG_IDX, sizeof(time_t),
+                          &bar0_access, LM_REG_FLAG_RW, NULL, NULL);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to setup BAR0 region");
+    }
+
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR1_REG_IDX, sysconf(_SC_PAGESIZE),
+                          &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,

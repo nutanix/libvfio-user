@@ -1097,31 +1097,10 @@ copy_sparse_mmap_area(struct lm_sparse_mmap_areas *src)
 }
 
 static int
-copy_sparse_mmap_areas(lm_reg_info_t *dst, const lm_reg_info_t *src)
-{
-    int i;
-
-    assert(dst != NULL);
-    assert(src != NULL);
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        if (!src[i].mmap_areas)
-            continue;
-        dst[i].mmap_areas = copy_sparse_mmap_area(src[i].mmap_areas);
-        if (dst[i].mmap_areas == NULL) {
-            return -ENOMEM;
-        }
-    }
-
-    return 0;
-}
-
-static int
 pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
 {
     lm_reg_info_t *cfg_reg;
     const lm_reg_info_t zero_reg = { 0 };
-    int i;
 
     assert(lm_ctx != NULL);
     assert(dev_info != NULL);
@@ -1134,13 +1113,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
         cfg_reg->flags = LM_REG_FLAG_RW;
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
-    } else {
-        // Validate the config region provided.
-        if ((cfg_reg->flags != LM_REG_FLAG_RW) ||
-            ((cfg_reg->size != PCI_CFG_SPACE_SIZE) &&
-             (cfg_reg->size != PCI_CFG_SPACE_EXP_SIZE))) {
-            return EINVAL;
-        }
     }
 
     // Allocate a buffer for the config space.
@@ -1152,13 +1124,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     // Reflect on the config space whether INTX is available.
     if (dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
         lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
-    }
-
-    // Set type for region registers.
-    for (i = 0; i < PCI_BARS_NR; i++) {
-        if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
-            lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
-        }
     }
 
     if (dev_info->migration.size != 0) {
@@ -1195,14 +1160,6 @@ pci_info_bounce(lm_ctx_t *lm_ctx, const lm_pci_info_t *pci_info)
 
     for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
         lm_ctx->irq_count[i] = pci_info->irq_count[i];
-    }
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        lm_ctx->reg_info[i].flags = pci_info->reg_info[i].flags;
-        lm_ctx->reg_info[i].size  = pci_info->reg_info[i].size;
-        lm_ctx->reg_info[i].fn    = pci_info->reg_info[i].fn;
-        lm_ctx->reg_info[i].map   = pci_info->reg_info[i].map;
-        // Sparse map data copied by copy_sparse_mmap_areas().
     }
 }
 
@@ -1292,24 +1249,9 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     // Bounce the provided pci_info into the context.
     pci_info_bounce(lm_ctx, &dev_info->pci_info);
 
-    /*
-     * FIXME above memcpy also copies reg_info->mmap_areas. If pci_config_setup
-     * fails then we try to free reg_info->mmap_areas, which is wrong because
-     * this is a user pointer.
-     */
-    for (i = 0; i < lm_ctx->nr_regions; i++) {
-        lm_ctx->reg_info[i].mmap_areas = NULL;
-    }
-
     // Setup the PCI config space for this context.
     err = pci_config_setup(lm_ctx, dev_info);
     if (err != 0) {
-        goto out;
-    }
-
-    // Bounce info for the sparse mmap areas.
-    err = copy_sparse_mmap_areas(lm_ctx->reg_info, dev_info->pci_info.reg_info);
-    if (err) {
         goto out;
     }
 
@@ -1408,6 +1350,78 @@ int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
     lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
     lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
 
+    return 0;
+}
+
+static int
+copy_sparse_mmap_areas(lm_reg_info_t *reg_info,
+                       struct lm_sparse_mmap_areas *mmap_areas)
+{
+    int nr_mmap_areas;
+    size_t size;
+
+    nr_mmap_areas = mmap_areas->nr_mmap_areas;
+    size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct lm_mmap_area));
+    reg_info->mmap_areas = calloc(1, size);
+    if (reg_info->mmap_areas == NULL) {
+        return -ENOMEM;
+    }
+
+    memcpy(reg_info->mmap_areas, mmap_areas, size);
+
+    return 0;
+}
+
+int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
+                    lm_region_access_cb_t *region_access, int flags,
+                    struct lm_sparse_mmap_areas *mmap_areas,
+                    lm_map_region_cb_t *map)
+{
+    int ret;
+
+    switch(region_idx){
+    case LM_DEV_BAR0_REG_IDX ... LM_DEV_VGA_REG_IDX:
+        // Validate the config region provided.
+        if (region_idx == LM_DEV_CFG_REG_IDX) {
+            if ((flags != LM_REG_FLAG_RW) || ((size != PCI_CFG_SPACE_SIZE) &&
+                        (size != PCI_CFG_SPACE_EXP_SIZE))) {
+                return ERROR(EINVAL);
+            }
+        }
+
+        lm_ctx->reg_info[region_idx].flags = flags;
+        lm_ctx->reg_info[region_idx].size = size;
+        lm_ctx->reg_info[region_idx].fn = region_access;
+
+        // Set type for region registers.
+        // FIXME: Do we need to set io type for unspecified regions?
+        if (!(lm_ctx->reg_info[region_idx].flags & LM_REG_FLAG_MEM)) {
+            lm_ctx->pci_config_space->hdr.bars[region_idx].io.region_type |= 0x1;
+        }
+
+        if (map != NULL) {
+            lm_ctx->reg_info[region_idx].map = map;
+        }
+        if (mmap_areas) {
+            ret = copy_sparse_mmap_areas(&lm_ctx->reg_info[region_idx],
+                                         mmap_areas);
+            if (ret < 0) {
+                return ERROR(-ret);
+            }
+        }
+        break;
+    default:
+        lm_log(lm_ctx, LM_ERR, "Invalid region index %d", region_idx);
+        return ERROR(EINVAL);
+    }
+#if 0
+    //FIXME: Do we need to set type for unspecified region also?
+    for (int i = 0; i < PCI_BARS_NR; i++) {
+        if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
+            lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
+        }
+    }
+#endif
     return 0;
 }
 

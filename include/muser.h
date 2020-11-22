@@ -62,13 +62,6 @@ typedef struct {
 
 typedef struct lm_ctx lm_ctx_t;
 
-// Region flags.
-#define LM_REG_FLAG_READ    (1 << 0)
-#define LM_REG_FLAG_WRITE   (1 << 1)
-#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
-#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
-
 struct lm_mmap_area {
     uint64_t start;
     uint64_t size;
@@ -78,21 +71,6 @@ struct lm_sparse_mmap_areas {
     int nr_mmap_areas;
     struct lm_mmap_area areas[];
 };
-
-/**
- * Prototype for region access callback. When a region is accessed, libmuser
- * calls the previously registered callback with the following arguments:
- *
- * @pvt: private data originally set in dev_info
- * @buf: buffer containing the data to be written or data to be read into
- * @count: number of bytes being read or written
- * @offset: byte offset within the region
- * @is_write: whether or not this is a write
- *
- * @returns the number of bytes read or written, or a negative integer on error
- */
-typedef ssize_t (lm_region_access_t) (void *pvt, char *buf, size_t count,
-                                      loff_t offset, bool is_write);
 
 /**
  * Prototype for memory access callback. The program MUST first map device
@@ -107,12 +85,12 @@ typedef ssize_t (lm_region_access_t) (void *pvt, char *buf, size_t count,
  *
  * @returns the memory address returned by lm_mmap, or MAP_FAILED on failure
  */
-typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
+typedef unsigned long (lm_map_region_cb_t) (void *pvt, unsigned long off,
                                          unsigned long len);
 
 /**
  * Creates a mapping of a device region into the caller's virtual memory. It
- * must be called by lm_map_region_t.
+ * must be called by lm_map_region_cb_t.
  *
  * @lm_ctx: the libmuser context to create mapping from
  * @offset: offset of the region being mapped
@@ -121,33 +99,6 @@ typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
  * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
 void *lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length);
-
-typedef struct  {
-
-    /*
-     * Region flags, see LM_REG_FLAG_XXX above.
-     */
-    uint32_t            flags;
-
-    /*
-     * Size of the region.
-     */
-    uint32_t            size;
-
-    /*
-     * Callback function that is called when the region is read or written.
-     * Note that the memory of the region is owned by the user, except for the
-     * standard header (first 64 bytes) of the PCI configuration space.
-     */
-    lm_region_access_t  *fn;
-
-    /*
-     * Callback function that is called when the region is memory mapped.
-     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
-     */
-    lm_map_region_t     *map;
-    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
-} lm_reg_info_t;
 
 enum {
     LM_DEV_INTX_IRQ_IDX,
@@ -158,28 +109,8 @@ enum {
     LM_DEV_NUM_IRQS
 };
 
-/* FIXME these are PCI regions */
-enum {
-    LM_DEV_BAR0_REG_IDX,
-    LM_DEV_BAR1_REG_IDX,
-    LM_DEV_BAR2_REG_IDX,
-    LM_DEV_BAR3_REG_IDX,
-    LM_DEV_BAR4_REG_IDX,
-    LM_DEV_BAR5_REG_IDX,
-    LM_DEV_ROM_REG_IDX,
-    LM_DEV_CFG_REG_IDX,
-    LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
-};
-
 typedef struct {
     uint32_t            irq_count[LM_DEV_NUM_IRQS];
-
-    /*
-     * Per-region information. Only supported regions need to be defined,
-     * unsupported regions should be left to 0.
-     */
-    lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
 } lm_pci_info_t;
 
 /*
@@ -397,6 +328,84 @@ int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
  * *nr_caps: number of elements in @caps
  */
 int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
+
+// Region flags.
+#define LM_REG_FLAG_READ    (1 << 0)
+#define LM_REG_FLAG_WRITE   (1 << 1)
+#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
+#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+
+/**
+ * Prototype for region access callback. When a region is accessed, libmuser
+ * calls the previously registered callback with the following arguments:
+ *
+ * @pvt: private data originally set in dev_info
+ * @buf: buffer containing the data to be written or data to be read into
+ * @count: number of bytes being read or written
+ * @offset: byte offset within the region
+ * @is_write: whether or not this is a write
+ *
+ * @returns the number of bytes read or written, or a negative integer on error
+ */
+typedef ssize_t (lm_region_access_cb_t) (void *pvt, char *buf, size_t count,
+                                      loff_t offset, bool is_write);
+
+typedef struct  {
+
+    /*
+     * Region flags, see LM_REG_FLAG_XXX above.
+     */
+    uint32_t            flags;
+
+    /*
+     * Size of the region.
+     */
+    uint32_t            size;
+
+    /*
+     * Callback function that is called when the region is read or written.
+     * Note that the memory of the region is owned by the user, except for the
+     * standard header (first 64 bytes) of the PCI configuration space.
+     */
+    lm_region_access_cb_t  *fn;
+
+    /*
+     * Callback function that is called when the region is memory mapped.
+     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
+     */
+    lm_map_region_cb_t     *map;
+    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+} lm_reg_info_t;
+
+/* FIXME these are PCI regions */
+enum {
+    LM_DEV_BAR0_REG_IDX,
+    LM_DEV_BAR1_REG_IDX,
+    LM_DEV_BAR2_REG_IDX,
+    LM_DEV_BAR3_REG_IDX,
+    LM_DEV_BAR4_REG_IDX,
+    LM_DEV_BAR5_REG_IDX,
+    LM_DEV_ROM_REG_IDX,
+    LM_DEV_CFG_REG_IDX,
+    LM_DEV_VGA_REG_IDX,
+    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
+};
+
+/**
+ * Setup regions.
+ * @lm_ctx: the libmuser context
+ * @region_idx: region index
+ * @size: size of the region
+ * @region_access: callback function to access region
+ * @flags: region  flags
+ * @mmap_areas: mmap areas info
+ * @region_map: callback function to map region
+ */
+int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
+                    lm_region_access_cb_t *region_access, int flags,
+                    struct lm_sparse_mmap_areas *mmap_areas,
+                    lm_map_region_cb_t *map);
 
 /**
  * Destroys libmuser context.
