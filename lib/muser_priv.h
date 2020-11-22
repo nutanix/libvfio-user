@@ -74,7 +74,6 @@ struct lm_ctx {
     lm_reset_cb_t           *reset;
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
-    uint32_t                irq_count[LM_DEV_NUM_IRQS];
     size_t                  nr_regions;
     lm_reg_info_t           *reg_info;
     lm_pci_config_space_t   *pci_config_space;
@@ -83,7 +82,7 @@ struct lm_ctx {
     uint64_t                flags;
     char                    *uuid;
     lm_map_dma_cb_t         *map_dma;
-    lm_unmap_dma_cb_t          *unmap_dma;
+    lm_unmap_dma_cb_t       *unmap_dma;
 
     /* TODO there should be a void * variable to store transport-specific stuff */
     /* LM_TRANS_SOCK */
@@ -94,7 +93,8 @@ struct lm_ctx {
     lm_reg_info_t           *migr_reg;
     struct migration        *migration;
 
-    lm_irqs_t               irqs; /* XXX must be last */
+    uint32_t                irq_count[LM_DEV_NUM_IRQS];
+    lm_irqs_t               *irqs;
 };
 
 int

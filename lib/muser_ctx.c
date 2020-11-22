@@ -1121,11 +1121,6 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
         return -1;
     }
 
-    // Reflect on the config space whether INTX is available.
-    if (dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
-        lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
-    }
-
     if (dev_info->migration.size != 0) {
         const lm_migration_t *migr = &dev_info->migration;
 
@@ -1150,19 +1145,6 @@ err:
     return -1;
 }
 
-static void
-pci_info_bounce(lm_ctx_t *lm_ctx, const lm_pci_info_t *pci_info)
-{
-    int i;
-
-    assert(lm_ctx != NULL);
-    assert(pci_info != NULL);
-
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        lm_ctx->irq_count[i] = pci_info->irq_count[i];
-    }
-}
-
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx)
 {
@@ -1179,10 +1161,7 @@ lm_ctx_t *
 lm_ctx_create(const lm_dev_info_t *dev_info)
 {
     lm_ctx_t *lm_ctx = NULL;
-    uint32_t max_ivs = 0;
-    uint32_t i;
     int err = 0;
-    size_t size = 0;
 
     if (dev_info == NULL) {
         errno = EINVAL;
@@ -1194,34 +1173,11 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         return NULL;
     }
 
-    /*
-     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
-     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
-     */
-
-    // Work out highest count of irq vectors.
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        if (max_ivs < dev_info->pci_info.irq_count[i]) {
-            max_ivs = dev_info->pci_info.irq_count[i];
-        }
-    }
-
-    // Allocate an lm_ctx with room for the irq vectors.
-    size += sizeof(int) * max_ivs;
-    lm_ctx = calloc(1, sizeof(lm_ctx_t) + size);
+    lm_ctx = calloc(1, sizeof(lm_ctx_t));
     if (lm_ctx == NULL) {
         return NULL;
     }
     lm_ctx->trans = &sock_transport_ops;
-
-    // Set context irq information.
-    for (i = 0; i < max_ivs; i++) {
-        lm_ctx->irqs.efds[i] = -1;
-    }
-    lm_ctx->irqs.err_efd = -1;
-    lm_ctx->irqs.req_efd = -1;
-    lm_ctx->irqs.type = IRQ_NONE;
-    lm_ctx->irqs.max_ivs = max_ivs;
 
     // Set other context data.
     lm_ctx->pvt = dev_info->pvt;
@@ -1244,9 +1200,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         err = -ENOMEM;
         goto out;
     }
-
-    // Bounce the provided pci_info into the context.
-    pci_info_bounce(lm_ctx, &dev_info->pci_info);
 
     // Setup the PCI config space for this context.
     err = pci_config_setup(lm_ctx, dev_info);
@@ -1426,6 +1379,51 @@ int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
         if (lm_ctx->dma == NULL) {
             return ERROR(ENOMEM);
         }
+    }
+
+    return 0;
+}
+
+int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
+                               uint32_t irq_count[LM_DEV_NUM_IRQS])
+{
+    uint32_t max_ivs = 0, i;
+    size_t size;
+
+    /*
+     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
+     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
+     */
+
+    // Work out highest count of irq vectors.
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        if (max_ivs < irq_count[i]) {
+            max_ivs = irq_count[i];
+        }
+    }
+
+    size = sizeof(int) * max_ivs;
+    lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
+    if (lm_ctx->irqs == NULL) {
+        return ERROR(ENOMEM);
+    }
+
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        lm_ctx->irq_count[i] = irq_count[i];
+    }
+
+    // Set context irq information.
+    for (i = 0; i < max_ivs; i++) {
+        lm_ctx->irqs->efds[i] = -1;
+    }
+    lm_ctx->irqs->err_efd = -1;
+    lm_ctx->irqs->req_efd = -1;
+    lm_ctx->irqs->type = IRQ_NONE;
+    lm_ctx->irqs->max_ivs = max_ivs;
+
+    // Reflect on the config space whether INTX is available.
+    if (irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
+        lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
     }
 
     return 0;

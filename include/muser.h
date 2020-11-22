@@ -100,19 +100,6 @@ typedef unsigned long (lm_map_region_cb_t) (void *pvt, unsigned long off,
  */
 void *lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length);
 
-enum {
-    LM_DEV_INTX_IRQ_IDX,
-    LM_DEV_MSI_IRQ_IDX,
-    LM_DEV_MSIX_IRQ_IDX,
-    LM_DEV_ERR_IRQ_INDEX,
-    LM_DEV_REQ_IRQ_INDEX,
-    LM_DEV_NUM_IRQS
-};
-
-typedef struct {
-    uint32_t            irq_count[LM_DEV_NUM_IRQS];
-} lm_pci_info_t;
-
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
  */
@@ -260,11 +247,6 @@ typedef struct {
      * Log level. Messages above this level are not logged. Optional
      */
     lm_log_lvl_t    log_lvl;
-
-    /*
-     * PCI configuration.
-     */
-    lm_pci_info_t   pci_info;
 
     lm_trans_t      trans;
 
@@ -416,6 +398,23 @@ typedef int (lm_unmap_dma_cb_t) (void *pvt, uint64_t iova);
  */
 int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
                        lm_map_dma_cb_t *map_dma, lm_unmap_dma_cb_t *unmap_dma);
+
+enum {
+    LM_DEV_INTX_IRQ_IDX,
+    LM_DEV_MSI_IRQ_IDX,
+    LM_DEV_MSIX_IRQ_IDX,
+    LM_DEV_ERR_IRQ_INDEX,
+    LM_DEV_REQ_IRQ_INDEX,
+    LM_DEV_NUM_IRQS
+};
+
+/**
+ * Setup device IRQ counts.
+ * @lm_ctx: the libmuser context
+ * @irq_count: array of IRQ count value
+ */
+int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
+                               uint32_t irq_count[LM_DEV_NUM_IRQS]);
 
 /**
  * Destroys libmuser context.

@@ -66,22 +66,22 @@ irqs_disable(lm_ctx_t *lm_ctx, uint32_t index)
     case VFIO_PCI_MSI_IRQ_INDEX:
     case VFIO_PCI_MSIX_IRQ_INDEX:
         lm_log(lm_ctx, LM_DBG, "disabling IRQ %s", vfio_irq_idx_to_str(index));
-        lm_ctx->irqs.type = IRQ_NONE;
-        for (i = 0; i < lm_ctx->irqs.max_ivs; i++) {
-            if (lm_ctx->irqs.efds[i] >= 0) {
-                if (close(lm_ctx->irqs.efds[i]) == -1) {
+        lm_ctx->irqs->type = IRQ_NONE;
+        for (i = 0; i < lm_ctx->irqs->max_ivs; i++) {
+            if (lm_ctx->irqs->efds[i] >= 0) {
+                if (close(lm_ctx->irqs->efds[i]) == -1) {
                     lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m",
-                           lm_ctx->irqs.efds[i]);
+                           lm_ctx->irqs->efds[i]);
                 }
-                lm_ctx->irqs.efds[i] = -1;
+                lm_ctx->irqs->efds[i] = -1;
             }
         }
         return 0;
     case VFIO_PCI_ERR_IRQ_INDEX:
-        irq_efd = &lm_ctx->irqs.err_efd;
+        irq_efd = &lm_ctx->irqs->err_efd;
         break;
     case VFIO_PCI_REQ_IRQ_INDEX:
-        irq_efd = &lm_ctx->irqs.req_efd;
+        irq_efd = &lm_ctx->irqs->req_efd;
         break;
     }
 
@@ -109,7 +109,7 @@ irqs_set_data_none(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
     eventfd_t val;
 
     for (i = irq_set->start; i < (irq_set->start + irq_set->count); i++) {
-        efd = lm_ctx->irqs.efds[i];
+        efd = lm_ctx->irqs->efds[i];
         if (efd >= 0) {
             val = 1;
             ret = eventfd_write(efd, val);
@@ -135,7 +135,7 @@ irqs_set_data_bool(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
     assert(data != NULL);
     for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
-        efd = lm_ctx->irqs.efds[i];
+        efd = lm_ctx->irqs->efds[i];
         if (efd >= 0 && *d8 == 1) {
             val = 1;
             ret = eventfd_write(efd, val);
@@ -159,18 +159,18 @@ irqs_set_data_eventfd(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data
     assert(data != NULL);
     for (i = irq_set->start, d32 = data; i < (irq_set->start + irq_set->count);
          i++, d32++) {
-        efd = lm_ctx->irqs.efds[i];
+        efd = lm_ctx->irqs->efds[i];
         if (efd >= 0) {
             if (close(efd) == -1) {
                 lm_log(lm_ctx, LM_DBG, "failed to close IRQ fd %d: %m", efd);
             }
 
-            lm_ctx->irqs.efds[i] = -1;
+            lm_ctx->irqs->efds[i] = -1;
         }
         if (*d32 >= 0) {
-            lm_ctx->irqs.efds[i] = *d32;
+            lm_ctx->irqs->efds[i] = *d32;
         }
-        lm_log(lm_ctx, LM_DBG, "event fd[%d]=%d", i, lm_ctx->irqs.efds[i]);
+        lm_log(lm_ctx, LM_DBG, "event fd[%d]=%d", i, lm_ctx->irqs->efds[i]);
     }
 
     return 0;
@@ -260,8 +260,8 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
         return -EINVAL;
     }
     // If IRQs are set, ensure index matches what's enabled for the device.
-    if ((irq_set->count != 0) && (lm_ctx->irqs.type != IRQ_NONE) &&
-        (irq_set->index != LM2VFIO_IRQT(lm_ctx->irqs.type))) {
+    if ((irq_set->count != 0) && (lm_ctx->irqs->type != IRQ_NONE) &&
+        (irq_set->index != LM2VFIO_IRQT(lm_ctx->irqs->type))) {
         lm_log(lm_ctx, LM_DBG, "bad IRQ index\n");
         return -EINVAL;
     }
@@ -369,9 +369,9 @@ static int validate_irq_subindex(lm_ctx_t *lm_ctx, uint32_t subindex)
         return -1;
     }
 
-    if ((subindex >= lm_ctx->irqs.max_ivs)) {
+    if ((subindex >= lm_ctx->irqs->max_ivs)) {
         lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", subindex,
-               lm_ctx->irqs.max_ivs);
+               lm_ctx->irqs->max_ivs);
         /* FIXME should return -errno */
         errno = EINVAL;
         return -1;
@@ -391,14 +391,14 @@ lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex)
         return ret;
     }
 
-    if (lm_ctx->irqs.efds[subindex] == -1) {
+    if (lm_ctx->irqs->efds[subindex] == -1) {
         lm_log(lm_ctx, LM_ERR, "no fd for interrupt %d\n", subindex);
         /* FIXME should return -errno */
         errno = ENOENT;
         return -1;
     }
 
-    return eventfd_write(lm_ctx->irqs.efds[subindex], val);
+    return eventfd_write(lm_ctx->irqs->efds[subindex], val);
 }
 
 int
