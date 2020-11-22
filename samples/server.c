@@ -425,9 +425,6 @@ int main(int argc, char *argv[])
             .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
         },
         .uuid = argv[optind],
-        .reset = device_reset,
-        .map_dma = map_dma,
-        .unmap_dma = unmap_dma,
         .pvt = &server_data,
         .migration = {
             .size = server_data.migration.migr_data_len,
@@ -468,6 +465,11 @@ int main(int argc, char *argv[])
                           &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to setup BAR1 region");
+    }
+
+    ret = lm_setup_device_cb(lm_ctx, &device_reset, &map_dma, &unmap_dma);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to setup device callbacks");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,

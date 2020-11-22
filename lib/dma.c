@@ -138,7 +138,7 @@ dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
 int
 dma_controller_remove_region(dma_controller_t *dma,
                              dma_addr_t dma_addr, size_t size,
-                             int (*unmap_dma) (void*, uint64_t), void *data)
+                             lm_unmap_dma_cb_t *unmap_dma, void *data)
 {
     int idx;
     dma_memory_region_t *region;

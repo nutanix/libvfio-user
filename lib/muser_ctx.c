@@ -565,7 +565,7 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1);
             }
-        } 
+        }
         if (ret < 0) {
             return ret;
         }
@@ -1227,7 +1227,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     lm_ctx->pvt = dev_info->pvt;
     lm_ctx->log = dev_info->log;
     lm_ctx->log_lvl = dev_info->log_lvl;
-    lm_ctx->reset = dev_info->reset;
     lm_ctx->flags = dev_info->flags;
 
     lm_ctx->uuid = strdup(dev_info->uuid);
@@ -1263,18 +1262,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         lm_ctx->fd = err;
     }
     err = 0;
-
-    lm_ctx->map_dma = dev_info->map_dma;
-    lm_ctx->unmap_dma = dev_info->unmap_dma;
-
-    // Create the internal DMA controller.
-    if (lm_ctx->unmap_dma != NULL) {
-        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
-        if (lm_ctx->dma == NULL) {
-            err = errno;
-            goto out;
-        }
-    }
 
     // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
     // always expected to call lm_ctx_try_attach().
@@ -1422,6 +1409,25 @@ int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
         }
     }
 #endif
+    return 0;
+}
+
+int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
+                       lm_map_dma_cb_t *map_dma, lm_unmap_dma_cb_t *unmap_dma)
+{
+
+    lm_ctx->reset = reset;
+    lm_ctx->map_dma = map_dma;
+    lm_ctx->unmap_dma = unmap_dma;
+
+    // Create the internal DMA controller.
+    if (lm_ctx->unmap_dma != NULL) {
+        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
+        if (lm_ctx->dma == NULL) {
+            return ERROR(ENOMEM);
+        }
+    }
+
     return 0;
 }
 

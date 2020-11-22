@@ -266,23 +266,6 @@ typedef struct {
      */
     lm_pci_info_t   pci_info;
 
-    /*
-     * Function that is called when the guest resets the device. Optional.
-     */
-    int (*reset)    (void *pvt);
-
-    /*
-     * Function that is called when the guest maps a DMA region. Optional.
-     */
-    void (*map_dma) (void *pvt, uint64_t iova, uint64_t len);
-
-    /*
-     * Function that is called when the guest unmaps a DMA region. The device
-     * must release all references to that region before the callback returns.
-     * This is required if you want to be able to access guest memory.
-     */
-    int (*unmap_dma) (void *pvt, uint64_t iova);
-
     lm_trans_t      trans;
 
     /*
@@ -349,7 +332,7 @@ int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
  * @returns the number of bytes read or written, or a negative integer on error
  */
 typedef ssize_t (lm_region_access_cb_t) (void *pvt, char *buf, size_t count,
-                                      loff_t offset, bool is_write);
+                                         loff_t offset, bool is_write);
 
 typedef struct  {
 
@@ -406,6 +389,33 @@ int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
                     lm_region_access_cb_t *region_access, int flags,
                     struct lm_sparse_mmap_areas *mmap_areas,
                     lm_map_region_cb_t *map);
+
+/*
+ * Function that is called when the guest resets the device. Optional.
+ */
+typedef int (lm_reset_cb_t) (void *pvt);
+
+/*
+ * Function that is called when the guest maps a DMA region. Optional.
+ */
+typedef void (lm_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+
+/*
+ * Function that is called when the guest unmaps a DMA region. The device
+ * must release all references to that region before the callback returns.
+ * This is required if you want to be able to access guest memory.
+ */
+typedef int (lm_unmap_dma_cb_t) (void *pvt, uint64_t iova);
+
+/**
+ * Setup device callbacks.
+ * @lm_ctx: the libmuser context
+ * @reset: device reset callback
+ * @map_dma: DMA region map callback
+ * @unmap_dma: DMA region unmap callback
+ */
+int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
+                       lm_map_dma_cb_t *map_dma, lm_unmap_dma_cb_t *unmap_dma);
 
 /**
  * Destroys libmuser context.

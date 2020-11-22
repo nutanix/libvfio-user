@@ -71,7 +71,7 @@ struct lm_ctx {
     dma_controller_t        *dma;
     int                     fd;
     int                     conn_fd;
-    int (*reset)            (void *pvt);
+    lm_reset_cb_t           *reset;
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
     uint32_t                irq_count[LM_DEV_NUM_IRQS];
@@ -82,8 +82,8 @@ struct lm_ctx {
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
-    void (*map_dma)         (void *pvt, uint64_t iova, uint64_t len);
-    int (*unmap_dma)        (void *pvt, uint64_t iova);
+    lm_map_dma_cb_t         *map_dma;
+    lm_unmap_dma_cb_t          *unmap_dma;
 
     /* TODO there should be a void * variable to store transport-specific stuff */
     /* LM_TRANS_SOCK */

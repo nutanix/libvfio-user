@@ -120,7 +120,7 @@ dma_controller_add_region(dma_controller_t *dma,
 int
 dma_controller_remove_region(dma_controller_t *dma,
                              dma_addr_t dma_addr, size_t size,
-                             int (*unmap_dma) (void*, uint64_t), void *data);
+                             lm_unmap_dma_cb_t *unmap_dma, void *data);
 
 // Helper for dma_addr_to_sg() slow path.
 int
