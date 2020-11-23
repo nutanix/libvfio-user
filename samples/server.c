@@ -397,6 +397,7 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
+    /* coverity[NEGATIVE_RETURNS] */
     server_data.bar1 = malloc(sysconf(_SC_PAGESIZE));
     if (server_data.bar1 == NULL) {
         err(EXIT_FAILURE, "BAR1");
