@@ -1371,8 +1371,12 @@ lm_mmap(lm_ctx_t *lm_ctx, off_t offset, size_t length)
 
 static int validate_irq_subindex(lm_ctx_t *lm_ctx, uint32_t subindex)
 {
+    if (lm_ctx == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
 
-    if ((lm_ctx == NULL) || (subindex >= lm_ctx->irqs.max_ivs)) {
+    if ((subindex >= lm_ctx->irqs.max_ivs)) {
         lm_log(lm_ctx, LM_ERR, "bad IRQ %d, max=%d\n", subindex,
                lm_ctx->irqs.max_ivs);
         /* FIXME should return -errno */
