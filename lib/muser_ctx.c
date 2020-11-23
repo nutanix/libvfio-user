@@ -228,7 +228,7 @@ irqs_trigger(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set, void *data)
         return irqs_disable(lm_ctx, irq_set->index);
     }
 
-    lm_log(lm_ctx, LM_DBG, "setting IRQ %s flags=%#lx",
+    lm_log(lm_ctx, LM_DBG, "setting IRQ %s flags=%#x",
            vfio_irq_idx_to_str(irq_set->index), irq_set->flags);
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
@@ -296,7 +296,7 @@ dev_set_irqs_validate(lm_ctx_t *lm_ctx, struct vfio_irq_set *irq_set)
     // count == 0 is only valid with ACTION_TRIGGER and DATA_NONE.
     if ((irq_set->count == 0) && ((a_type != VFIO_IRQ_SET_ACTION_TRIGGER) ||
                                   (d_type != VFIO_IRQ_SET_DATA_NONE))) {
-        lm_log(lm_ctx, LM_DBG, "bad IRQ count %d\n");
+        lm_log(lm_ctx, LM_DBG, "bad IRQ count %d\n", irq_set->count);
         return -EINVAL;
     }
     // If IRQs are set, ensure index matches what's enabled for the device.
@@ -420,8 +420,9 @@ dev_get_caps(lm_ctx_t *lm_ctx, lm_reg_info_t *lm_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             sparse->areas[i].offset = mmap_areas->areas[i].start;
             sparse->areas[i].size = mmap_areas->areas[i].size;
-            lm_log(lm_ctx, LM_DBG, "%s: area %d offset %#lx size %llu", __func__,
-                   i, sparse->areas[i].offset, sparse->areas[i].size);
+            lm_log(lm_ctx, LM_DBG, "%s: area %d %#llx-%#llx", __func__,
+                   i, sparse->areas[i].offset,
+                   sparse->areas[i].offset + sparse->areas[i].size);
         }
     }
 
@@ -516,8 +517,8 @@ dev_get_reginfo(lm_ctx_t *lm_ctx, uint32_t index,
         dev_get_caps(lm_ctx, lm_reg, is_migr_reg(lm_ctx, index), *vfio_reg);
     }
 
-    lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %#lx flags %#x size %llu "
-           "argsz %llu",
+    lm_log(lm_ctx, LM_DBG, "region_info[%d] offset %#llx flags %#x size %llu "
+           "argsz %u",
            (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
            (*vfio_reg)->size, (*vfio_reg)->argsz);
 
@@ -563,8 +564,8 @@ handle_pci_config_space_access(lm_ctx_t *lm_ctx, char *buf, size_t count,
     if (is_write) {
         ret = cap_maybe_access(lm_ctx, lm_ctx->caps, buf, count, pos);
         if (ret < 0) {
-            lm_log(lm_ctx, LM_ERR, "bad access to capabilities %u@%#x\n", count,
-                   pos);
+            lm_log(lm_ctx, LM_ERR, "bad access to capabilities %#lx-%#lx\n",
+                   pos, pos + count);
             return ret;
         }
     } else {
@@ -601,7 +602,7 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
 
     if (is_migr_reg(lm_ctx, idx)) {
         if (offset + count > lm_ctx->reg_info[idx].size) {
-            lm_log(lm_ctx, LM_ERR, "read %#x-%#x past end of migration region (%#lx)",
+            lm_log(lm_ctx, LM_ERR, "read %#lx-%#lx past end of migration region (%#x)",
                    offset, offset + count - 1,
                    lm_ctx->reg_info[idx].size);
             return -EINVAL;
@@ -675,7 +676,7 @@ lm_access(lm_ctx_t *lm_ctx, char *buf, uint32_t count, uint64_t *ppos,
             return -EFAULT;
         }
         if (ret != (int)size) {
-            lm_log(lm_ctx, LM_DBG, "bad read %d != %d", ret, size);
+            lm_log(lm_ctx, LM_DBG, "bad read %d != %ld", ret, size);
         }
         count -= size;
         done += size;
@@ -937,7 +938,7 @@ validate_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
     if (cmd == VFIO_USER_REGION_WRITE &&
         size - sizeof *region_access != region_access->count)
     {
-        lm_log(lm_ctx, LM_ERR, "bad region access, expected %d, actual %d",
+        lm_log(lm_ctx, LM_ERR, "bad region access, expected %lu, actual %d",
                size - sizeof *region_access, region_access->count);
         return -EINVAL;
     }
@@ -983,7 +984,7 @@ handle_region_access(lm_ctx_t *lm_ctx, uint32_t size, uint16_t cmd,
     ret = muser_access(lm_ctx, cmd == VFIO_USER_REGION_WRITE,
                        buf, count, &offset);
     if (ret != (int)region_access->count) {
-        lm_log(lm_ctx, LM_ERR, "failed to %s %#lx-%#lx: %d",
+        lm_log(lm_ctx, LM_ERR, "failed to %s %#x-%#lx: %d",
                cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
                region_access->count,
                region_access->offset + region_access->count - 1, ret);
@@ -1056,7 +1057,7 @@ handle_dirty_pages(lm_ctx_t *lm_ctx, uint32_t size,
     assert(dirty_bitmap != NULL);
 
     if (size < sizeof *dirty_bitmap || size != dirty_bitmap->argsz) {
-        lm_log(lm_ctx, LM_ERR, "invalid header size %lu", size);
+        lm_log(lm_ctx, LM_ERR, "invalid header size %u", size);
         return -EINVAL;
     }
 
@@ -1091,7 +1092,7 @@ validate_header(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr, size_t size)
     assert(hdr != NULL);
 
     if (size < sizeof hdr) {
-        lm_log(lm_ctx, LM_ERR, "short header read %u", size);
+        lm_log(lm_ctx, LM_ERR, "short header read %ld", size);
         return -EINVAL;
     }
 

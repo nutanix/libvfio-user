@@ -89,7 +89,7 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     assert(ctx != NULL);
 
     if (count != 2) {
-        lm_log(ctx, LM_ERR, "bad write command size %d\n", count);
+        lm_log(ctx, LM_ERR, "bad write command size %lu\n", count);
         return -EINVAL;
     }
 
@@ -199,7 +199,7 @@ handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     assert(pci != NULL);
 
     if (count != 0x4) {
-        lm_log(ctx, LM_ERR, "bad EROM count %d\n", count);
+        lm_log(ctx, LM_ERR, "bad EROM count %lu\n", count);
         return -EINVAL;
     }
     v = *(uint32_t*)buf;
@@ -261,8 +261,8 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
         ret = handle_erom_write(lm_ctx, pci, buf, count);
         break;
     default:
-        lm_log(lm_ctx, LM_INF, "PCI config write %x@%x not handled\n",
-               count, offset);
+        lm_log(lm_ctx, LM_INF, "PCI config write %#x-%#lx not handled\n",
+               offset, offset + count);
         ret = -EINVAL;
     }
 

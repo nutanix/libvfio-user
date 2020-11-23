@@ -382,28 +382,28 @@ handle_region_access_registers(lm_ctx_t *lm_ctx, void *pvt,
     switch (pos) {
     case offsetof(struct vfio_device_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
-            lm_log(lm_ctx, LM_ERR, "bad device_state access size %d", count);
+            lm_log(lm_ctx, LM_ERR, "bad device_state access size %ld", count);
             return -EINVAL;
         }
         ret = handle_device_state(lm_ctx, pvt, migr, (__u32*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
-            lm_log(lm_ctx, LM_ERR, "bad pending_bytes access size %d", count);
+            lm_log(lm_ctx, LM_ERR, "bad pending_bytes access size %ld", count);
             return -EINVAL;
         }
         ret = handle_pending_bytes(pvt, migr, (__u64*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
-            lm_log(lm_ctx, LM_ERR, "bad data_offset access size %d", count);
+            lm_log(lm_ctx, LM_ERR, "bad data_offset access size %ld", count);
             return -EINVAL;
         }
         ret = handle_data_offset(lm_ctx, pvt, migr, (__u64*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
-            lm_log(lm_ctx, LM_ERR, "bad data_size access size %d", count);
+            lm_log(lm_ctx, LM_ERR, "bad data_size access size %ld", count);
             return -EINVAL;
         }
         ret = handle_data_size(lm_ctx, pvt, migr, (__u64*)buf, is_write);
