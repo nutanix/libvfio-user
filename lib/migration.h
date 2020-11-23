@@ -28,9 +28,17 @@
  *
  */
 
+
+// FIXME: license header (and SPDX ?) everywhere
+
 /* FIXME: regularize across private headers */
 #ifndef MUSER_MIGRATION_H
 #define MUSER_MIGRATION_H
+
+/*
+ * These are not public routines, but for convenience, they are used by the
+ * sample/test code as well as privately within libmuser.
+ */
 
 #include <stddef.h>
 

@@ -978,8 +978,10 @@ reply:
     } else {
         ret = 0;
     }
-    ret = _send_vfio_user_msg(lm_ctx->conn_fd, hdr.msg_id, true,
-                             0, iovecs, nr_iovecs, NULL, 0, -ret);
+
+    // FIXME: SPEC: should the reply include the command? I'd say yes?
+    ret = vfio_user_send_iovec(lm_ctx->conn_fd, hdr.msg_id, true,
+                               0, iovecs, nr_iovecs, NULL, 0, -ret);
     if (unlikely(ret < 0)) {
         lm_log(lm_ctx, LM_ERR, "failed to complete command: %s",
                 strerror(-ret));
@@ -1478,9 +1480,9 @@ lm_dma_read(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data)
 
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
-    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
-                                  &dma_send, sizeof dma_send, NULL, 0, NULL,
-                                  dma_recv, recv_size);
+    ret = vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
+                        &dma_send, sizeof dma_send, NULL,
+                        dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
@@ -1504,9 +1506,9 @@ lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data)
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
-    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
-                                  dma_send, send_size,
-                                  NULL, 0, NULL, &dma_recv, sizeof(dma_recv));
+    ret = vfio_user_msg(lm_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
+                        dma_send, send_size, NULL,
+                        &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
     return ret;

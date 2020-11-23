@@ -131,7 +131,7 @@ out:
 }
 
 int
-_send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
+vfio_user_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                     enum vfio_user_command cmd,
                     struct iovec *iovecs, size_t nr_iovecs,
                     int *fds, int count, int err)
@@ -194,10 +194,9 @@ _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
 }
 
 int
-send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
-                   enum vfio_user_command cmd,
-                   void *data, size_t data_len,
-                   int *fds, size_t count)
+vfio_user_send(int sock, uint16_t msg_id, bool is_reply,
+               enum vfio_user_command cmd,
+               void *data, size_t data_len)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -206,8 +205,17 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
             .iov_len = data_len
         }
     };
-    return _send_vfio_user_msg(sock, msg_id, is_reply, cmd, iovecs,
-                               ARRAY_SIZE(iovecs), fds, count, 0);
+    return vfio_user_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
+                                ARRAY_SIZE(iovecs), NULL, 0, 0);
+}
+
+int
+send_vfio_user_error(int sock, uint16_t msg_id,
+                     enum vfio_user_command cmd,
+                     int error)
+{
+    return vfio_user_send_iovec(sock, msg_id, true, cmd,
+                                NULL, 0, NULL, 0, error);
 }
 
 /*
@@ -220,7 +228,7 @@ send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
  * better.
  */
 int
-recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
+vfio_user_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
                    uint16_t *msg_id, void *data, size_t *len)
 {
     int ret;
@@ -272,19 +280,19 @@ recv_vfio_user_msg(int sock, struct vfio_user_header *hdr, bool is_reply,
 }
 
 /*
- * Like recv_vfio_user_msg(), but will automatically allocate reply data.
+ * Like vfio_user_recv(), but will automatically allocate reply data.
  *
  * FIXME: this does an unconstrained alloc of client-supplied data.
  */
 int
-recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+vfio_user_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
                          uint16_t *msg_id, void **datap, size_t *lenp)
 {
     void *data;
     size_t len;
     int ret;
 
-    ret = recv_vfio_user_msg(sock, hdr, is_reply, msg_id, NULL, NULL);
+    ret = vfio_user_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
 
     if (ret != 0) {
         return ret;
@@ -322,30 +330,33 @@ recv_vfio_user_msg_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
     return 0;
 }
 
+/*
+ * FIXME: all these send/recv handlers need to be made robust against async
+ * messages.
+ */
 int
-_send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                         struct iovec *iovecs, size_t nr_iovecs,
-                         int *send_fds, size_t fd_count,
-                         struct vfio_user_header *hdr,
-                         void *recv_data, size_t recv_len)
+vfio_user_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                    struct iovec *iovecs, size_t nr_iovecs,
+                    int *send_fds, size_t fd_count,
+                    struct vfio_user_header *hdr,
+                    void *recv_data, size_t recv_len)
 {
-    int ret = _send_vfio_user_msg(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                                  send_fds, fd_count, 0);
+    int ret = vfio_user_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
+                                   send_fds, fd_count, 0);
     if (ret < 0) {
         return ret;
     }
     if (hdr == NULL) {
         hdr = alloca(sizeof *hdr);
     }
-    return recv_vfio_user_msg(sock, hdr, true, &msg_id, recv_data, &recv_len);
+    return vfio_user_recv(sock, hdr, true, &msg_id, recv_data, &recv_len);
 }
 
 int
-send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                        void *send_data, size_t send_len,
-                        int *send_fds, size_t fd_count,
-                        struct vfio_user_header *hdr,
-                        void *recv_data, size_t recv_len)
+vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+              void *send_data, size_t send_len,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -354,9 +365,8 @@ send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
             .iov_len = send_len
         }
     };
-    return _send_recv_vfio_user_msg(sock, msg_id, cmd, iovecs,
-                                    ARRAY_SIZE(iovecs), send_fds, fd_count,
-                                    hdr, recv_data, recv_len);
+    return vfio_user_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
+                               NULL, 0, hdr, recv_data, recv_len);
 }
 
 /*
@@ -375,7 +385,8 @@ send_recv_vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
  * available in newer library versions, so we don't use it.
  */
 int
-parse_version_json(const char *json_str, int *client_max_fdsp, size_t *pgsizep)
+vfio_user_parse_version_json(const char *json_str,
+                             int *client_max_fdsp, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -448,12 +459,12 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
 
     *versionp = NULL;
 
-    ret = recv_vfio_user_msg_alloc(sock, &hdr, false, msg_idp,
+    ret = vfio_user_recv_alloc(sock, &hdr, false, msg_idp,
                                    (void **)&cversion, &vlen);
 
     if (ret < 0) {
         lm_log(lm_ctx, LM_ERR, "failed to receive version: %s", strerror(-ret));
-        goto out;
+        return ret;
     }
 
     if (hdr.cmd != VFIO_USER_VERSION) {
@@ -490,7 +501,8 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
             goto out;
         }
 
-        ret = parse_version_json(json_str, &lm_ctx->client_max_fds, &pgsize);
+        ret = vfio_user_parse_version_json(json_str, &lm_ctx->client_max_fds,
+                                           &pgsize);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
@@ -525,6 +537,8 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
 
 out:
     if (ret != 0) {
+        // FIXME: spec, is it OK to just have the header?
+        (void) send_vfio_user_error(sock, *msg_idp, hdr.cmd, ret);
         free(cversion);
         cversion = NULL;
     }
@@ -573,8 +587,8 @@ send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
     /* Include the NUL. */
     iovecs[2].iov_len = slen + 1;
 
-    return _send_vfio_user_msg(sock, msg_id, true, VFIO_USER_VERSION,
-                               iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
+    return vfio_user_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
+                                iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 static int
