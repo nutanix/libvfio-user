@@ -61,6 +61,11 @@ fds_are_same_file(int fd1, int fd2)
 {
     struct stat st1, st2;
 
+    if (fd1 == -1 || fd2 == -1) {
+        errno = EINVAL;
+        return -1;
+    }
+
     return (fstat(fd1, &st1) == 0 && fstat(fd2, &st2) == 0 &&
             st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino);
 }
@@ -205,6 +210,11 @@ dma_controller_add_region(dma_controller_t *dma,
     int idx;
     dma_memory_region_t *region;
     int page_size;
+
+    if (fd == -1) {
+        errno = EINVAL;
+        return -1;
+    }
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
