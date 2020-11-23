@@ -507,6 +507,7 @@ open_sock(lm_ctx_t *lm_ctx)
 
     ret = negotiate(lm_ctx, conn_fd);
     if (ret < 0) {
+        close(conn_fd);
         return ret;
     }
 
