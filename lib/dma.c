@@ -102,8 +102,9 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
 
     err = dma_unmap_region(region, region->virt_addr, region->size);
     if (err != 0) {
-        lm_log(dma->lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%#lx-%#lx\n",
-               region->fd, region->virt_addr, region->size);
+        lm_log(dma->lm_ctx, LM_DBG, "failed to unmap fd=%d vaddr=%p-%p\n",
+               region->fd, region->virt_addr,
+               region->virt_addr + region->size - 1);
     }
     if (region->fd != -1) {
         if (close(region->fd) == -1) {
@@ -184,7 +185,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%#lx IOVA=%#lx",
+        lm_log(dma->lm_ctx, LM_INF, "unmap vaddr=%p IOVA=%lx",
                region->virt_addr, region->dma_addr);
 
         _dma_controller_do_remove_region(dma, region);
@@ -223,8 +224,8 @@ dma_controller_add_region(dma_controller_t *dma,
         if (region->dma_addr == dma_addr && region->size == size) {
             if (offset != region->offset) {
                 lm_log(dma->lm_ctx, LM_ERR,
-                       "bad offset for new DMA region %#lx+%#lx, want=%d, existing=%d\n",
-                       dma_addr, size, offset, region->offset);
+                       "bad offset for new DMA region %#lx-%#lx, want=%ld, existing=%ld\n",
+                       dma_addr, dma_addr + size, offset, region->offset);
                 goto err;
             }
             if (!fds_are_same_file(region->fd, fd)) {

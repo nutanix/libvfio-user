@@ -80,7 +80,7 @@ arm_timer(struct server_data *server_data, time_t t)
 {
     struct itimerval new = {.it_value.tv_sec = t - time(NULL) };
     lm_log(server_data->lm_ctx, LM_DBG,
-           "arming timer to trigger in %d seconds", new.it_value.tv_sec);
+           "arming timer to trigger in %ld seconds", new.it_value.tv_sec);
     if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
         lm_log(server_data->lm_ctx, LM_ERR, "failed to arm timer: %m");
         return -errno;
@@ -303,7 +303,7 @@ migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
 
     if (server_data->migration.data_size < size) {
         lm_log(server_data->lm_ctx, LM_ERR,
-               "invalid migration data read %#lx-%#lx",
+               "invalid migration data read %#llx-%#llx",
                offset, offset + size - 1);
         return -EINVAL;
     }
