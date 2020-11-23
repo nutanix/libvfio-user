@@ -92,7 +92,9 @@ int main(int argc, char **argv)
     }
 
     printf("press enter to stop device emulation and clean up\n");
-    getchar();
+    if (getchar() == EOF) {
+        err(EXIT_FAILURE, NULL);
+    }
 
     ret = pthread_cancel(thread);
     if (ret != 0) {
@@ -102,7 +104,9 @@ int main(int argc, char **argv)
     lm_ctx_destroy(lm_ctx);
 
     printf("device emulation stopped and cleaned up, press enter to exit\n");
-    getchar();
+    if (getchar() == EOF) {
+        err(EXIT_FAILURE, NULL);
+    }
 
     return ret;
 }
