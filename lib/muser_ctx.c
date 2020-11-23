@@ -1014,6 +1014,10 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
     uint32_t max_ivs = 0, i;
     size_t size;
 
+    if (lm_ctx->ready != 0) {
+        return 0;
+    }
+
     // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
     // always expected to call lm_ctx_try_attach().
     if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
@@ -1037,6 +1041,7 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
     }
 
+    // This maybe allocated by lm_setup_pci_hdr().
     if (lm_ctx->pci_config_space == NULL) {
         lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
         if (lm_ctx->pci_config_space == NULL) {
@@ -1051,43 +1056,47 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
         }
     }
 
-    /*
-     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
-     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
-     */
-
-    // Work out highest count of irq vectors.
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        if (max_ivs < lm_ctx->irq_count[i]) {
-            max_ivs = lm_ctx->irq_count[i];
-        }
-    }
-
-    size = sizeof(int) * max_ivs;
-    lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
     if (lm_ctx->irqs == NULL) {
-        // lm_ctx->pci_config_space should be free'ed by lm_destroy_ctx().
-        return  -ENOMEM;
-    }
+        /*
+         * FIXME need to check that the number of MSI and MSI-X IRQs are valid
+         * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
+         */
 
-    // Set context irq information.
-    for (i = 0; i < max_ivs; i++) {
-        lm_ctx->irqs->efds[i] = -1;
-    }
-    lm_ctx->irqs->err_efd = -1;
-    lm_ctx->irqs->req_efd = -1;
-    lm_ctx->irqs->type = IRQ_NONE;
-    lm_ctx->irqs->max_ivs = max_ivs;
+        // Work out highest count of irq vectors.
+        for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+            if (max_ivs < lm_ctx->irq_count[i]) {
+                max_ivs = lm_ctx->irq_count[i];
+            }
+        }
 
-    // Reflect on the config space whether INTX is available.
-    if (lm_ctx->irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
-        lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
+        //FIXME: assert(max_ivs > 0)?
+        size = sizeof(int) * max_ivs;
+        lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
+        if (lm_ctx->irqs == NULL) {
+            // lm_ctx->pci_config_space should be free'ed by lm_destroy_ctx().
+            return  -ENOMEM;
+        }
+
+        // Set context irq information.
+        for (i = 0; i < max_ivs; i++) {
+            lm_ctx->irqs->efds[i] = -1;
+        }
+        lm_ctx->irqs->err_efd = -1;
+        lm_ctx->irqs->req_efd = -1;
+        lm_ctx->irqs->type = IRQ_NONE;
+        lm_ctx->irqs->max_ivs = max_ivs;
+
+        // Reflect on the config space whether INTX is available.
+        if (lm_ctx->irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
+            lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
+        }
     }
 
     if (lm_ctx->caps != NULL) {
         lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
         lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
     }
+    lm_ctx->ready = 1;
 
     return 0;
 }
@@ -1122,6 +1131,7 @@ lm_ctx_poll(lm_ctx_t *lm_ctx)
         return -ENOTSUP;
     }
 
+    assert(lm_ctx->ready == 1);
     err = process_request(lm_ctx);
 
     return err >= 0 ? 0 : err;

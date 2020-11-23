@@ -95,6 +95,7 @@ struct lm_ctx {
 
     uint32_t                irq_count[LM_DEV_NUM_IRQS];
     lm_irqs_t               *irqs;
+    int                     ready;
 };
 
 int
