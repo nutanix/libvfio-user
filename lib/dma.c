@@ -226,7 +226,7 @@ dma_controller_add_region(dma_controller_t *dma,
                  */
                 lm_log(dma->lm_ctx, LM_ERR,
                        "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
-                       fd, region->fd);
+                       fd, offset, offset + size, region->fd);
                 goto err;
             }
             return idx;
