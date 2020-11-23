@@ -118,7 +118,9 @@ init_sock(lm_ctx_t *lm_ctx)
 out:
     umask(mode);
     if (ret != 0) {
-        close(unix_sock);
+        if (unix_sock >= 0) {
+            close(unix_sock);
+        }
         return ret;
     }
     return unix_sock;
