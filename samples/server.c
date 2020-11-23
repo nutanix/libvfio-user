@@ -385,7 +385,6 @@ int main(int argc, char *argv[])
     lm_pci_hdr_id_t id = {.raw = 0xdeadbeef};
     lm_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
     lm_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
-    uint32_t irq_count[LM_DEV_NUM_IRQS] = {0};
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -450,8 +449,7 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "failed to setup device callbacks");
     }
 
-    irq_count[LM_DEV_INTX_IRQ_IDX] = 1;
-    ret = lm_setup_device_irq_counts(lm_ctx, irq_count);
+    ret = lm_setup_device_irq_counts(lm_ctx, LM_DEV_INTX_IRQ_IDX, 1);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to setup irq counts");
     }

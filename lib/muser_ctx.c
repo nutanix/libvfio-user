@@ -1010,7 +1010,9 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
 {
     lm_reg_info_t *cfg_reg;
     const lm_reg_info_t zero_reg = { 0 };
-    int i, err;
+    int err;
+    uint32_t max_ivs = 0, i;
+    size_t size;
 
     // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
     // always expected to call lm_ctx_try_attach().
@@ -1048,6 +1050,34 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
             lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
         }
     }
+
+    /*
+     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
+     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
+     */
+
+    // Work out highest count of irq vectors.
+    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+        if (max_ivs < lm_ctx->irq_count[i]) {
+            max_ivs = lm_ctx->irq_count[i];
+        }
+    }
+
+    size = sizeof(int) * max_ivs;
+    lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
+    if (lm_ctx->irqs == NULL) {
+        // lm_ctx->pci_config_space should be free'ed by lm_destroy_ctx().
+        return  -ENOMEM;
+    }
+
+    // Set context irq information.
+    for (i = 0; i < max_ivs; i++) {
+        lm_ctx->irqs->efds[i] = -1;
+    }
+    lm_ctx->irqs->err_efd = -1;
+    lm_ctx->irqs->req_efd = -1;
+    lm_ctx->irqs->type = IRQ_NONE;
+    lm_ctx->irqs->max_ivs = max_ivs;
 
     // Reflect on the config space whether INTX is available.
     if (lm_ctx->irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
@@ -1145,6 +1175,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
     free(lm_ctx->reg_info);
     free(lm_ctx->caps);
     free(lm_ctx->migration);
+    free(lm_ctx->irqs);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
@@ -1383,42 +1414,18 @@ int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
     return 0;
 }
 
-int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
-                               uint32_t irq_count[LM_DEV_NUM_IRQS])
+int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx, int irq_idx,
+                               uint32_t irq_count)
 {
-    uint32_t max_ivs = 0, i;
-    size_t size;
 
-    /*
-     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
-     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
-     */
-
-    // Work out highest count of irq vectors.
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        if (max_ivs < irq_count[i]) {
-            max_ivs = irq_count[i];
-        }
+    if (irq_idx < LM_DEV_INTX_IRQ_IDX || irq_idx > LM_DEV_REQ_IRQ_INDEX) {
+        lm_log(lm_ctx, LM_ERR, "Invalid IRQ index %d, should be between "
+               "(%d to %d)", irq_idx, LM_DEV_INTX_IRQ_IDX,
+               LM_DEV_REQ_IRQ_INDEX);
+        return ERROR(EINVAL);
     }
 
-    size = sizeof(int) * max_ivs;
-    lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
-    if (lm_ctx->irqs == NULL) {
-        return ERROR(ENOMEM);
-    }
-
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        lm_ctx->irq_count[i] = irq_count[i];
-    }
-
-    // Set context irq information.
-    for (i = 0; i < max_ivs; i++) {
-        lm_ctx->irqs->efds[i] = -1;
-    }
-    lm_ctx->irqs->err_efd = -1;
-    lm_ctx->irqs->req_efd = -1;
-    lm_ctx->irqs->type = IRQ_NONE;
-    lm_ctx->irqs->max_ivs = max_ivs;
+    lm_ctx->irq_count[irq_idx] = irq_count;
 
     return 0;
 }

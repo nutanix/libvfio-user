@@ -381,10 +381,11 @@ enum {
 /**
  * Setup device IRQ counts.
  * @lm_ctx: the libmuser context
+ * @irq_idx: IRQ idx (LM_DEV_INTX_IRQ_IDX ... LM_DEV_REQ_IRQ_INDEX)
  * @irq_count: array of IRQ count value
  */
-int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
-                               uint32_t irq_count[LM_DEV_NUM_IRQS]);
+int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx, int irq_idx,
+                               uint32_t irq_count);
 
 //TODO: Re-visit once migration support is done.
 /**
