@@ -452,9 +452,9 @@ caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps)
         caps->caps[i].start = next;
         caps->caps[i].end = next + size - 1;
 
-        memcpy(&config_space->hdr.raw[next], cap, size);
+        memcpy(&config_space->raw[next], cap, size);
         *prev = next;
-        prev = &config_space->hdr.raw[next + PCI_CAP_LIST_NEXT];
+        prev = &config_space->raw[next + PCI_CAP_LIST_NEXT];
         *prev = 0;
         next += size;
         assert(next % 4 == 0); /* FIXME */
