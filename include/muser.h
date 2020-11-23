@@ -221,54 +221,26 @@ typedef struct {
     struct lm_sparse_mmap_areas *mmap_areas;
 } lm_migration_t;
 
-/**
- * Device information structure, used to create the lm_ctx.
- * To be filled and passed to lm_ctx_create()
+/*
+ * Attaching to the transport is non-blocking. The library will not attempt
+ * to attach during context creation time. The caller must then manually
+ * call lm_ctx_try_attach(), which is non-blocking, as many times as
+ * necessary.
  */
-typedef struct {
-    char            *uuid;
-
-    /*
-     * Private data passed to various lm_XXX functions.
-     */
-    void            *pvt;
-
-    /*
-     * Whether an extended PCI configuration space should be created.
-     */
-    bool            extended;
-
-    /*
-     * Function to call for logging. Optional.
-     */
-    lm_log_fn_t     *log;
-
-    /*
-     * Log level. Messages above this level are not logged. Optional
-     */
-    lm_log_lvl_t    log_lvl;
-
-    lm_trans_t      trans;
-
-    /*
-     * Attaching to the transport is non-blocking. The library will not attempt
-     * to attach during context creation time. The caller must then manually
-     * call lm_ctx_try_attach(), which is non-blocking, as many times as
-     * necessary.
-     */
 #define LM_FLAG_ATTACH_NB  (1 << 0)
-    uint64_t         flags;
-} lm_dev_info_t;
 
 /**
  * Creates libmuser context.
- *
- * @dev_info: device information used to create the context.
- *
+ * @path: path to socket file.
+ * @flags: context flag
+ * @log: log function
+ * @log_lvl: logging level
+ * @trans: transport type
+ * @pvt: private data
  * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
-lm_ctx_t *
-lm_ctx_create(const lm_dev_info_t *dev_info);
+lm_ctx_t *lm_create_ctx(const char *path, int flags, lm_log_fn_t *log,
+                        lm_log_lvl_t log_lvl, lm_trans_t trans, void *pvt);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
 //      Or should we pass whole lm_pci_hdr_t to be filled by user.
@@ -440,16 +412,6 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx);
  */
 int
 lm_ctx_drive(lm_ctx_t *lm_ctx);
-
-/**
- * Creates and runs an lm_ctx.
- *
- * @dev_info: device information used to create the context
- *
- * @returns 0 on success, -1 on failure. Sets errno.
- */
-int
-lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
  * Polls, without blocking, an lm_ctx. This is an alternative to using

@@ -417,20 +417,13 @@ int main(int argc, char *argv[])
         sparse_areas->areas[i].start += size;
         sparse_areas->areas[i].size = size;
     }
-    lm_dev_info_t dev_info = {
-        .trans = LM_TRANS_SOCK,
-        .log = verbose ? _log : NULL,
-        .log_lvl = LM_DBG,
-        .uuid = argv[optind],
-        .pvt = &server_data,
-    };
-
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGALRM, &act, NULL) == -1) {
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
+    server_data.lm_ctx = lm_ctx = lm_create_ctx(argv[optind], 0,
+            verbose ? _log : NULL, LM_DBG, LM_TRANS_SOCK, &server_data);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }

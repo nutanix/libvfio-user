@@ -94,19 +94,13 @@ main(int argc, char *argv[])
         errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
-    lm_dev_info_t dev_info = {
-        .trans = LM_TRANS_SOCK,
-        .log = verbose ? _log : NULL,
-        .log_lvl = LM_DBG,
-        .uuid = argv[optind],
-    };
-
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGINT, &act, NULL) == -1) {
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    lm_ctx = lm_ctx_create(&dev_info);
+    lm_ctx = lm_create_ctx(argv[optind], 0, verbose ? _log : NULL, LM_DBG,
+                           LM_TRANS_SOCK, NULL);
     if (lm_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");
