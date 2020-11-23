@@ -1118,31 +1118,10 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
     // Allocate a buffer for the config space.
     lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
     if (lm_ctx->pci_config_space == NULL) {
-        return -1;
-    }
-
-    if (dev_info->migration.size != 0) {
-        const lm_migration_t *migr = &dev_info->migration;
-
-        /* FIXME hacky, find a more robust way to allocate a region index */
-        lm_ctx->migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
-        lm_ctx->migr_reg->flags = LM_REG_FLAG_RW;
-        lm_ctx->migr_reg->size = sizeof(struct vfio_device_migration_info) + dev_info->migration.size;
-        /* FIXME is there are sparse areas need to setup flags accordingly */
-        lm_ctx->migr_reg->mmap_areas = copy_sparse_mmap_area(migr->mmap_areas);
-        lm_ctx->migration = init_migration(&dev_info->migration);
-        if (lm_ctx->migration == NULL) {
-            goto err;
-        }
+        return -ENOMEM;
     }
 
     return 0;
-
-err:
-    free(lm_ctx->pci_config_space);
-    lm_ctx->pci_config_space = NULL;
-
-    return -1;
 }
 
 int
@@ -1191,10 +1170,12 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
         goto out;
     }
 
-    lm_ctx->nr_regions = LM_DEV_NUM_REGS;
-    if (dev_info->migration.size > 0) {
-        lm_ctx->nr_regions += 1;
-    }
+    /*
+     * FIXME: Now we always allocate for migration region. Check if its better
+     * to seperate migration region from standard regions in lm_ctx.reg_info
+     * and move it into lm_ctx.migration.
+     */
+    lm_ctx->nr_regions = LM_DEV_NUM_REGS + 1;
     lm_ctx->reg_info = calloc(lm_ctx->nr_regions, sizeof *lm_ctx->reg_info);
     if (lm_ctx->reg_info == NULL) {
         err = -ENOMEM;
@@ -1299,6 +1280,10 @@ copy_sparse_mmap_areas(lm_reg_info_t *reg_info,
 {
     int nr_mmap_areas;
     size_t size;
+
+    if (mmap_areas == NULL) {
+        return 0;
+    }
 
     nr_mmap_areas = mmap_areas->nr_mmap_areas;
     size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct lm_mmap_area));
@@ -1425,6 +1410,39 @@ int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
     if (irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
         lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
     }
+
+    return 0;
+}
+
+int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration)
+{
+    lm_reg_info_t   *migr_reg;
+    int ret = 0;
+
+    if (lm_ctx->migr_reg != NULL) {
+        lm_log(lm_ctx, LM_ERR, "device migration is already setup");
+        return ERROR(EEXIST);
+    }
+
+    /* FIXME hacky, find a more robust way to allocate a region index */
+    migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
+
+    /* FIXME: Are there sparse areas need to be setup flags accordingly */
+    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas);
+    if (ret < 0) {
+        return ERROR(-ret);
+    }
+
+    migr_reg->flags = LM_REG_FLAG_RW;
+    migr_reg->size = sizeof(struct vfio_device_migration_info) + migration->size;
+
+    lm_ctx->migration = init_migration(migration, &ret);
+    if (lm_ctx->migration == NULL) {
+        lm_log(lm_ctx, LM_ERR, "failed to initialize device migration");
+        free(migr_reg->mmap_areas);
+        return ERROR(ret);
+    }
+    lm_ctx->migr_reg = migr_reg;
 
     return 0;
 }

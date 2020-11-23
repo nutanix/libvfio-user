@@ -258,8 +258,6 @@ typedef struct {
      */
 #define LM_FLAG_ATTACH_NB  (1 << 0)
     uint64_t         flags;
-
-    lm_migration_t  migration;
 } lm_dev_info_t;
 
 /**
@@ -415,6 +413,14 @@ enum {
  */
 int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx,
                                uint32_t irq_count[LM_DEV_NUM_IRQS]);
+
+//TODO: Re-visit once migration support is done.
+/**
+ * Enable support for device migration.
+ * @lm_ctx: the libmuser context
+ * @migration: information required to migrate device
+ */
+int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration);
 
 /**
  * Destroys libmuser context.

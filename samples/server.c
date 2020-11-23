@@ -417,25 +417,12 @@ int main(int argc, char *argv[])
         sparse_areas->areas[i].start += size;
         sparse_areas->areas[i].size = size;
     }
-
     lm_dev_info_t dev_info = {
         .trans = LM_TRANS_SOCK,
         .log = verbose ? _log : NULL,
         .log_lvl = LM_DBG,
         .uuid = argv[optind],
         .pvt = &server_data,
-        .migration = {
-            .size = server_data.migration.migr_data_len,
-            .mmap_areas = sparse_areas,
-            .callbacks = {
-                .transition = &migration_device_state_transition,
-                .get_pending_bytes = &migration_get_pending_bytes,
-                .prepare_data = &migration_prepare_data,
-                .read_data = &migration_read_data,
-                .data_written = &migration_data_written,
-                .write_data = &migration_write_data
-            }
-        }
     };
 
     sigemptyset(&act.sa_mask);
@@ -474,6 +461,24 @@ int main(int argc, char *argv[])
     ret = lm_setup_device_irq_counts(lm_ctx, irq_count);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to setup irq counts");
+    }
+
+    lm_migration_t migration = {
+        .size = server_data.migration.migr_data_len,
+        .mmap_areas = sparse_areas,
+        .callbacks = {
+            .transition = &migration_device_state_transition,
+            .get_pending_bytes = &migration_get_pending_bytes,
+            .prepare_data = &migration_prepare_data,
+            .read_data = &migration_read_data,
+            .data_written = &migration_data_written,
+            .write_data = &migration_write_data
+        }
+    };
+
+    ret = lm_setup_device_migration(lm_ctx, &migration);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to setup device migration");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,
