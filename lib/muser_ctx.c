@@ -1006,12 +1006,25 @@ reply:
     return ret;
 }
 
-// Setup default PCI config.
 static int prepare_ctx(lm_ctx_t *lm_ctx)
 {
     lm_reg_info_t *cfg_reg;
     const lm_reg_info_t zero_reg = { 0 };
-    int i;
+    int i, err;
+
+    // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
+    // always expected to call lm_ctx_try_attach().
+    if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
+        lm_ctx->conn_fd = lm_ctx->trans->attach(lm_ctx);
+        if (lm_ctx->conn_fd < 0) {
+            err = lm_ctx->conn_fd;
+            if (err != EINTR) {
+                lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
+                       strerror(-err));
+            }
+            return err;
+        }
+    }
 
     cfg_reg = &lm_ctx->reg_info[LM_DEV_CFG_REG_IDX];
 
@@ -1058,6 +1071,11 @@ lm_ctx_drive(lm_ctx_t *lm_ctx)
         return ERROR(EINVAL);
     }
 
+    err = prepare_ctx(lm_ctx);
+    if (err < 0) {
+        return ERROR(-err);
+    }
+
     do {
         err = process_request(lm_ctx);
     } while (err >= 0);
@@ -1072,11 +1090,6 @@ lm_ctx_poll(lm_ctx_t *lm_ctx)
 
     if (unlikely((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0)) {
         return -ENOTSUP;
-    }
-
-    err = prepare_ctx(lm_ctx);
-    if (err < 0) {
-        return ERROR(-err);
     }
 
     err = process_request(lm_ctx);
@@ -1155,12 +1168,19 @@ copy_sparse_mmap_area(struct lm_sparse_mmap_areas *src)
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx)
 {
+    int err;
+
     assert(lm_ctx != NULL);
 
     if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
-        errno = EINVAL;
-        return -1;
+        return ERROR(EINVAL);
     }
+
+    err = prepare_ctx(lm_ctx);
+    if (err < 0) {
+        return ERROR(-err);
+    }
+
     return lm_ctx->trans->attach(lm_ctx);
 }
 
@@ -1214,20 +1234,6 @@ lm_ctx_t *lm_create_ctx(const char *path, int flags, lm_log_fn_t *log,
         lm_ctx->fd = err;
     }
     err = 0;
-
-    // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
-    // always expected to call lm_ctx_try_attach().
-    if ((flags & LM_FLAG_ATTACH_NB) == 0) {
-        lm_ctx->conn_fd = lm_ctx->trans->attach(lm_ctx);
-        if (lm_ctx->conn_fd < 0) {
-            err = lm_ctx->conn_fd;
-            if (err != EINTR) {
-                lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
-                        strerror(-err));
-            }
-            goto out;
-        }
-    }
 
 out:
     if (err != 0) {
