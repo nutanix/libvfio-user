@@ -954,6 +954,7 @@ process_request(lm_ctx_t *lm_ctx)
             ret = handle_device_reset(lm_ctx);
             break;
         case VFIO_USER_DIRTY_PAGES:
+            // FIXME: don't allow migration calls if migration == NULL
             ret = handle_dirty_pages(lm_ctx, hdr.msg_size, &iovecs, &nr_iovecs,
                                      cmd_data);
             if (ret >= 0) {
@@ -1114,8 +1115,7 @@ copy_sparse_mmap_areas(lm_reg_info_t *dst, const lm_reg_info_t *src)
 }
 
 static int
-pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info,
-                 const lm_migration_t *migr)
+pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
 {
     lm_reg_info_t *cfg_reg;
     const lm_reg_info_t zero_reg = { 0 };
@@ -1164,7 +1164,9 @@ pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info,
         }
     }
 
-    if (migr != NULL) {
+    if (dev_info->migration.size != 0) {
+        const lm_migration_t *migr = &dev_info->migration;
+
         /* FIXME hacky, find a more robust way to allocate a region index */
         lm_ctx->migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
         lm_ctx->migr_reg->flags = LM_REG_FLAG_RW;
@@ -1316,7 +1318,7 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
 
     // Setup the PCI config space for this context.
-    err = pci_config_setup(lm_ctx, dev_info, &dev_info->migration);
+    err = pci_config_setup(lm_ctx, dev_info);
     if (err != 0) {
         goto out;
     }

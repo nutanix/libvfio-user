@@ -28,12 +28,13 @@
  *
  */
 
-#include <limits.h>
-#include <errno.h>
-#include <string.h>
 #include <assert.h>
+#include <errno.h>
+#include <limits.h>
+#include <string.h>
 #include <stdlib.h>
 
+#include "common.h"
 #include "migration.h"
 
 enum migr_iter_state {
@@ -463,6 +464,19 @@ migration_get_pgsize(struct migration *migr)
     assert(migr != NULL);
 
     return migr->pgsize;
+}
+
+int
+migration_set_pgsize(struct migration *migr, size_t pgsize)
+{
+    assert(migr != NULL);
+
+    // FIXME?
+    if (pgsize != PAGE_SIZE)
+        return -EINVAL;
+
+    migr->pgsize = pgsize;
+    return 0;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

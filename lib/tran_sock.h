@@ -42,7 +42,14 @@
  * Note there is currently only one transport - talking over a UNIX socket.
  */
 
+/* The largest number of fd's we are prepared to receive. */
+// FIXME: value?
+#define MUSER_CLIENT_MAX_FDS_LIMIT (1024)
+
 extern struct transport_ops sock_transport_ops;
+
+int
+parse_version_json(const char *json_str, int *client_max_fdsp, size_t *pgsizep);
 
 int
 _send_vfio_user_msg(int sock, uint16_t msg_id, bool is_reply,
