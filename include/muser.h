@@ -399,7 +399,7 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx);
 
 /**
  * Once the lm_ctx is configured lm_ctx_drive() drives it. This function waits
- * for commands coming from muser.ko and then processes it.
+ * for commands coming from the client, and processes them in a loop.
  *
  * @lm_ctx: the libmuser context to drive
  *
