@@ -427,31 +427,31 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
-    ret = lm_setup_pci_hdr(lm_ctx, &id, &ss, &cc, false);
+    ret = lm_setup_pci_config_hdr(lm_ctx, id, ss, cc, false);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup PCI header");
+        err(EXIT_FAILURE, "failed to setup PCI header");
     }
 
     ret = lm_setup_region(lm_ctx, LM_DEV_BAR0_REG_IDX, sizeof(time_t),
                           &bar0_access, LM_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup BAR0 region");
+        err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
     ret = lm_setup_region(lm_ctx, LM_DEV_BAR1_REG_IDX, sysconf(_SC_PAGESIZE),
                           &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup BAR1 region");
+        err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
     ret = lm_setup_device_cb(lm_ctx, &device_reset, &map_dma, &unmap_dma);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup device callbacks");
+        err(EXIT_FAILURE, "failed to setup device callbacks");
     }
 
     ret = lm_setup_device_irq_counts(lm_ctx, LM_DEV_INTX_IRQ_IDX, 1);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup irq counts");
+        err(EXIT_FAILURE, "failed to setup irq counts");
     }
 
     lm_migration_t migration = {
@@ -469,13 +469,13 @@ int main(int argc, char *argv[])
 
     ret = lm_setup_device_migration(lm_ctx, &migration);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to setup device migration");
+        err(EXIT_FAILURE, "failed to setup device migration");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,
                                                     server_data.migration.migr_data_len);
     if (server_data.migration.migr_data == NULL) {
-        errx(EXIT_FAILURE, "failed to allocate migration data");
+        err(EXIT_FAILURE, "failed to allocate migration data");
     }
 
     do {

@@ -109,7 +109,7 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
-    ret = lm_setup_pci_hdr(lm_ctx, &id, &ss, &cc, false);
+    ret = lm_setup_pci_config_hdr(lm_ctx, id, ss, cc, false);
     if (ret < 0) {
         fprintf(stderr, "failed to setup pci header\n");
         goto out;

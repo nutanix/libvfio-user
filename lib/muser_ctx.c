@@ -1041,7 +1041,7 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
     }
 
-    // This maybe allocated by lm_setup_pci_hdr().
+    // This maybe allocated by lm_setup_pci_config_hdr().
     if (lm_ctx->pci_config_space == NULL) {
         lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
         if (lm_ctx->pci_config_space == NULL) {
@@ -1288,14 +1288,13 @@ out:
     return lm_ctx;
 }
 
-int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
-                     lm_pci_hdr_cc_t *cc, UNUSED bool extended)
+int lm_setup_pci_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
+                            lm_pci_hdr_ss_t ss, lm_pci_hdr_cc_t cc,
+                            UNUSED bool extended)
 {
     lm_pci_config_space_t *config_space;
 
-    if (id == NULL || ss == NULL || cc == NULL) {
-        return ERROR(EINVAL);
-    }
+    assert(lm_ctx != NULL);
 
     if (lm_ctx->pci_config_space != NULL) {
         lm_log(lm_ctx, LM_ERR, "pci header already setup");
@@ -1310,9 +1309,9 @@ int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
         return ERROR(ENOMEM);
     }
 
-    memcpy(&config_space->hdr.id, id, sizeof(lm_pci_hdr_id_t));
-    memcpy(&config_space->hdr.ss, ss, sizeof(lm_pci_hdr_ss_t));
-    memcpy(&config_space->hdr.cc, cc, sizeof(lm_pci_hdr_cc_t));
+    config_space->hdr.id = id;
+    config_space->hdr.ss = ss;
+    config_space->hdr.cc = cc;
     lm_ctx->pci_config_space = config_space;
 
     return 0;
@@ -1321,6 +1320,8 @@ int lm_setup_pci_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t *id, lm_pci_hdr_ss_t *ss,
 int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
 {
     int ret;
+
+    assert(lm_ctx != NULL);
 
     if (lm_ctx->caps != NULL) {
         lm_log(lm_ctx, LM_ERR, "capabilities are already setup");
@@ -1365,6 +1366,12 @@ copy_sparse_mmap_areas(lm_reg_info_t *reg_info,
     return 0;
 }
 
+static inline bool is_valid_pci_config_space_region(int flags, size_t size)
+{
+    return flags == LM_REG_FLAG_RW && (size ==  PCI_CFG_SPACE_SIZE
+            || size == PCI_CFG_SPACE_EXP_SIZE);
+}
+
 int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
                     lm_region_access_cb_t *region_access, int flags,
                     struct lm_sparse_mmap_areas *mmap_areas,
@@ -1372,14 +1379,14 @@ int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
 {
     int ret;
 
-    switch(region_idx){
+    assert(lm_ctx != NULL);
+
+    switch(region_idx) {
     case LM_DEV_BAR0_REG_IDX ... LM_DEV_VGA_REG_IDX:
         // Validate the config region provided.
-        if (region_idx == LM_DEV_CFG_REG_IDX) {
-            if ((flags != LM_REG_FLAG_RW) || ((size != PCI_CFG_SPACE_SIZE) &&
-                        (size != PCI_CFG_SPACE_EXP_SIZE))) {
+        if (region_idx == LM_DEV_CFG_REG_IDX &&
+            !is_valid_pci_config_space_region(flags, size)) {
                 return ERROR(EINVAL);
-            }
         }
 
         lm_ctx->reg_info[region_idx].flags = flags;
@@ -1409,6 +1416,8 @@ int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
                        lm_map_dma_cb_t *map_dma, lm_unmap_dma_cb_t *unmap_dma)
 {
 
+    assert(lm_ctx != NULL);
+
     lm_ctx->reset = reset;
     lm_ctx->map_dma = map_dma;
     lm_ctx->unmap_dma = unmap_dma;
@@ -1428,6 +1437,8 @@ int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx, int irq_idx,
                                uint32_t irq_count)
 {
 
+    assert(lm_ctx != NULL);
+
     if (irq_idx < LM_DEV_INTX_IRQ_IDX || irq_idx > LM_DEV_REQ_IRQ_INDEX) {
         lm_log(lm_ctx, LM_ERR, "Invalid IRQ index %d, should be between "
                "(%d to %d)", irq_idx, LM_DEV_INTX_IRQ_IDX,
@@ -1444,6 +1455,10 @@ int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration)
 {
     lm_reg_info_t   *migr_reg;
     int ret = 0;
+
+    assert(lm_ctx != NULL);
+
+    //FIXME: Validate args.
 
     if (lm_ctx->migr_reg != NULL) {
         lm_log(lm_ctx, LM_ERR, "device migration is already setup");
