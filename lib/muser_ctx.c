@@ -78,6 +78,12 @@ lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...)
     errno = _errno;
 }
 
+static inline int ERROR(int err)
+{
+    errno = err;
+    return -1;
+}
+
 static size_t
 get_vfio_caps_size(bool is_migr_reg, struct lm_sparse_mmap_areas *m)
 {
@@ -339,7 +345,7 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
      * Checking whether a callback exists might sound expensive however this
      * code is not performance critical. This works well when we don't expect a
      * region to be used, so the user of the library can simply leave the
-     * callback NULL in lm_ctx_create.
+     * callback NULL in lm_create_ctx.
      */
     if (lm_ctx->reg_info[idx].fn != NULL) {
         return lm_ctx->reg_info[idx].fn(lm_ctx->pvt, buf, count, offset,
@@ -565,7 +571,7 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1);
             }
-        } 
+        }
         if (ret < 0) {
             return ret;
         }
@@ -1000,14 +1006,113 @@ reply:
     return ret;
 }
 
+static int prepare_ctx(lm_ctx_t *lm_ctx)
+{
+    lm_reg_info_t *cfg_reg;
+    const lm_reg_info_t zero_reg = { 0 };
+    int err;
+    uint32_t max_ivs = 0, i;
+    size_t size;
+
+    if (lm_ctx->ready != 0) {
+        return 0;
+    }
+
+    // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
+    // always expected to call lm_ctx_try_attach().
+    if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
+        lm_ctx->conn_fd = lm_ctx->trans->attach(lm_ctx);
+        if (lm_ctx->conn_fd < 0) {
+            err = lm_ctx->conn_fd;
+            if (err != EINTR) {
+                lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
+                       strerror(-err));
+            }
+            return err;
+        }
+    }
+
+    cfg_reg = &lm_ctx->reg_info[LM_DEV_CFG_REG_IDX];
+
+    // Set a default config region if none provided.
+    /* TODO should it be enough to check that the size of region is 0? */
+    if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
+        cfg_reg->flags = LM_REG_FLAG_RW;
+        cfg_reg->size = PCI_CFG_SPACE_SIZE;
+    }
+
+    // This maybe allocated by lm_setup_pci_config_hdr().
+    if (lm_ctx->pci_config_space == NULL) {
+        lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
+        if (lm_ctx->pci_config_space == NULL) {
+            return -ENOMEM;
+        }
+    }
+
+    // Set type for region registers.
+    for (i = 0; i < PCI_BARS_NR; i++) {
+        if (!(lm_ctx->reg_info[i].flags & LM_REG_FLAG_MEM)) {
+            lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
+        }
+    }
+
+    if (lm_ctx->irqs == NULL) {
+        /*
+         * FIXME need to check that the number of MSI and MSI-X IRQs are valid
+         * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
+         */
+
+        // Work out highest count of irq vectors.
+        for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
+            if (max_ivs < lm_ctx->irq_count[i]) {
+                max_ivs = lm_ctx->irq_count[i];
+            }
+        }
+
+        //FIXME: assert(max_ivs > 0)?
+        size = sizeof(int) * max_ivs;
+        lm_ctx->irqs = calloc(1, sizeof(lm_irqs_t) + size);
+        if (lm_ctx->irqs == NULL) {
+            // lm_ctx->pci_config_space should be free'ed by lm_destroy_ctx().
+            return  -ENOMEM;
+        }
+
+        // Set context irq information.
+        for (i = 0; i < max_ivs; i++) {
+            lm_ctx->irqs->efds[i] = -1;
+        }
+        lm_ctx->irqs->err_efd = -1;
+        lm_ctx->irqs->req_efd = -1;
+        lm_ctx->irqs->type = IRQ_NONE;
+        lm_ctx->irqs->max_ivs = max_ivs;
+
+        // Reflect on the config space whether INTX is available.
+        if (lm_ctx->irq_count[LM_DEV_INTX_IRQ] != 0) {
+            lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
+        }
+    }
+
+    if (lm_ctx->caps != NULL) {
+        lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
+        lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
+    }
+    lm_ctx->ready = 1;
+
+    return 0;
+}
+
 int
 lm_ctx_drive(lm_ctx_t *lm_ctx)
 {
     int err;
 
     if (lm_ctx == NULL) {
-        errno = EINVAL;
-        return -1;
+        return ERROR(EINVAL);
+    }
+
+    err = prepare_ctx(lm_ctx);
+    if (err < 0) {
+        return ERROR(-err);
     }
 
     do {
@@ -1026,6 +1131,7 @@ lm_ctx_poll(lm_ctx_t *lm_ctx)
         return -ENOTSUP;
     }
 
+    assert(lm_ctx->ready == 1);
     err = process_request(lm_ctx);
 
     return err >= 0 ? 0 : err;
@@ -1069,13 +1175,17 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx)
 
     free(lm_ctx->uuid);
     free(lm_ctx->pci_config_space);
-    lm_ctx->trans->detach(lm_ctx);
+    if (lm_ctx->trans->detach != NULL) {
+        lm_ctx->trans->detach(lm_ctx);
+    }
     if (lm_ctx->dma != NULL) {
         dma_controller_destroy(lm_ctx->dma);
     }
     free_sparse_mmap_areas(lm_ctx);
+    free(lm_ctx->reg_info);
     free(lm_ctx->caps);
     free(lm_ctx->migration);
+    free(lm_ctx->irqs);
     free(lm_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
@@ -1096,238 +1206,64 @@ copy_sparse_mmap_area(struct lm_sparse_mmap_areas *src)
     return dest;
 }
 
-static int
-copy_sparse_mmap_areas(lm_reg_info_t *dst, const lm_reg_info_t *src)
-{
-    int i;
-
-    assert(dst != NULL);
-    assert(src != NULL);
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        if (!src[i].mmap_areas)
-            continue;
-        dst[i].mmap_areas = copy_sparse_mmap_area(src[i].mmap_areas);
-        if (dst[i].mmap_areas == NULL) {
-            return -ENOMEM;
-        }
-    }
-
-    return 0;
-}
-
-static int
-pci_config_setup(lm_ctx_t *lm_ctx, const lm_dev_info_t *dev_info)
-{
-    lm_reg_info_t *cfg_reg;
-    const lm_reg_info_t zero_reg = { 0 };
-    int i;
-
-    assert(lm_ctx != NULL);
-    assert(dev_info != NULL);
-
-    // Convenience pointer.
-    cfg_reg = &lm_ctx->reg_info[LM_DEV_CFG_REG_IDX];
-
-    // Set a default config region if none provided.
-    /* TODO should it be enough to check that the size of region is 0? */
-    if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
-        cfg_reg->flags = LM_REG_FLAG_RW;
-        cfg_reg->size = PCI_CFG_SPACE_SIZE;
-    } else {
-        // Validate the config region provided.
-        if ((cfg_reg->flags != LM_REG_FLAG_RW) ||
-            ((cfg_reg->size != PCI_CFG_SPACE_SIZE) &&
-             (cfg_reg->size != PCI_CFG_SPACE_EXP_SIZE))) {
-            return EINVAL;
-        }
-    }
-
-    // Allocate a buffer for the config space.
-    lm_ctx->pci_config_space = calloc(1, cfg_reg->size);
-    if (lm_ctx->pci_config_space == NULL) {
-        return -1;
-    }
-
-    // Bounce misc PCI basic header data.
-    lm_ctx->pci_config_space->hdr.id = dev_info->pci_info.id;
-    lm_ctx->pci_config_space->hdr.cc = dev_info->pci_info.cc;
-    lm_ctx->pci_config_space->hdr.ss = dev_info->pci_info.ss;
-
-    // Reflect on the config space whether INTX is available.
-    if (dev_info->pci_info.irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
-        lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
-    }
-
-    // Set type for region registers.
-    for (i = 0; i < PCI_BARS_NR; i++) {
-        if ((dev_info->pci_info.reg_info[i].flags & LM_REG_FLAG_MEM) == 0) {
-            lm_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
-        }
-    }
-
-    if (dev_info->migration.size != 0) {
-        const lm_migration_t *migr = &dev_info->migration;
-
-        /* FIXME hacky, find a more robust way to allocate a region index */
-        lm_ctx->migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
-        lm_ctx->migr_reg->flags = LM_REG_FLAG_RW;
-        lm_ctx->migr_reg->size = sizeof(struct vfio_device_migration_info) + dev_info->migration.size;
-        /* FIXME is there are sparse areas need to setup flags accordingly */
-        lm_ctx->migr_reg->mmap_areas = copy_sparse_mmap_area(migr->mmap_areas);
-        lm_ctx->migration = init_migration(&dev_info->migration);
-        if (lm_ctx->migration == NULL) {
-            goto err;
-        }
-    }
-
-    // Initialise PCI capabilities.
-    if (dev_info->nr_caps > 0) {
-        lm_ctx->caps = caps_create(lm_ctx, dev_info->caps, dev_info->nr_caps);
-        if (lm_ctx->caps == NULL) {
-            /* FIXME is this safe? lm_ctx might not have been fully initialized */
-            lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %m\n");
-            goto err;
-        }
-
-        lm_ctx->pci_config_space->hdr.sts.cl = 0x1;
-        lm_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
-    }
-
-    return 0;
-
-err:
-    free(lm_ctx->pci_config_space);
-    lm_ctx->pci_config_space = NULL;
-
-    return -1;
-}
-
-static void
-pci_info_bounce(lm_ctx_t *lm_ctx, const lm_pci_info_t *pci_info)
-{
-    int i;
-
-    assert(lm_ctx != NULL);
-    assert(pci_info != NULL);
-
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        lm_ctx->irq_count[i] = pci_info->irq_count[i];
-    }
-
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
-        lm_ctx->reg_info[i].flags = pci_info->reg_info[i].flags;
-        lm_ctx->reg_info[i].size  = pci_info->reg_info[i].size;
-        lm_ctx->reg_info[i].fn    = pci_info->reg_info[i].fn;
-        lm_ctx->reg_info[i].map   = pci_info->reg_info[i].map;
-        // Sparse map data copied by copy_sparse_mmap_areas().
-    }
-}
-
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx)
 {
+    int err;
+
     assert(lm_ctx != NULL);
 
     if ((lm_ctx->flags & LM_FLAG_ATTACH_NB) == 0) {
-        errno = EINVAL;
-        return -1;
+        return ERROR(EINVAL);
     }
+
+    err = prepare_ctx(lm_ctx);
+    if (err < 0) {
+        return ERROR(-err);
+    }
+
     return lm_ctx->trans->attach(lm_ctx);
 }
 
-lm_ctx_t *
-lm_ctx_create(const lm_dev_info_t *dev_info)
+lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
+                        lm_log_fn_t *log, lm_log_lvl_t log_lvl, void *pvt)
 {
     lm_ctx_t *lm_ctx = NULL;
-    uint32_t max_ivs = 0;
-    uint32_t i;
     int err = 0;
-    size_t size = 0;
 
-    if (dev_info == NULL) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    if (dev_info->trans != LM_TRANS_SOCK) {
+    if (trans != LM_TRANS_SOCK) {
         errno = ENOTSUP;
         return NULL;
     }
 
-    /*
-     * FIXME need to check that the number of MSI and MSI-X IRQs are valid
-     * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
-     */
-
-    // Work out highest count of irq vectors.
-    for (i = 0; i < LM_DEV_NUM_IRQS; i++) {
-        if (max_ivs < dev_info->pci_info.irq_count[i]) {
-            max_ivs = dev_info->pci_info.irq_count[i];
-        }
-    }
-
-    // Allocate an lm_ctx with room for the irq vectors.
-    size += sizeof(int) * max_ivs;
-    lm_ctx = calloc(1, sizeof(lm_ctx_t) + size);
+    lm_ctx = calloc(1, sizeof(lm_ctx_t));
     if (lm_ctx == NULL) {
         return NULL;
     }
     lm_ctx->trans = &sock_transport_ops;
 
-    // Set context irq information.
-    for (i = 0; i < max_ivs; i++) {
-        lm_ctx->irqs.efds[i] = -1;
-    }
-    lm_ctx->irqs.err_efd = -1;
-    lm_ctx->irqs.req_efd = -1;
-    lm_ctx->irqs.type = IRQ_NONE;
-    lm_ctx->irqs.max_ivs = max_ivs;
-
+    //FIXME: Validate arguments.
     // Set other context data.
-    lm_ctx->pvt = dev_info->pvt;
-    lm_ctx->log = dev_info->log;
-    lm_ctx->log_lvl = dev_info->log_lvl;
-    lm_ctx->reset = dev_info->reset;
-    lm_ctx->flags = dev_info->flags;
+    lm_ctx->pvt = pvt;
+    lm_ctx->log = log;
+    lm_ctx->log_lvl = log_lvl;
+    lm_ctx->flags = flags;
 
-    lm_ctx->uuid = strdup(dev_info->uuid);
+    lm_ctx->uuid = strdup(path);
     if (lm_ctx->uuid == NULL) {
         err = errno;
         goto out;
     }
 
-    lm_ctx->nr_regions = LM_DEV_NUM_REGS;
-    if (dev_info->migration.size > 0) {
-        lm_ctx->nr_regions += 1;
-    }
+    /*
+     * FIXME: Now we always allocate for migration region. Check if its better
+     * to seperate migration region from standard regions in lm_ctx.reg_info
+     * and move it into lm_ctx.migration.
+     */
+    lm_ctx->nr_regions = LM_DEV_NUM_REGS + 1;
     lm_ctx->reg_info = calloc(lm_ctx->nr_regions, sizeof *lm_ctx->reg_info);
     if (lm_ctx->reg_info == NULL) {
         err = -ENOMEM;
-        goto out;
-    }
-
-    // Bounce the provided pci_info into the context.
-    pci_info_bounce(lm_ctx, &dev_info->pci_info);
-
-    /*
-     * FIXME above memcpy also copies reg_info->mmap_areas. If pci_config_setup
-     * fails then we try to free reg_info->mmap_areas, which is wrong because
-     * this is a user pointer.
-     */
-    for (i = 0; i < lm_ctx->nr_regions; i++) {
-        lm_ctx->reg_info[i].mmap_areas = NULL;
-    }
-
-    // Setup the PCI config space for this context.
-    err = pci_config_setup(lm_ctx, dev_info);
-    if (err != 0) {
-        goto out;
-    }
-
-    // Bounce info for the sparse mmap areas.
-    err = copy_sparse_mmap_areas(lm_ctx->reg_info, dev_info->pci_info.reg_info);
-    if (err) {
         goto out;
     }
 
@@ -1340,32 +1276,6 @@ lm_ctx_create(const lm_dev_info_t *dev_info)
     }
     err = 0;
 
-    lm_ctx->map_dma = dev_info->map_dma;
-    lm_ctx->unmap_dma = dev_info->unmap_dma;
-
-    // Create the internal DMA controller.
-    if (lm_ctx->unmap_dma != NULL) {
-        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
-        if (lm_ctx->dma == NULL) {
-            err = errno;
-            goto out;
-        }
-    }
-
-    // Attach to the muser control device. With LM_FLAG_ATTACH_NB caller is
-    // always expected to call lm_ctx_try_attach().
-    if ((dev_info->flags & LM_FLAG_ATTACH_NB) == 0) {
-        lm_ctx->conn_fd = lm_ctx->trans->attach(lm_ctx);
-        if (lm_ctx->conn_fd < 0) {
-                err = lm_ctx->conn_fd;
-                if (err != EINTR) {
-                    lm_log(lm_ctx, LM_ERR, "failed to attach: %s",
-                           strerror(-err));
-                }
-                goto out;
-        }
-    }
-
 out:
     if (err != 0) {
         if (lm_ctx != NULL) {
@@ -1376,6 +1286,214 @@ out:
     }
 
     return lm_ctx;
+}
+
+int lm_pci_setup_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
+                            lm_pci_hdr_ss_t ss, lm_pci_hdr_cc_t cc,
+                            UNUSED bool extended)
+{
+    lm_pci_config_space_t *config_space;
+
+    assert(lm_ctx != NULL);
+
+    if (lm_ctx->pci_config_space != NULL) {
+        lm_log(lm_ctx, LM_ERR, "pci header already setup");
+        return ERROR(EEXIST);
+    }
+
+    /* TODO: supported extended PCI config space. */
+
+    // Allocate a buffer for the config space.
+    config_space = calloc(1, PCI_CFG_SPACE_SIZE);
+    if (config_space == NULL) {
+        return ERROR(ENOMEM);
+    }
+
+    config_space->hdr.id = id;
+    config_space->hdr.ss = ss;
+    config_space->hdr.cc = cc;
+    lm_ctx->pci_config_space = config_space;
+
+    return 0;
+}
+
+int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
+{
+    int ret;
+
+    assert(lm_ctx != NULL);
+
+    if (lm_ctx->caps != NULL) {
+        lm_log(lm_ctx, LM_ERR, "capabilities are already setup");
+        return ERROR(EEXIST);
+    }
+
+    if (caps == NULL || nr_caps == 0) {
+        lm_log(lm_ctx, LM_ERR, "Invalid args passed");
+        return ERROR(EINVAL);
+    }
+
+    lm_ctx->caps = caps_create(lm_ctx, caps, nr_caps, &ret);
+    if (lm_ctx->caps == NULL) {
+        lm_log(lm_ctx, LM_ERR, "failed to create PCI capabilities: %s",
+               strerror(ret));
+        return ERROR(ret);
+    }
+
+    return 0;
+}
+
+static int
+copy_sparse_mmap_areas(lm_reg_info_t *reg_info,
+                       struct lm_sparse_mmap_areas *mmap_areas)
+{
+    int nr_mmap_areas;
+    size_t size;
+
+    if (mmap_areas == NULL) {
+        return 0;
+    }
+
+    nr_mmap_areas = mmap_areas->nr_mmap_areas;
+    size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct lm_mmap_area));
+    reg_info->mmap_areas = calloc(1, size);
+    if (reg_info->mmap_areas == NULL) {
+        return -ENOMEM;
+    }
+
+    memcpy(reg_info->mmap_areas, mmap_areas, size);
+
+    return 0;
+}
+
+static inline bool is_valid_pci_config_space_region(int flags, size_t size)
+{
+    return flags == LM_REG_FLAG_RW && (size ==  PCI_CFG_SPACE_SIZE
+            || size == PCI_CFG_SPACE_EXP_SIZE);
+}
+
+int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
+                    lm_region_access_cb_t *region_access, int flags,
+                    struct lm_sparse_mmap_areas *mmap_areas,
+                    lm_map_region_cb_t *map)
+{
+    int ret;
+
+    assert(lm_ctx != NULL);
+
+    switch(region_idx) {
+    case LM_DEV_BAR0_REG_IDX ... LM_DEV_VGA_REG_IDX:
+        // Validate the config region provided.
+        if (region_idx == LM_DEV_CFG_REG_IDX &&
+            !is_valid_pci_config_space_region(flags, size)) {
+                return ERROR(EINVAL);
+        }
+
+        lm_ctx->reg_info[region_idx].flags = flags;
+        lm_ctx->reg_info[region_idx].size = size;
+        lm_ctx->reg_info[region_idx].fn = region_access;
+
+        if (map != NULL) {
+            lm_ctx->reg_info[region_idx].map = map;
+        }
+        if (mmap_areas) {
+            ret = copy_sparse_mmap_areas(&lm_ctx->reg_info[region_idx],
+                                         mmap_areas);
+            if (ret < 0) {
+                return ERROR(-ret);
+            }
+        }
+        break;
+    default:
+        lm_log(lm_ctx, LM_ERR, "Invalid region index %d", region_idx);
+        return ERROR(EINVAL);
+    }
+
+    return 0;
+}
+
+int lm_setup_device_reset_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset)
+{
+
+    assert(lm_ctx != NULL);
+    lm_ctx->reset = reset;
+
+    return 0;
+}
+
+int lm_setup_device_dma_cb(lm_ctx_t *lm_ctx, lm_map_dma_cb_t *map_dma,
+                           lm_unmap_dma_cb_t *unmap_dma)
+{
+
+    assert(lm_ctx != NULL);
+
+    lm_ctx->map_dma = map_dma;
+    lm_ctx->unmap_dma = unmap_dma;
+
+    // Create the internal DMA controller.
+    if (lm_ctx->unmap_dma != NULL) {
+        lm_ctx->dma = dma_controller_create(lm_ctx, LM_DMA_REGIONS);
+        if (lm_ctx->dma == NULL) {
+            return ERROR(ENOMEM);
+        }
+    }
+
+    return 0;
+}
+
+int lm_setup_device_nr_irqs(lm_ctx_t *lm_ctx, enum lm_dev_irq_type type,
+                            uint32_t count)
+{
+
+    assert(lm_ctx != NULL);
+
+    if (type < LM_DEV_INTX_IRQ || type > LM_DEV_REQ_IRQ) {
+        lm_log(lm_ctx, LM_ERR, "Invalid IRQ index %d, should be between "
+               "(%d to %d)", type, LM_DEV_INTX_IRQ,
+               LM_DEV_REQ_IRQ);
+        return ERROR(EINVAL);
+    }
+
+    lm_ctx->irq_count[type] = count;
+
+    return 0;
+}
+
+int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration)
+{
+    lm_reg_info_t   *migr_reg;
+    int ret = 0;
+
+    assert(lm_ctx != NULL);
+
+    //FIXME: Validate args.
+
+    if (lm_ctx->migr_reg != NULL) {
+        lm_log(lm_ctx, LM_ERR, "device migration is already setup");
+        return ERROR(EEXIST);
+    }
+
+    /* FIXME hacky, find a more robust way to allocate a region index */
+    migr_reg = &lm_ctx->reg_info[(lm_ctx->nr_regions - 1)];
+
+    /* FIXME: Are there sparse areas need to be setup flags accordingly */
+    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas);
+    if (ret < 0) {
+        return ERROR(-ret);
+    }
+
+    migr_reg->flags = LM_REG_FLAG_RW;
+    migr_reg->size = sizeof(struct vfio_device_migration_info) + migration->size;
+
+    lm_ctx->migration = init_migration(migration, &ret);
+    if (lm_ctx->migration == NULL) {
+        lm_log(lm_ctx, LM_ERR, "failed to initialize device migration");
+        free(migr_reg->mmap_areas);
+        return ERROR(ret);
+    }
+    lm_ctx->migr_reg = migr_reg;
+
+    return 0;
 }
 
 /*
@@ -1436,20 +1554,6 @@ lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
         return;
     }
     return dma_unmap_sg(lm_ctx->dma, sg, iov, cnt);
-}
-
-int
-lm_ctx_run(lm_dev_info_t *dev_info)
-{
-    int ret;
-
-    lm_ctx_t *lm_ctx = lm_ctx_create(dev_info);
-    if (lm_ctx == NULL) {
-        return -1;
-    }
-    ret = lm_ctx_drive(lm_ctx);
-    lm_ctx_destroy(lm_ctx);
-    return ret;
 }
 
 uint8_t *

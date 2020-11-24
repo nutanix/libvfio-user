@@ -78,9 +78,8 @@ int main(int argc, char **argv)
         errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
-    lm_dev_info_t dev_info = {.uuid = argv[1], .log = null_log, .log_lvl = LM_DBG };
-
-    lm_ctx_t *lm_ctx = lm_ctx_create(&dev_info);
+    lm_ctx_t *lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[1], 0, null_log,
+                                     LM_DBG, NULL);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libmuser context");
     }

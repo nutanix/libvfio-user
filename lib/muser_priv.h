@@ -66,15 +66,41 @@ typedef struct {
 
 struct migration;
 
+typedef struct  {
+
+    /*
+     * Region flags, see LM_REG_FLAG_XXX above.
+     */
+    uint32_t            flags;
+
+    /*
+     * Size of the region.
+     */
+    uint32_t            size;
+
+    /*
+     * Callback function that is called when the region is read or written.
+     * Note that the memory of the region is owned by the user, except for the
+     * standard header (first 64 bytes) of the PCI configuration space.
+     */
+    lm_region_access_cb_t  *fn;
+
+    /*
+     * Callback function that is called when the region is memory mapped.
+     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
+     */
+    lm_map_region_cb_t     *map;
+    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+} lm_reg_info_t;
+
 struct lm_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
     int                     fd;
     int                     conn_fd;
-    int (*reset)            (void *pvt);
+    lm_reset_cb_t           *reset;
     lm_log_lvl_t            log_lvl;
     lm_log_fn_t             *log;
-    uint32_t                irq_count[LM_DEV_NUM_IRQS];
     size_t                  nr_regions;
     lm_reg_info_t           *reg_info;
     lm_pci_config_space_t   *pci_config_space;
@@ -82,8 +108,8 @@ struct lm_ctx {
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
-    void (*map_dma)         (void *pvt, uint64_t iova, uint64_t len);
-    int (*unmap_dma)        (void *pvt, uint64_t iova);
+    lm_map_dma_cb_t         *map_dma;
+    lm_unmap_dma_cb_t       *unmap_dma;
 
     /* TODO there should be a void * variable to store transport-specific stuff */
     /* LM_TRANS_SOCK */
@@ -94,7 +120,9 @@ struct lm_ctx {
     lm_reg_info_t           *migr_reg;
     struct migration        *migration;
 
-    lm_irqs_t               irqs; /* XXX must be last */
+    uint32_t                irq_count[LM_DEV_NUM_IRQS];
+    lm_irqs_t               *irqs;
+    int                     ready;
 };
 
 int

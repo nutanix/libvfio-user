@@ -62,13 +62,6 @@ typedef struct {
 
 typedef struct lm_ctx lm_ctx_t;
 
-// Region flags.
-#define LM_REG_FLAG_READ    (1 << 0)
-#define LM_REG_FLAG_WRITE   (1 << 1)
-#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
-#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
-
 struct lm_mmap_area {
     uint64_t start;
     uint64_t size;
@@ -80,39 +73,24 @@ struct lm_sparse_mmap_areas {
 };
 
 /**
- * Prototype for region access callback. When a region is accessed, libmuser
- * calls the previously registered callback with the following arguments:
- *
- * @pvt: private data originally set in dev_info
- * @buf: buffer containing the data to be written or data to be read into
- * @count: number of bytes being read or written
- * @offset: byte offset within the region
- * @is_write: whether or not this is a write
- *
- * @returns the number of bytes read or written, or a negative integer on error
- */
-typedef ssize_t (lm_region_access_t) (void *pvt, char *buf, size_t count,
-                                      loff_t offset, bool is_write);
-
-/**
  * Prototype for memory access callback. The program MUST first map device
  * memory in its own virtual address space using lm_mmap, do any additional
  * work required, and finally return that memory. When a region is memory
  * mapped, libmuser calls previously register callback with the following
  * arguments:
  *
- * @pvt: private data originally set in dev_info
+ * @pvt: private pointer
  * @off: offset of memory area being memory mapped
  * @len: length of memory area being memory mapped
  *
  * @returns the memory address returned by lm_mmap, or MAP_FAILED on failure
  */
-typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
+typedef unsigned long (lm_map_region_cb_t) (void *pvt, unsigned long off,
                                          unsigned long len);
 
 /**
  * Creates a mapping of a device region into the caller's virtual memory. It
- * must be called by lm_map_region_t.
+ * must be called by lm_map_region_cb_t.
  *
  * @lm_ctx: the libmuser context to create mapping from
  * @offset: offset of the region being mapped
@@ -121,81 +99,6 @@ typedef unsigned long (lm_map_region_t) (void *pvt, unsigned long off,
  * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
 void *lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length);
-
-typedef struct  {
-
-    /*
-     * Region flags, see LM_REG_FLAG_XXX above.
-     */
-    uint32_t            flags;
-
-    /*
-     * Size of the region.
-     */
-    uint32_t            size;
-
-    /*
-     * Callback function that is called when the region is read or written.
-     * Note that the memory of the region is owned by the user, except for the
-     * standard header (first 64 bytes) of the PCI configuration space.
-     */
-    lm_region_access_t  *fn;
-
-    /*
-     * Callback function that is called when the region is memory mapped.
-     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
-     */
-    lm_map_region_t     *map;
-    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
-} lm_reg_info_t;
-
-enum {
-    LM_DEV_INTX_IRQ_IDX,
-    LM_DEV_MSI_IRQ_IDX,
-    LM_DEV_MSIX_IRQ_IDX,
-    LM_DEV_ERR_IRQ_INDEX,
-    LM_DEV_REQ_IRQ_INDEX,
-    LM_DEV_NUM_IRQS
-};
-
-/* FIXME these are PCI regions */
-enum {
-    LM_DEV_BAR0_REG_IDX,
-    LM_DEV_BAR1_REG_IDX,
-    LM_DEV_BAR2_REG_IDX,
-    LM_DEV_BAR3_REG_IDX,
-    LM_DEV_BAR4_REG_IDX,
-    LM_DEV_BAR5_REG_IDX,
-    LM_DEV_ROM_REG_IDX,
-    LM_DEV_CFG_REG_IDX,
-    LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
-};
-
-typedef struct {
-    uint32_t            irq_count[LM_DEV_NUM_IRQS];
-
-    /*
-     * Per-region information. Only supported regions need to be defined,
-     * unsupported regions should be left to 0.
-     */
-    lm_reg_info_t       reg_info[LM_DEV_NUM_REGS];
-
-    /*
-     * Device and vendor ID.
-     */
-    lm_pci_hdr_id_t     id;
-
-    /*
-     * Subsystem vendor and device ID.
-     */
-    lm_pci_hdr_ss_t     ss;
-
-    /*
-     * Class code.
-     */
-    lm_pci_hdr_cc_t     cc;
-} lm_pci_info_t;
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
@@ -212,8 +115,9 @@ typedef enum {
 
 /**
  * Callback function signature for log function
- *
+ * @pvt: private pointer
  * @lm_log_fn_t: typedef for log function.
+ * @msg: message
  */
 typedef void (lm_log_fn_t) (void *pvt, lm_log_lvl_t lvl, const char *msg);
 
@@ -253,6 +157,10 @@ typedef enum {
 /*
  * FIXME the names of migration callback functions are probably far too long,
  * but for now it helps with the implementation.
+ */
+/**
+ * Migration callback function.
+ * @pvt: private pointer
  */
 typedef int (lm_migration_callback_t)(void *pvt);
 
@@ -318,85 +226,168 @@ typedef struct {
     struct lm_sparse_mmap_areas *mmap_areas;
 } lm_migration_t;
 
-/**
- * Device information structure, used to create the lm_ctx.
- * To be filled and passed to lm_ctx_create()
+/*
+ * Attaching to the transport is non-blocking. The library will not attempt
+ * to attach during context creation time. The caller must then manually
+ * call lm_ctx_try_attach(), which is non-blocking, as many times as
+ * necessary.
  */
-typedef struct {
-    char            *uuid;
-
-    /*
-     * Private data passed to various lm_XXX functions.
-     */
-    void            *pvt;
-
-    /*
-     * Whether an extended PCI configuration space should be created.
-     */
-    bool            extended;
-
-    /*
-     * Function to call for logging. Optional.
-     */
-    lm_log_fn_t     *log;
-
-    /*
-     * Log level. Messages above this level are not logged. Optional
-     */
-    lm_log_lvl_t    log_lvl;
-
-    /*
-     * PCI configuration.
-     */
-    lm_pci_info_t   pci_info;
-
-    /*
-     * Function that is called when the guest resets the device. Optional.
-     */
-    int (*reset)    (void *pvt);
-
-    /*
-     * Function that is called when the guest maps a DMA region. Optional.
-     */
-    void (*map_dma) (void *pvt, uint64_t iova, uint64_t len);
-
-    /*
-     * Function that is called when the guest unmaps a DMA region. The device
-     * must release all references to that region before the callback returns.
-     * This is required if you want to be able to access guest memory.
-     */
-    int (*unmap_dma) (void *pvt, uint64_t iova);
-
-    lm_trans_t      trans;
-
-    /*
-     * Attaching to the transport is non-blocking. The library will not attempt
-     * to attach during context creation time. The caller must then manually
-     * call lm_ctx_try_attach(), which is non-blocking, as many times as
-     * necessary.
-     */
 #define LM_FLAG_ATTACH_NB  (1 << 0)
-    uint64_t         flags;
-
-    /*
-     * PCI capabilities.
-     */
-    int             nr_caps;
-    lm_cap_t        **caps;
-
-    lm_migration_t  migration;
-
-} lm_dev_info_t;
 
 /**
  * Creates libmuser context.
- *
- * @dev_info: device information used to create the context.
- *
+ * @trans: transport type
+ * @path: path to socket file.
+ * @flags: context flag
+ * @log: log function
+ * @log_lvl: logging level
+ * @pvt: private data
  * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
-lm_ctx_t *
-lm_ctx_create(const lm_dev_info_t *dev_info);
+lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path,
+                        int flags, lm_log_fn_t *log, lm_log_lvl_t log_lvl,
+                        void *pvt);
+
+//TODO: Check other PCI header registers suitable to be filled by device.
+//      Or should we pass whole lm_pci_hdr_t to be filled by user.
+/**
+ * Setup PCI header data.
+ * @lm_ctx: the libmuser context
+ * @id: Device and vendor ID
+ * @ss: Subsystem vendor and device ID
+ * @cc: Class code
+ * @extended: support extended PCI config space
+ */
+int lm_pci_setup_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
+                            lm_pci_hdr_ss_t ss, lm_pci_hdr_cc_t cc,
+                            bool extended);
+
+//TODO: Support variable size capabilities.
+/**
+ * Setup PCI capabilities.
+ * @lm_ctx: the libmuser context
+ * @caps: array of (lm_cap_t *)
+ * *nr_caps: number of elements in @caps
+ */
+int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
+
+// Region flags.
+#define LM_REG_FLAG_READ    (1 << 0)
+#define LM_REG_FLAG_WRITE   (1 << 1)
+#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
+#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+
+/**
+ * Prototype for region access callback. When a region is accessed, libmuser
+ * calls the previously registered callback with the following arguments:
+ *
+ * @pvt: private data originally passed by lm_create_ctx()
+ * @buf: buffer containing the data to be written or data to be read into
+ * @count: number of bytes being read or written
+ * @offset: byte offset within the region
+ * @is_write: whether or not this is a write
+ *
+ * @returns the number of bytes read or written, or a negative integer on error
+ */
+typedef ssize_t (lm_region_access_cb_t) (void *pvt, char *buf, size_t count,
+                                         loff_t offset, bool is_write);
+
+/* FIXME these are PCI regions */
+enum {
+    LM_DEV_BAR0_REG_IDX,
+    LM_DEV_BAR1_REG_IDX,
+    LM_DEV_BAR2_REG_IDX,
+    LM_DEV_BAR3_REG_IDX,
+    LM_DEV_BAR4_REG_IDX,
+    LM_DEV_BAR5_REG_IDX,
+    LM_DEV_ROM_REG_IDX,
+    LM_DEV_CFG_REG_IDX,
+    LM_DEV_VGA_REG_IDX,
+    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
+};
+
+/**
+ * Set up a region.
+ * @lm_ctx: the libmuser context
+ * @region_idx: region index
+ * @size: size of the region
+ * @region_access: callback function to access region
+ * @flags: region  flags
+ * @mmap_areas: mmap areas info
+ * @region_map: callback function to map region
+ */
+int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
+                    lm_region_access_cb_t *region_access, int flags,
+                    struct lm_sparse_mmap_areas *mmap_areas,
+                    lm_map_region_cb_t *map);
+
+/*
+ * Callback function that is called when the guest resets the device.
+ * @pvt: private pointer
+ */
+typedef int (lm_reset_cb_t) (void *pvt);
+
+/*
+ * Function that is called when the guest maps a DMA region. Optional.
+ * @pvt: private pointer
+ * @iova: iova address
+ * @len: length
+ */
+typedef void (lm_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+
+/*
+ * Function that is called when the guest unmaps a DMA region. The device
+ * must release all references to that region before the callback returns.
+ * This is required if you want to be able to access guest memory.
+ * @pvt: private pointer
+ * @iova: iova address
+ * @len: length
+ */
+typedef int (lm_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+
+/**
+ * Setup device reset callback.
+ * @lm_ctx: the libmuser context
+ * @reset: device reset callback (optional)
+ */
+int lm_setup_device_reset_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset);
+
+/**
+ * Setup device DMA map/unmap callbacks.
+ * @lm_ctx: the libmuser context
+ * @map_dma: DMA region map callback (optional)
+ * @unmap_dma: DMA region unmap callback (optional)
+ */
+
+int lm_setup_device_dma_cb(lm_ctx_t *lm_ctx, lm_map_dma_cb_t *map_dma,
+                           lm_unmap_dma_cb_t *unmap_dma);
+
+enum lm_dev_irq_type {
+    LM_DEV_INTX_IRQ,
+    LM_DEV_MSI_IRQ,
+    LM_DEV_MSIX_IRQ,
+    LM_DEV_ERR_IRQ,
+    LM_DEV_REQ_IRQ,
+    LM_DEV_NUM_IRQS
+};
+
+/**
+ * Setup device IRQ counts.
+ * @lm_ctx: the libmuser context
+ * @type: IRQ type (LM_DEV_INTX_IRQ ... LM_DEV_REQ_IRQ)
+ * @count: number of irqs
+ */
+int lm_setup_device_nr_irqs(lm_ctx_t *lm_ctx, enum lm_dev_irq_type type,
+                            uint32_t count);
+
+//TODO: Re-visit once migration support is done.
+/**
+ * Enable support for device migration.
+ * @lm_ctx: the libmuser context
+ * @migration: information required to migrate device
+ */
+int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration);
 
 /**
  * Destroys libmuser context.
@@ -416,16 +407,6 @@ lm_ctx_destroy(lm_ctx_t *lm_ctx);
  */
 int
 lm_ctx_drive(lm_ctx_t *lm_ctx);
-
-/**
- * Creates and runs an lm_ctx.
- *
- * @dev_info: device information used to create the context
- *
- * @returns 0 on success, -1 on failure. Sets errno.
- */
-int
-lm_ctx_run(lm_dev_info_t *dev_info);
 
 /**
  * Polls, without blocking, an lm_ctx. This is an alternative to using
@@ -540,6 +521,7 @@ void
 lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
             struct iovec *iov, int cnt);
 
+//FIXME: Remove if we dont need this.
 /**
  * Returns the PCI region given the position and size of an address span in the
  * PCI configuration space.
@@ -579,6 +561,7 @@ lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Returns the non-standard part of the PCI configuration space.
+ * @lm_ctx: the libmuser context
  */
 uint8_t *
 lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
@@ -588,6 +571,7 @@ lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
  * creating the context. Returns 0 on success and -1 on error. If errno is set
  * to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and the
  * operation must be retried.
+ * @lm_ctx: the libmuser context
  */
 int
 lm_ctx_try_attach(lm_ctx_t *lm_ctx);
@@ -595,6 +579,8 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx);
 /*
  * FIXME need to make sure that there can be at most one capability with a given
  * ID, otherwise this function will return the first one with this ID.
+ * @lm_ctx: the libmuser context
+ * @id: capability id
  */
 uint8_t *
 lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);

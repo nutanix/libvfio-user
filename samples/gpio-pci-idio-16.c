@@ -75,6 +75,9 @@ main(int argc, char *argv[])
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     lm_ctx_t *lm_ctx;
+    lm_pci_hdr_id_t id = {.vid = 0x494F, .did = 0x0DC8};
+    lm_pci_hdr_ss_t ss = {0};
+    lm_pci_hdr_cc_t cc = {0};
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -91,27 +94,13 @@ main(int argc, char *argv[])
         errx(EXIT_FAILURE, "missing MUSER socket path");
     }
 
-    lm_dev_info_t dev_info = {
-        .trans = LM_TRANS_SOCK,
-        .log = verbose ? _log : NULL,
-        .log_lvl = LM_DBG,
-        .pci_info = {
-            .id = {.vid = 0x494F, .did = 0x0DC8 },
-            .reg_info[LM_DEV_BAR2_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = 0x100,
-                .fn = &bar2_access
-            },
-        },
-        .uuid = argv[optind],
-    };
-
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGINT, &act, NULL) == -1) {
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    lm_ctx = lm_ctx_create(&dev_info);
+    lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
+                           verbose ? _log : NULL, LM_DBG, NULL);
     if (lm_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");
@@ -120,16 +109,31 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
-    ret = lm_ctx_drive(lm_ctx);
-
-    if (ret != 0) {
-        if (ret != -ENOTCONN && ret != -EINTR) {
-            err(EXIT_FAILURE, "failed to realize device emulation");
-        }
+    ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
+    if (ret < 0) {
+        fprintf(stderr, "failed to setup pci header\n");
+        goto out;
     }
 
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR2_REG_IDX, 0x100, &bar2_access,
+                          LM_REG_FLAG_RW, NULL, NULL);
+    if (ret < 0) {
+        fprintf(stderr, "failed to setup region\n");
+        goto out;
+    }
+
+    ret = lm_ctx_drive(lm_ctx);
+    if (ret != 0) {
+        if (ret != -ENOTCONN && ret != -EINTR) {
+            fprintf(stderr, "failed to realize device emulation\n");
+            goto out;
+        }
+        ret = 0;
+    }
+
+out:
     lm_ctx_destroy(lm_ctx);
-    return EXIT_SUCCESS;
+    return ret;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

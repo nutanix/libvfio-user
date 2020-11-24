@@ -154,13 +154,14 @@ static void map_dma(void *pvt, uint64_t iova, uint64_t len)
     server_data->regions[idx].len = len;
 }
 
-static int unmap_dma(void *pvt, uint64_t iova)
+static int unmap_dma(void *pvt, uint64_t iova, uint64_t len)
 {
     struct server_data *server_data = pvt;
     int idx;
 
     for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
-        if (server_data->regions[idx].addr == iova) {
+        if (server_data->regions[idx].addr == iova &&
+            server_data->regions[idx].len == len) {
             server_data->regions[idx].addr = 0;
             server_data->regions[idx].len = 0;
             return 0;
@@ -382,6 +383,9 @@ int main(int argc, char *argv[])
     int nr_sparse_areas = 2, size = 1024, i;
     struct lm_sparse_mmap_areas *sparse_areas;
     lm_ctx_t *lm_ctx;
+    lm_pci_hdr_id_t id = {.raw = 0xdeadbeef};
+    lm_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
+    lm_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -413,62 +417,71 @@ int main(int argc, char *argv[])
         sparse_areas->areas[i].start += size;
         sparse_areas->areas[i].size = size;
     }
-
-    lm_dev_info_t dev_info = {
-        .trans = LM_TRANS_SOCK,
-        .log = verbose ? _log : NULL,
-        .log_lvl = LM_DBG,
-        .pci_info = {
-            .id.raw = 0xdeadbeef,
-            .ss.raw = 0xcafebabe,
-            .cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef},
-            .reg_info[LM_DEV_BAR0_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = sizeof(time_t),
-                .fn = &bar0_access
-            },
-            .reg_info[LM_DEV_BAR1_REG_IDX] = {
-                .flags = LM_REG_FLAG_RW,
-                .size = sysconf(_SC_PAGESIZE),
-                .fn = &bar1_access,
-                .mmap_areas = sparse_areas,
-		        .map = map_area
-            },
-            .irq_count[LM_DEV_INTX_IRQ_IDX] = 1,
-        },
-        .uuid = argv[optind],
-        .reset = device_reset,
-        .map_dma = map_dma,
-        .unmap_dma = unmap_dma,
-        .pvt = &server_data,
-        .migration = {
-            .size = server_data.migration.migr_data_len,
-            .mmap_areas = sparse_areas,
-            .callbacks = {
-                .transition = &migration_device_state_transition,
-                .get_pending_bytes = &migration_get_pending_bytes,
-                .prepare_data = &migration_prepare_data,
-                .read_data = &migration_read_data,
-                .data_written = &migration_data_written,
-                .write_data = &migration_write_data
-            }
-        }
-    };
-
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGALRM, &act, NULL) == -1) {
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    server_data.lm_ctx = lm_ctx = lm_ctx_create(&dev_info);
+    server_data.lm_ctx = lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
+            verbose ? _log : NULL, LM_DBG, &server_data);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
+    }
+
+    ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup PCI header");
+    }
+
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR0_REG_IDX, sizeof(time_t),
+                          &bar0_access, LM_REG_FLAG_RW, NULL, NULL);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup BAR0 region");
+    }
+
+    ret = lm_setup_region(lm_ctx, LM_DEV_BAR1_REG_IDX, sysconf(_SC_PAGESIZE),
+                          &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup BAR1 region");
+    }
+
+    ret = lm_setup_device_reset_cb(lm_ctx, &device_reset);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device reset callbacks");
+    }
+
+    ret = lm_setup_device_dma_cb(lm_ctx, &map_dma, &unmap_dma);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device DMA callbacks");
+    }
+
+    ret = lm_setup_device_nr_irqs(lm_ctx, LM_DEV_INTX_IRQ, 1);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup irq counts");
+    }
+
+    lm_migration_t migration = {
+        .size = server_data.migration.migr_data_len,
+        .mmap_areas = sparse_areas,
+        .callbacks = {
+            .transition = &migration_device_state_transition,
+            .get_pending_bytes = &migration_get_pending_bytes,
+            .prepare_data = &migration_prepare_data,
+            .read_data = &migration_read_data,
+            .data_written = &migration_data_written,
+            .write_data = &migration_write_data
+        }
+    };
+
+    ret = lm_setup_device_migration(lm_ctx, &migration);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device migration");
     }
 
     server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,
                                                     server_data.migration.migr_data_len);
     if (server_data.migration.migr_data == NULL) {
-        errx(EXIT_FAILURE, "failed to allocate migration data");
+        err(EXIT_FAILURE, "failed to allocate migration data");
     }
 
     do {
