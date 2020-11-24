@@ -40,9 +40,9 @@
 #include <errno.h>
 #include <string.h>
 
-#include "../lib/common.h"
-#include "../lib/muser.h"
-#include "../lib/tran_sock.h"
+#include "common.h"
+#include "muser.h"
+#include "tran_sock.h"
 
 static void
 null_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)

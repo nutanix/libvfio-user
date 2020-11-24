@@ -30,10 +30,14 @@
  *
  */
 
-#ifndef LM_PCI_CAP_PX_H
-#define LM_PCI_CAP_PX_H
+#ifndef LIB_MUSER_PCI_CAPS_PX_H
+#define LIB_MUSER_PCI_CAPS_PX_H
 
 #include "common.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct pxcaps {
     unsigned int ver:4;
@@ -145,6 +149,10 @@ _Static_assert(sizeof(struct pxcap) == 0x2a,
 		"bad PCI Express Capability size");
 _Static_assert(offsetof(struct pxcap, hdr) == 0, "bad offset");
 
-#endif /* LM_PCI_CAP_PX_H */
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* LIB_MUSER_PCI_CAPS_PX_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -1,7 +1,9 @@
 /*
- * Copyright (c) 2020 Nutanix Inc. All rights reserved.
+ * Copyright (c) 2019 Nutanix Inc. All rights reserved.
  *
  * Authors: Thanos Makatos <thanos@nutanix.com>
+ *          Swapnil Ingle <swapnil.ingle@nutanix.com>
+ *          Felipe Franciosi <felipe@nutanix.com>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -28,19 +30,48 @@
  *
  */
 
-#ifndef LM_PCI_CAP_COMMON_H
-#define LM_PCI_CAP_COMMON_H
+#ifndef LIB_MUSER_PCI_CAPS_MSI_H
+#define LIB_MUSER_PCI_CAPS_MSI_H
 
-#include <stddef.h>
+#include "common.h"
 
-struct cap_hdr {
-    uint8_t id;
-    uint8_t next;
-} __attribute__((packed));
-_Static_assert(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
-_Static_assert(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
-_Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#endif /* LM_PCI_CAP_COMMON_H */
+struct mc {
+    unsigned int msie:1;
+    unsigned int mmc:3;
+    unsigned int mme:3;
+    unsigned int c64:1;
+    unsigned int pvm:1;
+    unsigned int res1:7;
+} __attribute__ ((packed));
+_Static_assert(sizeof(struct mc) == 0x2, "bad MC size");
+
+struct ma {
+    unsigned int res1:2;
+    unsigned int addr:30;
+} __attribute__ ((packed));
+_Static_assert(sizeof(struct ma) == 0x4, "bad MA size");
+
+struct msicap {
+    struct cap_hdr hdr;
+    struct mc mc;
+    struct ma ma;
+    uint32_t mua;
+    uint16_t md;
+    uint16_t padding;
+    uint32_t mmask;
+    uint32_t mpend;
+}  __attribute__ ((packed));
+_Static_assert(sizeof(struct msicap) == 0x18, "bad MSICAP size");
+_Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* LM_CAP_MSI_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

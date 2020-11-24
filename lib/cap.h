@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef __CAP_H__
-#define __CAP_H__
+#ifndef LIB_MUSER_CAP_H
+#define LIB_MUSER_CAP_H
 
 #include "muser.h"
 
@@ -60,6 +60,6 @@ cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
 uint8_t *
 cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id);
 
-#endif /* __CAP_H__ */
+#endif /* LIB_MUSER_CAP_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

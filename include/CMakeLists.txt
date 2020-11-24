@@ -28,31 +28,13 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-cmake_minimum_required (VERSION 2.6)
-project(muser)
-include(GNUInstallDirs)
+set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSON REQUIRED json-c)
-
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/lib)
-include_directories(${JSON_INCLUDE_DIRS})
-
-set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
-#
-# NB: this intentionally does not define NDEBUG: we want our assert()s even in a
-# release build.
-#
-set(CMAKE_C_FLAGS_RELEASE "-O3")
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wextra")
-
-# public headers
-add_subdirectory(include)
-
-# shared libraries
-add_subdirectory(lib)
-
-# samples
-add_subdirectory(samples)
+install(FILES "muser.h" DESTINATION ${MUSER_HEADERS_DIR})
+install(FILES "pci_caps/common.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/msi.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/msix.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/pm.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/px.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
+install(FILES "pci.h" DESTINATION ${MUSER_HEADERS_DIR})
+install(FILES "vfio_user.h" DESTINATION ${MUSER_HEADERS_DIR})

@@ -30,10 +30,14 @@
  *
  */
 
-#ifndef LM_PCI_CAP_MSIX_H
-#define LM_PCI_CAP_MSIX_H
+#ifndef LIB_MUSER_PCI_CAPS_MSIX_H
+#define LIB_MUSER_PCI_CAPS_MSIX_H
 
 #include <linux/pci_regs.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct mxc {
 	unsigned int ts:11;
@@ -64,6 +68,10 @@ struct msixcap {
 } __attribute__ ((packed)) __attribute__ ((aligned(4)));
 _Static_assert(sizeof(struct msixcap) == PCI_CAP_MSIX_SIZEOF, "bad MSI-X size");
 _Static_assert(offsetof(struct msixcap, hdr) == 0, "bad offset");
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* LM_CAP_MSIX_H */
 

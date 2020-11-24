@@ -28,8 +28,8 @@
  *
  */
 
-#ifndef DMA_DMA_H
-#define DMA_DMA_H
+#ifndef LIB_MUSER_DMA_H
+#define LIB_MUSER_DMA_H
 
 /*
  * FIXME check whether DMA regions must be page aligned. If so then the
@@ -324,6 +324,6 @@ bool
 dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
                             size_t size);
 
-#endif /* DMA_DMA_H */
+#endif /* LIB_MUSER_DMA_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -31,12 +31,16 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _VFIO_USER_H
-#define _VFIO_USER_H
+#ifndef VFIO_USER_H
+#define VFIO_USER_H
 
 #include <inttypes.h>
 #include <linux/vfio.h>
 #include <linux/version.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 enum vfio_user_command {
     VFIO_USER_VERSION                   = 1,
@@ -166,8 +170,12 @@ struct vfio_iommu_type1_dirty_bitmap_get {
 	struct vfio_bitmap bitmap;
 };
 
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */
+
+#ifdef __cplusplus
+}
 #endif
 
-#endif
+#endif /* VFIO_USER_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

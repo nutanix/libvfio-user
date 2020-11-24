@@ -30,6 +30,9 @@
  *
  */
 
+#ifndef LIB_MUSER_IRQ_H
+#define LIB_MUSER_IRQ_H
+
 #include "muser_priv.h"
 
 int
@@ -40,3 +43,6 @@ int
 handle_device_set_irqs(lm_ctx_t *lm_ctx, uint32_t size,
                        int *fds, int nr_fds, struct vfio_irq_set *irq_set);
 
+#endif /* LIB_MUSER_IRQ_H */
+
+/* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
