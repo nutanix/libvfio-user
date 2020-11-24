@@ -661,6 +661,8 @@ get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
     msg.msg_controllen = CMSG_SPACE(sizeof(int) * *nr_fds);
     msg.msg_control = alloca(msg.msg_controllen);
 
+    *nr_fds = 0;
+
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
      * faster (?). I tried that and get short reads, so we need to store the
