@@ -413,10 +413,10 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex)
     }
 
     irq_info.subindex = subindex;
-    ret = send_recv_vfio_user_msg(lm_ctx->conn_fd, msg_id,
-                                  VFIO_USER_VM_INTERRUPT,
-                                  &irq_info, sizeof irq_info,
-                                  NULL, 0, NULL, NULL, 0);
+    ret = vfio_user_msg(lm_ctx->conn_fd, msg_id,
+                        VFIO_USER_VM_INTERRUPT,
+                        &irq_info, sizeof irq_info,
+                        NULL, NULL, 0);
     if (ret < 0) {
         /* FIXME should return -errno */
 	    errno = -ret;
