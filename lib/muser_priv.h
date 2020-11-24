@@ -66,6 +66,33 @@ typedef struct {
 
 struct migration;
 
+typedef struct  {
+
+    /*
+     * Region flags, see LM_REG_FLAG_XXX above.
+     */
+    uint32_t            flags;
+
+    /*
+     * Size of the region.
+     */
+    uint32_t            size;
+
+    /*
+     * Callback function that is called when the region is read or written.
+     * Note that the memory of the region is owned by the user, except for the
+     * standard header (first 64 bytes) of the PCI configuration space.
+     */
+    lm_region_access_cb_t  *fn;
+
+    /*
+     * Callback function that is called when the region is memory mapped.
+     * Required if LM_REG_FLAG_MEM is set, otherwise ignored.
+     */
+    lm_map_region_cb_t     *map;
+    struct lm_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+} lm_reg_info_t;
+
 struct lm_ctx {
     void                    *pvt;
     dma_controller_t        *dma;

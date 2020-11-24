@@ -1087,7 +1087,7 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
         lm_ctx->irqs->max_ivs = max_ivs;
 
         // Reflect on the config space whether INTX is available.
-        if (lm_ctx->irq_count[LM_DEV_INTX_IRQ_IDX] != 0) {
+        if (lm_ctx->irq_count[LM_DEV_INTX_IRQ] != 0) {
             lm_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
         }
     }
@@ -1225,8 +1225,8 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx)
     return lm_ctx->trans->attach(lm_ctx);
 }
 
-lm_ctx_t *lm_create_ctx(const char *path, int flags, lm_log_fn_t *log,
-                        lm_log_lvl_t log_lvl, lm_trans_t trans, void *pvt)
+lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
+                        lm_log_fn_t *log, lm_log_lvl_t log_lvl, void *pvt)
 {
     lm_ctx_t *lm_ctx = NULL;
     int err = 0;
@@ -1288,7 +1288,7 @@ out:
     return lm_ctx;
 }
 
-int lm_setup_pci_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
+int lm_pci_setup_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
                             lm_pci_hdr_ss_t ss, lm_pci_hdr_cc_t cc,
                             UNUSED bool extended)
 {
@@ -1317,7 +1317,7 @@ int lm_setup_pci_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
     return 0;
 }
 
-int lm_setup_pci_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
+int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps)
 {
     int ret;
 
@@ -1412,13 +1412,21 @@ int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
     return 0;
 }
 
-int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
-                       lm_map_dma_cb_t *map_dma, lm_unmap_dma_cb_t *unmap_dma)
+int lm_setup_device_reset_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset)
+{
+
+    assert(lm_ctx != NULL);
+    lm_ctx->reset = reset;
+
+    return 0;
+}
+
+int lm_setup_device_dma_cb(lm_ctx_t *lm_ctx, lm_map_dma_cb_t *map_dma,
+                           lm_unmap_dma_cb_t *unmap_dma)
 {
 
     assert(lm_ctx != NULL);
 
-    lm_ctx->reset = reset;
     lm_ctx->map_dma = map_dma;
     lm_ctx->unmap_dma = unmap_dma;
 
@@ -1433,20 +1441,20 @@ int lm_setup_device_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset,
     return 0;
 }
 
-int lm_setup_device_irq_counts(lm_ctx_t *lm_ctx, int irq_idx,
-                               uint32_t irq_count)
+int lm_setup_device_nr_irqs(lm_ctx_t *lm_ctx, enum lm_dev_irq_type type,
+                            uint32_t count)
 {
 
     assert(lm_ctx != NULL);
 
-    if (irq_idx < LM_DEV_INTX_IRQ_IDX || irq_idx > LM_DEV_REQ_IRQ_INDEX) {
+    if (type < LM_DEV_INTX_IRQ || type > LM_DEV_REQ_IRQ) {
         lm_log(lm_ctx, LM_ERR, "Invalid IRQ index %d, should be between "
-               "(%d to %d)", irq_idx, LM_DEV_INTX_IRQ_IDX,
-               LM_DEV_REQ_IRQ_INDEX);
+               "(%d to %d)", type, LM_DEV_INTX_IRQ,
+               LM_DEV_REQ_IRQ);
         return ERROR(EINVAL);
     }
 
-    lm_ctx->irq_count[irq_idx] = irq_count;
+    lm_ctx->irq_count[type] = count;
 
     return 0;
 }

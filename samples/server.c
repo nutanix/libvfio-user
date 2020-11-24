@@ -154,13 +154,14 @@ static void map_dma(void *pvt, uint64_t iova, uint64_t len)
     server_data->regions[idx].len = len;
 }
 
-static int unmap_dma(void *pvt, uint64_t iova)
+static int unmap_dma(void *pvt, uint64_t iova, uint64_t len)
 {
     struct server_data *server_data = pvt;
     int idx;
 
     for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
-        if (server_data->regions[idx].addr == iova) {
+        if (server_data->regions[idx].addr == iova &&
+            server_data->regions[idx].len == len) {
             server_data->regions[idx].addr = 0;
             server_data->regions[idx].len = 0;
             return 0;
@@ -421,13 +422,13 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    server_data.lm_ctx = lm_ctx = lm_create_ctx(argv[optind], 0,
-            verbose ? _log : NULL, LM_DBG, LM_TRANS_SOCK, &server_data);
+    server_data.lm_ctx = lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
+            verbose ? _log : NULL, LM_DBG, &server_data);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
-    ret = lm_setup_pci_config_hdr(lm_ctx, id, ss, cc, false);
+    ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup PCI header");
     }
@@ -444,12 +445,17 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    ret = lm_setup_device_cb(lm_ctx, &device_reset, &map_dma, &unmap_dma);
+    ret = lm_setup_device_reset_cb(lm_ctx, &device_reset);
     if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup device callbacks");
+        err(EXIT_FAILURE, "failed to setup device reset callbacks");
     }
 
-    ret = lm_setup_device_irq_counts(lm_ctx, LM_DEV_INTX_IRQ_IDX, 1);
+    ret = lm_setup_device_dma_cb(lm_ctx, &map_dma, &unmap_dma);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device DMA callbacks");
+    }
+
+    ret = lm_setup_device_nr_irqs(lm_ctx, LM_DEV_INTX_IRQ, 1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup irq counts");
     }

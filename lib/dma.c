@@ -150,7 +150,7 @@ dma_controller_remove_region(dma_controller_t *dma,
         region = &dma->regions[idx];
         if (region->dma_addr == dma_addr && region->size == size) {
             if (region->refcnt > 0) {
-                err = unmap_dma(data, region->dma_addr);
+                err = unmap_dma(data, region->dma_addr, region->size);
                 if (err != 0) {
                     lm_log(dma->lm_ctx, LM_ERR,
                            "failed to notify of removal of DMA region %#lx-%#lx: %s\n",

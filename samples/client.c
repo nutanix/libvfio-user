@@ -50,11 +50,11 @@
 #define CLIENT_MAX_FDS (32)
 
 static char *irq_to_str[] = {
-    [LM_DEV_INTX_IRQ_IDX] = "INTx",
-    [LM_DEV_MSI_IRQ_IDX] = "MSI",
-    [LM_DEV_MSIX_IRQ_IDX] = "MSI-X",
-    [LM_DEV_ERR_IRQ_INDEX] = "ERR",
-    [LM_DEV_REQ_IRQ_INDEX] = "REQ"
+    [LM_DEV_INTX_IRQ] = "INTx",
+    [LM_DEV_MSI_IRQ] = "MSI",
+    [LM_DEV_MSIX_IRQ] = "MSI-X",
+    [LM_DEV_ERR_IRQ] = "ERR",
+    [LM_DEV_REQ_IRQ] = "REQ"
 };
 
 void
