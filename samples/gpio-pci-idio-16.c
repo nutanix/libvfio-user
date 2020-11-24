@@ -73,11 +73,11 @@ main(int argc, char *argv[])
     int ret;
     bool verbose = false;
     char opt;
-    struct sigaction act = {.sa_handler = _sa_handler};
+    struct sigaction act = { .sa_handler = _sa_handler };
     lm_ctx_t *lm_ctx;
-    lm_pci_hdr_id_t id = {.vid = 0x494F, .did = 0x0DC8};
-    lm_pci_hdr_ss_t ss = {0};
-    lm_pci_hdr_cc_t cc = {0};
+    lm_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
+    lm_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
+    lm_pci_hdr_cc_t cc = { { 0 } };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
