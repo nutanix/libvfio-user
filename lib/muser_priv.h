@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef MUSER_PRIV_H
-#define MUSER_PRIV_H
+#ifndef LIB_MUSER_PRIV_H
+#define LIB_MUSER_PRIV_H
 
 #include "dma.h"
 
@@ -112,7 +112,8 @@ region_to_offset(uint32_t region);
 #define offsetofend(TYPE, MEMBER) \
        (offsetof(TYPE, MEMBER) + sizeof_field(TYPE, MEMBER))
 
-static inline ssize_t get_minsz(unsigned int cmd)
+static inline ssize_t
+get_minsz(unsigned int cmd)
 {
 	switch (cmd) {
 	case VFIO_DEVICE_GET_INFO:
@@ -145,7 +146,8 @@ static inline ssize_t get_minsz(unsigned int cmd)
 	return -EOPNOTSUPP;
 }
 
-static inline const char* vfio_cmd_to_str(int cmd) {
+static inline const char *
+vfio_cmd_to_str(int cmd) {
         switch (cmd) {
                 case VFIO_GET_API_VERSION: return "VFIO_GET_API_VERSION";
                 case VFIO_CHECK_EXTENSION: return "VFIO_CHECK_EXTENSION";
@@ -173,6 +175,6 @@ static inline const char* vfio_cmd_to_str(int cmd) {
         return NULL;
 }
 
-#endif /* MUSER_PRIV_H */
+#endif /* LIB_MUSER_PRIV_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

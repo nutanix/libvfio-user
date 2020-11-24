@@ -37,12 +37,16 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "vfio_user.h"
 #include "pci.h"
-#include "caps/pm.h"
-#include "caps/px.h"
-#include "caps/msi.h"
-#include "caps/msix.h"
+#include "pci_caps/pm.h"
+#include "pci_caps/px.h"
+#include "pci_caps/msi.h"
+#include "pci_caps/msix.h"
+#include "vfio_user.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define LIB_MUSER_VFIO_USER_VERS_MJ 0
 #define LIB_MUSER_VFIO_USER_VERS_MN 1
@@ -597,6 +601,10 @@ lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
 
 void
 lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* LIB_MUSER_H */
 

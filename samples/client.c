@@ -43,9 +43,9 @@
 #include <sys/stat.h>
 #include <libgen.h>
 
-#include "../lib/common.h"
-#include "../lib/muser.h"
-#include "../lib/tran_sock.h"
+#include "common.h"
+#include "muser.h"
+#include "tran_sock.h"
 
 #define CLIENT_MAX_FDS (32)
 

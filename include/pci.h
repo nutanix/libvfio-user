@@ -37,6 +37,10 @@
 #include <stdbool.h>
 #include <linux/pci_regs.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * These are already defined in include/uapi/linux/pci_regs.h, however that
  * file doesn't seem to installed.
@@ -198,6 +202,10 @@ typedef struct {
 } __attribute__ ((packed)) lm_pci_config_space_t;
 _Static_assert(sizeof(lm_pci_config_space_t) == 0x100,
                "bad PCI configuration space size");
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* LIBMUSER_PCI_H */
 

@@ -31,9 +31,8 @@
 
 // FIXME: license header (and SPDX ?) everywhere
 
-/* FIXME: regularize across private headers */
-#ifndef MUSER_MIGRATION_H
-#define MUSER_MIGRATION_H
+#ifndef LIB_MUSER_MIGRATION_H
+#define LIB_MUSER_MIGRATION_H
 
 /*
  * These are not public routines, but for convenience, they are used by the
@@ -44,22 +43,30 @@
 
 #include "muser.h"
 
-struct migration *init_migration(const lm_migration_t * const lm_migr);
+struct migration *
+init_migration(const lm_migration_t * const lm_migr);
 
-ssize_t handle_migration_region_access(lm_ctx_t *lm_ctx, void *pvt,
-                                       struct migration *migr,
-                                       char *buf, size_t count,
-                                       loff_t pos, bool is_write);
+ssize_t
+handle_migration_region_access(lm_ctx_t *lm_ctx, void *pvt,
+                               struct migration *migr,
+                               char *buf, size_t count,
+                               loff_t pos, bool is_write);
 
-bool migration_available(lm_ctx_t *lm_ctx);
+bool
+migration_available(lm_ctx_t *lm_ctx);
 
-bool device_is_stopped_and_copying(struct migration *migr);
+bool
+device_is_stopped_and_copying(struct migration *migr);
 
-bool device_is_stopped(struct migration *migr);
+bool
+device_is_stopped(struct migration *migr);
 
-size_t migration_get_pgsize(struct migration *migr);
+size_t
+migration_get_pgsize(struct migration *migr);
 
-int migration_set_pgsize(struct migration *migr, size_t pgsize);
+int
+migration_set_pgsize(struct migration *migr, size_t pgsize);
 
-#endif /* MUSER_MIGRATION_H */
+#endif /* LIB_MUSER_MIGRATION_H */
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

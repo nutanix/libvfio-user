@@ -41,9 +41,9 @@
 #include <signal.h>
 #include <errno.h>
 
-#include "../lib/common.h"
-#include "../lib/muser.h"
-#include "../lib/tran_sock.h"
+#include "common.h"
+#include "muser.h"
+#include "tran_sock.h"
 
 static void
 _log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)

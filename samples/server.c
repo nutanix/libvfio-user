@@ -44,9 +44,9 @@
 #include <sys/param.h>
 #include <sys/time.h>
 
-#include "../lib/common.h"
-#include "../lib/muser.h"
-#include "../lib/tran_sock.h"
+#include "common.h"
+#include "muser.h"
+#include "tran_sock.h"
 
 struct dma_regions {
     uint64_t addr;
@@ -65,7 +65,7 @@ struct server_data {
         __u64 data_size;
         void *migr_data;
         size_t migr_data_len;
-        lm_migr_state_t state; 
+        lm_migr_state_t state;
     } migration;
 };
 

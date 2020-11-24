@@ -39,14 +39,11 @@ add_library(muser SHARED
     $<TARGET_OBJECTS:migration>
     $<TARGET_OBJECTS:irq>
     common.h
-    muser.h
+    irq.h
     muser_priv.h
-    tran_sock.h
-    vfio_user.h
-    irq.h)
+    tran_sock.h)
 
 set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
-set_target_properties(muser PROPERTIES PUBLIC_HEADER "muser.h;pci.h;vfio_user.h")
 
 target_link_libraries(muser json-c pthread)
 
@@ -61,23 +58,16 @@ function(add_library_ut lib)
     set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
 endfunction(add_library_ut)
 
-add_library_ut(cap cap.c cap.h)
-add_library_ut(dma dma.c dma.h)
-add_library_ut(muser_ctx muser_ctx.c muser.h)
-add_library_ut(muser_pci muser_pci.c pci.h)
-add_library_ut(tran_sock tran_sock.c tran_sock.h)
-add_library_ut(migration migration.c migration.h)
-add_library_ut(irq irq.c irq.h)
-
-set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
+add_library_ut(cap cap.c)
+add_library_ut(dma dma.c)
+add_library_ut(muser_ctx muser_ctx.c)
+add_library_ut(muser_pci muser_pci.c)
+add_library_ut(tran_sock tran_sock.c)
+add_library_ut(migration migration.c)
+add_library_ut(irq irq.c)
 
 install(TARGETS muser
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    PUBLIC_HEADER DESTINATION ${MUSER_HEADERS_DIR})
-
-install(DIRECTORY "caps"
-        DESTINATION ${MUSER_HEADERS_DIR}
-        FILES_MATCHING PATTERN "*.h")
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 if (DEFINED ENV{PYTHON_BINDINGS})
         add_custom_target(python_bindings_build ALL
