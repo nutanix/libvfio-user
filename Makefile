@@ -53,6 +53,9 @@ PHONY_TARGETS := all realclean buildclean force_cmake export install-export tags
 all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
 	+$(MAKE) -C $(BUILD_DIR) $@
 
+test: all
+	cd $(BUILD_DIR)/test; ctest --verbose
+
 realclean:
 	rm -rf $(BUILD_DIR_BASE)
 
