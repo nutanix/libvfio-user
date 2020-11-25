@@ -514,15 +514,15 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
         return -EINVAL;
     }
 
+    if (lm_ctx->dma == NULL) {
+        return 0;
+    }
+
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
     if (map && nr_dma_regions != nr_fds) {
         lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
                nr_dma_regions, nr_fds);
         return -EINVAL;
-    }
-
-    if (lm_ctx->dma == NULL) {
-        return 0;
     }
 
     for (i = 0; i < nr_dma_regions; i++) {
