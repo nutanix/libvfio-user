@@ -26,5 +26,8 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-add_executable(test test.c )
-target_link_libraries(test cmocka json-c muser)
+add_executable(unit-tests unit-tests.c)
+target_link_libraries(unit-tests cmocka json-c muser)
+
+enable_testing()
+add_test(NAME unit-tests COMMAND unit-tests)

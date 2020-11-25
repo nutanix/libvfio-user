@@ -6,3 +6,4 @@ before_install:
 script:
   - make
   - make BUILD_TYPE=rel
+  - make test
