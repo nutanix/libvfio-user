@@ -428,7 +428,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
-    ret = lm_setup_log(lm_ctx, verbose ? _log : NULL, LM_DBG);
+    ret = lm_setup_log(lm_ctx, _log, verbose ? LM_DBG : LM_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }

@@ -1246,6 +1246,7 @@ lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
     // Set other context data.
     lm_ctx->pvt = pvt;
     lm_ctx->flags = flags;
+    lm_ctx->log_lvl = LM_ERR;
 
     lm_ctx->uuid = strdup(path);
     if (lm_ctx->uuid == NULL) {
