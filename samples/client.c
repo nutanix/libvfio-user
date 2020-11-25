@@ -490,14 +490,14 @@ access_bar0(int sock, int irq_fd, time_t *t)
 
     assert(t != NULL);
 
-    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, t, sizeof *t);
+    ret = access_region(sock, LM_PCI_DEV_BAR0_REG_IDX, true, 0, t, sizeof *t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
     printf("wrote to BAR0: %ld\n", *t);
 
-    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, false, 0, t, sizeof *t);
+    ret = access_region(sock, LM_PCI_DEV_BAR0_REG_IDX, false, 0, t, sizeof *t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to read from BAR0: %s", strerror(-ret));
     }
@@ -956,7 +956,7 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "could not find migration region");
     }
 
-    ret = access_region(sock, LM_DEV_CFG_REG_IDX, false, 0, &config_space,
+    ret = access_region(sock, LM_PCI_DEV_CFG_REG_IDX, false, 0, &config_space,
                         sizeof config_space);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to read PCI configuration space: %s\n",
@@ -1064,7 +1064,7 @@ int main(int argc, char *argv[])
      * TODO make this value a command line option.
      */
     t = time(NULL) + 2;
-    ret = access_region(sock, LM_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
+    ret = access_region(sock, LM_PCI_DEV_BAR0_REG_IDX, true, 0, &t, sizeof t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }

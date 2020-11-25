@@ -115,7 +115,7 @@ main(int argc, char *argv[])
         goto out;
     }
 
-    ret = lm_setup_region(lm_ctx, LM_DEV_BAR2_REG_IDX, 0x100, &bar2_access,
+    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR2_REG_IDX, 0x100, &bar2_access,
                           LM_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
         fprintf(stderr, "failed to setup region\n");

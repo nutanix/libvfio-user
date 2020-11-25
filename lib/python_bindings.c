@@ -34,7 +34,7 @@
 
 #include "muser.h"
 
-static PyObject *region_access_callbacks[LM_DEV_NUM_REGS];
+static PyObject *region_access_callbacks[LM_PCI_DEV_NUM_REGS];
 
 static int
 handle_read(char *dst, PyObject *result, int count)
@@ -107,7 +107,7 @@ REGION_WRAP(6)
 REGION_WRAP(7)
 REGION_WRAP(8)
 
-static ssize_t (*region_access_wraps[LM_DEV_NUM_REGS])(void *, char *, size_t,
+static ssize_t (*region_access_wraps[LM_PCI_DEV_NUM_REGS])(void *, char *, size_t,
                                                        loff_t, bool) = {
     r_0_wrap,
     r_1_wrap,
@@ -155,7 +155,7 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
     int err;
     lm_dev_info_t dev_info = { 0 };
     int i;
-    struct _region_info _ri[LM_DEV_NUM_REGS] = { 0 };
+    struct _region_info _ri[LM_PCI_DEV_NUM_REGS] = { 0 };
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
@@ -184,11 +184,11 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    for (i = 0; i < LM_DEV_NUM_REGS; i++) {
+    for (i = 0; i < LM_PCI_DEV_NUM_REGS; i++) {
         int j;
         uint32_t flags = 0;
 
-        if (i == LM_DEV_CFG_REG_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
+        if (i == LM_PCI_DEV_CFG_REG_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
             continue;
         }
 

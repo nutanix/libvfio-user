@@ -294,7 +294,7 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
     assert(pos != NULL);
     assert(buf != NULL);
 
-    _pos = *pos - region_to_offset(LM_DEV_CFG_REG_IDX);
+    _pos = *pos - region_to_offset(LM_PCI_DEV_CFG_REG_IDX);
     _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
 
     if (is_write) {
@@ -310,7 +310,7 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
 static inline bool
 muser_is_pci_hdr_access(uint64_t pos)
 {
-    const uint64_t off = region_to_offset(LM_DEV_CFG_REG_IDX);
+    const uint64_t off = region_to_offset(LM_PCI_DEV_CFG_REG_IDX);
     return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 

@@ -293,18 +293,18 @@ int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
 typedef ssize_t (lm_region_access_cb_t) (void *pvt, char *buf, size_t count,
                                          loff_t offset, bool is_write);
 
-/* FIXME these are PCI regions */
+/* PCI regions */
 enum {
-    LM_DEV_BAR0_REG_IDX,
-    LM_DEV_BAR1_REG_IDX,
-    LM_DEV_BAR2_REG_IDX,
-    LM_DEV_BAR3_REG_IDX,
-    LM_DEV_BAR4_REG_IDX,
-    LM_DEV_BAR5_REG_IDX,
-    LM_DEV_ROM_REG_IDX,
-    LM_DEV_CFG_REG_IDX,
-    LM_DEV_VGA_REG_IDX,
-    LM_DEV_NUM_REGS, /* TODO rename to LM_DEV_NUM_PCI_REGS */
+    LM_PCI_DEV_BAR0_REG_IDX,
+    LM_PCI_DEV_BAR1_REG_IDX,
+    LM_PCI_DEV_BAR2_REG_IDX,
+    LM_PCI_DEV_BAR3_REG_IDX,
+    LM_PCI_DEV_BAR4_REG_IDX,
+    LM_PCI_DEV_BAR5_REG_IDX,
+    LM_PCI_DEV_ROM_REG_IDX,
+    LM_PCI_DEV_CFG_REG_IDX,
+    LM_PCI_DEV_VGA_REG_IDX,
+    LM_PCI_DEV_NUM_REGS,
 };
 
 /**
