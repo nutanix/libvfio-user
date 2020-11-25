@@ -1,9 +1,7 @@
 #
-# Copyright (c) 2019 Nutanix Inc. All rights reserved.
+# Copyright (c) 2020 Nutanix Inc. All rights reserved.
 #
 # Authors: Thanos Makatos <thanos@nutanix.com>
-#          Swapnil Ingle <swapnil.ingle@nutanix.com>
-#          Felipe Franciosi <felipe@nutanix.com>
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -28,34 +26,5 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-cmake_minimum_required (VERSION 2.6)
-project(muser)
-include(GNUInstallDirs)
-
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSON REQUIRED json-c)
-
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/lib)
-include_directories(${JSON_INCLUDE_DIRS})
-
-set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
-#
-# NB: this intentionally does not define NDEBUG: we want our assert()s even in a
-# release build.
-#
-set(CMAKE_C_FLAGS_RELEASE "-O3")
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wextra")
-
-# public headers
-add_subdirectory(include)
-
-# shared libraries
-add_subdirectory(lib)
-
-# samples
-add_subdirectory(samples)
-
-# test
-add_subdirectory(test)
+add_executable(test test.c )
+target_link_libraries(test cmocka json-c muser)
