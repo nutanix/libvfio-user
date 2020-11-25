@@ -29,13 +29,14 @@
 #
 
 add_executable(server server.c)
-target_link_libraries(server muser ssl crypto)
+target_link_libraries(server vfio-user ssl crypto)
+
 add_executable(client client.c
-                      ../lib/tran_sock.c ../lib/migration.c)
+               ../lib/tran_sock.c ../lib/migration.c)
 target_link_libraries(client json-c)
 
 add_executable(null null.c)
-target_link_libraries(null muser pthread)
+target_link_libraries(null vfio-user pthread)
 
 add_executable(gpio-pci-idio-16 gpio-pci-idio-16.c)
-target_link_libraries(gpio-pci-idio-16 muser)
+target_link_libraries(gpio-pci-idio-16 vfio-user)

@@ -45,7 +45,7 @@
 #include <sys/time.h>
 
 #include "common.h"
-#include "muser.h"
+#include "libvfio-user.h"
 #include "tran_sock.h"
 
 struct dma_regions {
@@ -56,7 +56,7 @@ struct dma_regions {
 #define NR_DMA_REGIONS  96
 
 struct server_data {
-    lm_ctx_t *lm_ctx;
+    vu_ctx_t *vu_ctx;
     time_t bar0;
     uint8_t *bar1;
     struct dma_regions regions[NR_DMA_REGIONS];
@@ -65,12 +65,12 @@ struct server_data {
         __u64 data_size;
         void *migr_data;
         size_t migr_data_len;
-        lm_migr_state_t state;
+        vu_migr_state_t state;
     } migration;
 };
 
 static void
-_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
+_log(UNUSED void *pvt, UNUSED vu_log_lvl_t lvl, char const *msg)
 {
     fprintf(stderr, "server: %s\n", msg);
 }
@@ -79,10 +79,10 @@ static int
 arm_timer(struct server_data *server_data, time_t t)
 {
     struct itimerval new = {.it_value.tv_sec = t - time(NULL) };
-    lm_log(server_data->lm_ctx, LM_DBG,
+    vu_log(server_data->vu_ctx, VU_DBG,
            "arming timer to trigger in %ld seconds", new.it_value.tv_sec);
     if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
-        lm_log(server_data->lm_ctx, LM_ERR, "failed to arm timer: %m");
+        vu_log(server_data->vu_ctx, VU_ERR, "failed to arm timer: %m");
         return -errno;
     }
     return 0;
@@ -95,14 +95,14 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
     struct server_data *server_data = pvt;
 
     if (count != sizeof(time_t) || offset != 0) {
-        lm_log(server_data->lm_ctx, LM_ERR, "bad BAR0 access %#lx-%#lx",
+        vu_log(server_data->vu_ctx, VU_ERR, "bad BAR0 access %#lx-%#lx",
                offset, offset + count - 1);
         errno = EINVAL;
         return -1;
     }
 
     if (is_write) {
-        if (server_data->migration.state == LM_MIGR_STATE_RUNNING) {
+        if (server_data->migration.state == VU_MIGR_STATE_RUNNING) {
             int ret = arm_timer(server_data, *(time_t*)buf);
             if (ret < 0) {
                 return ret;
@@ -188,7 +188,7 @@ void get_md5sum(unsigned char *buf, int len, unsigned char *md5sum)
  * sparsely memory mappable. We should also have a test where the server does
  * DMA directly on the client memory.
  */
-static void do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
+static void do_dma_io(vu_ctx_t *vu_ctx, struct server_data *server_data)
 {
     int count = 4096;
     unsigned char buf[count];
@@ -196,9 +196,9 @@ static void do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
     int i, ret;
     dma_sg_t sg;
 
-    assert(lm_ctx != NULL);
+    assert(vu_ctx != NULL);
 
-    ret = lm_addr_to_sg(lm_ctx, server_data->regions[0].addr, count, &sg,
+    ret = vu_addr_to_sg(vu_ctx, server_data->regions[0].addr, count, &sg,
                         1, PROT_WRITE);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to map %#lx-%#lx: %s\n",
@@ -210,17 +210,17 @@ static void do_dma_io(lm_ctx_t *lm_ctx, struct server_data *server_data)
     get_md5sum(buf, count, md5sum1);
     printf("%s: WRITE addr %#lx count %d\n", __func__,
            server_data->regions[0].addr, count);
-    ret = lm_dma_write(lm_ctx, &sg, buf);
+    ret = vu_dma_write(vu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "lm_dma_write failed: %s\n", strerror(-ret));
+        errx(EXIT_FAILURE, "vu_dma_write failed: %s\n", strerror(-ret));
     }
 
     memset(buf, 0, count);
     printf("%s: READ  addr %#lx count %d\n", __func__,
            server_data->regions[0].addr, count);
-    ret = lm_dma_read(lm_ctx, &sg, buf);
+    ret = vu_dma_read(vu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "lm_dma_read failed: %s\n", strerror(-ret));
+        errx(EXIT_FAILURE, "vu_dma_read failed: %s\n", strerror(-ret));
     }
     get_md5sum(buf, count, md5sum2);
     for(i = 0; i < MD5_DIGEST_LENGTH; i++) {
@@ -246,7 +246,7 @@ static int device_reset(UNUSED void *pvt)
 }
 
 static int
-migration_device_state_transition(void *pvt, lm_migr_state_t state)
+migration_device_state_transition(void *pvt, vu_migr_state_t state)
 {
     int ret;
     struct server_data *server_data = pvt;
@@ -254,16 +254,16 @@ migration_device_state_transition(void *pvt, lm_migr_state_t state)
     printf("migration: transition to device state %d\n", state);
 
     switch (state) {
-        case LM_MIGR_STATE_STOP_AND_COPY:
+        case VU_MIGR_STATE_STOP_AND_COPY:
             /* TODO must be less than size of data region in migration region */
             server_data->migration.pending_bytes = sysconf(_SC_PAGESIZE);
             break;
-        case LM_MIGR_STATE_STOP:
+        case VU_MIGR_STATE_STOP:
             assert(server_data->migration.pending_bytes == 0);
             break;
-        case LM_MIGR_STATE_RESUME:
+        case VU_MIGR_STATE_RESUME:
             break;
-        case LM_MIGR_STATE_RUNNING:
+        case VU_MIGR_STATE_RUNNING:
             ret = arm_timer(server_data, server_data->bar0);
             if (ret < 0) {
                 return ret;
@@ -303,7 +303,7 @@ migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
     struct server_data *server_data = pvt;
 
     if (server_data->migration.data_size < size) {
-        lm_log(server_data->lm_ctx, LM_ERR,
+        vu_log(server_data->vu_ctx, VU_ERR,
                "invalid migration data read %#llx-%#llx",
                offset, offset + size - 1);
         return -EINVAL;
@@ -328,7 +328,7 @@ migration_write_data(void *pvt, void *data, __u64 size, __u64 offset)
     assert(data != NULL);
 
     if (offset + size > server_data->migration.migr_data_len) {
-        lm_log(server_data->lm_ctx, LM_ERR,
+        vu_log(server_data->vu_ctx, VU_ERR,
                "invalid write %#llx-%#llx", offset, offset + size - 1);
     }
 
@@ -347,7 +347,7 @@ migration_data_written(void *pvt, __u64 count, __u64 offset)
     assert(server_data != NULL);
 
     if (offset + count > server_data->migration.migr_data_len) {
-        lm_log(server_data->lm_ctx, LM_ERR,
+        vu_log(server_data->vu_ctx, VU_ERR,
                "bad migration data range %#llx-%#llx",
                offset, offset + count - 1);
         return -EINVAL;
@@ -377,15 +377,15 @@ int main(int argc, char *argv[])
         .migration = {
             /* one page so that we can memory map it */
             .migr_data_len = sysconf(_SC_PAGESIZE),
-            .state = LM_MIGR_STATE_RUNNING
+            .state = VU_MIGR_STATE_RUNNING
         }
     };
     int nr_sparse_areas = 2, size = 1024, i;
-    struct lm_sparse_mmap_areas *sparse_areas;
-    lm_ctx_t *lm_ctx;
-    lm_pci_hdr_id_t id = {.raw = 0xdeadbeef};
-    lm_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
-    lm_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
+    struct vu_sparse_mmap_areas *sparse_areas;
+    vu_ctx_t *vu_ctx;
+    vu_pci_hdr_id_t id = {.raw = 0xdeadbeef};
+    vu_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
+    vu_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
     }
 
     if (optind >= argc) {
-        errx(EXIT_FAILURE, "missing MUSER socket path");
+        errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
     /* coverity[NEGATIVE_RETURNS] */
@@ -408,7 +408,7 @@ int main(int argc, char *argv[])
     }
 
     sparse_areas = calloc(1, sizeof(*sparse_areas) +
-			  (nr_sparse_areas * sizeof(struct lm_mmap_area)));
+			  (nr_sparse_areas * sizeof(struct vu_mmap_area)));
     if (sparse_areas == NULL) {
         err(EXIT_FAILURE, "MMAP sparse areas ENOMEM");
     }
@@ -422,50 +422,50 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    server_data.lm_ctx = lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
+    server_data.vu_ctx = vu_ctx = vu_create_ctx(VU_TRANS_SOCK, argv[optind], 0,
                                                 &server_data);
-    if (lm_ctx == NULL) {
+    if (vu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
-    ret = lm_setup_log(lm_ctx, _log, verbose ? LM_DBG : LM_ERR);
+    ret = vu_setup_log(vu_ctx, _log, verbose ? VU_DBG : VU_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
+    ret = vu_pci_setup_config_hdr(vu_ctx, id, ss, cc, false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup PCI header");
     }
 
-    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
-                          &bar0_access, LM_REG_FLAG_RW, NULL, NULL);
+    ret = vu_setup_region(vu_ctx, VU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
+                          &bar0_access, VU_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
-    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR1_REGION_IDX, sysconf(_SC_PAGESIZE),
-                          &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
+    ret = vu_setup_region(vu_ctx, VU_PCI_DEV_BAR1_REGION_IDX, sysconf(_SC_PAGESIZE),
+                          &bar1_access, VU_REG_FLAG_RW, sparse_areas, map_area);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    ret = lm_setup_device_reset_cb(lm_ctx, &device_reset);
+    ret = vu_setup_device_reset_cb(vu_ctx, &device_reset);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device reset callbacks");
     }
 
-    ret = lm_setup_device_dma_cb(lm_ctx, &map_dma, &unmap_dma);
+    ret = vu_setup_device_dma_cb(vu_ctx, &map_dma, &unmap_dma);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device DMA callbacks");
     }
 
-    ret = lm_setup_device_nr_irqs(lm_ctx, LM_DEV_INTX_IRQ, 1);
+    ret = vu_setup_device_nr_irqs(vu_ctx, VU_DEV_INTX_IRQ, 1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup irq counts");
     }
 
-    lm_migration_t migration = {
+    vu_migration_t migration = {
         .size = server_data.migration.migr_data_len,
         .mmap_areas = sparse_areas,
         .callbacks = {
@@ -478,7 +478,7 @@ int main(int argc, char *argv[])
         }
     };
 
-    ret = lm_setup_device_migration(lm_ctx, &migration);
+    ret = vu_setup_device_migration(vu_ctx, &migration);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
     }
@@ -490,18 +490,18 @@ int main(int argc, char *argv[])
     }
 
     do {
-        ret = lm_ctx_drive(lm_ctx);
+        ret = vu_ctx_drive(vu_ctx);
         if (ret == -EINTR) {
             if (irq_triggered) {
                 irq_triggered = false;
-                lm_irq_trigger(lm_ctx, 0);
+                vu_irq_trigger(vu_ctx, 0);
 
-                ret = lm_irq_message(lm_ctx, 0);
+                ret = vu_irq_message(vu_ctx, 0);
                 if (ret < 0) {
-                    err(EXIT_FAILURE, "lm_irq_message() failed");
+                    err(EXIT_FAILURE, "vu_irq_message() failed");
                 }
 
-                do_dma_io(lm_ctx, &server_data);
+                do_dma_io(vu_ctx, &server_data);
                 ret = 0;
             }
         }
@@ -512,7 +512,7 @@ int main(int argc, char *argv[])
              strerror(-ret));
     }
 
-    lm_ctx_destroy(lm_ctx);
+    vu_ctx_destroy(vu_ctx);
     free(server_data.bar1);
     free(sparse_areas);
     return EXIT_SUCCESS;

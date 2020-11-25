@@ -28,8 +28,8 @@
  *
  */
 
-#ifndef LIB_MUSER_DMA_H
-#define LIB_MUSER_DMA_H
+#ifndef LIB_VFIO_USER_DMA_H
+#define LIB_VFIO_USER_DMA_H
 
 /*
  * FIXME check whether DMA regions must be page aligned. If so then the
@@ -75,10 +75,10 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#include "muser.h"
+#include "libvfio-user.h"
 #include "common.h"
 
-struct lm_ctx;
+struct vu_ctx;
 
 typedef struct {
     dma_addr_t dma_addr;        // DMA address of this region
@@ -94,13 +94,13 @@ typedef struct {
 typedef struct {
     int max_regions;
     int nregions;
-    struct lm_ctx *lm_ctx;
+    struct vu_ctx *vu_ctx;
     size_t dirty_pgsize;        // Dirty page granularity
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
 dma_controller_t *
-dma_controller_create(lm_ctx_t *lm_ctx, int max_regions);
+dma_controller_create(vu_ctx_t *vu_ctx, int max_regions);
 
 void
 dma_controller_destroy(dma_controller_t *dma);
@@ -120,7 +120,7 @@ dma_controller_add_region(dma_controller_t *dma,
 int
 dma_controller_remove_region(dma_controller_t *dma,
                              dma_addr_t dma_addr, size_t size,
-                             lm_unmap_dma_cb_t *unmap_dma, void *data);
+                             vu_unmap_dma_cb_t *unmap_dma, void *data);
 
 // Helper for dma_addr_to_sg() slow path.
 int
@@ -238,7 +238,7 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
     int i;
 
     for (i = 0; i < cnt; i++) {
-        lm_log(dma->lm_ctx, LM_DBG, "map %#lx-%#lx\n",
+        vu_log(dma->vu_ctx, VU_DBG, "map %#lx-%#lx\n",
                sg->dma_addr + sg->offset, sg->dma_addr + sg->offset + sg->length);
         region = &dma->regions[sg[i].region];
         iov[i].iov_base = region->virt_addr + sg[i].offset;
@@ -271,7 +271,7 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             /* bad region */
             continue;
         }
-        lm_log(dma->lm_ctx, LM_DBG, "unmap %#lx-%#lx\n",
+        vu_log(dma->vu_ctx, VU_DBG, "unmap %#lx-%#lx\n",
                sg[i].dma_addr + sg[i].offset, sg[i].dma_addr + sg[i].offset + sg[i].length);
         r->refcnt--;
     }
@@ -325,6 +325,6 @@ bool
 dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
                             size_t size);
 
-#endif /* LIB_MUSER_DMA_H */
+#endif /* LIB_VFIO_USER_DMA_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

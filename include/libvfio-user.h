@@ -30,8 +30,13 @@
  *
  */
 
-#ifndef LIB_MUSER_H
-#define LIB_MUSER_H
+/*
+ * Defines the libvfio-user server-side API.  The protocol definitions can be
+ * found in vfio-user.h.
+ */
+
+#ifndef LIB_VFIO_USER_H
+#define LIB_VFIO_USER_H
 
 #include <stdint.h>
 #include <sys/uio.h>
@@ -42,15 +47,16 @@
 #include "pci_caps/px.h"
 #include "pci_caps/msi.h"
 #include "pci_caps/msix.h"
-#include "vfio_user.h"
+#include "vfio-user.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define LIB_MUSER_VFIO_USER_VERS_MJ 0
-#define LIB_MUSER_VFIO_USER_VERS_MN 1
+#define LIB_VFIO_USER_MAJOR 0
+#define LIB_VFIO_USER_MINOR 1
 
+// FIXME: too common a name?
 typedef uint64_t dma_addr_t;
 
 typedef struct {
@@ -60,66 +66,68 @@ typedef struct {
     uint64_t offset;
 } dma_sg_t;
 
-typedef struct lm_ctx lm_ctx_t;
+typedef struct vu_ctx vu_ctx_t;
 
-struct lm_mmap_area {
+struct vu_mmap_area {
     uint64_t start;
     uint64_t size;
 };
 
-struct lm_sparse_mmap_areas {
+struct vu_sparse_mmap_areas {
     int nr_mmap_areas;
-    struct lm_mmap_area areas[];
+    struct vu_mmap_area areas[];
 };
 
 /**
  * Prototype for memory access callback. The program MUST first map device
- * memory in its own virtual address space using lm_mmap, do any additional
- * work required, and finally return that memory. When a region is memory
- * mapped, libmuser calls previously register callback with the following
+ * memory in its own virtual address space using vu_mmap, do any additional work
+ * required, and finally return that memory. When a region is memory mapped,
+ * libvfio-user calls the previously registered callback with the following
  * arguments:
  *
  * @pvt: private pointer
  * @off: offset of memory area being memory mapped
  * @len: length of memory area being memory mapped
  *
- * @returns the memory address returned by lm_mmap, or MAP_FAILED on failure
+ * @returns the memory address returned by vu_mmap, or MAP_FAILED on failure
  */
-typedef unsigned long (lm_map_region_cb_t) (void *pvt, unsigned long off,
-                                         unsigned long len);
+typedef unsigned long (vu_map_region_cb_t) (void *pvt, unsigned long off,
+                                            unsigned long len);
 
 /**
  * Creates a mapping of a device region into the caller's virtual memory. It
- * must be called by lm_map_region_cb_t.
+ * must be called by vu_map_region_cb_t.
  *
- * @lm_ctx: the libmuser context to create mapping from
+ * @vu_ctx: the context to create mapping from
  * @offset: offset of the region being mapped
  * @length: size of the region being mapped
  *
  * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
-void *lm_mmap(lm_ctx_t * lm_ctx, off_t offset, size_t length);
+void *
+vu_mmap(vu_ctx_t * vu_ctx, off_t offset, size_t length);
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
  */
-lm_pci_config_space_t *lm_get_pci_config_space(lm_ctx_t *lm_ctx);
+vu_pci_config_space_t *
+vu_pci_get_config_space(vu_ctx_t *vu_ctx);
 
-#define LM_DMA_REGIONS  0x10
+#define VU_DMA_REGIONS  0x10
 
 typedef enum {
-    LM_ERR,
-    LM_INF,
-    LM_DBG
-} lm_log_lvl_t;
+    VU_ERR,
+    VU_INF,
+    VU_DBG
+} vu_log_lvl_t;
 
 /**
  * Callback function signature for log function
  * @pvt: private pointer
- * @lm_log_fn_t: typedef for log function.
+ * @vu_log_fn_t: typedef for log function.
  * @msg: message
  */
-typedef void (lm_log_fn_t) (void *pvt, lm_log_lvl_t lvl, const char *msg);
+typedef void (vu_log_fn_t) (void *pvt, vu_log_lvl_t lvl, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
@@ -135,7 +143,7 @@ typedef void (lm_log_fn_t) (void *pvt, lm_log_lvl_t lvl, const char *msg);
  *
  * @returns the number of bytes read or written
  */
-typedef ssize_t (lm_cap_access_t) (void *pvt, uint8_t id,
+typedef ssize_t (vu_cap_access_t) (void *pvt, uint8_t id,
                                    char *buf, size_t count,
                                    loff_t offset, bool is_write);
 
@@ -145,14 +153,14 @@ typedef union {
     struct msixcap msix;
     struct pmcap pm;
     struct pxcap px;
-} lm_cap_t;
+} vu_cap_t;
 
 typedef enum {
-    LM_TRANS_SOCK,
-    LM_TRANS_MAX
-} lm_trans_t;
+    VU_TRANS_SOCK,
+    VU_TRANS_MAX
+} vu_trans_t;
 
-#define LM_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
+#define VU_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
 /*
  * FIXME the names of migration callback functions are probably far too long,
@@ -162,22 +170,22 @@ typedef enum {
  * Migration callback function.
  * @pvt: private pointer
  */
-typedef int (lm_migration_callback_t)(void *pvt);
+typedef int (vu_migration_callback_t)(void *pvt);
 
 typedef enum {
-    LM_MIGR_STATE_STOP,
-    LM_MIGR_STATE_RUNNING,
-    LM_MIGR_STATE_STOP_AND_COPY,
-    LM_MIGR_STATE_PRE_COPY,
-    LM_MIGR_STATE_RESUME
-} lm_migr_state_t;
+    VU_MIGR_STATE_STOP,
+    VU_MIGR_STATE_RUNNING,
+    VU_MIGR_STATE_STOP_AND_COPY,
+    VU_MIGR_STATE_PRE_COPY,
+    VU_MIGR_STATE_RESUME
+} vu_migr_state_t;
 
 typedef struct {
 
     /* migration state transition callback */
-    /* TODO rename to lm_migration_state_transition_callback */
+    /* TODO rename to vu_migration_state_transition_callback */
     /* FIXME maybe we should create a single callback and pass the state? */
-    int (*transition)(void *pvt, lm_migr_state_t state);
+    int (*transition)(void *pvt, vu_migr_state_t state);
 
     /* Callbacks for saving device state */
 
@@ -218,76 +226,80 @@ typedef struct {
     /* Fuction that is called for writing previously stored device state. */
     size_t (*write_data)(void *pvt, void *buf, __u64 count, __u64 offset);
 
-} lm_migration_callbacks_t;
+} vu_migration_callbacks_t;
 
 typedef struct {
     size_t                      size;
-    lm_migration_callbacks_t    callbacks;
-    struct lm_sparse_mmap_areas *mmap_areas;
-} lm_migration_t;
+    vu_migration_callbacks_t    callbacks;
+    struct vu_sparse_mmap_areas *mmap_areas;
+} vu_migration_t;
 
 /*
  * Attaching to the transport is non-blocking. The library will not attempt
  * to attach during context creation time. The caller must then manually
- * call lm_ctx_try_attach(), which is non-blocking, as many times as
+ * call vu_ctx_try_attach(), which is non-blocking, as many times as
  * necessary.
  */
-#define LM_FLAG_ATTACH_NB  (1 << 0)
+#define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
 /**
- * Creates libmuser context.
+ * Creates libvfio-user context.
  * @trans: transport type
  * @path: path to socket file.
  * @flags: context flag
  * @pvt: private data
- * @returns the lm_ctx to be used or NULL on error. Sets errno.
+ * @returns the vu_ctx to be used or NULL on error. Sets errno.
  */
-lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path,
-                        int flags, void *pvt);
+vu_ctx_t *
+vu_create_ctx(vu_trans_t trans, const char *path,
+              int flags, void *pvt);
 
 /**
  * Setup logging information.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @log: logging function
  * @log_lvl: logging level
  */
-int lm_setup_log(lm_ctx_t *lm_ctx, lm_log_fn_t *log, lm_log_lvl_t log_lvl);
+int
+vu_setup_log(vu_ctx_t *vu_ctx, vu_log_fn_t *log, vu_log_lvl_t log_lvl);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
-//      Or should we pass whole lm_pci_hdr_t to be filled by user.
+//      Or should we pass whole vu_pci_hdr_t to be filled by user.
 /**
  * Setup PCI header data.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @id: Device and vendor ID
  * @ss: Subsystem vendor and device ID
  * @cc: Class code
  * @extended: support extended PCI config space
  */
-int lm_pci_setup_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,
-                            lm_pci_hdr_ss_t ss, lm_pci_hdr_cc_t cc,
-                            bool extended);
+int
+vu_pci_setup_config_hdr(vu_ctx_t *vu_ctx, vu_pci_hdr_id_t id,
+                        vu_pci_hdr_ss_t ss, vu_pci_hdr_cc_t cc,
+                        bool extended);
 
 //TODO: Support variable size capabilities.
 /**
  * Setup PCI capabilities.
- * @lm_ctx: the libmuser context
- * @caps: array of (lm_cap_t *)
+ * @vu_ctx: the libvfio-user context
+ * @caps: array of (vu_cap_t *)
  * *nr_caps: number of elements in @caps
  */
-int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
+int
+vu_pci_setup_caps(vu_ctx_t *vu_ctx, vu_cap_t **caps, int nr_caps);
 
 // Region flags.
-#define LM_REG_FLAG_READ    (1 << 0)
-#define LM_REG_FLAG_WRITE   (1 << 1)
-#define LM_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define LM_REG_FLAG_RW      (LM_REG_FLAG_READ | LM_REG_FLAG_WRITE)
-#define LM_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+#define VU_REG_FLAG_READ    (1 << 0)
+#define VU_REG_FLAG_WRITE   (1 << 1)
+#define VU_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define VU_REG_FLAG_RW      (VU_REG_FLAG_READ | VU_REG_FLAG_WRITE)
+#define VU_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
 /**
- * Prototype for region access callback. When a region is accessed, libmuser
+ * Prototype for region access callback. When a region is accessed, libvfio-user
  * calls the previously registered callback with the following arguments:
  *
- * @pvt: private data originally passed by lm_create_ctx()
+ * @pvt: private data originally passed by vu_create_ctx()
  * @buf: buffer containing the data to be written or data to be read into
  * @count: number of bytes being read or written
  * @offset: byte offset within the region
@@ -295,26 +307,26 @@ int lm_pci_setup_caps(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps);
  *
  * @returns the number of bytes read or written, or a negative integer on error
  */
-typedef ssize_t (lm_region_access_cb_t) (void *pvt, char *buf, size_t count,
+typedef ssize_t (vu_region_access_cb_t) (void *pvt, char *buf, size_t count,
                                          loff_t offset, bool is_write);
 
 /* PCI regions */
 enum {
-    LM_PCI_DEV_BAR0_REGION_IDX,
-    LM_PCI_DEV_BAR1_REGION_IDX,
-    LM_PCI_DEV_BAR2_REGION_IDX,
-    LM_PCI_DEV_BAR3_REGION_IDX,
-    LM_PCI_DEV_BAR4_REGION_IDX,
-    LM_PCI_DEV_BAR5_REGION_IDX,
-    LM_PCI_DEV_ROM_REGION_IDX,
-    LM_PCI_DEV_CFG_REGION_IDX,
-    LM_PCI_DEV_VGA_REGION_IDX,
-    LM_PCI_DEV_NUM_REGIONS,
+    VU_PCI_DEV_BAR0_REGION_IDX,
+    VU_PCI_DEV_BAR1_REGION_IDX,
+    VU_PCI_DEV_BAR2_REGION_IDX,
+    VU_PCI_DEV_BAR3_REGION_IDX,
+    VU_PCI_DEV_BAR4_REGION_IDX,
+    VU_PCI_DEV_BAR5_REGION_IDX,
+    VU_PCI_DEV_ROM_REGION_IDX,
+    VU_PCI_DEV_CFG_REGION_IDX,
+    VU_PCI_DEV_VGA_REGION_IDX,
+    VU_PCI_DEV_NUM_REGIONS,
 };
 
 /**
  * Set up a region.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @region_idx: region index
  * @size: size of the region
  * @region_access: callback function to access region
@@ -322,16 +334,17 @@ enum {
  * @mmap_areas: mmap areas info
  * @region_map: callback function to map region
  */
-int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
-                    lm_region_access_cb_t *region_access, int flags,
-                    struct lm_sparse_mmap_areas *mmap_areas,
-                    lm_map_region_cb_t *map);
+int
+vu_setup_region(vu_ctx_t *vu_ctx, int region_idx, size_t size,
+                vu_region_access_cb_t *region_access, int flags,
+                struct vu_sparse_mmap_areas *mmap_areas,
+                vu_map_region_cb_t *map);
 
 /*
  * Callback function that is called when the guest resets the device.
  * @pvt: private pointer
  */
-typedef int (lm_reset_cb_t) (void *pvt);
+typedef int (vu_reset_cb_t) (void *pvt);
 
 /*
  * Function that is called when the guest maps a DMA region. Optional.
@@ -339,7 +352,7 @@ typedef int (lm_reset_cb_t) (void *pvt);
  * @iova: iova address
  * @len: length
  */
-typedef void (lm_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef void (vu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
@@ -349,121 +362,126 @@ typedef void (lm_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
  * @iova: iova address
  * @len: length
  */
-typedef int (lm_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef int (vu_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 
 /**
  * Setup device reset callback.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @reset: device reset callback (optional)
  */
-int lm_setup_device_reset_cb(lm_ctx_t *lm_ctx, lm_reset_cb_t *reset);
+int
+vu_setup_device_reset_cb(vu_ctx_t *vu_ctx, vu_reset_cb_t *reset);
 
 /**
  * Setup device DMA map/unmap callbacks.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @map_dma: DMA region map callback (optional)
  * @unmap_dma: DMA region unmap callback (optional)
  */
 
-int lm_setup_device_dma_cb(lm_ctx_t *lm_ctx, lm_map_dma_cb_t *map_dma,
-                           lm_unmap_dma_cb_t *unmap_dma);
+int
+vu_setup_device_dma_cb(vu_ctx_t *vu_ctx, vu_map_dma_cb_t *map_dma,
+                       vu_unmap_dma_cb_t *unmap_dma);
 
-enum lm_dev_irq_type {
-    LM_DEV_INTX_IRQ,
-    LM_DEV_MSI_IRQ,
-    LM_DEV_MSIX_IRQ,
-    LM_DEV_ERR_IRQ,
-    LM_DEV_REQ_IRQ,
-    LM_DEV_NUM_IRQS
+enum vu_dev_irq_type {
+    VU_DEV_INTX_IRQ,
+    VU_DEV_MSI_IRQ,
+    VU_DEV_MSIX_IRQ,
+    VU_DEV_ERR_IRQ,
+    VU_DEV_REQ_IRQ,
+    VU_DEV_NUM_IRQS
 };
 
 /**
  * Setup device IRQ counts.
- * @lm_ctx: the libmuser context
- * @type: IRQ type (LM_DEV_INTX_IRQ ... LM_DEV_REQ_IRQ)
+ * @vu_ctx: the libvfio-user context
+ * @type: IRQ type (VU_DEV_INTX_IRQ ... VU_DEV_REQ_IRQ)
  * @count: number of irqs
  */
-int lm_setup_device_nr_irqs(lm_ctx_t *lm_ctx, enum lm_dev_irq_type type,
-                            uint32_t count);
+int
+vu_setup_device_nr_irqs(vu_ctx_t *vu_ctx, enum vu_dev_irq_type type,
+                        uint32_t count);
 
 //TODO: Re-visit once migration support is done.
 /**
  * Enable support for device migration.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @migration: information required to migrate device
  */
-int lm_setup_device_migration(lm_ctx_t *lm_ctx, lm_migration_t *migration);
+int
+vu_setup_device_migration(vu_ctx_t *vu_ctx, vu_migration_t *migration);
 
 /**
- * Destroys libmuser context.
+ * Destroys libvfio-user context.
  *
- * @lm_ctx: the libmuser context to destroy
+ * @vu_ctx: the libvfio-user context to destroy
  */
 void
-lm_ctx_destroy(lm_ctx_t *lm_ctx);
+vu_ctx_destroy(vu_ctx_t *vu_ctx);
 
 /**
- * Once the lm_ctx is configured lm_ctx_drive() drives it. This function waits
+ * Once the vu_ctx is configured vu_ctx_drive() drives it. This function waits
  * for commands coming from the client, and processes them in a loop.
  *
- * @lm_ctx: the libmuser context to drive
+ * @vu_ctx: the libvfio-user context to drive
  *
  * @returns 0 on success, -errno on failure.
  */
 int
-lm_ctx_drive(lm_ctx_t *lm_ctx);
+vu_ctx_drive(vu_ctx_t *vu_ctx);
 
 /**
- * Polls, without blocking, an lm_ctx. This is an alternative to using
- * a thread and making a blocking call to lm_ctx_drive(). Instead, the
+ * Polls, without blocking, an vu_ctx. This is an alternative to using
+ * a thread and making a blocking call to vu_ctx_drive(). Instead, the
  * application can periodically poll the context directly from one of
  * its own threads.
  *
- * This is only allowed when LM_FLAG_ATTACH_NB is specified during creation.
+ * This is only allowed when LIBVFIO_USER_FLAG_ATTACH_NB is specified during
+ * creation.
  *
- * @lm_ctx: The libmuser context to poll
+ * @vu_ctx: The libvfio-user context to poll
  *
  * @returns 0 on success, -errno on failure.
  */
 int
-lm_ctx_poll(lm_ctx_t *lm_ctx);
+vu_ctx_poll(vu_ctx_t *vu_ctx);
 
 /**
  * Triggers an interrupt.
  *
- * libmuser takes care of using the correct IRQ type (IRQ index: INTx or MSI/X),
- * the caller only needs to specify the sub-index.
+ * libvfio-user takes care of using the correct IRQ type (IRQ index: INTx or
+ * MSI/X), the caller only needs to specify the sub-index.
  *
- * @lm_ctx: the libmuser context to trigger interrupt
+ * @vu_ctx: the libvfio-user context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
 int
-lm_irq_trigger(lm_ctx_t *lm_ctx, uint32_t subindex);
+vu_irq_trigger(vu_ctx_t *vu_ctx, uint32_t subindex);
 
 /**
  * Sends message to client to trigger an interrupt.
  *
- * libmuser takes care of using the IRQ type (INTx, MSI/X), the caller only
+ * libvfio-user takes care of using the IRQ type (INTx, MSI/X), the caller only
  * needs to specify the sub-index.
  * This api can be used to trigger interrupt by sending message to client.
  *
- * @lm_ctx: the libmuser context to trigger interrupt
+ * @vu_ctx: the libvfio-user context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
 
 int
-lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
+vu_irq_message(vu_ctx_t *vu_ctx, uint32_t subindex);
 
 /* Helper functions */
 
 /**
  * Converts a guest physical address to a dma_sg_t element which can
- * be later passed on to lm_map_sg to memory map the GPA. It is the caller's
- * responsibility to unmap it by calling lm_unmap_sg.
+ * be later passed on to vu_map_sg to memory map the GPA. It is the caller's
+ * responsibility to unmap it by calling vu_unmap_sg.
  *
  */
 
@@ -475,7 +493,7 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @dma_addr: the guest physical address
  * @len: size of memory to be mapped
  * @sg: array that receives the scatter/gather entries to be mapped
@@ -489,18 +507,18 @@ lm_irq_message(lm_ctx_t *lm_ctx, uint32_t subindex);
  *              entries necessary to complete this request.
  */
 int
-lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
+vu_addr_to_sg(vu_ctx_t *vu_ctx, dma_addr_t dma_addr, uint32_t len,
               dma_sg_t *sg, int max_sg, int prot);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
  * to the program's virtual memory. It is the caller's responsibility to remove
- * the mappings by calling lm_unmap_sg.
+ * the mappings by calling vu_unmap_sg.
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @lm_ctx: the libmuser context
- * @sg: array of scatter/gather entries returned by lm_addr_to_sg
+ * @vu_ctx: the libvfio-user context
+ * @sg: array of scatter/gather entries returned by vu_addr_to_sg
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -508,22 +526,22 @@ lm_addr_to_sg(lm_ctx_t *lm_ctx, dma_addr_t dma_addr, uint32_t len,
  * @returns 0 on success, -1 on failure
  */
 int
-lm_map_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
+vu_map_sg(vu_ctx_t *vu_ctx, const dma_sg_t *sg,
           struct iovec *iov, int cnt);
 
 /**
- * Unmaps a list scatter/gather entries (previously mapped by lm_map_sg) from
+ * Unmaps a list scatter/gather entries (previously mapped by vu_map_sg) from
  * the program's virtual memory.
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap
  * @iov: array of iovec structures for each scatter/gather entry
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
+vu_unmap_sg(vu_ctx_t *vu_ctx, const dma_sg_t *sg,
             struct iovec *iov, int cnt);
 
 //FIXME: Remove if we dont need this.
@@ -535,30 +553,30 @@ lm_unmap_sg(lm_ctx_t *lm_ctx, const dma_sg_t *sg,
  * @count: size of the address span
  * @off: output parameter that receives the relative offset within the region.
  *
- * Returns the PCI region (LM_DEV_XXX_REG_IDX), or -errno on error.
+ * Returns the PCI region (VU_PCI_DEV_XXX_REGION_IDX), or -errno on error.
  */
 int
-lm_get_region(loff_t pos, size_t count, loff_t *off);
+vu_get_region(loff_t pos, size_t count, loff_t *off);
 
 /**
  * Read from the dma region exposed by the client.
  *
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to read into
  */
 int
-lm_dma_read(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
+vu_dma_read(vu_ctx_t *vu_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Write to the dma region exposed by the client.
  *
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to write
  */
 int
-lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
+vu_dma_write(vu_ctx_t *vu_ctx, dma_sg_t *sg, void *data);
 
 /*
  * Advanced stuff.
@@ -566,37 +584,38 @@ lm_dma_write(lm_ctx_t *lm_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Returns the non-standard part of the PCI configuration space.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  */
 uint8_t *
-lm_get_pci_non_std_config_space(lm_ctx_t *lm_ctx);
+vu_get_pci_non_std_config_space(vu_ctx_t *vu_ctx);
 
 /*
- * Attempts to attach to the transport. LM_FLAG_ATTACH_NB must be set when
- * creating the context. Returns 0 on success and -1 on error. If errno is set
- * to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and the
- * operation must be retried.
- * @lm_ctx: the libmuser context
+ * Attempts to attach to the transport. LIBVFIO_USER_FLAG_ATTACH_NB must be set
+ * when creating the context. Returns 0 on success and -1 on error. If errno is
+ * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
+ * the operation must be retried.
+ *
+ * @vu_ctx: the libvfio-user context
  */
 int
-lm_ctx_try_attach(lm_ctx_t *lm_ctx);
+vu_ctx_try_attach(vu_ctx_t *vu_ctx);
 
 /*
  * FIXME need to make sure that there can be at most one capability with a given
  * ID, otherwise this function will return the first one with this ID.
- * @lm_ctx: the libmuser context
+ * @vu_ctx: the libvfio-user context
  * @id: capability id
  */
 uint8_t *
-lm_ctx_get_cap(lm_ctx_t *lm_ctx, uint8_t id);
+vu_ctx_get_cap(vu_ctx_t *vu_ctx, uint8_t id);
 
 void
-lm_log(lm_ctx_t *lm_ctx, lm_log_lvl_t lvl, const char *fmt, ...);
+vu_log(vu_ctx_t *vu_ctx, vu_log_lvl_t lvl, const char *fmt, ...);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* LIB_MUSER_H */
+#endif /* LIB_VFIO_USER_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

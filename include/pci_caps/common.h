@@ -28,8 +28,8 @@
  *
  */
 
-#ifndef LIB_MUSER_PCI_CAPS_COMMON_H
-#define LIB_MUSER_PCI_CAPS_COMMON_H
+#ifndef LIB_VFIO_USER_PCI_CAPS_COMMON_H
+#define LIB_VFIO_USER_PCI_CAPS_COMMON_H
 
 #include <stddef.h>
 
@@ -49,6 +49,6 @@ _Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset"
 }
 #endif
 
-#endif /* LIB_MUSER_PCI_CAPS_COMMON_H */
+#endif /* LIB_VFIO_USER_PCI_CAPS_COMMON_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

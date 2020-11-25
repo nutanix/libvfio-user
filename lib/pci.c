@@ -39,36 +39,36 @@
 #include <linux/pci_regs.h>
 #include <linux/vfio.h>
 
-#include "muser.h"
-#include "muser_priv.h"
-#include "pci.h"
 #include "common.h"
+#include "libvfio-user.h"
+#include "pci.h"
+#include "private.h"
 
 static inline void
-muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
+vu_pci_hdr_write_bar(vu_ctx_t *vu_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
     unsigned long mask;
-    lm_reg_info_t *reg_info = lm_get_region_info(lm_ctx);
-    lm_pci_hdr_t *hdr;
+    vu_reg_info_t *reg_info = vu_get_region_info(vu_ctx);
+    vu_pci_hdr_t *hdr;
 
-    assert(lm_ctx != NULL);
+    assert(vu_ctx != NULL);
 
     if (reg_info[bar_index].size == 0) {
         return;
     }
 
-    hdr = &lm_get_pci_config_space(lm_ctx)->hdr;
+    hdr = &vu_pci_get_config_space(vu_ctx)->hdr;
 
     cfg_addr = *(uint32_t *) buf;
 
-    lm_log(lm_ctx, LM_DBG, "BAR%d addr 0x%x\n", bar_index, cfg_addr);
+    vu_log(vu_ctx, VU_DBG, "BAR%d addr 0x%x\n", bar_index, cfg_addr);
 
     if (cfg_addr == 0xffffffff) {
         cfg_addr = ~(reg_info[bar_index].size) + 1;
     }
 
-    if ((reg_info[bar_index].flags & LM_REG_FLAG_MEM)) {
+    if ((reg_info[bar_index].flags & VU_REG_FLAG_MEM)) {
         mask = PCI_BASE_ADDRESS_MEM_MASK;
     } else {
         mask = PCI_BASE_ADDRESS_IO_MASK;
@@ -81,7 +81,7 @@ muser_pci_hdr_write_bar(lm_ctx_t *lm_ctx, uint16_t bar_index, const char *buf)
 #define BAR_INDEX(offset) ((offset - PCI_BASE_ADDRESS_0) >> 2)
 
 static int
-handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
+handle_command_write(vu_ctx_t *ctx, vu_pci_config_space_t *pci,
                      const char *buf, size_t count)
 {
     uint16_t v;
@@ -89,7 +89,7 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     assert(ctx != NULL);
 
     if (count != 2) {
-        lm_log(ctx, LM_ERR, "bad write command size %lu\n", count);
+        vu_log(ctx, VU_ERR, "bad write command size %lu\n", count);
         return -EINVAL;
     }
 
@@ -101,88 +101,88 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     if ((v & PCI_COMMAND_IO) == PCI_COMMAND_IO) {
         if (!pci->hdr.cmd.iose) {
             pci->hdr.cmd.iose = 0x1;
-            lm_log(ctx, LM_INF, "I/O space enabled\n");
+            vu_log(ctx, VU_INF, "I/O space enabled\n");
         }
         v &= ~PCI_COMMAND_IO;
     } else {
         if (pci->hdr.cmd.iose) {
             pci->hdr.cmd.iose = 0x0;
-            lm_log(ctx, LM_INF, "I/O space disabled\n");
+            vu_log(ctx, VU_INF, "I/O space disabled\n");
         }
     }
 
     if ((v & PCI_COMMAND_MEMORY) == PCI_COMMAND_MEMORY) {
         if (!pci->hdr.cmd.mse) {
             pci->hdr.cmd.mse = 0x1;
-            lm_log(ctx, LM_INF, "memory space enabled\n");
+            vu_log(ctx, VU_INF, "memory space enabled\n");
         }
         v &= ~PCI_COMMAND_MEMORY;
     } else {
         if (pci->hdr.cmd.mse) {
             pci->hdr.cmd.mse = 0x0;
-            lm_log(ctx, LM_INF, "memory space disabled\n");
+            vu_log(ctx, VU_INF, "memory space disabled\n");
         }
     }
 
     if ((v & PCI_COMMAND_MASTER) == PCI_COMMAND_MASTER) {
         if (!pci->hdr.cmd.bme) {
             pci->hdr.cmd.bme = 0x1;
-            lm_log(ctx, LM_INF, "bus master enabled\n");
+            vu_log(ctx, VU_INF, "bus master enabled\n");
         }
         v &= ~PCI_COMMAND_MASTER;
     } else {
         if (pci->hdr.cmd.bme) {
             pci->hdr.cmd.bme = 0x0;
-            lm_log(ctx, LM_INF, "bus master disabled\n");
+            vu_log(ctx, VU_INF, "bus master disabled\n");
         }
     }
 
     if ((v & PCI_COMMAND_SERR) == PCI_COMMAND_SERR) {
         if (!pci->hdr.cmd.see) {
             pci->hdr.cmd.see = 0x1;
-            lm_log(ctx, LM_INF, "SERR# enabled\n");
+            vu_log(ctx, VU_INF, "SERR# enabled\n");
         }
         v &= ~PCI_COMMAND_SERR;
     } else {
         if (pci->hdr.cmd.see) {
             pci->hdr.cmd.see = 0x0;
-            lm_log(ctx, LM_INF, "SERR# disabled\n");
+            vu_log(ctx, VU_INF, "SERR# disabled\n");
         }
     }
 
     if ((v & PCI_COMMAND_INTX_DISABLE) == PCI_COMMAND_INTX_DISABLE) {
         if (!pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x1;
-            lm_log(ctx, LM_INF, "INTx emulation disabled\n");
+            vu_log(ctx, VU_INF, "INTx emulation disabled\n");
         }
         v &= ~PCI_COMMAND_INTX_DISABLE;
     } else {
         if (pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x0;
-            lm_log(ctx, LM_INF, "INTx emulation enabled\n");
+            vu_log(ctx, VU_INF, "INTx emulation enabled\n");
         }
     }
 
     if ((v & PCI_COMMAND_INVALIDATE) == PCI_COMMAND_INVALIDATE) {
         if (!pci->hdr.cmd.mwie) {
             pci->hdr.cmd.mwie = 1U;
-            lm_log(ctx, LM_INF, "memory write and invalidate enabled\n");
+            vu_log(ctx, VU_INF, "memory write and invalidate enabled\n");
         }
         v &= ~PCI_COMMAND_INVALIDATE;
     } else {
         if (pci->hdr.cmd.mwie) {
             pci->hdr.cmd.mwie = 0;
-            lm_log(ctx, LM_INF, "memory write and invalidate disabled");
+            vu_log(ctx, VU_INF, "memory write and invalidate disabled");
         }
     }
 
     if ((v & PCI_COMMAND_VGA_PALETTE) == PCI_COMMAND_VGA_PALETTE) {
-        lm_log(ctx, LM_INF, "enabling VGA palette snooping ignored\n");
+        vu_log(ctx, VU_INF, "enabling VGA palette snooping ignored\n");
         v &= ~PCI_COMMAND_VGA_PALETTE;
     }
 
     if (v != 0) {
-        lm_log(ctx, LM_ERR, "unconsumed command flags %x\n", v);
+        vu_log(ctx, VU_ERR, "unconsumed command flags %x\n", v);
         return -EINVAL;
     }
 
@@ -190,7 +190,7 @@ handle_command_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
 }
 
 static int
-handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
+handle_erom_write(vu_ctx_t *ctx, vu_pci_config_space_t *pci,
                   const char *buf, size_t count)
 {
     uint32_t v;
@@ -199,55 +199,55 @@ handle_erom_write(lm_ctx_t *ctx, lm_pci_config_space_t *pci,
     assert(pci != NULL);
 
     if (count != 0x4) {
-        lm_log(ctx, LM_ERR, "bad EROM count %lu\n", count);
+        vu_log(ctx, VU_ERR, "bad EROM count %lu\n", count);
         return -EINVAL;
     }
     v = *(uint32_t*)buf;
 
     if (v == (uint32_t)PCI_ROM_ADDRESS_MASK) {
-        lm_log(ctx, LM_INF, "write mask to EROM ignored\n");
+        vu_log(ctx, VU_INF, "write mask to EROM ignored\n");
     } else if (v == 0) {
-        lm_log(ctx, LM_INF, "cleared EROM\n");
+        vu_log(ctx, VU_INF, "cleared EROM\n");
         pci->hdr.erom = 0;
     } else if (v == (uint32_t)~PCI_ROM_ADDRESS_ENABLE) {
-        lm_log(ctx, LM_INF, "EROM disable ignored\n");
+        vu_log(ctx, VU_INF, "EROM disable ignored\n");
     } else {
-        lm_log(ctx, LM_ERR, "bad write to EROM 0x%x bytes\n", v);
+        vu_log(ctx, VU_ERR, "bad write to EROM 0x%x bytes\n", v);
         return -EINVAL;
     }
     return 0;
 }
 
 static inline int
-muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
+vu_pci_hdr_write(vu_ctx_t *vu_ctx, uint16_t offset,
                     const char *buf, size_t count)
 {
-    lm_pci_config_space_t *pci;
+    vu_pci_config_space_t *pci;
     int ret = 0;
 
-    assert(lm_ctx != NULL);
+    assert(vu_ctx != NULL);
     assert(buf != NULL);
 
-    pci = lm_get_pci_config_space(lm_ctx);
+    pci = vu_pci_get_config_space(vu_ctx);
 
     switch (offset) {
     case PCI_COMMAND:
-        ret = handle_command_write(lm_ctx, pci, buf, count);
+        ret = handle_command_write(vu_ctx, pci, buf, count);
         break;
     case PCI_STATUS:
-        lm_log(lm_ctx, LM_INF, "write to status ignored\n");
+        vu_log(vu_ctx, VU_INF, "write to status ignored\n");
         break;
     case PCI_INTERRUPT_PIN:
-        lm_log(lm_ctx, LM_ERR, "attempt to write read-only field IPIN\n");
+        vu_log(vu_ctx, VU_ERR, "attempt to write read-only field IPIN\n");
         ret = -EINVAL;
         break;
     case PCI_INTERRUPT_LINE:
         pci->hdr.intr.iline = buf[0];
-        lm_log(lm_ctx, LM_DBG, "ILINE=%0x\n", pci->hdr.intr.iline);
+        vu_log(vu_ctx, VU_DBG, "ILINE=%0x\n", pci->hdr.intr.iline);
         break;
     case PCI_LATENCY_TIMER:
         pci->hdr.mlt = (uint8_t)buf[0];
-        lm_log(lm_ctx, LM_INF, "set to latency timer to %hhx\n", pci->hdr.mlt);
+        vu_log(vu_ctx, VU_INF, "set to latency timer to %hhx\n", pci->hdr.mlt);
         break;
     case PCI_BASE_ADDRESS_0:
     case PCI_BASE_ADDRESS_1:
@@ -255,18 +255,18 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
     case PCI_BASE_ADDRESS_3:
     case PCI_BASE_ADDRESS_4:
     case PCI_BASE_ADDRESS_5:
-        muser_pci_hdr_write_bar(lm_ctx, BAR_INDEX(offset), buf);
+        vu_pci_hdr_write_bar(vu_ctx, BAR_INDEX(offset), buf);
         break;
     case PCI_ROM_ADDRESS:
-        ret = handle_erom_write(lm_ctx, pci, buf, count);
+        ret = handle_erom_write(vu_ctx, pci, buf, count);
         break;
     default:
-        lm_log(lm_ctx, LM_INF, "PCI config write %#x-%#lx not handled\n",
+        vu_log(vu_ctx, VU_INF, "PCI config write %#x-%#lx not handled\n",
                offset, offset + count);
         ret = -EINVAL;
     }
 
-#ifdef LM_VERBOSE_LOGGING
+#ifdef VU_VERBOSE_LOGGING
     dump_buffer("PCI header", (char*)pci->hdr.raw, 0xff);
 #endif
 
@@ -281,7 +281,7 @@ muser_pci_hdr_write(lm_ctx_t *lm_ctx, uint16_t offset,
  * @count: output parameter that receives the number of bytes read/written
  */
 static inline int
-muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
+vu_do_pci_hdr_access(vu_ctx_t *vu_ctx, uint32_t *count,
                         uint64_t *pos, bool is_write,
                         char *buf)
 {
@@ -289,18 +289,18 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
     loff_t _pos;
     int err = 0;
 
-    assert(lm_ctx != NULL);
+    assert(vu_ctx != NULL);
     assert(count != NULL);
     assert(pos != NULL);
     assert(buf != NULL);
 
-    _pos = *pos - region_to_offset(LM_PCI_DEV_CFG_REGION_IDX);
+    _pos = *pos - region_to_offset(VU_PCI_DEV_CFG_REGION_IDX);
     _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
 
     if (is_write) {
-        err = muser_pci_hdr_write(lm_ctx, _pos, buf, _count);
+        err = vu_pci_hdr_write(vu_ctx, _pos, buf, _count);
     } else {
-        memcpy(buf, lm_get_pci_config_space(lm_ctx)->hdr.raw + _pos, _count);
+        memcpy(buf, vu_pci_get_config_space(vu_ctx)->hdr.raw + _pos, _count);
     }
     *pos += _count;
     *count -= _count;
@@ -308,26 +308,25 @@ muser_do_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
 }
 
 static inline bool
-muser_is_pci_hdr_access(uint64_t pos)
+vu_is_pci_hdr_access(uint64_t pos)
 {
-    const uint64_t off = region_to_offset(LM_PCI_DEV_CFG_REGION_IDX);
+    const uint64_t off = region_to_offset(VU_PCI_DEV_CFG_REGION_IDX);
     return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
 }
 
 /* FIXME this function is misleading, remove it */
 int
-muser_pci_hdr_access(lm_ctx_t *lm_ctx, uint32_t *count,
-                     uint64_t *pos, bool is_write,
-                     char *buf)
+vu_pci_hdr_access(vu_ctx_t *vu_ctx, uint32_t *count,
+                  uint64_t *pos, bool is_write, char *buf)
 {
-    assert(lm_ctx != NULL);
+    assert(vu_ctx != NULL);
     assert(count != NULL);
     assert(pos != NULL);
 
-    if (!muser_is_pci_hdr_access(*pos)) {
+    if (!vu_is_pci_hdr_access(*pos)) {
         return 0;
     }
-    return muser_do_pci_hdr_access(lm_ctx, count, pos, is_write, buf);
+    return vu_do_pci_hdr_access(vu_ctx, count, pos, is_write, buf);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

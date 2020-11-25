@@ -1,6 +1,4 @@
 /*
- * Userspace mediated device sample application
- *
  * Copyright (c) 2019, Nutanix Inc. All rights reserved.
  *     Author: Thanos Makatos <thanos@nutanix.com>
  *             Swapnil Ingle <swapnil.ingle@nutanix.com>
@@ -31,7 +29,9 @@
  *
  */
 
-/* gpio-pci-idio-16 */
+/*
+ * gpio-pci-idio-16: a simple example server identifying as a GPIO PCI device.
+ */
 
 #include <stdio.h>
 #include <err.h>
@@ -42,11 +42,11 @@
 #include <errno.h>
 
 #include "common.h"
-#include "muser.h"
+#include "libvfio-user.h"
 #include "tran_sock.h"
 
 static void
-_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
+_log(UNUSED void *pvt, UNUSED vu_log_lvl_t lvl, char const *msg)
 {
     fprintf(stderr, "gpio: %s\n", msg);
 }
@@ -74,10 +74,10 @@ main(int argc, char *argv[])
     bool verbose = false;
     char opt;
     struct sigaction act = { .sa_handler = _sa_handler };
-    lm_ctx_t *lm_ctx;
-    lm_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
-    lm_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
-    lm_pci_hdr_cc_t cc = { { 0 } };
+    vu_ctx_t *vu_ctx;
+    vu_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
+    vu_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
+    vu_pci_hdr_cc_t cc = { { 0 } };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -91,7 +91,7 @@ main(int argc, char *argv[])
     }
 
     if (optind >= argc) {
-        errx(EXIT_FAILURE, "missing MUSER socket path");
+        errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
     sigemptyset(&act.sa_mask);
@@ -99,8 +99,8 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0, NULL);
-    if (lm_ctx == NULL) {
+    vu_ctx = vu_create_ctx(VU_TRANS_SOCK, argv[optind], 0, NULL);
+    if (vu_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");
             exit(EXIT_SUCCESS);
@@ -108,25 +108,25 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
-    ret = lm_setup_log(lm_ctx, _log, verbose ? LM_DBG : LM_ERR);
+    ret = vu_setup_log(vu_ctx, _log, verbose ? VU_DBG : VU_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
+    ret = vu_pci_setup_config_hdr(vu_ctx, id, ss, cc, false);
     if (ret < 0) {
         fprintf(stderr, "failed to setup pci header\n");
         goto out;
     }
 
-    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR2_REGION_IDX, 0x100, &bar2_access,
-                          LM_REG_FLAG_RW, NULL, NULL);
+    ret = vu_setup_region(vu_ctx, VU_PCI_DEV_BAR2_REGION_IDX, 0x100, &bar2_access,
+                          VU_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
         fprintf(stderr, "failed to setup region\n");
         goto out;
     }
 
-    ret = lm_ctx_drive(lm_ctx);
+    ret = vu_ctx_drive(vu_ctx);
     if (ret != 0) {
         if (ret != -ENOTCONN && ret != -EINTR) {
             fprintf(stderr, "failed to realize device emulation\n");
@@ -136,7 +136,7 @@ main(int argc, char *argv[])
     }
 
 out:
-    lm_ctx_destroy(lm_ctx);
+    vu_ctx_destroy(vu_ctx);
     return ret;
 }
 

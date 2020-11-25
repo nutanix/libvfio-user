@@ -29,7 +29,7 @@
 #
 
 cmake_minimum_required (VERSION 2.6)
-project(muser)
+project(libvfio-user)
 include(GNUInstallDirs)
 
 find_package(PkgConfig REQUIRED)

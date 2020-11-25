@@ -27,7 +27,7 @@
 #
 
 add_executable(unit-tests unit-tests.c)
-target_link_libraries(unit-tests cmocka json-c muser)
+target_link_libraries(unit-tests cmocka json-c vfio-user)
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)

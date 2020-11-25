@@ -32,9 +32,9 @@
 
 #include <Python.h>
 
-#include "muser.h"
+#include "libvfio-user.h"
 
-static PyObject *region_access_callbacks[LM_PCI_DEV_NUM_REGIONS];
+static PyObject *region_access_callbacks[VU_PCI_DEV_NUM_REGIONS];
 
 static int
 handle_read(char *dst, PyObject *result, int count)
@@ -48,7 +48,7 @@ handle_read(char *dst, PyObject *result, int count)
 }
 
 /*
- * Function callback called by libmuser. We then call the Python function.
+ * Function callback called by libvfio-user. We then call the Python function.
  *
  * FIXME need a way to provide private pointer.
  */
@@ -107,7 +107,7 @@ REGION_WRAP(6)
 REGION_WRAP(7)
 REGION_WRAP(8)
 
-static ssize_t (*region_access_wraps[LM_PCI_DEV_NUM_REGIONS])(void *, char *, size_t,
+static ssize_t (*region_access_wraps[VU_PCI_DEV_NUM_REGIONS])(void *, char *, size_t,
                                                        loff_t, bool) = {
     r_0_wrap,
     r_1_wrap,
@@ -129,7 +129,7 @@ struct _region_info {
 static const struct _region_info _0_ri;
 
 static PyObject *log_fn;
-static lm_log_lvl_t log_lvl = LM_ERR;
+static vu_log_lvl_t log_lvl = VU_ERR;
 
 static void
 _log_fn(void *pvt, const char *msg)
@@ -146,16 +146,16 @@ _log_fn(void *pvt, const char *msg)
 }
 
 static PyObject *
-libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
+libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     static char *kwlist[] = {"vid", "did", "uuid", "log", "log_lvl",
                              "bar0", "bar1", "bar2", "bar3", "bar4", "bar5", "rom", "cfg", "vga",
                              "intx", "msi", "msix", "err", "req",
                              NULL};
     int err;
-    lm_dev_info_t dev_info = { 0 };
+    vu_dev_info_t dev_info = { 0 };
     int i;
-    struct _region_info _ri[LM_PCI_DEV_NUM_REGIONS] = { 0 };
+    struct _region_info _ri[VU_PCI_DEV_NUM_REGIONS] = { 0 };
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
@@ -184,20 +184,20 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    for (i = 0; i < LM_PCI_DEV_NUM_REGIONS; i++) {
+    for (i = 0; i < VU_PCI_DEV_NUM_REGIONS; i++) {
         int j;
         uint32_t flags = 0;
 
-        if (i == LM_PCI_DEV_CFG_REGION_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
+        if (i == VU_PCI_DEV_CFG_REGION_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
             continue;
         }
 
         if (_ri[i].perm != NULL) {
             for (j = 0; j < strlen(_ri[i].perm); j++) {
                 if (_ri[i].perm[j] == 'r') {
-                    flags |= LM_REG_FLAG_READ;
+                    flags |= VU_REG_FLAG_READ;
                 } else if (_ri[i].perm[j] == 'w') {
-                    flags |= LM_REG_FLAG_WRITE;
+                    flags |= VU_REG_FLAG_WRITE;
                 } else {
                     /* FIXME shouldn't print to stderr */
                     fprintf(stderr, "bad permission '%c'\n", _ri[i].perm[j]);
@@ -219,13 +219,13 @@ libmuser_run(PyObject *self, PyObject *args, PyObject *kwargs)
         dev_info.log_lvl = log_lvl;
     }
 
-    err = lm_ctx_run(&dev_info);
+    err = vu_ctx_run(&dev_info);
     return Py_BuildValue("i", err);
 }
 
-static PyMethodDef LibmuserMethods[] = {
+static PyMethodDef LibVfioUserMethods[] = {
     { "run",
-      (PyCFunction)libmuser_run,
+      (PyCFunction)libvfio_user_run,
       METH_VARARGS | METH_KEYWORDS,
       "runs a device"
     },
@@ -233,9 +233,9 @@ static PyMethodDef LibmuserMethods[] = {
 };
 
 PyMODINIT_FUNC
-initmuser(void)
+initvfiouser(void)
 {
-    (void)Py_InitModule("muser", LibmuserMethods);
+    (void)Py_InitModule("vfio_user", LibVfioUserMethods);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

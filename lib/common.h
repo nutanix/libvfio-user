@@ -34,8 +34,8 @@
  * Private utilities used by the library and sample/test code.
  */
 
-#ifndef LIB_MUSER_COMMON_H
-#define LIB_MUSER_COMMON_H
+#ifndef LIB_VFIO_USER_COMMON_H
+#define LIB_VFIO_USER_COMMON_H
 
 #include <stdint.h>
 
@@ -55,6 +55,6 @@
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
 
-#endif /* LIB_MUSER_COMMON_H */
+#endif /* LIB_VFIO_USER_COMMON_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -30,22 +30,22 @@
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 
-add_library(muser SHARED
+add_library(vfio-user SHARED
     $<TARGET_OBJECTS:cap>
     $<TARGET_OBJECTS:dma>
-    $<TARGET_OBJECTS:muser_ctx>
-    $<TARGET_OBJECTS:muser_pci>
-    $<TARGET_OBJECTS:tran_sock>
-    $<TARGET_OBJECTS:migration>
     $<TARGET_OBJECTS:irq>
+    $<TARGET_OBJECTS:libvfio-user>
+    $<TARGET_OBJECTS:migration>
+    $<TARGET_OBJECTS:pci>
+    $<TARGET_OBJECTS:tran_sock>
     common.h
     irq.h
-    muser_priv.h
+    private.h
     tran_sock.h)
 
-set_target_properties(muser PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(vfio-user PROPERTIES LINKER_LANGUAGE C)
 
-target_link_libraries(muser json-c pthread)
+target_link_libraries(vfio-user json-c pthread)
 
 set(UT_CFLAGS "-O0 -ggdb --coverage")
 set(UT_LFLAGS "--coverage")
@@ -60,23 +60,22 @@ endfunction(add_library_ut)
 
 add_library_ut(cap cap.c)
 add_library_ut(dma dma.c)
-add_library_ut(muser_ctx muser_ctx.c)
-add_library_ut(muser_pci muser_pci.c)
-add_library_ut(tran_sock tran_sock.c)
-add_library_ut(migration migration.c)
 add_library_ut(irq irq.c)
+add_library_ut(libvfio-user libvfio-user.c)
+add_library_ut(migration migration.c)
+add_library_ut(pci pci.c)
+add_library_ut(tran_sock tran_sock.c)
 
-install(TARGETS muser
+install(TARGETS vfio-user
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 if (DEFINED ENV{PYTHON_BINDINGS})
-        add_custom_target(python_bindings_build ALL
-                COMMAND python setup.py build -b ${CMAKE_BINARY_DIR}
-                DEPENDS python_bindings.c setup.py
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib
-                SOURCES python_bindings.c setup.py)
-        # execute_process seems to only execute a single command, e.g. it can't
-        # handle two commands joined by &&
-        install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/lib/python_bindings_install.sh ${CMAKE_SOURCE_DIR})")
-
+    add_custom_target(python_bindings_build ALL
+        COMMAND python setup.py build -b ${CMAKE_BINARY_DIR}
+        DEPENDS python_bindings.c setup.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib
+        SOURCES python_bindings.c setup.py)
+    # execute_process seems to only execute a single command, e.g. it can't
+    # handle two commands joined by &&
+    install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/lib/python_bindings_install.sh ${CMAKE_SOURCE_DIR})")
 endif()

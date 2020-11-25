@@ -37,15 +37,15 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "muser.h"
-#include "muser_priv.h"
+#include "libvfio-user.h"
+#include "private.h"
 
 static void
 test_dma_map_without_fd(void **state __attribute__((unused)))
 {
     size_t size = sizeof(struct vfio_user_dma_region);
-    lm_ctx_t lm_ctx = { 0 };
-    assert_true(0 == handle_dma_map_or_unmap(&lm_ctx, size, true, NULL, 0, NULL));
+    vu_ctx_t vu_ctx = { 0 };
+    assert_true(0 == handle_dma_map_or_unmap(&vu_ctx, size, true, NULL, 0, NULL));
     /* TODO verify that dma_controller_add_region wasn't called */
 }
 

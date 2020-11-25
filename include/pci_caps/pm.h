@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef LIB_MUSER_PCI_CAPS_PM_H
-#define LIB_MUSER_PCI_CAPS_PM_H
+#ifndef LIB_VFIO_USER_PCI_CAPS_PM_H
+#define LIB_VFIO_USER_PCI_CAPS_PM_H
 
 #include "common.h"
 
@@ -75,6 +75,6 @@ _Static_assert(offsetof(struct pmcap, hdr) == 0, "bad offset");
 }
 #endif
 
-#endif /* LM_CAP_PM_H */
+#endif /* VU_CAP_PM_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
