@@ -423,9 +423,14 @@ int main(int argc, char *argv[])
     }
 
     server_data.lm_ctx = lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
-            verbose ? _log : NULL, LM_DBG, &server_data);
+                                                &server_data);
     if (lm_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
+    }
+
+    ret = lm_setup_log(lm_ctx, verbose ? _log : NULL, LM_DBG);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup log");
     }
 
     ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);
