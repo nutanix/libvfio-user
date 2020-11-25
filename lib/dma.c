@@ -212,6 +212,8 @@ dma_controller_add_region(dma_controller_t *dma,
     dma_memory_region_t *region;
     int page_size;
 
+    assert(dma != NULL);
+
     if (fd == -1) {
         errno = EINVAL;
         return -1;
