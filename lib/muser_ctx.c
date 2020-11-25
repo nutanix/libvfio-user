@@ -1226,7 +1226,7 @@ lm_ctx_try_attach(lm_ctx_t *lm_ctx)
 }
 
 lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
-                        lm_log_fn_t *log, lm_log_lvl_t log_lvl, void *pvt)
+                        void *pvt)
 {
     lm_ctx_t *lm_ctx = NULL;
     int err = 0;
@@ -1245,9 +1245,8 @@ lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
     //FIXME: Validate arguments.
     // Set other context data.
     lm_ctx->pvt = pvt;
-    lm_ctx->log = log;
-    lm_ctx->log_lvl = log_lvl;
     lm_ctx->flags = flags;
+    lm_ctx->log_lvl = LM_ERR;
 
     lm_ctx->uuid = strdup(path);
     if (lm_ctx->uuid == NULL) {
@@ -1286,6 +1285,19 @@ out:
     }
 
     return lm_ctx;
+}
+
+int lm_setup_log(lm_ctx_t *lm_ctx, lm_log_fn_t *log, lm_log_lvl_t log_lvl)
+{
+
+    if (log_lvl != LM_ERR && log_lvl != LM_INF && log_lvl != LM_DBG) {
+        return ERROR(EINVAL);
+    }
+
+    lm_ctx->log = log;
+    lm_ctx->log_lvl = log_lvl;
+
+    return 0;
 }
 
 int lm_pci_setup_config_hdr(lm_ctx_t *lm_ctx, lm_pci_hdr_id_t id,

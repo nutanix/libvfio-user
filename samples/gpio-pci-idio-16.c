@@ -99,14 +99,18 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0,
-                           verbose ? _log : NULL, LM_DBG, NULL);
+    lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[optind], 0, NULL);
     if (lm_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");
             exit(EXIT_SUCCESS);
         }
         err(EXIT_FAILURE, "failed to initialize device emulation");
+    }
+
+    ret = lm_setup_log(lm_ctx, _log, verbose ? LM_DBG : LM_ERR);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup log");
     }
 
     ret = lm_pci_setup_config_hdr(lm_ctx, id, ss, cc, false);

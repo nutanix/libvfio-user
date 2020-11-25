@@ -239,14 +239,19 @@ typedef struct {
  * @trans: transport type
  * @path: path to socket file.
  * @flags: context flag
- * @log: log function
- * @log_lvl: logging level
  * @pvt: private data
  * @returns the lm_ctx to be used or NULL on error. Sets errno.
  */
 lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path,
-                        int flags, lm_log_fn_t *log, lm_log_lvl_t log_lvl,
-                        void *pvt);
+                        int flags, void *pvt);
+
+/**
+ * Setup logging information.
+ * @lm_ctx: the libmuser context
+ * @log: logging function
+ * @log_lvl: logging level
+ */
+int lm_setup_log(lm_ctx_t *lm_ctx, lm_log_fn_t *log, lm_log_lvl_t log_lvl);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
 //      Or should we pass whole lm_pci_hdr_t to be filled by user.
