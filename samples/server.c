@@ -433,13 +433,13 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup PCI header");
     }
 
-    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR0_REG_IDX, sizeof(time_t),
+    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
                           &bar0_access, LM_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
-    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR1_REG_IDX, sysconf(_SC_PAGESIZE),
+    ret = lm_setup_region(lm_ctx, LM_PCI_DEV_BAR1_REGION_IDX, sysconf(_SC_PAGESIZE),
                           &bar1_access, LM_REG_FLAG_RW, sparse_areas, map_area);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");

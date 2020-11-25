@@ -273,14 +273,14 @@ lm_get_region(loff_t pos, size_t count, loff_t *off)
 static uint32_t
 region_size(lm_ctx_t *lm_ctx, int region)
 {
-        assert(region >= LM_PCI_DEV_BAR0_REG_IDX && region <= LM_PCI_DEV_VGA_REG_IDX);
+        assert(region >= LM_PCI_DEV_BAR0_REGION_IDX && region <= LM_PCI_DEV_VGA_REGION_IDX);
         return lm_ctx->reg_info[region].size;
 }
 
 static uint32_t
 pci_config_space_size(lm_ctx_t *lm_ctx)
 {
-    return region_size(lm_ctx, LM_PCI_DEV_CFG_REG_IDX);
+    return region_size(lm_ctx, LM_PCI_DEV_CFG_REGION_IDX);
 }
 
 static ssize_t
@@ -324,7 +324,7 @@ do_access(lm_ctx_t *lm_ctx, char *buf, uint8_t count, uint64_t pos, bool is_writ
         return -EINVAL;
     }
 
-    if (idx == LM_PCI_DEV_CFG_REG_IDX) {
+    if (idx == LM_PCI_DEV_CFG_REGION_IDX) {
         return handle_pci_config_space_access(lm_ctx, buf, count, offset,
                                               is_write);
     }
@@ -1032,7 +1032,7 @@ static int prepare_ctx(lm_ctx_t *lm_ctx)
         }
     }
 
-    cfg_reg = &lm_ctx->reg_info[LM_PCI_DEV_CFG_REG_IDX];
+    cfg_reg = &lm_ctx->reg_info[LM_PCI_DEV_CFG_REGION_IDX];
 
     // Set a default config region if none provided.
     /* TODO should it be enough to check that the size of region is 0? */
@@ -1260,7 +1260,7 @@ lm_ctx_t *lm_create_ctx(lm_trans_t trans, const char *path, int flags,
      * to seperate migration region from standard regions in lm_ctx.reg_info
      * and move it into lm_ctx.migration.
      */
-    lm_ctx->nr_regions = LM_PCI_DEV_NUM_REGS + 1;
+    lm_ctx->nr_regions = LM_PCI_DEV_NUM_REGIONS + 1;
     lm_ctx->reg_info = calloc(lm_ctx->nr_regions, sizeof *lm_ctx->reg_info);
     if (lm_ctx->reg_info == NULL) {
         err = -ENOMEM;
@@ -1382,9 +1382,9 @@ int lm_setup_region(lm_ctx_t *lm_ctx, int region_idx, size_t size,
     assert(lm_ctx != NULL);
 
     switch(region_idx) {
-    case LM_PCI_DEV_BAR0_REG_IDX ... LM_PCI_DEV_VGA_REG_IDX:
+    case LM_PCI_DEV_BAR0_REGION_IDX ... LM_PCI_DEV_VGA_REGION_IDX:
         // Validate the config region provided.
-        if (region_idx == LM_PCI_DEV_CFG_REG_IDX &&
+        if (region_idx == LM_PCI_DEV_CFG_REGION_IDX &&
             !is_valid_pci_config_space_region(flags, size)) {
                 return ERROR(EINVAL);
         }
