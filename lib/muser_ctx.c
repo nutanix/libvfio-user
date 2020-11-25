@@ -499,7 +499,7 @@ handle_device_get_info(lm_ctx_t *lm_ctx, uint32_t size,
     return 0;
 }
 
-static int
+int
 handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                         int *fds, int nr_fds,
                         struct vfio_user_dma_region *dma_regions)
