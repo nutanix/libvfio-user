@@ -208,6 +208,10 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                         int *fds, int nr_fds,
                         struct vfio_user_dma_region *dma_regions);
 
+void
+_dma_controller_do_remove_region(dma_controller_t *dma,
+                                 dma_memory_region_t *region);
+
 #endif /* LIB_MUSER_PRIV_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

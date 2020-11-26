@@ -519,7 +519,7 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                         struct vfio_user_dma_region *dma_regions)
 {
     int nr_dma_regions;
-    int ret, i;
+    int ret, i, fdi;
 
     assert(lm_ctx != NULL);
     assert(fds != NULL);
@@ -534,43 +534,35 @@ handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
     }
 
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
-    if (map && nr_fds > 0 && nr_dma_regions != nr_fds) {
-        lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
-               nr_dma_regions, nr_fds);
-        return -EINVAL;
-    }
 
-    for (i = 0; i < nr_dma_regions; i++) {
+    for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
         if (map) {
+            int fd = -1;
             if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                if (nr_fds == 0) {
+                if (fdi == nr_fds) {
                     return -EINVAL;
                 }
-            } else {
-                if (nr_fds != 0) {
-                    return -EINVAL;
-                }
-                fds[i] = -1;
+                fd = fds[fdi++];
             }
 
             ret = dma_controller_add_region(lm_ctx->dma,
                                             dma_regions[i].addr,
                                             dma_regions[i].size,
-                                            fds[i],
+                                            fd,
                                             dma_regions[i].offset);
             if (ret < 0) {
                 lm_log(lm_ctx, LM_INF,
                        "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset, fds[i],
+                       dma_regions[i].offset, fd,
                        strerror(-ret));
             } else {
                 lm_log(lm_ctx, LM_DBG,
                        "added DMA region %#lx-%#lx offset=%#lx fd=%d",
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset, fds[i]);
+                       dma_regions[i].offset, fd);
             }
         } else {
             ret = dma_controller_remove_region(lm_ctx->dma,

@@ -90,7 +90,7 @@ dma_controller_create(lm_ctx_t *lm_ctx, int max_regions)
     return dma;
 }
 
-static void
+void
 _dma_controller_do_remove_region(dma_controller_t *dma,
                                  dma_memory_region_t *region)
 {
@@ -111,6 +111,14 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
         }
     }
 }
+UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
+
+/*
+ * FIXME super ugly, but without this functions within the same compilation
+ * unit don't call the wrapped version, making unit testing impossible.
+ * Ideally we'd like the UNIT_TEST_SYMBOL macro to solve this.
+ */
+#define _dma_controller_do_remove_region __wrap__dma_controller_do_remove_region
 
 /*
  * FIXME no longer used. Also, it doesn't work for addresses that span two
@@ -173,6 +181,7 @@ dma_controller_remove_region(dma_controller_t *dma,
     }
     return -ENOENT;
 }
+UNIT_TEST_SYMBOL(dma_controller_remove_region);
 
 static inline void
 dma_controller_remove_regions(dma_controller_t *dma)
@@ -292,6 +301,8 @@ dma_controller_add_region(dma_controller_t *dma,
             }
             goto err;
         }
+    } else {
+        region->virt_addr = NULL;
     }
     dma->nregions++;
 
@@ -300,6 +311,7 @@ dma_controller_add_region(dma_controller_t *dma,
 err:
     return -idx - 1;
 }
+UNIT_TEST_SYMBOL(dma_controller_add_region);
 
 static inline void
 mmap_round(size_t *offset, size_t *size, size_t page_size)
@@ -334,6 +346,7 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
 
     return mmap_base + (offset - mmap_offset);
 }
+UNIT_TEST_SYMBOL(dma_map_region);
 
 int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
