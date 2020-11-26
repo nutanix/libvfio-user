@@ -499,70 +499,78 @@ handle_device_get_info(lm_ctx_t *lm_ctx, uint32_t size,
     return 0;
 }
 
+/*
+ * Handles a DMA map/unmap request.
+ *
+ * @lm_ctx: LM context
+ * @size: size, in bytes, of the memory pointed to be @dma_regions
+ * @map: whether this is a DMA map operation
+ * @fds: array of file descriptors. It's length must equal the number of DMA
+         regions, irrespectively if @nr_fds is 0.
+ * @nr_fds: size of above array. It must be either 0 or exactly match
+ *          the number of DMA regions in @dma_regions.
+ * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
+ *
+ * @returns 0 on success, -errno on failure.
+ */
 int
 handle_dma_map_or_unmap(lm_ctx_t *lm_ctx, uint32_t size, bool map,
                         int *fds, int nr_fds,
                         struct vfio_user_dma_region *dma_regions)
 {
     int nr_dma_regions;
-    int fdi = 0;
     int ret, i;
 
     assert(lm_ctx != NULL);
+    assert(fds != NULL);
+
+    if (lm_ctx->dma == NULL) {
+        return 0;
+    }
 
     if (size % sizeof(struct vfio_user_dma_region) != 0) {
         lm_log(lm_ctx, LM_ERR, "bad size of DMA regions %d", size);
         return -EINVAL;
     }
 
-    if (lm_ctx->dma == NULL) {
-        return 0;
-    }
-
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
+    if (map && nr_fds > 0 && nr_dma_regions != nr_fds) {
+        lm_log(lm_ctx, LM_ERR, "expected %d fds but got %d instead",
+               nr_dma_regions, nr_fds);
+        return -EINVAL;
+    }
 
     for (i = 0; i < nr_dma_regions; i++) {
         if (map) {
-            int fd;
-
-            /*
-             * FIXME: need a dma controller that allows non-fd region.
-             */
-            if (dma_regions[i].flags != VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                lm_log(lm_ctx, LM_INF,
-                       "FIXME: ignored non-mappable DMA region "
-                       "%#lx-%#lx offset=%#lx",
-                       dma_regions[i].addr,
-                       dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset);
-                continue;
+            if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+                if (nr_fds == 0) {
+                    return -EINVAL;
+                }
+            } else {
+                if (nr_fds != 0) {
+                    return -EINVAL;
+                }
+                fds[i] = -1;
             }
-
-            if (fdi >= nr_fds) {
-                lm_log(lm_ctx, LM_ERR, "missing fd for mappable region %d", i);
-                return -EINVAL;
-            }
-
-            fd = fds[fdi++];
 
             ret = dma_controller_add_region(lm_ctx->dma,
                                             dma_regions[i].addr,
                                             dma_regions[i].size,
-                                            fd,
+                                            fds[i],
                                             dma_regions[i].offset);
             if (ret < 0) {
                 lm_log(lm_ctx, LM_INF,
                        "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset, fd,
+                       dma_regions[i].offset, fds[i],
                        strerror(-ret));
             } else {
                 lm_log(lm_ctx, LM_DBG,
                        "added DMA region %#lx-%#lx offset=%#lx fd=%d",
                        dma_regions[i].addr,
                        dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset, fd);
+                       dma_regions[i].offset, fds[i]);
             }
         } else {
             ret = dma_controller_remove_region(lm_ctx->dma,
