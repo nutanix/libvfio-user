@@ -61,9 +61,8 @@ fds_are_same_file(int fd1, int fd2)
 {
     struct stat st1, st2;
 
-    if (fd1 == -1 || fd2 == -1) {
-        errno = EINVAL;
-        return -1;
+    if (fd1 == fd2) {
+        return true;
     }
 
     return (fstat(fd1, &st1) == 0 && fstat(fd2, &st2) == 0 &&
@@ -210,14 +209,9 @@ dma_controller_add_region(dma_controller_t *dma,
 {
     int idx;
     dma_memory_region_t *region;
-    int page_size;
+    int page_size = 0;
 
     assert(dma != NULL);
-
-    if (fd == -1) {
-        errno = EINVAL;
-        return -1;
-    }
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
@@ -267,10 +261,12 @@ dma_controller_add_region(dma_controller_t *dma,
     idx = dma->nregions;
     region = &dma->regions[idx];
 
-    page_size = fd_get_blocksize(fd);
-    if (page_size < 0) {
-        lm_log(dma->lm_ctx, LM_ERR, "bad page size %d\n", page_size);
-        goto err;
+    if (fd != -1) {
+        page_size = fd_get_blocksize(fd);
+        if (page_size < 0) {
+            lm_log(dma->lm_ctx, LM_ERR, "bad page size %d\n", page_size);
+            goto err;
+        }
     }
     page_size = MAX(page_size, getpagesize());
 
@@ -281,19 +277,21 @@ dma_controller_add_region(dma_controller_t *dma,
     region->fd = fd;
     region->refcnt = 0;
 
-    region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
-                                       0, region->size);
-    if (region->virt_addr == MAP_FAILED) {
-        lm_log(dma->lm_ctx, LM_ERR,
-               "failed to memory map DMA region %#lx-%#lx: %s\n",
-               dma_addr, dma_addr + size, strerror(errno));
-        if (region->fd != -1) {
-            if (close(region->fd) == -1) {
-                lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n",
-                       region->fd);
+    if (fd != -1) {
+        region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
+                                           0, region->size);
+        if (region->virt_addr == MAP_FAILED) {
+            lm_log(dma->lm_ctx, LM_ERR,
+                   "failed to memory map DMA region %#lx-%#lx: %s\n",
+                   dma_addr, dma_addr + size, strerror(errno));
+            if (region->fd != -1) {
+                if (close(region->fd) == -1) {
+                    lm_log(dma->lm_ctx, LM_DBG, "failed to close fd %d: %m\n",
+                           region->fd);
+                }
             }
+            goto err;
         }
-        goto err;
     }
     dma->nregions++;
 
