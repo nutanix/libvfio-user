@@ -35,7 +35,7 @@ add_executable(unit-tests unit-tests.c mocks.c
 		../lib/pci.c
 		../lib/tran_sock.c)
 
-target_link_libraries(unit-tests cmocka json-c)
+target_link_libraries(unit-tests PUBLIC cmocka json-c)
 
 target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
 
