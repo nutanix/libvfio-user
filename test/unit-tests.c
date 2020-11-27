@@ -45,35 +45,35 @@
 static void
 test_dma_map_without_dma(void **state __attribute__((unused)))
 {
-    vu_ctx_t vu_ctx = { 0 };
+    vfu_ctx_t vfu_ctx = { 0 };
     size_t size = sizeof(struct vfio_user_dma_region);
     struct vfio_user_dma_region dma_region = {
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
     int fd;
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vu_ctx, size, true, &fd, 1, &dma_region));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 1, &dma_region));
 }
 
 static void
 test_dma_map_mappable_without_fd(void **state __attribute__((unused)))
 {
     dma_controller_t dma = { 0 };
-    vu_ctx_t vu_ctx = { .dma = &dma };
+    vfu_ctx_t vfu_ctx = { .dma = &dma };
     size_t size = sizeof(struct vfio_user_dma_region);
     struct vfio_user_dma_region dma_region = {
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
     int fd;
-    assert_int_equal(-EINVAL, handle_dma_map_or_unmap(&vu_ctx, size, true, &fd, 0, &dma_region));
+    assert_int_equal(-EINVAL, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &dma_region));
 }
 
 static void
 test_dma_map_without_fd(void **state __attribute__((unused)))
 {
     dma_controller_t dma = { 0 };
-    vu_ctx_t vu_ctx = { .dma = &dma };
-    dma.vu_ctx = &vu_ctx;
+    vfu_ctx_t vfu_ctx = { .dma = &dma };
+    dma.vfu_ctx = &vfu_ctx;
     size_t size = sizeof(struct vfio_user_dma_region);
 
     struct vfio_user_dma_region r = {
@@ -84,12 +84,12 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     int fd;
 
     patch(dma_controller_add_region);
-    expect_value(__wrap_dma_controller_add_region, dma, vu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r.addr);
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
-    assert_int_equal(0, handle_dma_map_or_unmap(&vu_ctx, size, true, &fd, 0, &r));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
 /*
@@ -100,8 +100,8 @@ static void
 test_dma_add_regions_mixed(void **state __attribute__((unused)))
 {
     dma_controller_t dma = { 0 };
-    vu_ctx_t vu_ctx = { .dma = &dma };
-    dma.vu_ctx = &vu_ctx;
+    vfu_ctx_t vfu_ctx = { .dma = &dma };
+    dma.vfu_ctx = &vfu_ctx;
     struct vfio_user_dma_region r[2] = {
         [0] = {
             .addr = 0xdeadbeef,
@@ -118,26 +118,26 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
     int fd = 0x8badf00d;
 
     patch(dma_controller_add_region);
-    expect_value(__wrap_dma_controller_add_region, dma, vu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[0].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
-    expect_value(__wrap_dma_controller_add_region, dma, vu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fd);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vu_ctx, sizeof r, true, &fd, 1, r));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, 1, r));
 }
 
 
 static void
 test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
 {
-    vu_ctx_t vu_ctx = { 0 };
-    dma_controller_t dma = { .vu_ctx = &vu_ctx, .max_regions = 1 };
+    vfu_ctx_t vfu_ctx = { 0 };
+    dma_controller_t dma = { .vfu_ctx = &vfu_ctx, .max_regions = 1 };
     dma_addr_t dma_addr = 0xdeadbeef;
     size_t size = 0;
     int fd = -1;
@@ -165,9 +165,9 @@ test_dma_controller_remove_region_no_fd(void **state __attribute__((unused)))
         .fd = -1,
         .virt_addr = NULL
     };
-    vu_ctx_t vu_ctx = { 0 };
+    vfu_ctx_t vfu_ctx = { 0 };
     dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(r));
-    dma->vu_ctx = &vu_ctx;
+    dma->vfu_ctx = &vfu_ctx;
     dma->nregions = 1;
     dma->max_regions = 1;
     dma->regions[0] = r;

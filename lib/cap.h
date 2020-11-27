@@ -41,7 +41,7 @@ struct caps;
  * Initializes PCI capabilities.
  */
 struct caps *
-caps_create(vu_ctx_t *vu_ctx, vu_cap_t **caps, int nr_caps, int *err);
+caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps, int *err);
 
 /*
  * Conditionally accesses the PCI capabilities. Returns:
@@ -51,11 +51,11 @@ caps_create(vu_ctx_t *vu_ctx, vu_cap_t **caps, int nr_caps, int *err);
  * <0: negative error code on error.
  */
 ssize_t
-cap_maybe_access(vu_ctx_t *vu_ctx, struct caps *caps, char *buf, size_t count,
+cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
                  loff_t offset);
 
 uint8_t *
-cap_find_by_id(vu_ctx_t *vu_ctx, uint8_t id);
+cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id);
 
 #endif /* LIB_VFIO_USER_CAP_H */
 

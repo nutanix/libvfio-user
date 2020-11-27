@@ -34,7 +34,7 @@
 
 #include "libvfio-user.h"
 
-static PyObject *region_access_callbacks[VU_PCI_DEV_NUM_REGIONS];
+static PyObject *region_access_callbacks[VFU_PCI_DEV_NUM_REGIONS];
 
 static int
 handle_read(char *dst, PyObject *result, int count)
@@ -107,7 +107,7 @@ REGION_WRAP(6)
 REGION_WRAP(7)
 REGION_WRAP(8)
 
-static ssize_t (*region_access_wraps[VU_PCI_DEV_NUM_REGIONS])(void *, char *, size_t,
+static ssize_t (*region_access_wraps[VFU_PCI_DEV_NUM_REGIONS])(void *, char *, size_t,
                                                        loff_t, bool) = {
     r_0_wrap,
     r_1_wrap,
@@ -129,7 +129,7 @@ struct _region_info {
 static const struct _region_info _0_ri;
 
 static PyObject *log_fn;
-static vu_log_lvl_t log_lvl = VU_ERR;
+static vfu_log_lvl_t log_lvl = VFU_ERR;
 
 static void
 _log_fn(void *pvt, const char *msg)
@@ -153,9 +153,9 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
                              "intx", "msi", "msix", "err", "req",
                              NULL};
     int err;
-    vu_dev_info_t dev_info = { 0 };
+    vfu_dev_info_t dev_info = { 0 };
     int i;
-    struct _region_info _ri[VU_PCI_DEV_NUM_REGIONS] = { 0 };
+    struct _region_info _ri[VFU_PCI_DEV_NUM_REGIONS] = { 0 };
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
@@ -184,20 +184,20 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    for (i = 0; i < VU_PCI_DEV_NUM_REGIONS; i++) {
+    for (i = 0; i < VFU_PCI_DEV_NUM_REGIONS; i++) {
         int j;
         uint32_t flags = 0;
 
-        if (i == VU_PCI_DEV_CFG_REGION_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
+        if (i == VFU_PCI_DEV_CFG_REGION_IDX && !memcmp(&_0_ri, &_ri[i], sizeof _0_ri)) {
             continue;
         }
 
         if (_ri[i].perm != NULL) {
             for (j = 0; j < strlen(_ri[i].perm); j++) {
                 if (_ri[i].perm[j] == 'r') {
-                    flags |= VU_REG_FLAG_READ;
+                    flags |= VFU_REG_FLAG_READ;
                 } else if (_ri[i].perm[j] == 'w') {
-                    flags |= VU_REG_FLAG_WRITE;
+                    flags |= VFU_REG_FLAG_WRITE;
                 } else {
                     /* FIXME shouldn't print to stderr */
                     fprintf(stderr, "bad permission '%c'\n", _ri[i].perm[j]);
@@ -219,7 +219,7 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
         dev_info.log_lvl = log_lvl;
     }
 
-    err = vu_ctx_run(&dev_info);
+    err = vfu_ctx_run(&dev_info);
     return Py_BuildValue("i", err);
 }
 

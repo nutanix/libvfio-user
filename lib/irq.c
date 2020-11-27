@@ -47,48 +47,49 @@ vfio_irq_idx_to_str(int index) {
         [VFIO_PCI_MSIX_IRQ_INDEX] = "MSI-X",
     };
 
-    assert(index < VU_DEV_NUM_IRQS);
+    assert(index < VFU_DEV_NUM_IRQS);
 
     return s[index];
 }
 
 static long
-irqs_disable(vu_ctx_t *vu_ctx, uint32_t index)
+irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index)
 {
     int *irq_efd = NULL;
     uint32_t i;
 
-    assert(vu_ctx != NULL);
-    assert(index < VU_DEV_NUM_IRQS);
+    assert(vfu_ctx != NULL);
+    assert(index < VFU_DEV_NUM_IRQS);
 
     switch (index) {
     case VFIO_PCI_INTX_IRQ_INDEX:
     case VFIO_PCI_MSI_IRQ_INDEX:
     case VFIO_PCI_MSIX_IRQ_INDEX:
-        vu_log(vu_ctx, VU_DBG, "disabling IRQ %s", vfio_irq_idx_to_str(index));
-        vu_ctx->irqs->type = IRQ_NONE;
-        for (i = 0; i < vu_ctx->irqs->max_ivs; i++) {
-            if (vu_ctx->irqs->efds[i] >= 0) {
-                if (close(vu_ctx->irqs->efds[i]) == -1) {
-                    vu_log(vu_ctx, VU_DBG, "failed to close IRQ fd %d: %m",
-                           vu_ctx->irqs->efds[i]);
+        vfu_log(vfu_ctx, VFU_DBG, "disabling IRQ %s",
+                vfio_irq_idx_to_str(index));
+        vfu_ctx->irqs->type = IRQ_NONE;
+        for (i = 0; i < vfu_ctx->irqs->max_ivs; i++) {
+            if (vfu_ctx->irqs->efds[i] >= 0) {
+                if (close(vfu_ctx->irqs->efds[i]) == -1) {
+                    vfu_log(vfu_ctx, VFU_DBG, "failed to close IRQ fd %d: %m",
+                           vfu_ctx->irqs->efds[i]);
                 }
-                vu_ctx->irqs->efds[i] = -1;
+                vfu_ctx->irqs->efds[i] = -1;
             }
         }
         return 0;
     case VFIO_PCI_ERR_IRQ_INDEX:
-        irq_efd = &vu_ctx->irqs->err_efd;
+        irq_efd = &vfu_ctx->irqs->err_efd;
         break;
     case VFIO_PCI_REQ_IRQ_INDEX:
-        irq_efd = &vu_ctx->irqs->req_efd;
+        irq_efd = &vfu_ctx->irqs->req_efd;
         break;
     }
 
     if (irq_efd != NULL) {
         if (*irq_efd != -1) {
             if (close(*irq_efd) == -1) {
-                vu_log(vu_ctx, VU_DBG, "failed to close IRQ fd %d: %m",
+                vfu_log(vfu_ctx, VFU_DBG, "failed to close IRQ fd %d: %m",
                        *irq_efd);
             }
             *irq_efd = -1;
@@ -96,12 +97,12 @@ irqs_disable(vu_ctx_t *vu_ctx, uint32_t index)
         return 0;
     }
 
-    vu_log(vu_ctx, VU_DBG, "failed to disable IRQs");
+    vfu_log(vfu_ctx, VFU_DBG, "failed to disable IRQs");
     return -EINVAL;
 }
 
 static int
-irqs_set_data_none(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
+irqs_set_data_none(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 {
     int efd;
     __u32 i;
@@ -109,12 +110,13 @@ irqs_set_data_none(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
     eventfd_t val;
 
     for (i = irq_set->start; i < (irq_set->start + irq_set->count); i++) {
-        efd = vu_ctx->irqs->efds[i];
+        efd = vfu_ctx->irqs->efds[i];
         if (efd >= 0) {
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                vu_log(vu_ctx, VU_DBG, "IRQ: failed to set data to none: %m");
+                vfu_log(vfu_ctx, VFU_DBG,
+                        "IRQ: failed to set data to none: %m");
                 return -errno;
             }
         }
@@ -124,7 +126,7 @@ irqs_set_data_none(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
 }
 
 static int
-irqs_set_data_bool(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
+irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     uint8_t *d8;
     int efd;
@@ -135,12 +137,13 @@ irqs_set_data_bool(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
     assert(data != NULL);
     for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
-        efd = vu_ctx->irqs->efds[i];
+        efd = vfu_ctx->irqs->efds[i];
         if (efd >= 0 && *d8 == 1) {
             val = 1;
             ret = eventfd_write(efd, val);
             if (ret == -1) {
-                vu_log(vu_ctx, VU_DBG, "IRQ: failed to set data to bool: %m");
+                vfu_log(vfu_ctx, VFU_DBG,
+                        "IRQ: failed to set data to bool: %m");
                 return -errno;
             }
         }
@@ -150,7 +153,8 @@ irqs_set_data_bool(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
 }
 
 static int
-irqs_set_data_eventfd(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
+irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
+                      void *data)
 {
     int32_t *d32;
     int efd;
@@ -159,47 +163,47 @@ irqs_set_data_eventfd(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data
     assert(data != NULL);
     for (i = irq_set->start, d32 = data; i < (irq_set->start + irq_set->count);
          i++, d32++) {
-        efd = vu_ctx->irqs->efds[i];
+        efd = vfu_ctx->irqs->efds[i];
         if (efd >= 0) {
             if (close(efd) == -1) {
-                vu_log(vu_ctx, VU_DBG, "failed to close IRQ fd %d: %m", efd);
+                vfu_log(vfu_ctx, VFU_DBG, "failed to close IRQ fd %d: %m", efd);
             }
 
-            vu_ctx->irqs->efds[i] = -1;
+            vfu_ctx->irqs->efds[i] = -1;
         }
         if (*d32 >= 0) {
-            vu_ctx->irqs->efds[i] = *d32;
+            vfu_ctx->irqs->efds[i] = *d32;
         }
-        vu_log(vu_ctx, VU_DBG, "event fd[%d]=%d", i, vu_ctx->irqs->efds[i]);
+        vfu_log(vfu_ctx, VFU_DBG, "event fd[%d]=%d", i, vfu_ctx->irqs->efds[i]);
     }
 
     return 0;
 }
 
 static long
-irqs_trigger(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
+irqs_trigger(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     int err = 0;
 
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
     if (irq_set->count == 0) {
-        return irqs_disable(vu_ctx, irq_set->index);
+        return irqs_disable(vfu_ctx, irq_set->index);
     }
 
-    vu_log(vu_ctx, VU_DBG, "setting IRQ %s flags=%#x",
-           vfio_irq_idx_to_str(irq_set->index), irq_set->flags);
+    vfu_log(vfu_ctx, VFU_DBG, "setting IRQ %s flags=%#x",
+            vfio_irq_idx_to_str(irq_set->index), irq_set->flags);
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
     case VFIO_IRQ_SET_DATA_NONE:
-        err = irqs_set_data_none(vu_ctx, irq_set);
+        err = irqs_set_data_none(vfu_ctx, irq_set);
         break;
     case VFIO_IRQ_SET_DATA_BOOL:
-        err = irqs_set_data_bool(vu_ctx, irq_set, data);
+        err = irqs_set_data_bool(vfu_ctx, irq_set, data);
         break;
     case VFIO_IRQ_SET_DATA_EVENTFD:
-        err = irqs_set_data_eventfd(vu_ctx, irq_set, data);
+        err = irqs_set_data_eventfd(vfu_ctx, irq_set, data);
         break;
     }
 
@@ -207,11 +211,11 @@ irqs_trigger(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
 }
 
 static long
-dev_set_irqs_validate(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
+dev_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 {
     uint32_t a_type, d_type;
 
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
     // Separate action and data types from flags.
@@ -219,8 +223,8 @@ dev_set_irqs_validate(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
     d_type = (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK);
 
     // Ensure index is within bounds.
-    if (irq_set->index >= VU_DEV_NUM_IRQS) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ index %d\n", irq_set->index);
+    if (irq_set->index >= VFU_DEV_NUM_IRQS) {
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ index %d\n", irq_set->index);
         return -EINVAL;
     }
 
@@ -230,39 +234,39 @@ dev_set_irqs_validate(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
     if ((a_type != VFIO_IRQ_SET_ACTION_MASK) &&
         (a_type != VFIO_IRQ_SET_ACTION_UNMASK) &&
         (a_type != VFIO_IRQ_SET_ACTION_TRIGGER)) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ action mask %d\n", a_type);
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ action mask %d\n", a_type);
         return -EINVAL;
     }
     // Only one of NONE/BOOL/EVENTFD is valid.
     if ((d_type != VFIO_IRQ_SET_DATA_NONE) &&
         (d_type != VFIO_IRQ_SET_DATA_BOOL) &&
         (d_type != VFIO_IRQ_SET_DATA_EVENTFD)) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ data %d\n", d_type);
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ data %d\n", d_type);
         return -EINVAL;
     }
     // Ensure irq_set's start and count are within bounds.
-    if ((irq_set->start >= vu_ctx->irq_count[irq_set->index]) ||
-        (irq_set->start + irq_set->count > vu_ctx->irq_count[irq_set->index])) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ start/count\n");
+    if ((irq_set->start >= vfu_ctx->irq_count[irq_set->index]) ||
+        (irq_set->start + irq_set->count > vfu_ctx->irq_count[irq_set->index])) {
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ start/count\n");
         return -EINVAL;
     }
     // Only TRIGGER is valid for ERR/REQ.
     if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
          (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&
         (a_type != VFIO_IRQ_SET_ACTION_TRIGGER)) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ trigger w/o ERR/REQ\n");
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ trigger w/o ERR/REQ\n");
         return -EINVAL;
     }
     // count == 0 is only valid with ACTION_TRIGGER and DATA_NONE.
     if ((irq_set->count == 0) && ((a_type != VFIO_IRQ_SET_ACTION_TRIGGER) ||
                                   (d_type != VFIO_IRQ_SET_DATA_NONE))) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ count %d\n", irq_set->count);
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ count %d\n", irq_set->count);
         return -EINVAL;
     }
     // If IRQs are set, ensure index matches what's enabled for the device.
-    if ((irq_set->count != 0) && (vu_ctx->irqs->type != IRQ_NONE) &&
-        (irq_set->index != LM2VFIO_IRQT(vu_ctx->irqs->type))) {
-        vu_log(vu_ctx, VU_DBG, "bad IRQ index\n");
+    if ((irq_set->count != 0) && (vfu_ctx->irqs->type != IRQ_NONE) &&
+        (irq_set->index != LM2VFIO_IRQT(vfu_ctx->irqs->type))) {
+        vfu_log(vfu_ctx, VFU_DBG, "bad IRQ index\n");
         return -EINVAL;
     }
 
@@ -270,15 +274,15 @@ dev_set_irqs_validate(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set)
 }
 
 static long
-dev_set_irqs(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
+dev_set_irqs(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     long ret;
 
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
     // Ensure irq_set is valid.
-    ret = dev_set_irqs_validate(vu_ctx, irq_set);
+    ret = dev_set_irqs_validate(vfu_ctx, irq_set);
     if (ret != 0) {
         return ret;
     }
@@ -290,37 +294,37 @@ dev_set_irqs(vu_ctx_t *vu_ctx, struct vfio_irq_set *irq_set, void *data)
         return 0;
     }
 
-    return irqs_trigger(vu_ctx, irq_set, data);
+    return irqs_trigger(vfu_ctx, irq_set, data);
 }
 
 static long
-dev_get_irqinfo(vu_ctx_t *vu_ctx, struct vfio_irq_info *irq_info_in,
+dev_get_irqinfo(vfu_ctx_t *vfu_ctx, struct vfio_irq_info *irq_info_in,
                 struct vfio_irq_info *irq_info_out)
 {
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_info_in != NULL);
     assert(irq_info_out != NULL);
 
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info_in->argsz < sizeof(struct vfio_irq_info)) ||
-        (irq_info_in->index >= VU_DEV_NUM_IRQS)) {
-        vu_log(vu_ctx, VU_DBG, "bad irq_info (size=%d index=%d)\n",
-               irq_info_in->argsz, irq_info_in->index);
+        (irq_info_in->index >= VFU_DEV_NUM_IRQS)) {
+        vfu_log(vfu_ctx, VFU_DBG, "bad irq_info (size=%d index=%d)\n",
+                irq_info_in->argsz, irq_info_in->index);
         return -EINVAL;
     }
 
-    irq_info_out->count = vu_ctx->irq_count[irq_info_in->index];
+    irq_info_out->count = vfu_ctx->irq_count[irq_info_in->index];
     irq_info_out->flags = VFIO_IRQ_INFO_EVENTFD;
 
     return 0;
 }
 
 int
-handle_device_get_irq_info(vu_ctx_t *vu_ctx, uint32_t size,
+handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            struct vfio_irq_info *irq_info_in,
                            struct vfio_irq_info *irq_info_out)
 {
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_info_in != NULL);
     assert(irq_info_out != NULL);
 
@@ -328,16 +332,16 @@ handle_device_get_irq_info(vu_ctx_t *vu_ctx, uint32_t size,
         return -EINVAL;
     }
 
-    return dev_get_irqinfo(vu_ctx, irq_info_in, irq_info_out);
+    return dev_get_irqinfo(vfu_ctx, irq_info_in, irq_info_out);
 }
 
 int
-handle_device_set_irqs(vu_ctx_t *vu_ctx, uint32_t size,
+handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, int nr_fds, struct vfio_irq_set *irq_set)
 {
     void *data = NULL;
 
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
     if (size < sizeof *irq_set || size != irq_set->argsz) {
@@ -359,19 +363,19 @@ handle_device_set_irqs(vu_ctx_t *vu_ctx, uint32_t size,
             return -EINVAL;
     }
 
-    return dev_set_irqs(vu_ctx, irq_set, data);
+    return dev_set_irqs(vfu_ctx, irq_set, data);
 }
 
-static int validate_irq_subindex(vu_ctx_t *vu_ctx, uint32_t subindex)
+static int validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
-    if (vu_ctx == NULL) {
+    if (vfu_ctx == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if ((subindex >= vu_ctx->irqs->max_ivs)) {
-        vu_log(vu_ctx, VU_ERR, "bad IRQ %d, max=%d\n", subindex,
-               vu_ctx->irqs->max_ivs);
+    if ((subindex >= vfu_ctx->irqs->max_ivs)) {
+        vfu_log(vfu_ctx, VFU_ERR, "bad IRQ %d, max=%d\n", subindex,
+               vfu_ctx->irqs->max_ivs);
         /* FIXME should return -errno */
         errno = EINVAL;
         return -1;
@@ -381,39 +385,39 @@ static int validate_irq_subindex(vu_ctx_t *vu_ctx, uint32_t subindex)
 }
 
 int
-vu_irq_trigger(vu_ctx_t *vu_ctx, uint32_t subindex)
+vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     int ret;
     eventfd_t val = 1;
 
-    ret = validate_irq_subindex(vu_ctx, subindex);
+    ret = validate_irq_subindex(vfu_ctx, subindex);
     if (ret < 0) {
         return ret;
     }
 
-    if (vu_ctx->irqs->efds[subindex] == -1) {
-        vu_log(vu_ctx, VU_ERR, "no fd for interrupt %d\n", subindex);
+    if (vfu_ctx->irqs->efds[subindex] == -1) {
+        vfu_log(vfu_ctx, VFU_ERR, "no fd for interrupt %d\n", subindex);
         /* FIXME should return -errno */
         errno = ENOENT;
         return -1;
     }
 
-    return eventfd_write(vu_ctx->irqs->efds[subindex], val);
+    return eventfd_write(vfu_ctx->irqs->efds[subindex], val);
 }
 
 int
-vu_irq_message(vu_ctx_t *vu_ctx, uint32_t subindex)
+vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     int ret, msg_id = 1;
     struct vfio_user_irq_info irq_info;
 
-    ret = validate_irq_subindex(vu_ctx, subindex);
+    ret = validate_irq_subindex(vfu_ctx, subindex);
     if (ret < 0) {
         return -1;
     }
 
     irq_info.subindex = subindex;
-    ret = vu_msg(vu_ctx->conn_fd, msg_id,
+    ret = vfu_msg(vfu_ctx->conn_fd, msg_id,
                  VFIO_USER_VM_INTERRUPT,
                  &irq_info, sizeof irq_info,
                  NULL, NULL, 0);

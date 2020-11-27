@@ -36,11 +36,11 @@
 #include "private.h"
 
 int
-handle_device_get_irq_info(vu_ctx_t *vu_ctx, uint32_t size,
+handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            struct vfio_irq_info *irq_info_in,
                            struct vfio_irq_info *irq_info_out);
 int
-handle_device_set_irqs(vu_ctx_t *vu_ctx, uint32_t size,
+handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, int nr_fds, struct vfio_irq_set *irq_set);
 
 #endif /* LIB_VFIO_USER_IRQ_H */

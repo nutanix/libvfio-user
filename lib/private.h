@@ -35,7 +35,7 @@
 
 #include "dma.h"
 
-#ifdef VU_VERBOSE_LOGGING
+#ifdef VFU_VERBOSE_LOGGING
 void
 dump_buffer(const char *prefix, const char *buf, uint32_t count);
 #else
@@ -43,10 +43,11 @@ dump_buffer(const char *prefix, const char *buf, uint32_t count);
 #endif
 
 struct transport_ops {
-    int (*init)(vu_ctx_t*);
-    int (*attach)(vu_ctx_t*);
-    int(*detach)(vu_ctx_t*);
-    int (*get_request)(vu_ctx_t*, struct vfio_user_header*, int *fds, int *nr_fds);
+    int (*init)(vfu_ctx_t*);
+    int (*attach)(vfu_ctx_t*);
+    int(*detach)(vfu_ctx_t*);
+    int (*get_request)(vfu_ctx_t*, struct vfio_user_header*,
+                       int *fds, int *nr_fds);
 };
 
 typedef enum {
@@ -62,14 +63,14 @@ typedef struct {
     int         req_efd;    /* eventfd for irq req */
     uint32_t    max_ivs;    /* maximum number of ivs supported */
     int         efds[0];    /* XXX must be last */
-} vu_irqs_t;
+} vfu_irqs_t;
 
 struct migration;
 
 typedef struct  {
 
     /*
-     * Region flags, see VU_REG_FLAG_XXX above.
+     * Region flags, see VFU_REG_FLAG_XXX above.
      */
     uint32_t            flags;
 
@@ -83,60 +84,60 @@ typedef struct  {
      * Note that the memory of the region is owned by the user, except for the
      * standard header (first 64 bytes) of the PCI configuration space.
      */
-    vu_region_access_cb_t  *fn;
+    vfu_region_access_cb_t  *fn;
 
     /*
      * Callback function that is called when the region is memory mapped.
-     * Required if VU_REG_FLAG_MEM is set, otherwise ignored.
+     * Required if VFU_REG_FLAG_MEM is set, otherwise ignored.
      */
-    vu_map_region_cb_t     *map;
-    struct vu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
-} vu_reg_info_t;
+    vfu_map_region_cb_t     *map;
+    struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+} vfu_reg_info_t;
 
-struct vu_ctx {
+struct vfu_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
     int                     fd;
     int                     conn_fd;
-    vu_reset_cb_t           *reset;
-    vu_log_lvl_t            log_lvl;
-    vu_log_fn_t             *log;
+    vfu_reset_cb_t          *reset;
+    vfu_log_lvl_t           log_lvl;
+    vfu_log_fn_t            *log;
     size_t                  nr_regions;
-    vu_reg_info_t           *reg_info;
-    vu_pci_config_space_t   *pci_config_space;
+    vfu_reg_info_t          *reg_info;
+    vfu_pci_config_space_t  *pci_config_space;
     struct transport_ops    *trans;
     struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
-    vu_map_dma_cb_t         *map_dma;
-    vu_unmap_dma_cb_t       *unmap_dma;
+    vfu_map_dma_cb_t        *map_dma;
+    vfu_unmap_dma_cb_t      *unmap_dma;
 
     /* TODO there should be a void * variable to store transport-specific stuff */
-    /* VU_TRANS_SOCK */
+    /* VFU_TRANS_SOCK */
     int                     sock_flags;
 
     int                     client_max_fds;
 
-    vu_reg_info_t           *migr_reg;
+    vfu_reg_info_t          *migr_reg;
     struct migration        *migration;
 
-    uint32_t                irq_count[VU_DEV_NUM_IRQS];
-    vu_irqs_t               *irqs;
+    uint32_t                irq_count[VFU_DEV_NUM_IRQS];
+    vfu_irqs_t              *irqs;
     int                     ready;
 };
 
 int
-vu_pci_hdr_access(vu_ctx_t *vu_ctx, uint32_t *count,
-                  uint64_t *pos, bool write, char *buf);
+vfu_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
+                   uint64_t *pos, bool write, char *buf);
 
-vu_reg_info_t *
-vu_get_region_info(vu_ctx_t *vu_ctx);
+vfu_reg_info_t *
+vfu_get_region_info(vfu_ctx_t *vfu_ctx);
 
 uint64_t
 region_to_offset(uint32_t region);
 
 int
-handle_dma_map_or_unmap(vu_ctx_t *vu_ctx, uint32_t size, bool map,
+handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         int *fds, int nr_fds,
                         struct vfio_user_dma_region *dma_regions);
 

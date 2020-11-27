@@ -47,7 +47,7 @@ enum migr_iter_state {
 struct migration {
     struct vfio_device_migration_info info;
     size_t pgsize;
-    vu_migration_callbacks_t callbacks;
+    vfu_migration_callbacks_t callbacks;
     struct {
         enum migr_iter_state state;
         __u64 offset;
@@ -76,12 +76,12 @@ static const __u32 migr_states[VFIO_DEVICE_STATE_MASK] = {
 };
 
 struct migration *
-init_migration(const vu_migration_t * const vu_migr, int *err)
+init_migration(const vfu_migration_t * const vfu_migr, int *err)
 {
     struct migration *migr;
 
     *err = 0;
-    if (vu_migr->size < sizeof(struct vfio_device_migration_info)) {
+    if (vfu_migr->size < sizeof(struct vfio_device_migration_info)) {
         *err = EINVAL;
         return NULL;
     }
@@ -99,10 +99,10 @@ init_migration(const vu_migration_t * const vu_migr, int *err)
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
 
-    /* FIXME this should be done in vu_ctx_run or poll */
+    /* FIXME this should be done in vfu_ctx_run or poll */
     migr->info.device_state = VFIO_DEVICE_STATE_RUNNING;
 
-    migr->callbacks = vu_migr->callbacks;
+    migr->callbacks = vfu_migr->callbacks;
     if (migr->callbacks.transition == NULL ||
         migr->callbacks.get_pending_bytes == NULL ||
         migr->callbacks.prepare_data == NULL ||
@@ -123,7 +123,7 @@ _migr_state_transition_is_valid(__u32 from, __u32 to)
 }
 
 static ssize_t
-handle_device_state(vu_ctx_t *vu_ctx, void *pvt,
+handle_device_state(vfu_ctx_t *vfu_ctx, void *pvt,
                     struct migration *migr, __u32 *device_state,
                     bool is_write) {
 
@@ -138,24 +138,24 @@ handle_device_state(vu_ctx_t *vu_ctx, void *pvt,
     }
 
     if (*device_state & ~VFIO_DEVICE_STATE_MASK) {
-        vu_log(vu_ctx, VU_ERR, "bad device state %#x", *device_state);
+        vfu_log(vfu_ctx, VFU_ERR, "bad device state %#x", *device_state);
         return -EINVAL;
     }
 
     if (!_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
         /* TODO print descriptive device state names instead of raw value */
-        vu_log(vu_ctx, VU_ERR, "bad transition from state %d to state %d",
+        vfu_log(vfu_ctx, VFU_ERR, "bad transition from state %d to state %d",
                migr->info.device_state, *device_state);
         return -EINVAL;
     }
 
     switch (*device_state) {
         case VFIO_DEVICE_STATE_STOP:
-            ret = migr->callbacks.transition(pvt, VU_MIGR_STATE_STOP);
+            ret = migr->callbacks.transition(pvt, VFU_MIGR_STATE_STOP);
             break;
         case VFIO_DEVICE_STATE_RUNNING:
-            ret = migr->callbacks.transition(pvt, VU_MIGR_STATE_RUNNING);
+            ret = migr->callbacks.transition(pvt, VFU_MIGR_STATE_RUNNING);
             break;
         case VFIO_DEVICE_STATE_SAVING:
             /*
@@ -164,13 +164,13 @@ handle_device_state(vu_ctx_t *vu_ctx, void *pvt,
              * the migration region? E.g. Access to any other region should be
              * failed? This might be a good question to send to LKML.
              */
-            ret = migr->callbacks.transition(pvt, VU_MIGR_STATE_STOP_AND_COPY);
+            ret = migr->callbacks.transition(pvt, VFU_MIGR_STATE_STOP_AND_COPY);
             break;
         case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-            ret = migr->callbacks.transition(pvt, VU_MIGR_STATE_PRE_COPY);
+            ret = migr->callbacks.transition(pvt, VFU_MIGR_STATE_PRE_COPY);
             break;
         case VFIO_DEVICE_STATE_RESUMING:
-            ret = migr->callbacks.transition(pvt, VU_MIGR_STATE_RESUME);
+            ret = migr->callbacks.transition(pvt, VFU_MIGR_STATE_RESUME);
             break;
         default:
             assert(false);
@@ -179,8 +179,8 @@ handle_device_state(vu_ctx_t *vu_ctx, void *pvt,
     if (ret == 0) {
         migr->info.device_state = *device_state;
     } else if (ret < 0) {
-        vu_log(vu_ctx, VU_ERR, "failed to transition to state %d: %s",
-               *device_state, strerror(-ret));
+        vfu_log(vfu_ctx, VFU_ERR, "failed to transition to state %d: %s",
+                *device_state, strerror(-ret));
     }
 
     return ret;
@@ -241,7 +241,7 @@ handle_pending_bytes(void *pvt, struct migration *migr,
  */
 
 static ssize_t
-handle_data_offset_when_saving(vu_ctx_t *vu_ctx, void *pvt,
+handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, void *pvt,
                                struct migration *migr, bool is_write)
 {
     int ret = 0;
@@ -249,7 +249,7 @@ handle_data_offset_when_saving(vu_ctx_t *vu_ctx, void *pvt,
     assert(migr != NULL);
 
     if (is_write) {
-        vu_log(vu_ctx, VU_ERR, "data_offset is RO when saving");
+        vfu_log(vfu_ctx, VFU_ERR, "data_offset is RO when saving");
         return -EINVAL;
     }
 
@@ -267,7 +267,8 @@ handle_data_offset_when_saving(vu_ctx_t *vu_ctx, void *pvt,
          */
         break;
     default:
-        vu_log(vu_ctx, VU_ERR, "reading data_offset out of sequence is undefined");
+        vfu_log(vfu_ctx, VFU_ERR,
+                "reading data_offset out of sequence is undefined");
         return -EINVAL;
     }
 
@@ -275,7 +276,7 @@ handle_data_offset_when_saving(vu_ctx_t *vu_ctx, void *pvt,
 }
 
 static ssize_t
-handle_data_offset(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
+handle_data_offset(vfu_ctx_t *vfu_ctx, void *pvt, struct migration *migr,
                    __u64 *offset, bool is_write)
 {
     int ret;
@@ -286,11 +287,11 @@ handle_data_offset(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
     switch (migr->info.device_state) {
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-        ret = handle_data_offset_when_saving(vu_ctx, pvt, migr, is_write);
+        ret = handle_data_offset_when_saving(vfu_ctx, pvt, migr, is_write);
         break;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
-            vu_log(vu_ctx, VU_ERR, "bad write to migration data_offset");
+            vfu_log(vfu_ctx, VFU_ERR, "bad write to migration data_offset");
             ret = -EINVAL;
         } else {
             ret = 0;
@@ -298,8 +299,9 @@ handle_data_offset(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
         break;
     default:
         /* TODO improve error message */
-        vu_log(vu_ctx, VU_ERR, "bad access to migration data_offset in state %d",
-               migr->info.device_state);
+        vfu_log(vfu_ctx, VFU_ERR,
+                "bad access to migration data_offset in state %d",
+                migr->info.device_state);
         ret = -EINVAL;
     }
 
@@ -311,20 +313,21 @@ handle_data_offset(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
 }
 
 static ssize_t
-handle_data_size_when_saving(vu_ctx_t *vu_ctx, struct migration *migr,
+handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
                              bool is_write)
 {
     assert(migr != NULL);
 
     if (is_write) {
         /* TODO improve error message */
-        vu_log(vu_ctx, VU_ERR, "data_size is RO when saving");
+        vfu_log(vfu_ctx, VFU_ERR, "data_size is RO when saving");
         return -EINVAL;
     }
 
     if (migr->iter.state != VFIO_USER_MIGR_ITER_STATE_STARTED &&
         migr->iter.state != VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED) {
-        vu_log(vu_ctx, VU_ERR, "reading data_size ouf of sequence is undefined");
+        vfu_log(vfu_ctx, VFU_ERR,
+                "reading data_size ouf of sequence is undefined");
         return -EINVAL;
     }
     return 0;
@@ -347,25 +350,25 @@ handle_data_size_when_resuming(void *pvt, struct migration *migr,
 }
 
 static ssize_t
-handle_data_size(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
+handle_data_size(vfu_ctx_t *vfu_ctx, void *pvt, struct migration *migr,
                  __u64 *size, bool is_write)
 {
     int ret;
 
-    assert(vu_ctx != NULL);
+    assert(vfu_ctx != NULL);
     assert(size != NULL);
 
     switch (migr->info.device_state){
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
-        ret = handle_data_size_when_saving(vu_ctx, migr, is_write);
+        ret = handle_data_size_when_saving(vfu_ctx, migr, is_write);
         break;
     case VFIO_DEVICE_STATE_RESUMING:
         ret = handle_data_size_when_resuming(pvt, migr, *size, is_write);
         break;
     default:
         /* TODO improve error message */
-        vu_log(vu_ctx, VU_ERR, "bad access to data_size");
+        vfu_log(vfu_ctx, VFU_ERR, "bad access to data_size");
         ret = -EINVAL;
     }
 
@@ -377,7 +380,7 @@ handle_data_size(vu_ctx_t *vu_ctx, void *pvt, struct migration *migr,
 }
 
 static ssize_t
-handle_region_access_registers(vu_ctx_t *vu_ctx, void *pvt,
+handle_region_access_registers(vfu_ctx_t *vfu_ctx, void *pvt,
                                struct migration *migr, char *buf, size_t count,
                                loff_t pos, bool is_write)
 {
@@ -388,34 +391,38 @@ handle_region_access_registers(vu_ctx_t *vu_ctx, void *pvt,
     switch (pos) {
     case offsetof(struct vfio_device_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
-            vu_log(vu_ctx, VU_ERR, "bad device_state access size %ld", count);
+            vfu_log(vfu_ctx, VFU_ERR,
+                    "bad device_state access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_device_state(vu_ctx, pvt, migr, (__u32*)buf, is_write);
+        ret = handle_device_state(vfu_ctx, pvt, migr, (__u32*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
-            vu_log(vu_ctx, VU_ERR, "bad pending_bytes access size %ld", count);
+            vfu_log(vfu_ctx, VFU_ERR,
+                    "bad pending_bytes access size %ld", count);
             return -EINVAL;
         }
         ret = handle_pending_bytes(pvt, migr, (__u64*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
-            vu_log(vu_ctx, VU_ERR, "bad data_offset access size %ld", count);
+            vfu_log(vfu_ctx, VFU_ERR,
+                    "bad data_offset access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_data_offset(vu_ctx, pvt, migr, (__u64*)buf, is_write);
+        ret = handle_data_offset(vfu_ctx, pvt, migr, (__u64*)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
-            vu_log(vu_ctx, VU_ERR, "bad data_size access size %ld", count);
+            vfu_log(vfu_ctx, VFU_ERR,
+                    "bad data_size access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_data_size(vu_ctx, pvt, migr, (__u64*)buf, is_write);
+        ret = handle_data_size(vfu_ctx, pvt, migr, (__u64*)buf, is_write);
         break;
     default:
-        vu_log(vu_ctx, VU_ERR, "bad migration region register offset %#lx",
+        vfu_log(vfu_ctx, VFU_ERR, "bad migration region register offset %#lx",
                pos);
         return -EINVAL;
     }
@@ -423,7 +430,7 @@ handle_region_access_registers(vu_ctx_t *vu_ctx, void *pvt,
 }
 
 ssize_t
-handle_migration_region_access(vu_ctx_t *vu_ctx, void *pvt,
+handle_migration_region_access(vfu_ctx_t *vfu_ctx, void *pvt,
                                struct migration *migr,
                                char *buf, size_t count,
                                loff_t pos, bool is_write)
@@ -434,7 +441,7 @@ handle_migration_region_access(vu_ctx_t *vu_ctx, void *pvt,
     assert(buf != NULL);
 
     if (pos + count <= sizeof(struct vfio_device_migration_info)) {
-        ret = handle_region_access_registers(vu_ctx, pvt, migr, buf,
+        ret = handle_region_access_registers(vfu_ctx, pvt, migr, buf,
                                              count, pos, is_write);
     } else {
         pos -= sizeof(struct vfio_device_migration_info);

@@ -43,7 +43,7 @@
 #include "tran_sock.h"
 
 static void
-null_log(UNUSED void *pvt, UNUSED vu_log_lvl_t lvl, char const *msg)
+null_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
 {
 	fprintf(stderr, "null: %s", msg);
 }
@@ -51,7 +51,7 @@ null_log(UNUSED void *pvt, UNUSED vu_log_lvl_t lvl, char const *msg)
 
 static void* null_drive(void *arg)
 {
-    vu_ctx_t *vu_ctx = (vu_ctx_t*)arg;
+    vfu_ctx_t *vfu_ctx = (vfu_ctx_t*)arg;
     int ret = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     if (ret != 0) {
         fprintf(stderr, "failed to enable cancel state: %s\n", strerror(ret));
@@ -63,7 +63,7 @@ static void* null_drive(void *arg)
         return NULL;
     }
     printf("starting device emulation\n");
-    vu_ctx_drive(vu_ctx);
+    vfu_ctx_drive(vfu_ctx);
     return NULL;
 }
 
@@ -76,17 +76,17 @@ int main(int argc, char **argv)
         errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
-    vu_ctx_t *vu_ctx = vu_create_ctx(VU_TRANS_SOCK, argv[1], 0, NULL);
-    if (vu_ctx == NULL) {
+    vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[1], 0, NULL);
+    if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
 
-    ret = vu_setup_log(vu_ctx, null_log, VU_DBG);
+    ret = vfu_setup_log(vfu_ctx, null_log, VFU_DBG);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = pthread_create(&thread, NULL, null_drive, vu_ctx);
+    ret = pthread_create(&thread, NULL, null_drive, vfu_ctx);
     if (ret != 0) {
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
@@ -102,7 +102,7 @@ int main(int argc, char **argv)
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
     }
-    vu_ctx_destroy(vu_ctx);
+    vfu_ctx_destroy(vfu_ctx);
 
     printf("device emulation stopped and cleaned up, press enter to exit\n");
     if (getchar() == EOF) {

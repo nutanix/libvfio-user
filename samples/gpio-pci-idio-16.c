@@ -46,7 +46,7 @@
 #include "tran_sock.h"
 
 static void
-_log(UNUSED void *pvt, UNUSED vu_log_lvl_t lvl, char const *msg)
+_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
 {
     fprintf(stderr, "gpio: %s\n", msg);
 }
@@ -74,10 +74,10 @@ main(int argc, char *argv[])
     bool verbose = false;
     char opt;
     struct sigaction act = { .sa_handler = _sa_handler };
-    vu_ctx_t *vu_ctx;
-    vu_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
-    vu_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
-    vu_pci_hdr_cc_t cc = { { 0 } };
+    vfu_ctx_t *vfu_ctx;
+    vfu_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
+    vfu_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
+    vfu_pci_hdr_cc_t cc = { { 0 } };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -99,8 +99,8 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    vu_ctx = vu_create_ctx(VU_TRANS_SOCK, argv[optind], 0, NULL);
-    if (vu_ctx == NULL) {
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, NULL);
+    if (vfu_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");
             exit(EXIT_SUCCESS);
@@ -108,25 +108,25 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
-    ret = vu_setup_log(vu_ctx, _log, verbose ? VU_DBG : VU_ERR);
+    ret = vfu_setup_log(vfu_ctx, _log, verbose ? VFU_DBG : VFU_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = vu_pci_setup_config_hdr(vu_ctx, id, ss, cc, false);
+    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc, false);
     if (ret < 0) {
         fprintf(stderr, "failed to setup pci header\n");
         goto out;
     }
 
-    ret = vu_setup_region(vu_ctx, VU_PCI_DEV_BAR2_REGION_IDX, 0x100, &bar2_access,
-                          VU_REG_FLAG_RW, NULL, NULL);
+    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
+                           &bar2_access, VFU_REG_FLAG_RW, NULL, NULL);
     if (ret < 0) {
         fprintf(stderr, "failed to setup region\n");
         goto out;
     }
 
-    ret = vu_ctx_drive(vu_ctx);
+    ret = vfu_ctx_drive(vfu_ctx);
     if (ret != 0) {
         if (ret != -ENOTCONN && ret != -EINTR) {
             fprintf(stderr, "failed to realize device emulation\n");
@@ -136,7 +136,7 @@ main(int argc, char *argv[])
     }
 
 out:
-    vu_ctx_destroy(vu_ctx);
+    vfu_ctx_destroy(vfu_ctx);
     return ret;
 }
 

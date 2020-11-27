@@ -66,21 +66,21 @@ typedef struct {
     uint64_t offset;
 } dma_sg_t;
 
-typedef struct vu_ctx vu_ctx_t;
+typedef struct vfu_ctx vfu_ctx_t;
 
-struct vu_mmap_area {
+struct vfu_mmap_area {
     uint64_t start;
     uint64_t size;
 };
 
-struct vu_sparse_mmap_areas {
+struct vfu_sparse_mmap_areas {
     int nr_mmap_areas;
-    struct vu_mmap_area areas[];
+    struct vfu_mmap_area areas[];
 };
 
 /**
  * Prototype for memory access callback. The program MUST first map device
- * memory in its own virtual address space using vu_mmap, do any additional work
+ * memory in its own virtual address space using vfu_mmap, do any additional work
  * required, and finally return that memory. When a region is memory mapped,
  * libvfio-user calls the previously registered callback with the following
  * arguments:
@@ -89,45 +89,45 @@ struct vu_sparse_mmap_areas {
  * @off: offset of memory area being memory mapped
  * @len: length of memory area being memory mapped
  *
- * @returns the memory address returned by vu_mmap, or MAP_FAILED on failure
+ * @returns the memory address returned by vfu_mmap, or MAP_FAILED on failure
  */
-typedef unsigned long (vu_map_region_cb_t) (void *pvt, unsigned long off,
-                                            unsigned long len);
+typedef unsigned long (vfu_map_region_cb_t) (void *pvt, unsigned long off,
+                                             unsigned long len);
 
 /**
  * Creates a mapping of a device region into the caller's virtual memory. It
- * must be called by vu_map_region_cb_t.
+ * must be called by vfu_map_region_cb_t.
  *
- * @vu_ctx: the context to create mapping from
+ * @vfu_ctx: the context to create mapping from
  * @offset: offset of the region being mapped
  * @length: size of the region being mapped
  *
  * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
  */
 void *
-vu_mmap(vu_ctx_t * vu_ctx, off_t offset, size_t length);
+vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
  */
-vu_pci_config_space_t *
-vu_pci_get_config_space(vu_ctx_t *vu_ctx);
+vfu_pci_config_space_t *
+vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
 
-#define VU_DMA_REGIONS  0x10
+#define VFU_DMA_REGIONS  0x10
 
 typedef enum {
-    VU_ERR,
-    VU_INF,
-    VU_DBG
-} vu_log_lvl_t;
+    VFU_ERR,
+    VFU_INF,
+    VFU_DBG
+} vfu_log_lvl_t;
 
 /**
  * Callback function signature for log function
  * @pvt: private pointer
- * @vu_log_fn_t: typedef for log function.
+ * @vfu_log_fn_t: typedef for log function.
  * @msg: message
  */
-typedef void (vu_log_fn_t) (void *pvt, vu_log_lvl_t lvl, const char *msg);
+typedef void (vfu_log_fn_t) (void *pvt, vfu_log_lvl_t lvl, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
@@ -143,9 +143,9 @@ typedef void (vu_log_fn_t) (void *pvt, vu_log_lvl_t lvl, const char *msg);
  *
  * @returns the number of bytes read or written
  */
-typedef ssize_t (vu_cap_access_t) (void *pvt, uint8_t id,
-                                   char *buf, size_t count,
-                                   loff_t offset, bool is_write);
+typedef ssize_t (vfu_cap_access_t) (void *pvt, uint8_t id,
+                                    char *buf, size_t count,
+                                    loff_t offset, bool is_write);
 
 /* FIXME does it have to be packed as well? */
 typedef union {
@@ -153,14 +153,14 @@ typedef union {
     struct msixcap msix;
     struct pmcap pm;
     struct pxcap px;
-} vu_cap_t;
+} vfu_cap_t;
 
 typedef enum {
-    VU_TRANS_SOCK,
-    VU_TRANS_MAX
-} vu_trans_t;
+    VFU_TRANS_SOCK,
+    VFU_TRANS_MAX
+} vfu_trans_t;
 
-#define VU_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
+#define VFU_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
 /*
  * FIXME the names of migration callback functions are probably far too long,
@@ -170,22 +170,22 @@ typedef enum {
  * Migration callback function.
  * @pvt: private pointer
  */
-typedef int (vu_migration_callback_t)(void *pvt);
+typedef int (vfu_migration_callback_t)(void *pvt);
 
 typedef enum {
-    VU_MIGR_STATE_STOP,
-    VU_MIGR_STATE_RUNNING,
-    VU_MIGR_STATE_STOP_AND_COPY,
-    VU_MIGR_STATE_PRE_COPY,
-    VU_MIGR_STATE_RESUME
-} vu_migr_state_t;
+    VFU_MIGR_STATE_STOP,
+    VFU_MIGR_STATE_RUNNING,
+    VFU_MIGR_STATE_STOP_AND_COPY,
+    VFU_MIGR_STATE_PRE_COPY,
+    VFU_MIGR_STATE_RESUME
+} vfu_migr_state_t;
 
 typedef struct {
 
     /* migration state transition callback */
-    /* TODO rename to vu_migration_state_transition_callback */
+    /* TODO rename to vfu_migration_state_transition_callback */
     /* FIXME maybe we should create a single callback and pass the state? */
-    int (*transition)(void *pvt, vu_migr_state_t state);
+    int (*transition)(void *pvt, vfu_migr_state_t state);
 
     /* Callbacks for saving device state */
 
@@ -226,18 +226,18 @@ typedef struct {
     /* Fuction that is called for writing previously stored device state. */
     size_t (*write_data)(void *pvt, void *buf, __u64 count, __u64 offset);
 
-} vu_migration_callbacks_t;
+} vfu_migration_callbacks_t;
 
 typedef struct {
-    size_t                      size;
-    vu_migration_callbacks_t    callbacks;
-    struct vu_sparse_mmap_areas *mmap_areas;
-} vu_migration_t;
+    size_t                       size;
+    vfu_migration_callbacks_t    callbacks;
+    struct vfu_sparse_mmap_areas *mmap_areas;
+} vfu_migration_t;
 
 /*
  * Attaching to the transport is non-blocking. The library will not attempt
  * to attach during context creation time. The caller must then manually
- * call vu_ctx_try_attach(), which is non-blocking, as many times as
+ * call vfu_ctx_try_attach(), which is non-blocking, as many times as
  * necessary.
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
@@ -248,58 +248,58 @@ typedef struct {
  * @path: path to socket file.
  * @flags: context flag
  * @pvt: private data
- * @returns the vu_ctx to be used or NULL on error. Sets errno.
+ * @returns the vfu_ctx to be used or NULL on error. Sets errno.
  */
-vu_ctx_t *
-vu_create_ctx(vu_trans_t trans, const char *path,
-              int flags, void *pvt);
+vfu_ctx_t *
+vfu_create_ctx(vfu_trans_t trans, const char *path,
+               int flags, void *pvt);
 
 /**
  * Setup logging information.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @log: logging function
  * @log_lvl: logging level
  */
 int
-vu_setup_log(vu_ctx_t *vu_ctx, vu_log_fn_t *log, vu_log_lvl_t log_lvl);
+vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
-//      Or should we pass whole vu_pci_hdr_t to be filled by user.
+//      Or should we pass whole vfu_pci_hdr_t to be filled by user.
 /**
  * Setup PCI header data.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @id: Device and vendor ID
  * @ss: Subsystem vendor and device ID
  * @cc: Class code
  * @extended: support extended PCI config space
  */
 int
-vu_pci_setup_config_hdr(vu_ctx_t *vu_ctx, vu_pci_hdr_id_t id,
-                        vu_pci_hdr_ss_t ss, vu_pci_hdr_cc_t cc,
-                        bool extended);
+vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
+                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
+                         bool extended);
 
 //TODO: Support variable size capabilities.
 /**
  * Setup PCI capabilities.
- * @vu_ctx: the libvfio-user context
- * @caps: array of (vu_cap_t *)
+ * @vfu_ctx: the libvfio-user context
+ * @caps: array of (vfu_cap_t *)
  * *nr_caps: number of elements in @caps
  */
 int
-vu_pci_setup_caps(vu_ctx_t *vu_ctx, vu_cap_t **caps, int nr_caps);
+vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 
 // Region flags.
-#define VU_REG_FLAG_READ    (1 << 0)
-#define VU_REG_FLAG_WRITE   (1 << 1)
-#define VU_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define VU_REG_FLAG_RW      (VU_REG_FLAG_READ | VU_REG_FLAG_WRITE)
-#define VU_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+#define VFU_REG_FLAG_READ    (1 << 0)
+#define VFU_REG_FLAG_WRITE   (1 << 1)
+#define VFU_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define VFU_REG_FLAG_RW      (VFU_REG_FLAG_READ | VFU_REG_FLAG_WRITE)
+#define VFU_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
 /**
  * Prototype for region access callback. When a region is accessed, libvfio-user
  * calls the previously registered callback with the following arguments:
  *
- * @pvt: private data originally passed by vu_create_ctx()
+ * @pvt: private data originally passed by vfu_create_ctx()
  * @buf: buffer containing the data to be written or data to be read into
  * @count: number of bytes being read or written
  * @offset: byte offset within the region
@@ -307,26 +307,26 @@ vu_pci_setup_caps(vu_ctx_t *vu_ctx, vu_cap_t **caps, int nr_caps);
  *
  * @returns the number of bytes read or written, or a negative integer on error
  */
-typedef ssize_t (vu_region_access_cb_t) (void *pvt, char *buf, size_t count,
-                                         loff_t offset, bool is_write);
+typedef ssize_t (vfu_region_access_cb_t) (void *pvt, char *buf, size_t count,
+                                          loff_t offset, bool is_write);
 
 /* PCI regions */
 enum {
-    VU_PCI_DEV_BAR0_REGION_IDX,
-    VU_PCI_DEV_BAR1_REGION_IDX,
-    VU_PCI_DEV_BAR2_REGION_IDX,
-    VU_PCI_DEV_BAR3_REGION_IDX,
-    VU_PCI_DEV_BAR4_REGION_IDX,
-    VU_PCI_DEV_BAR5_REGION_IDX,
-    VU_PCI_DEV_ROM_REGION_IDX,
-    VU_PCI_DEV_CFG_REGION_IDX,
-    VU_PCI_DEV_VGA_REGION_IDX,
-    VU_PCI_DEV_NUM_REGIONS,
+    VFU_PCI_DEV_BAR0_REGION_IDX,
+    VFU_PCI_DEV_BAR1_REGION_IDX,
+    VFU_PCI_DEV_BAR2_REGION_IDX,
+    VFU_PCI_DEV_BAR3_REGION_IDX,
+    VFU_PCI_DEV_BAR4_REGION_IDX,
+    VFU_PCI_DEV_BAR5_REGION_IDX,
+    VFU_PCI_DEV_ROM_REGION_IDX,
+    VFU_PCI_DEV_CFG_REGION_IDX,
+    VFU_PCI_DEV_VGA_REGION_IDX,
+    VFU_PCI_DEV_NUM_REGIONS,
 };
 
 /**
  * Set up a region.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
  * @size: size of the region
  * @region_access: callback function to access region
@@ -335,16 +335,16 @@ enum {
  * @region_map: callback function to map region
  */
 int
-vu_setup_region(vu_ctx_t *vu_ctx, int region_idx, size_t size,
-                vu_region_access_cb_t *region_access, int flags,
-                struct vu_sparse_mmap_areas *mmap_areas,
-                vu_map_region_cb_t *map);
+vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
+                 vfu_region_access_cb_t *region_access, int flags,
+                 struct vfu_sparse_mmap_areas *mmap_areas,
+                 vfu_map_region_cb_t *map);
 
 /*
  * Callback function that is called when the guest resets the device.
  * @pvt: private pointer
  */
-typedef int (vu_reset_cb_t) (void *pvt);
+typedef int (vfu_reset_cb_t) (void *pvt);
 
 /*
  * Function that is called when the guest maps a DMA region. Optional.
@@ -352,7 +352,7 @@ typedef int (vu_reset_cb_t) (void *pvt);
  * @iova: iova address
  * @len: length
  */
-typedef void (vu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef void (vfu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
@@ -362,89 +362,89 @@ typedef void (vu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
  * @iova: iova address
  * @len: length
  */
-typedef int (vu_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef int (vfu_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 
 /**
  * Setup device reset callback.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @reset: device reset callback (optional)
  */
 int
-vu_setup_device_reset_cb(vu_ctx_t *vu_ctx, vu_reset_cb_t *reset);
+vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
 
 /**
  * Setup device DMA map/unmap callbacks.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @map_dma: DMA region map callback (optional)
  * @unmap_dma: DMA region unmap callback (optional)
  */
 
 int
-vu_setup_device_dma_cb(vu_ctx_t *vu_ctx, vu_map_dma_cb_t *map_dma,
-                       vu_unmap_dma_cb_t *unmap_dma);
+vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
+                        vfu_unmap_dma_cb_t *unmap_dma);
 
-enum vu_dev_irq_type {
-    VU_DEV_INTX_IRQ,
-    VU_DEV_MSI_IRQ,
-    VU_DEV_MSIX_IRQ,
-    VU_DEV_ERR_IRQ,
-    VU_DEV_REQ_IRQ,
-    VU_DEV_NUM_IRQS
+enum vfu_dev_irq_type {
+    VFU_DEV_INTX_IRQ,
+    VFU_DEV_MSI_IRQ,
+    VFU_DEV_MSIX_IRQ,
+    VFU_DEV_ERR_IRQ,
+    VFU_DEV_REQ_IRQ,
+    VFU_DEV_NUM_IRQS
 };
 
 /**
  * Setup device IRQ counts.
- * @vu_ctx: the libvfio-user context
- * @type: IRQ type (VU_DEV_INTX_IRQ ... VU_DEV_REQ_IRQ)
+ * @vfu_ctx: the libvfio-user context
+ * @type: IRQ type (VFU_DEV_INTX_IRQ ... VFU_DEV_REQ_IRQ)
  * @count: number of irqs
  */
 int
-vu_setup_device_nr_irqs(vu_ctx_t *vu_ctx, enum vu_dev_irq_type type,
-                        uint32_t count);
+vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
+                         uint32_t count);
 
 //TODO: Re-visit once migration support is done.
 /**
  * Enable support for device migration.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @migration: information required to migrate device
  */
 int
-vu_setup_device_migration(vu_ctx_t *vu_ctx, vu_migration_t *migration);
+vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration);
 
 /**
  * Destroys libvfio-user context.
  *
- * @vu_ctx: the libvfio-user context to destroy
+ * @vfu_ctx: the libvfio-user context to destroy
  */
 void
-vu_ctx_destroy(vu_ctx_t *vu_ctx);
+vfu_ctx_destroy(vfu_ctx_t *vfu_ctx);
 
 /**
- * Once the vu_ctx is configured vu_ctx_drive() drives it. This function waits
+ * Once the vfu_ctx is configured vfu_ctx_drive() drives it. This function waits
  * for commands coming from the client, and processes them in a loop.
  *
- * @vu_ctx: the libvfio-user context to drive
+ * @vfu_ctx: the libvfio-user context to drive
  *
  * @returns 0 on success, -errno on failure.
  */
 int
-vu_ctx_drive(vu_ctx_t *vu_ctx);
+vfu_ctx_drive(vfu_ctx_t *vfu_ctx);
 
 /**
- * Polls, without blocking, an vu_ctx. This is an alternative to using
- * a thread and making a blocking call to vu_ctx_drive(). Instead, the
+ * Polls, without blocking, an vfu_ctx. This is an alternative to using
+ * a thread and making a blocking call to vfu_ctx_drive(). Instead, the
  * application can periodically poll the context directly from one of
  * its own threads.
  *
  * This is only allowed when LIBVFIO_USER_FLAG_ATTACH_NB is specified during
  * creation.
  *
- * @vu_ctx: The libvfio-user context to poll
+ * @vfu_ctx: The libvfio-user context to poll
  *
  * @returns 0 on success, -errno on failure.
  */
 int
-vu_ctx_poll(vu_ctx_t *vu_ctx);
+vfu_ctx_poll(vfu_ctx_t *vfu_ctx);
 
 /**
  * Triggers an interrupt.
@@ -452,13 +452,13 @@ vu_ctx_poll(vu_ctx_t *vu_ctx);
  * libvfio-user takes care of using the correct IRQ type (IRQ index: INTx or
  * MSI/X), the caller only needs to specify the sub-index.
  *
- * @vu_ctx: the libvfio-user context to trigger interrupt
+ * @vfu_ctx: the libvfio-user context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
 int
-vu_irq_trigger(vu_ctx_t *vu_ctx, uint32_t subindex);
+vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
 
 /**
  * Sends message to client to trigger an interrupt.
@@ -467,21 +467,21 @@ vu_irq_trigger(vu_ctx_t *vu_ctx, uint32_t subindex);
  * needs to specify the sub-index.
  * This api can be used to trigger interrupt by sending message to client.
  *
- * @vu_ctx: the libvfio-user context to trigger interrupt
+ * @vfu_ctx: the libvfio-user context to trigger interrupt
  * @subindex: vector subindex to trigger interrupt on
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
 
 int
-vu_irq_message(vu_ctx_t *vu_ctx, uint32_t subindex);
+vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex);
 
 /* Helper functions */
 
 /**
  * Converts a guest physical address to a dma_sg_t element which can
- * be later passed on to vu_map_sg to memory map the GPA. It is the caller's
- * responsibility to unmap it by calling vu_unmap_sg.
+ * be later passed on to vfu_map_sg to memory map the GPA. It is the caller's
+ * responsibility to unmap it by calling vfu_unmap_sg.
  *
  */
 
@@ -493,7 +493,7 @@ vu_irq_message(vu_ctx_t *vu_ctx, uint32_t subindex);
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @dma_addr: the guest physical address
  * @len: size of memory to be mapped
  * @sg: array that receives the scatter/gather entries to be mapped
@@ -507,18 +507,18 @@ vu_irq_message(vu_ctx_t *vu_ctx, uint32_t subindex);
  *              entries necessary to complete this request.
  */
 int
-vu_addr_to_sg(vu_ctx_t *vu_ctx, dma_addr_t dma_addr, uint32_t len,
-              dma_sg_t *sg, int max_sg, int prot);
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr, uint32_t len,
+               dma_sg_t *sg, int max_sg, int prot);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
  * to the program's virtual memory. It is the caller's responsibility to remove
- * the mappings by calling vu_unmap_sg.
+ * the mappings by calling vfu_unmap_sg.
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @vu_ctx: the libvfio-user context
- * @sg: array of scatter/gather entries returned by vu_addr_to_sg
+ * @vfu_ctx: the libvfio-user context
+ * @sg: array of scatter/gather entries returned by vfu_addr_to_sg
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -526,23 +526,23 @@ vu_addr_to_sg(vu_ctx_t *vu_ctx, dma_addr_t dma_addr, uint32_t len,
  * @returns 0 on success, -1 on failure
  */
 int
-vu_map_sg(vu_ctx_t *vu_ctx, const dma_sg_t *sg,
-          struct iovec *iov, int cnt);
+vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
+           struct iovec *iov, int cnt);
 
 /**
- * Unmaps a list scatter/gather entries (previously mapped by vu_map_sg) from
+ * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg) from
  * the program's virtual memory.
  * Field unmap_dma must have been provided at context creation time in order
  * to use this function.
  *
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap
  * @iov: array of iovec structures for each scatter/gather entry
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-vu_unmap_sg(vu_ctx_t *vu_ctx, const dma_sg_t *sg,
-            struct iovec *iov, int cnt);
+vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
+             struct iovec *iov, int cnt);
 
 //FIXME: Remove if we dont need this.
 /**
@@ -553,30 +553,30 @@ vu_unmap_sg(vu_ctx_t *vu_ctx, const dma_sg_t *sg,
  * @count: size of the address span
  * @off: output parameter that receives the relative offset within the region.
  *
- * Returns the PCI region (VU_PCI_DEV_XXX_REGION_IDX), or -errno on error.
+ * Returns the PCI region (VFU_PCI_DEV_XXX_REGION_IDX), or -errno on error.
  */
 int
-vu_get_region(loff_t pos, size_t count, loff_t *off);
+vfu_get_region(loff_t pos, size_t count, loff_t *off);
 
 /**
  * Read from the dma region exposed by the client.
  *
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to read into
  */
 int
-vu_dma_read(vu_ctx_t *vu_ctx, dma_sg_t *sg, void *data);
+vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Write to the dma region exposed by the client.
  *
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to write
  */
 int
-vu_dma_write(vu_ctx_t *vu_ctx, dma_sg_t *sg, void *data);
+vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /*
  * Advanced stuff.
@@ -584,10 +584,10 @@ vu_dma_write(vu_ctx_t *vu_ctx, dma_sg_t *sg, void *data);
 
 /**
  * Returns the non-standard part of the PCI configuration space.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  */
 uint8_t *
-vu_get_pci_non_std_config_space(vu_ctx_t *vu_ctx);
+vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
 
 /*
  * Attempts to attach to the transport. LIBVFIO_USER_FLAG_ATTACH_NB must be set
@@ -595,22 +595,22 @@ vu_get_pci_non_std_config_space(vu_ctx_t *vu_ctx);
  * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
  * the operation must be retried.
  *
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  */
 int
-vu_ctx_try_attach(vu_ctx_t *vu_ctx);
+vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx);
 
 /*
  * FIXME need to make sure that there can be at most one capability with a given
  * ID, otherwise this function will return the first one with this ID.
- * @vu_ctx: the libvfio-user context
+ * @vfu_ctx: the libvfio-user context
  * @id: capability id
  */
 uint8_t *
-vu_ctx_get_cap(vu_ctx_t *vu_ctx, uint8_t id);
+vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id);
 
 void
-vu_log(vu_ctx_t *vu_ctx, vu_log_lvl_t lvl, const char *fmt, ...);
+vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...);
 
 #ifdef __cplusplus
 }
