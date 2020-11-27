@@ -651,7 +651,7 @@ close_sock(vfu_ctx_t *vfu_ctx)
 
 static int
 get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                 int *fds, int *nr_fds)
+                 int *fds, size_t *nr_fds)
 {
     int ret;
     struct iovec iov = {.iov_base = hdr, .iov_len = sizeof *hdr};

@@ -36,6 +36,7 @@
 
 #include "mocks.h"
 #include "dma.h"
+#include "migration.h"
 
 struct function
 {
@@ -56,7 +57,7 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
     check_expected(size);
     check_expected(fd);
     check_expected(offset);
-    return 0;
+    return mock();
 }
 
 void *
@@ -67,7 +68,7 @@ __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
     check_expected(prot);
     check_expected(offset);
     check_expected(len);
-    return 0;
+    return mock_ptr_type(void*);
 }
 
 void
@@ -78,11 +79,85 @@ __wrap__dma_controller_do_remove_region(dma_controller_t *dma,
     check_expected(region);
 }
 
+bool
+__wrap_device_is_stopped(struct migration *migr)
+{
+    check_expected(migr);
+    return mock();
+}
+
+int
+__wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                        int *fds, size_t *nr_fds)
+{
+    check_expected(vfu_ctx);
+    check_expected(hdr);
+    check_expected(fds);
+    check_expected(nr_fds);
+    return mock();
+}
+
+int
+__wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                    size_t size, int *fds, size_t *nr_fds,
+                    struct iovec *_iovecs, struct iovec **iovecs,
+                    size_t *nr_iovecs, bool *free_iovec_data)
+{
+    check_expected(vfu_ctx);
+    check_expected(hdr);
+    check_expected(size);
+    check_expected(fds);
+    check_expected(nr_fds);
+    check_expected(_iovecs);
+    check_expected(iovecs);
+    check_expected(nr_iovecs);
+    check_expected(free_iovec_data);
+    return mock();
+}
+
+int
+__wrap_close(int fd)
+{
+    check_expected(fd);
+    return mock();
+}
+
+int
+__wrap_vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                      enum vfio_user_command cmd,
+                      struct iovec *iovecs, size_t nr_iovecs,
+                      int *fds, int count, int err)
+{
+    check_expected(sock);
+    check_expected(msg_id);
+    check_expected(is_reply);
+    check_expected(cmd);
+    check_expected(iovecs);
+    check_expected(nr_iovecs);
+    check_expected(fds);
+    check_expected(count);
+    check_expected(err);
+    return mock();
+}
+
+void
+__wrap_free(void *ptr)
+{
+    assert(false);
+    check_expected(ptr);
+}
+
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
     {.addr = &__wrap_dma_map_region},
     {.addr = &__wrap__dma_controller_do_remove_region},
+    {.addr = &__wrap_device_is_stopped},
+    {.addr = &__wrap_get_next_command},
+    {.addr = &__wrap_exec_command},
+    {.addr = &__wrap_close},
+    {.addr = &__wrap_vfu_send_iovec},
+    {.addr = &__wrap_free}
 };
 
 static struct function*

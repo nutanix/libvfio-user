@@ -46,6 +46,12 @@ target_link_libraries(unit-tests PUBLIC
                       "-Wl,--wrap=_dma_controller_do_remove_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_add_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_map_region")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=get_next_command")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=exec_command")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=close")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=vfu_send_iovec")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=free")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)

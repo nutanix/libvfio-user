@@ -337,7 +337,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
 
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       int *fds, int nr_fds, struct vfio_irq_set *irq_set)
+                       int *fds, size_t nr_fds, struct vfio_irq_set *irq_set)
 {
     void *data = NULL;
 
@@ -345,13 +345,17 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(irq_set != NULL);
 
     if (size < sizeof *irq_set || size != irq_set->argsz) {
+        vfu_log(vfu_ctx, VFU_ERR, "bad size %d", size);
         return -EINVAL;
     }
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
         case VFIO_IRQ_SET_DATA_EVENTFD:
             data = fds;
-            if (nr_fds != (int)irq_set->count) {
+            if (nr_fds != irq_set->count) {
+                vfu_log(vfu_ctx, VFU_ERR,
+                        "bad number of FDs, expected=%u, actual=%d", nr_fds,
+                        irq_set->count);
                 return -EINVAL;
             }
             break;
@@ -360,6 +364,8 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
             break;
         default:
             // FIXME?
+            vfu_log(vfu_ctx, VFU_ERR, "invalid IRQ type %d",
+                    irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK);
             return -EINVAL;
     }
 

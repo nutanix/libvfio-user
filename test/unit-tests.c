@@ -37,10 +37,13 @@
 #include <stdio.h>
 #include <assert.h>
 #include <alloca.h>
+#include <string.h>
 
 #include "dma.h"
 #include "libvfio-user.h"
 #include "private.h"
+#include "migration.h"
+#include "tran_sock.h"
 
 static void
 test_dma_map_without_dma(void **state __attribute__((unused)))
@@ -51,8 +54,9 @@ test_dma_map_without_dma(void **state __attribute__((unused)))
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
     int fd;
+    size_t nr_fds = 1;
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 1, &dma_region));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, &nr_fds, &dma_region));
 }
 
 static void
@@ -65,7 +69,9 @@ test_dma_map_mappable_without_fd(void **state __attribute__((unused)))
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
     int fd;
-    assert_int_equal(-EINVAL, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &dma_region));
+    size_t nr_fds = 0;
+
+    assert_int_equal(-EINVAL, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, &nr_fds, &dma_region));
 }
 
 static void
@@ -82,14 +88,16 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
         .offset = 0x8badf00d
     };
     int fd;
+    size_t nr_fds = 0;
 
     patch(dma_controller_add_region);
+    will_return(__wrap_dma_controller_add_region, 0);
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r.addr);
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
-    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, &nr_fds, &r));
 }
 
 /*
@@ -116,8 +124,11 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
         }
     };
     int fd = 0x8badf00d;
+    size_t nr_fds = 1;
 
     patch(dma_controller_add_region);
+    will_return(__wrap_dma_controller_add_region, 0);
+    will_return(__wrap_dma_controller_add_region, 0);
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[0].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
@@ -129,9 +140,73 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, fd, fd);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, 1, r));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, &nr_fds, r));
 }
 
+/*
+ * Tests that handle_dma_map_or_unmap sets the correct number of file
+ * descriptors when failing halfway through.
+ */
+static void
+test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
+{
+    dma_controller_t dma = { 0 };
+    vfu_ctx_t vfu_ctx = { .dma = &dma };
+    dma.vfu_ctx = &vfu_ctx;
+    struct vfio_user_dma_region r[3] = {
+        [0] = {
+            .addr = 0xdeadbeef,
+            .size = 0x1000,
+            .offset = 0
+        },
+        [1] = {
+            .addr = 0xcafebabe,
+            .size = 0x1000,
+            .offset = 0x1000,
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+        },
+        [2] = {
+            .addr = 0xbabecafe,
+            .size = 0x1000,
+            .offset = 0x2000,
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+        }
+    };
+    int fds[] = {0x8badf00d, 0xbad8f00d};
+    size_t nr_fds = 2;
+
+    patch(dma_controller_add_region);
+
+    /* 1st region */
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma_addr, r[0].addr);
+    expect_value(__wrap_dma_controller_add_region, size, r[0].size);
+    expect_value(__wrap_dma_controller_add_region, fd, -1);
+    expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
+    will_return(__wrap_dma_controller_add_region, 0);
+
+    /* 2nd region */
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
+    expect_value(__wrap_dma_controller_add_region, size, r[1].size);
+    expect_value(__wrap_dma_controller_add_region, fd, fds[0]);
+    expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
+    will_return(__wrap_dma_controller_add_region, 0);
+
+    /* 3rd region */
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma_addr, r[2].addr);
+    expect_value(__wrap_dma_controller_add_region, size, r[2].size);
+    expect_value(__wrap_dma_controller_add_region, fd, fds[1]);
+    expect_value(__wrap_dma_controller_add_region, offset, r[2].offset);
+    will_return(__wrap_dma_controller_add_region, -0x1234);
+
+    assert_int_equal(-0x1234,
+                     handle_dma_map_or_unmap(&vfu_ctx,
+                                             ARRAY_SIZE(r) * sizeof(struct vfio_user_dma_region),
+                                             true, fds, &nr_fds, r));
+    assert_int_equal(1, nr_fds);
+}
 
 static void
 test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
@@ -178,6 +253,81 @@ test_dma_controller_remove_region_no_fd(void **state __attribute__((unused)))
 }
 
 /*
+ * Tests that if if exec_command fails then process_request frees passed file
+ * descriptors.
+ */
+static void
+test_process_command_free_passed_fds(void **state __attribute__((unused)))
+{
+    int fds[] = {0xab, 0xcd};
+    int set_fds(const long unsigned int value,
+                const long unsigned int data __attribute__((unused)))
+    {
+        assert(value != 0);
+        memcpy((int*)value, fds, ARRAY_SIZE(fds) * sizeof(int));
+        return 1;
+    }
+    int set_nr_fds(const long unsigned int value,
+                   const long unsigned int data)
+    {
+        int *nr_fds = (int*)value;
+        assert(nr_fds != NULL);
+        if ((void*)data == &get_next_command) {
+            *nr_fds = ARRAY_SIZE(fds);
+        } else if ((void*)data == &exec_command) {
+            *nr_fds = 1;
+        }
+        return 1;
+    }
+
+    vfu_ctx_t vfu_ctx = {
+        .conn_fd = 0xcafebabe,
+        .migration = (struct migration*)0x8badf00d
+    };
+
+    patch(device_is_stopped);
+    expect_value(__wrap_device_is_stopped, migr, vfu_ctx.migration);
+    will_return(__wrap_device_is_stopped, false);
+
+    patch(get_next_command);
+    expect_value(__wrap_get_next_command, vfu_ctx, &vfu_ctx);
+    expect_any(__wrap_get_next_command, hdr);
+    expect_check(__wrap_get_next_command, fds, &set_fds, &get_next_command);
+    expect_check(__wrap_get_next_command, nr_fds, &set_nr_fds, &get_next_command);
+    will_return(__wrap_get_next_command, 0x0000beef);
+
+    patch(exec_command);
+    expect_value(__wrap_exec_command, vfu_ctx, &vfu_ctx);
+    expect_any(__wrap_exec_command, hdr);
+    expect_value(__wrap_exec_command, size, 0x0000beef);
+    expect_any(__wrap_exec_command, fds);
+    expect_check(__wrap_exec_command, nr_fds, &set_nr_fds, &exec_command);
+    expect_any(__wrap_exec_command, _iovecs);
+    expect_any(__wrap_exec_command, iovecs);
+    expect_any(__wrap_exec_command, nr_iovecs);
+    expect_any(__wrap_exec_command, free_iovec_data);
+    will_return(__wrap_exec_command, -0x1234);
+
+    patch(close);
+    expect_value(__wrap_close, fd, 0xcd);
+    will_return(__wrap_close, 0);
+
+    patch(vfu_send_iovec);
+    expect_value(__wrap_vfu_send_iovec, sock, vfu_ctx.conn_fd);
+    expect_any(__wrap_vfu_send_iovec, msg_id);
+    expect_value(__wrap_vfu_send_iovec, is_reply, true);
+    expect_any(__wrap_vfu_send_iovec, cmd);
+    expect_any(__wrap_vfu_send_iovec, iovecs);
+    expect_any(__wrap_vfu_send_iovec, nr_iovecs);
+    expect_any(__wrap_vfu_send_iovec, fds);
+    expect_any(__wrap_vfu_send_iovec, count);
+    expect_any(__wrap_vfu_send_iovec, err);
+    will_return(__wrap_vfu_send_iovec, 0);
+
+    assert_int_equal(0, process_request(&vfu_ctx));
+}
+
+/*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
  * run a function before/after ALL unit tests have finished, we can extend it
@@ -196,8 +346,10 @@ int main(void)
         cmocka_unit_test_setup(test_dma_map_mappable_without_fd, setup),
         cmocka_unit_test_setup(test_dma_map_without_fd, setup),
         cmocka_unit_test_setup(test_dma_add_regions_mixed, setup),
+        cmocka_unit_test_setup(test_dma_add_regions_mixed_partial_failure, setup),
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_no_fd, setup),
+        cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

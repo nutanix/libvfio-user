@@ -47,7 +47,7 @@ struct transport_ops {
     int (*attach)(vfu_ctx_t*);
     int(*detach)(vfu_ctx_t*);
     int (*get_request)(vfu_ctx_t*, struct vfio_user_header*,
-                       int *fds, int *nr_fds);
+                       int *fds, size_t *nr_fds);
 };
 
 typedef enum {
@@ -143,12 +143,25 @@ region_to_offset(uint32_t region);
 
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
-                        int *fds, int nr_fds,
+                        int *fds, size_t *nr_fds,
                         struct vfio_user_dma_region *dma_regions);
 
 void
 _dma_controller_do_remove_region(dma_controller_t *dma,
                                  dma_memory_region_t *region);
+
+int
+get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
+                 size_t *nr_fds);
+
+int
+exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
+             int *fds, size_t *nr_fds,
+             struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
+             bool *free_iovec_data);
+
+int
+process_request(vfu_ctx_t *vfu_ctx);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
