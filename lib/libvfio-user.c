@@ -57,7 +57,6 @@
 #include "migration.h"
 #include "irq.h"
 
-
 void
 vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...)
 {
@@ -507,24 +506,25 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
  * @vfu_ctx: LM context
  * @size: size, in bytes, of the memory pointed to be @dma_regions
  * @map: whether this is a DMA map operation
- * @fds: array of file descriptors. It's length must equal the number of DMA
-         regions, irrespectively if @nr_fds is 0.
- * @nr_fds: size of above array. It must be either 0 or exactly match
- *          the number of DMA regions in @dma_regions.
+ * @fds: array of file descriptors.
+ * @nr_fds: size of above array.
  * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
  *
- * @returns 0 on success, -errno on failure.
+ * @returns 0 on success, -errno on failure. @nr_fds receives the number of
+ * mappable DMA regions that were successfully added.
  */
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
-                        int *fds, int nr_fds,
+                        int *fds, size_t *nr_fds,
                         struct vfio_user_dma_region *dma_regions)
 {
     int nr_dma_regions;
-    int ret, i, fdi;
+    int ret, i;
+    size_t fdi;
 
     assert(vfu_ctx != NULL);
     assert(fds != NULL);
+    assert(nr_fds != NULL);
 
     if (vfu_ctx->dma == NULL) {
         return 0;
@@ -536,15 +536,19 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
     }
 
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
+    if (nr_dma_regions == 0) {
+        return 0;
+    }
 
     for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
         if (map) {
             int fd = -1;
             if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                if (fdi == nr_fds) {
-                    return -EINVAL;
+                if (fdi == *nr_fds) {
+                    ret = -EINVAL;
+                    break;
                 }
-                fd = fds[fdi++];
+                fd = fds[fdi];
             }
 
             ret = dma_controller_add_region(vfu_ctx->dma,
@@ -559,13 +563,16 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         dma_regions[i].addr + dma_regions[i].size - 1,
                         dma_regions[i].offset, fd,
                         strerror(-ret));
-            } else {
-                vfu_log(vfu_ctx, VFU_DBG,
-                        "added DMA region %#lx-%#lx offset=%#lx fd=%d",
-                        dma_regions[i].addr,
-                        dma_regions[i].addr + dma_regions[i].size - 1,
-                        dma_regions[i].offset, fd);
+                break;
             }
+            if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+                fdi++;
+            }
+            vfu_log(vfu_ctx, VFU_DBG,
+                    "added DMA region %#lx-%#lx offset=%#lx fd=%d",
+                    dma_regions[i].addr,
+                    dma_regions[i].addr + dma_regions[i].size - 1,
+                    dma_regions[i].offset, fd);
         } else {
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                dma_regions[i].addr,
@@ -577,12 +584,12 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         dma_regions[i].addr,
                         dma_regions[i].addr + dma_regions[i].size - 1,
                         strerror(-ret));
-            } else {
-                vfu_log(vfu_ctx, VFU_DBG,
-                        "removed DMA region %#lx-%#lx",
-                        dma_regions[i].addr,
-                        dma_regions[i].addr + dma_regions[i].size - 1);
+                break;
             }
+            vfu_log(vfu_ctx, VFU_DBG,
+                    "removed DMA region %#lx-%#lx",
+                    dma_regions[i].addr,
+                    dma_regions[i].addr + dma_regions[i].size - 1);
         }
         if (ret < 0) {
             return ret;
@@ -592,7 +599,10 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                              dma_regions[i].size);
         }
     }
-    return 0;
+    if (map) {
+        *nr_fds = fdi;
+    }
+    return ret;
 }
 
 static int
@@ -810,9 +820,9 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
  * Returns 0 if there is no command to process, -errno if an error occured, or
  * the number of bytes read.
  */
-static int
+int
 get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
-                 int *nr_fds)
+                 size_t *nr_fds)
 {
     int ret;
 
@@ -841,13 +851,14 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
     }
     return ret;
 }
+UNIT_TEST_SYMBOL(get_next_command);
+#define get_next_command __wrap_get_next_command
 
-static int
+int
 exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, int *nr_fds,
+             int *fds, size_t *nr_fds,
              struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
              bool *free_iovec_data)
-
 {
     int ret;
     struct vfio_irq_info irq_info;
@@ -906,7 +917,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         case VFIO_USER_DMA_UNMAP:
             ret = handle_dma_map_or_unmap(vfu_ctx, hdr->msg_size,
                                           hdr->cmd == VFIO_USER_DMA_MAP,
-                                          fds, *nr_fds, cmd_data);
+                                          fds, nr_fds, cmd_data);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
             ret = handle_device_get_info(vfu_ctx, hdr->msg_size, &dev_info);
@@ -940,6 +951,9 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         case VFIO_USER_DEVICE_SET_IRQS:
             ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, *nr_fds,
                                          cmd_data);
+            if (ret < 0) {
+                *nr_fds = 0;
+            }
             break;
         case VFIO_USER_REGION_READ:
         case VFIO_USER_REGION_WRITE:
@@ -970,14 +984,16 @@ reply:
     free(cmd_data);
     return ret;
 }
+UNIT_TEST_SYMBOL(exec_command);
+#define exec_command __wrap_exec_command
 
-static int
+int
 process_request(vfu_ctx_t *vfu_ctx)
 {
     struct vfio_user_header hdr = { 0, };
     int ret;
     int *fds = NULL;
-    int nr_fds;
+    size_t nr_fds, _nr_fds, i;
     struct iovec _iovecs[2] = { { 0, } };
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
@@ -1005,8 +1021,9 @@ process_request(vfu_ctx_t *vfu_ctx)
     if (ret <= 0) {
         return ret;
     }
+    _nr_fds = nr_fds;
 
-    ret = exec_command(vfu_ctx, &hdr, ret, fds, &nr_fds, _iovecs, &iovecs,
+    ret = exec_command(vfu_ctx, &hdr, ret, fds, &_nr_fds, _iovecs, &iovecs,
                        &nr_iovecs, &free_iovec_data);
 
     /*
@@ -1014,6 +1031,9 @@ process_request(vfu_ctx_t *vfu_ctx)
      * in the reply message.
      */
     if (ret < 0) {
+        for (i = _nr_fds; i < nr_fds; i++) {
+            close(fds[i]);
+        }
         vfu_log(vfu_ctx, VFU_ERR, "failed to handle command %d: %s", hdr.cmd,
                 strerror(-ret));
     } else {
