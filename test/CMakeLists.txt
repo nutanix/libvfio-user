@@ -26,12 +26,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUNIT_TEST \
-	-Wno-implicit-function-declaration \
-	-Wl,--wrap=_dma_controller_do_remove_region \
-	-Wl,--wrap=dma_controller_add_region \
-	-Wl,--wrap=dma_map_region")
-
 add_executable(unit-tests unit-tests.c mocks.c
 		../lib/muser_ctx.c
 		../lib/dma.c
@@ -40,6 +34,18 @@ add_executable(unit-tests unit-tests.c mocks.c
 		../lib/tran_sock.c
 		../lib/cap.c
 		../lib/irq.c)
-target_link_libraries(unit-tests cmocka json-c)
+
+target_link_libraries(unit-tests PUBLIC cmocka json-c)
+
+target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
+
+target_compile_options(unit-tests PUBLIC "-Wno-implicit-function-declaration")
+
+# No "target_link_options" in cmake2
+target_link_libraries(unit-tests PUBLIC
+                      "-Wl,--wrap=_dma_controller_do_remove_region")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_add_region")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_map_region")
+
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)
