@@ -842,20 +842,145 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
 }
 
 static int
+exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
+             int *fds, int *nr_fds,
+             struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
+             bool *free_iovec_data)
+
+{
+    int ret;
+    struct vfio_irq_info irq_info;
+    struct vfio_device_info dev_info;
+    struct vfio_region_info *dev_reg_info = NULL;
+    void *cmd_data = NULL;
+
+    assert(vfu_ctx != NULL);
+    assert(hdr != NULL);
+    assert(fds != NULL);
+    assert(_iovecs != NULL);
+    assert(iovecs != NULL);
+    assert(free_iovec_data != NULL);
+
+    ret = validate_header(vfu_ctx, hdr, size);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /*
+     * TODO from now on if an error occurs we still need to reply. Move this
+     * code into a separate function so that we don't have to use goto.
+     */
+
+    hdr->msg_size -= sizeof(struct vfio_user_header);
+    if (hdr->msg_size > 0) {
+        cmd_data = malloc(hdr->msg_size);
+        if (cmd_data == NULL) {
+            ret = -ENOMEM;
+            goto reply;
+        }
+        // FIXME: should be transport op
+        ret = recv(vfu_ctx->conn_fd, cmd_data, hdr->msg_size, 0);
+        if (ret < 0) {
+            ret = -errno;
+            goto reply;
+        }
+        if (ret != (int)hdr->msg_size) {
+            vfu_log(vfu_ctx, VFU_ERR, "short read, expected=%d, actual=%d",
+                    hdr->msg_size, ret);
+            ret = -EINVAL;
+            goto reply;
+        }
+    }
+
+    if (device_is_stopped_and_copying(vfu_ctx->migration)
+        && !(hdr->cmd == VFIO_USER_REGION_READ || hdr->cmd == VFIO_USER_REGION_WRITE)) {
+        vfu_log(vfu_ctx, VFU_ERR,
+               "bad command %d while device in stop-and-copy state", hdr->cmd);
+        ret = -EINVAL;
+        goto reply;
+    }
+
+    switch (hdr->cmd) {
+        case VFIO_USER_DMA_MAP:
+        case VFIO_USER_DMA_UNMAP:
+            ret = handle_dma_map_or_unmap(vfu_ctx, hdr->msg_size,
+                                          hdr->cmd == VFIO_USER_DMA_MAP,
+                                          fds, *nr_fds, cmd_data);
+            break;
+        case VFIO_USER_DEVICE_GET_INFO:
+            ret = handle_device_get_info(vfu_ctx, hdr->msg_size, &dev_info);
+            if (ret >= 0) {
+                _iovecs[1].iov_base = &dev_info;
+                _iovecs[1].iov_len = dev_info.argsz;
+                *iovecs = _iovecs;
+                *nr_iovecs = 2;
+            }
+            break;
+        case VFIO_USER_DEVICE_GET_REGION_INFO:
+            ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size, cmd_data,
+                                                &dev_reg_info);
+            if (ret == 0) {
+                _iovecs[1].iov_base = dev_reg_info;
+                _iovecs[1].iov_len = dev_reg_info->argsz;
+                *iovecs = _iovecs;
+                *nr_iovecs = 2;
+            }
+            break;
+        case VFIO_USER_DEVICE_GET_IRQ_INFO:
+            ret = handle_device_get_irq_info(vfu_ctx, hdr->msg_size, cmd_data,
+                                             &irq_info);
+            if (ret == 0) {
+                _iovecs[1].iov_base = &irq_info;
+                _iovecs[1].iov_len = sizeof irq_info;
+                *iovecs = _iovecs;
+                *nr_iovecs = 2;
+            }
+            break;
+        case VFIO_USER_DEVICE_SET_IRQS:
+            ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, *nr_fds,
+                                         cmd_data);
+            break;
+        case VFIO_USER_REGION_READ:
+        case VFIO_USER_REGION_WRITE:
+            *iovecs = _iovecs;
+            ret = handle_region_access(vfu_ctx, hdr->msg_size, hdr->cmd,
+                                       &(*iovecs)[1].iov_base,
+                                       &(*iovecs)[1].iov_len,
+                                       cmd_data);
+            *nr_iovecs = 2;
+            break;
+        case VFIO_USER_DEVICE_RESET:
+            ret = handle_device_reset(vfu_ctx);
+            break;
+        case VFIO_USER_DIRTY_PAGES:
+            // FIXME: don't allow migration calls if migration == NULL
+            ret = handle_dirty_pages(vfu_ctx, hdr->msg_size, iovecs, nr_iovecs,
+                                     cmd_data);
+            if (ret >= 0) {
+                *free_iovec_data = false;
+            }
+            break;
+        default:
+            vfu_log(vfu_ctx, VFU_ERR, "bad command %d", hdr->cmd);
+            ret = -EINVAL;
+            goto reply;
+    }
+reply:
+    free(cmd_data);
+    return ret;
+}
+
+static int
 process_request(vfu_ctx_t *vfu_ctx)
 {
     struct vfio_user_header hdr = { 0, };
     int ret;
     int *fds = NULL;
     int nr_fds;
-    struct vfio_irq_info irq_info;
-    struct vfio_device_info dev_info;
-    struct vfio_region_info *dev_reg_info = NULL;
     struct iovec _iovecs[2] = { { 0, } };
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     bool free_iovec_data = true;
-    void *cmd_data = NULL;
 
     assert(vfu_ctx != NULL);
 
@@ -880,111 +1005,9 @@ process_request(vfu_ctx_t *vfu_ctx)
         return ret;
     }
 
-    ret = validate_header(vfu_ctx, &hdr, ret);
-    if (ret < 0) {
-        return ret;
-    }
+    ret = exec_command(vfu_ctx, &hdr, ret, fds, &nr_fds, _iovecs, &iovecs,
+                       &nr_iovecs, &free_iovec_data);
 
-    /*
-     * TODO from now on if an error occurs we still need to reply. Move this
-     * code into a separate function so that we don't have to use goto.
-     */
-
-    hdr.msg_size -= sizeof(hdr);
-    if (hdr.msg_size > 0) {
-        cmd_data = malloc(hdr.msg_size);
-        if (cmd_data == NULL) {
-            ret = -ENOMEM;
-            goto reply;
-        }
-        // FIXME: should be transport op
-        ret = recv(vfu_ctx->conn_fd, cmd_data, hdr.msg_size, 0);
-        if (ret < 0) {
-            ret = -errno;
-            goto reply;
-        }
-        if (ret != (int)hdr.msg_size) {
-            vfu_log(vfu_ctx, VFU_ERR, "short read, expected=%d, actual=%d",
-                    hdr.msg_size, ret);
-            ret = -EINVAL;
-            goto reply;
-        }
-    }
-
-    if (device_is_stopped_and_copying(vfu_ctx->migration)
-        && !(hdr.cmd == VFIO_USER_REGION_READ || hdr.cmd == VFIO_USER_REGION_WRITE)) {
-        vfu_log(vfu_ctx, VFU_ERR,
-               "bad command %d while device in stop-and-copy state", hdr.cmd);
-        ret = -EINVAL;
-        goto reply;
-    }
-
-    switch (hdr.cmd) {
-        case VFIO_USER_DMA_MAP:
-        case VFIO_USER_DMA_UNMAP:
-            ret = handle_dma_map_or_unmap(vfu_ctx, hdr.msg_size,
-                                          hdr.cmd == VFIO_USER_DMA_MAP,
-                                          fds, nr_fds, cmd_data);
-            break;
-        case VFIO_USER_DEVICE_GET_INFO:
-            ret = handle_device_get_info(vfu_ctx, hdr.msg_size, &dev_info);
-            if (ret >= 0) {
-                _iovecs[1].iov_base = &dev_info;
-                _iovecs[1].iov_len = dev_info.argsz;
-                iovecs = _iovecs;
-                nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_GET_REGION_INFO:
-            ret = handle_device_get_region_info(vfu_ctx, hdr.msg_size, cmd_data,
-                                                &dev_reg_info);
-            if (ret == 0) {
-                _iovecs[1].iov_base = dev_reg_info;
-                _iovecs[1].iov_len = dev_reg_info->argsz;
-                iovecs = _iovecs;
-                nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_GET_IRQ_INFO:
-            ret = handle_device_get_irq_info(vfu_ctx, hdr.msg_size, cmd_data,
-                                             &irq_info);
-            if (ret == 0) {
-                _iovecs[1].iov_base = &irq_info;
-                _iovecs[1].iov_len = sizeof irq_info;
-                iovecs = _iovecs;
-                nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_SET_IRQS:
-            ret = handle_device_set_irqs(vfu_ctx, hdr.msg_size, fds, nr_fds,
-                                         cmd_data);
-            break;
-        case VFIO_USER_REGION_READ:
-        case VFIO_USER_REGION_WRITE:
-            iovecs = _iovecs;
-            ret = handle_region_access(vfu_ctx, hdr.msg_size, hdr.cmd,
-                                       &iovecs[1].iov_base, &iovecs[1].iov_len,
-                                       cmd_data);
-            nr_iovecs = 2;
-            break;
-        case VFIO_USER_DEVICE_RESET:
-            ret = handle_device_reset(vfu_ctx);
-            break;
-        case VFIO_USER_DIRTY_PAGES:
-            // FIXME: don't allow migration calls if migration == NULL
-            ret = handle_dirty_pages(vfu_ctx, hdr.msg_size, &iovecs, &nr_iovecs,
-                                     cmd_data);
-            if (ret >= 0) {
-                free_iovec_data = false;
-            }
-            break;
-        default:
-            vfu_log(vfu_ctx, VFU_ERR, "bad command %d", hdr.cmd);
-            ret = -EINVAL;
-            goto reply;
-    }
-
-reply:
     /*
      * TODO: In case of error during command handling set errno respectively
      * in the reply message.
@@ -1012,7 +1035,6 @@ reply:
         }
         free(iovecs);
     }
-    free(cmd_data);
 
     return ret;
 }
