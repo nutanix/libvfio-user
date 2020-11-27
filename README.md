@@ -9,13 +9,17 @@ for implementing such servers.
 
 [VFIO](https://www.kernel.org/doc/Documentation/vfio.txt) is a kernel facility
 for providing secure access to PCI devices in userspace (including pass-through
-to a VM). With `vfio-user`, instead of talking to the kernel, all operations are
-done in userspace, without requiring any kernel component. The kernel `VFIO`
+to a VM). With `vfio-user`, instead of talking to the kernel, all interactions
+are done in userspace, without requiring any kernel component; the kernel `VFIO`
 implementation is not used at all for a `vfio-user` device.
 
 Put another way, `vfio-user` is to VFIO as
 [vhost-user](https://www.qemu.org/docs/master/interop/vhost-user.html) is to
 `vhost`.
+
+The `vfio-user` protocol is intentionally modelled after the VFIO `ioctl()`
+interface, and shares many of its definitions.  However, there is not an exact
+equivalence: for example, IOMMU groups are not represented in `vfio-user`.
 
 There many different purposes you might put this library to, such as prototyping
 novel devices, testing frameworks, implementing alternatives to qemu's device
@@ -63,16 +67,21 @@ perfectly acceptable when prototyping the functional aspect of a device driver.
 Building muser
 ==============
 
-Build requirements are `cmake` (v2 or above) and `libjson-c-dev` /
-`libjson-c-devel`.
+Build requirements:
 
-Just do:
+ * `cmake` (v2 or above)
+ * `libjson-c-dev` / `libjson-c-devel`
+ * `libcmocka-dev` / `libcmocka-devel`
 
-	make && make install
+To build:
+
+    make && make install
+    # optional
+    make test
 
 By default a debug build is created. To create a release build do:
 
-	make BUILD_TYPE=rel
+    make BUILD_TYPE=rel
 
 The kernel headers are necessary because VFIO structs and defines are reused.
 To enable Python bindings set the `PYTHON_BINDINGS` environment variable to a
