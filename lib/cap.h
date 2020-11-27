@@ -30,18 +30,18 @@
  *
  */
 
-#ifndef LIB_MUSER_CAP_H
-#define LIB_MUSER_CAP_H
+#ifndef LIB_VFIO_USER_CAP_H
+#define LIB_VFIO_USER_CAP_H
 
-#include "muser.h"
+#include "libvfio-user.h"
 
 struct caps;
 
 /**
  * Initializes PCI capabilities.
  */
-struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps,
-                         int *err);
+struct caps *
+caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps, int *err);
 
 /*
  * Conditionally accesses the PCI capabilities. Returns:
@@ -51,12 +51,12 @@ struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **caps, int nr_caps,
  * <0: negative error code on error.
  */
 ssize_t
-cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
+cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
                  loff_t offset);
 
 uint8_t *
-cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id);
+cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id);
 
-#endif /* LIB_MUSER_CAP_H */
+#endif /* LIB_VFIO_USER_CAP_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

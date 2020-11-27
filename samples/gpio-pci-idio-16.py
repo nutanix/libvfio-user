@@ -1,3 +1,4 @@
+#!/usr/bin/python
 #
 # Copyright (c) 2019 Nutanix Inc. All rights reserved.
 #
@@ -15,7 +16,7 @@
 #     * Neither the name of Nutanix nor the names of its contributors may be
 #       used to endorse or promote products derived from this software without
 #       specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -27,11 +28,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-#!/usr/bin/python
 
 def bar2(pvt, buf, count, offset, is_write):
         if not is_write and int(offset) == 0:
                 return int(input("enter new GPIO value: "))
 
-import muser
-muser.run(vid=0x494F, did=0x0DC8, uuid="00000000-0000-0000-0000-000000000000", bar2=("rw", 0x100, bar2), intx=1)
+import vfio_user
+vfio_user.run(vid=0x494F, did=0x0DC8, uuid="00000000-0000-0000-0000-000000000000", bar2=("rw", 0x100, bar2), intx=1)

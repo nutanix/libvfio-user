@@ -34,8 +34,8 @@
  * Private utilities used by the library and sample/test code.
  */
 
-#ifndef LIB_MUSER_COMMON_H
-#define LIB_MUSER_COMMON_H
+#ifndef LIB_VFIO_USER_COMMON_H
+#define LIB_VFIO_USER_COMMON_H
 
 #include <stdint.h>
 
@@ -58,6 +58,6 @@
 #define UNIT_TEST_SYMBOL(x) \
     typeof(x) __wrap_##x __attribute__((weak, alias(#x)))
 
-#endif /* LIB_MUSER_COMMON_H */
+#endif /* LIB_VFIO_USER_COMMON_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

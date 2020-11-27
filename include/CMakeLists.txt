@@ -28,13 +28,13 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-set(MUSER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/muser)
+set(VFIO_USER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/vfio-user)
 
-install(FILES "muser.h" DESTINATION ${MUSER_HEADERS_DIR})
-install(FILES "pci_caps/common.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
-install(FILES "pci_caps/msi.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
-install(FILES "pci_caps/msix.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
-install(FILES "pci_caps/pm.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
-install(FILES "pci_caps/px.h" DESTINATION ${MUSER_HEADERS_DIR}/pci_caps)
-install(FILES "pci.h" DESTINATION ${MUSER_HEADERS_DIR})
-install(FILES "vfio_user.h" DESTINATION ${MUSER_HEADERS_DIR})
+install(FILES "libvfio-user.h" DESTINATION ${VFIO_USER_HEADERS_DIR})
+install(FILES "pci_caps/common.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/msi.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/msix.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/pm.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/px.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci.h" DESTINATION ${VFIO_USER_HEADERS_DIR})
+install(FILES "vfio-user.h" DESTINATION ${VFIO_USER_HEADERS_DIR})

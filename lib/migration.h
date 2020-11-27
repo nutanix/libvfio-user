@@ -31,28 +31,28 @@
 
 // FIXME: license header (and SPDX ?) everywhere
 
-#ifndef LIB_MUSER_MIGRATION_H
-#define LIB_MUSER_MIGRATION_H
+#ifndef LIB_VFIO_USER_MIGRATION_H
+#define LIB_VFIO_USER_MIGRATION_H
 
 /*
  * These are not public routines, but for convenience, they are used by the
- * sample/test code as well as privately within libmuser.
+ * sample/test code as well as privately within libvfio-user.
  */
 
 #include <stddef.h>
 
-#include "muser.h"
+#include "libvfio-user.h"
 
-struct migration *init_migration(const lm_migration_t * const lm_migr,
-                                 int *err);
+struct migration *
+init_migration(const vfu_migration_t * const vfu_migr, int *err);
 
 ssize_t
-handle_migration_region_access(lm_ctx_t *lm_ctx, void *pvt,
+handle_migration_region_access(vfu_ctx_t *vfu_ctx, void *pvt,
                                struct migration *migr, char *buf, size_t count,
                                loff_t pos, bool is_write);
 
 bool
-migration_available(lm_ctx_t *lm_ctx);
+migration_available(vfu_ctx_t *vfu_ctx);
 
 bool
 device_is_stopped_and_copying(struct migration *migr);
@@ -66,6 +66,6 @@ migration_get_pgsize(struct migration *migr);
 int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
 
-#endif /* LIB_MUSER_MIGRATION_H */
+#endif /* LIB_VFIO_USER_MIGRATION_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

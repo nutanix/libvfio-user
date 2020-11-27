@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef LIBMUSER_PCI_H
-#define LIBMUSER_PCI_H
+#ifndef LIBVFIO_USER_PCI_H
+#define LIBVFIO_USER_PCI_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -59,13 +59,13 @@ typedef union {
         uint16_t vid;
         uint16_t sid;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_ss_t;
-_Static_assert(sizeof(lm_pci_hdr_ss_t) == 0x4, "bad SS size");
+} __attribute__ ((packed)) vfu_pci_hdr_ss_t;
+_Static_assert(sizeof(vfu_pci_hdr_ss_t) == 0x4, "bad SS size");
 
 typedef union {
     uint8_t raw;
-} __attribute__ ((packed)) lm_pci_hdr_bist_t;
-_Static_assert(sizeof(lm_pci_hdr_bist_t) == 0x1, "bad BIST size");
+} __attribute__ ((packed)) vfu_pci_hdr_bist_t;
+_Static_assert(sizeof(vfu_pci_hdr_bist_t) == 0x1, "bad BIST size");
 
 typedef union {
     uint32_t raw;
@@ -82,13 +82,13 @@ typedef union {
             unsigned int base_address:30;
         } __attribute__ ((packed)) io;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_bar_t;
-_Static_assert(sizeof(lm_bar_t) == 0x4, "bad BAR size");
+} __attribute__ ((packed)) vfu_bar_t;
+_Static_assert(sizeof(vfu_bar_t) == 0x4, "bad BAR size");
 
 typedef union {
     uint8_t raw;
-} __attribute__ ((packed)) lm_pci_hdr_htype_t;
-_Static_assert(sizeof(lm_pci_hdr_htype_t) == 0x1, "bad HTYPE size");
+} __attribute__ ((packed)) vfu_pci_hdr_htype_t;
+_Static_assert(sizeof(vfu_pci_hdr_htype_t) == 0x1, "bad HTYPE size");
 
 typedef union {
     uint8_t raw[3];
@@ -97,8 +97,8 @@ typedef union {
         uint8_t scc;
         uint8_t bcc;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_cc_t;
-_Static_assert(sizeof(lm_pci_hdr_cc_t) == 0x3, "bad CC size");
+} __attribute__ ((packed)) vfu_pci_hdr_cc_t;
+_Static_assert(sizeof(vfu_pci_hdr_cc_t) == 0x3, "bad CC size");
 
 /* device status */
 typedef union {
@@ -118,8 +118,8 @@ typedef union {
         unsigned int sse:1;
         unsigned int dpe:1;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_sts_t;
-_Static_assert(sizeof(lm_pci_hdr_sts_t) == 0x2, "bad STS size");
+} __attribute__ ((packed)) vfu_pci_hdr_sts_t;
+_Static_assert(sizeof(vfu_pci_hdr_sts_t) == 0x2, "bad STS size");
 
 typedef union {
     uint16_t raw;
@@ -137,8 +137,8 @@ typedef union {
         uint8_t id:1;
         uint8_t res1:5;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_cmd_t;
-_Static_assert(sizeof(lm_pci_hdr_cmd_t) == 0x2, "bad CMD size");
+} __attribute__ ((packed)) vfu_pci_hdr_cmd_t;
+_Static_assert(sizeof(vfu_pci_hdr_cmd_t) == 0x2, "bad CMD size");
 
 typedef union {
     uint32_t raw;
@@ -146,8 +146,8 @@ typedef union {
         uint16_t vid;
         uint16_t did;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_id_t;
-_Static_assert(sizeof(lm_pci_hdr_id_t) == 0x4, "bad ID size");
+} __attribute__ ((packed)) vfu_pci_hdr_id_t;
+_Static_assert(sizeof(vfu_pci_hdr_id_t) == 0x4, "bad ID size");
 
 typedef union {
     uint16_t raw;
@@ -155,58 +155,58 @@ typedef union {
         uint8_t iline;
         uint8_t ipin;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_intr_t;
-_Static_assert(sizeof(lm_pci_hdr_intr_t) == 0x2, "bad INTR size");
+} __attribute__ ((packed)) vfu_pci_hdr_intr_t;
+_Static_assert(sizeof(vfu_pci_hdr_intr_t) == 0x2, "bad INTR size");
 
 typedef union {
     uint8_t raw[PCI_STD_HEADER_SIZEOF];
     struct {
-        lm_pci_hdr_id_t id;
-        lm_pci_hdr_cmd_t cmd;
-        lm_pci_hdr_sts_t sts;
+        vfu_pci_hdr_id_t id;
+        vfu_pci_hdr_cmd_t cmd;
+        vfu_pci_hdr_sts_t sts;
         uint8_t rid;
-        lm_pci_hdr_cc_t cc;
+        vfu_pci_hdr_cc_t cc;
         uint8_t cls;
         uint8_t mlt;
-        lm_pci_hdr_htype_t htype;
-        lm_pci_hdr_bist_t bist;
+        vfu_pci_hdr_htype_t htype;
+        vfu_pci_hdr_bist_t bist;
 #define PCI_BARS_NR 6
-        lm_bar_t bars[PCI_BARS_NR];
+        vfu_bar_t bars[PCI_BARS_NR];
         uint32_t ccptr;
-        lm_pci_hdr_ss_t ss;
+        vfu_pci_hdr_ss_t ss;
         uint32_t erom;
         uint8_t cap;
         uint8_t res1[7];
-        lm_pci_hdr_intr_t intr;
+        vfu_pci_hdr_intr_t intr;
         uint8_t mgnt;
         uint8_t mlat;
     } __attribute__ ((packed));
-} __attribute__ ((packed)) lm_pci_hdr_t;
-_Static_assert(sizeof(lm_pci_hdr_t) == 0x40, "bad PCI header size");
+} __attribute__ ((packed)) vfu_pci_hdr_t;
+_Static_assert(sizeof(vfu_pci_hdr_t) == 0x40, "bad PCI header size");
 
 typedef struct {
     uint8_t raw[PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF];
-} __attribute__ ((packed)) lm_pci_non_std_config_space_t;
-_Static_assert(sizeof(lm_pci_non_std_config_space_t) == 0xc0,
+} __attribute__ ((packed)) vfu_pci_non_std_config_space_t;
+_Static_assert(sizeof(vfu_pci_non_std_config_space_t) == 0xc0,
                "bad non-standard PCI configuration space size");
 
 typedef struct {
     union {
         uint8_t raw[PCI_CFG_SPACE_SIZE];
         struct {
-            lm_pci_hdr_t hdr;
-            lm_pci_non_std_config_space_t non_std;
+            vfu_pci_hdr_t hdr;
+            vfu_pci_non_std_config_space_t non_std;
         } __attribute__ ((packed));
     } __attribute__ ((packed));
     uint8_t extended[];
-} __attribute__ ((packed)) lm_pci_config_space_t;
-_Static_assert(sizeof(lm_pci_config_space_t) == 0x100,
+} __attribute__ ((packed)) vfu_pci_config_space_t;
+_Static_assert(sizeof(vfu_pci_config_space_t) == 0x100,
                "bad PCI configuration space size");
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* LIBMUSER_PCI_H */
+#endif /* LIBVFIO_USER_PCI_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

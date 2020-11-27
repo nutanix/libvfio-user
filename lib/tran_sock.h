@@ -30,21 +30,21 @@
  *
  */
 
-#ifndef LIB_MUSER_TRAN_SOCK_H
-#define LIB_MUSER_TRAN_SOCK_H
+#ifndef LIB_VFIO_USER_TRAN_SOCK_H
+#define LIB_VFIO_USER_TRAN_SOCK_H
 
-#include "muser.h"
+#include "libvfio-user.h"
 
 /*
  * These are not public routines, but for convenience, they are used by the
- * sample/test code as well as privately within libmuser.
+ * sample/test code as well as privately within libvfio-user.
  *
  * Note there is currently only one transport - talking over a UNIX socket.
  */
 
 /* The largest number of fd's we are prepared to receive. */
 // FIXME: value?
-#define MUSER_CLIENT_MAX_FDS_LIMIT (1024)
+#define VFIO_USER_CLIENT_MAX_FDS_LIMIT (1024)
 
 extern struct transport_ops sock_transport_ops;
 
@@ -53,35 +53,34 @@ extern struct transport_ops sock_transport_ops;
  * will not be set if not found in the JSON.
  */
 int
-vfio_user_parse_version_json(const char *json_str, int *client_max_fdsp,
-                             size_t *pgsizep);
+vfu_parse_version_json(const char *json_str, int *client_max_fdsp,
+                       size_t *pgsizep);
 
 /*
  * Send a message to the other end.  The iovecs array should leave the first
  * entry empty, as it will be used for the header.
  */
 int
-vfio_user_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                     enum vfio_user_command cmd,
-                     struct iovec *iovecs, size_t nr_iovecs,
-                     int *fds, int count,
-                     int err);
+vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+               enum vfio_user_command cmd,
+               struct iovec *iovecs, size_t nr_iovecs,
+               int *fds, int count,
+               int err);
 
 /*
  * Send a message to the other end with the given data.
  */
 int
-vfio_user_send(int sock, uint16_t msg_id, bool is_reply,
-               enum vfio_user_command cmd,
-               void *data, size_t data_len);
+vfu_send(int sock, uint16_t msg_id, bool is_reply, enum vfio_user_command cmd,
+         void *data, size_t data_len);
 
 /*
  * Send an empty reply back to the other end with the given errno.
  */
 int
-vfio_user_send_error(int sock, uint16_t msg_id,
-                     enum vfio_user_command cmd,
-                     int error);
+vfu_send_error(int sock, uint16_t msg_id,
+               enum vfio_user_command cmd,
+               int error);
 
 /*
  * Receive a message from the other end, and place the data into the given
@@ -89,9 +88,8 @@ vfio_user_send_error(int sock, uint16_t msg_id,
  * size.
  */
 int
-vfio_user_recv(int sock, struct vfio_user_header *hdr,
-               bool is_reply, uint16_t *msg_id,
-               void *data, size_t *len);
+vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+         uint16_t *msg_id, void *data, size_t *len);
 
 /*
  * Receive a message from the other end, but automatically allocate a buffer for
@@ -99,9 +97,8 @@ vfio_user_recv(int sock, struct vfio_user_header *hdr,
  * NULL.
  */
 int
-vfio_user_recv_alloc(int sock, struct vfio_user_header *hdr,
-                     bool is_reply, uint16_t *msg_id,
-                     void **datap, size_t *lenp);
+vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+               uint16_t *msg_id, void **datap, size_t *lenp);
 
 /*
  * Send and receive a message to the other end, using iovecs for the send. The
@@ -112,24 +109,24 @@ vfio_user_recv_alloc(int sock, struct vfio_user_header *hdr,
  * the reply header if non-NULL.
  */
 int
-vfio_user_msg_iovec(int sock, uint16_t msg_id,
-                    enum vfio_user_command cmd,
-                    struct iovec *iovecs, size_t nr_iovecs,
-                    int *send_fds, size_t fd_count,
-                    struct vfio_user_header *hdr,
-                    void *recv_data, size_t recv_len);
+vfu_msg_iovec(int sock, uint16_t msg_id,
+              enum vfio_user_command cmd,
+              struct iovec *iovecs, size_t nr_iovecs,
+              int *send_fds, size_t fd_count,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len);
 
 /*
  * Send and receive a message to the other end.  @hdr is filled with the reply
  * header if non-NULL.
  */
 int
-vfio_user_msg(int sock, uint16_t msg_id,
-              enum vfio_user_command cmd,
-              void *send_data, size_t send_len,
-              struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len);
+vfu_msg(int sock, uint16_t msg_id,
+        enum vfio_user_command cmd,
+        void *send_data, size_t send_len,
+        struct vfio_user_header *hdr,
+        void *recv_data, size_t recv_len);
 
-#endif /* LIB_MUSER_TRAN_SOCK_H */
+#endif /* LIB_VFIO_USER_TRAN_SOCK_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

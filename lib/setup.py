@@ -29,10 +29,10 @@
 
 from distutils.core import setup, Extension
 
-module1 = Extension('muser',
+module1 = Extension('vfio_user',
                     sources = ['python_bindings.c'],
                     #library_dirs=['/usr/local/lib'],
-                    libraries=['muser'],
+                    libraries=['vfio-user'],
                     #extra_compile_args=['-g', '-O0']
 )
 

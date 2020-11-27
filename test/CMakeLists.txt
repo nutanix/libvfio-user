@@ -27,13 +27,13 @@
 #
 
 add_executable(unit-tests unit-tests.c mocks.c
-		../lib/muser_ctx.c
-		../lib/dma.c
-		../lib/migration.c
-		../lib/muser_pci.c
-		../lib/tran_sock.c
 		../lib/cap.c
-		../lib/irq.c)
+		../lib/dma.c
+		../lib/irq.c
+		../lib/libvfio-user.c
+		../lib/migration.c
+		../lib/pci.c
+		../lib/tran_sock.c)
 
 target_link_libraries(unit-tests PUBLIC cmocka json-c)
 

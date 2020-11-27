@@ -30,19 +30,19 @@
  *
  */
 
-#ifndef LIB_MUSER_IRQ_H
-#define LIB_MUSER_IRQ_H
+#ifndef LIB_VFIO_USER_IRQ_H
+#define LIB_VFIO_USER_IRQ_H
 
-#include "muser_priv.h"
+#include "private.h"
 
 int
-handle_device_get_irq_info(lm_ctx_t *lm_ctx, uint32_t size,
+handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            struct vfio_irq_info *irq_info_in,
                            struct vfio_irq_info *irq_info_out);
 int
-handle_device_set_irqs(lm_ctx_t *lm_ctx, uint32_t size,
+handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, int nr_fds, struct vfio_irq_set *irq_set);
 
-#endif /* LIB_MUSER_IRQ_H */
+#endif /* LIB_VFIO_USER_IRQ_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

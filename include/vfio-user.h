@@ -34,6 +34,10 @@
 #ifndef VFIO_USER_H
 #define VFIO_USER_H
 
+/*
+ * Shared definitions for the vfio-user protocol.
+ */
+
 #include <inttypes.h>
 #include <linux/vfio.h>
 #include <linux/version.h>

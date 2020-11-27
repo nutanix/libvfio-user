@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef LIB_MUSER_PCI_CAPS_MSI_H
-#define LIB_MUSER_PCI_CAPS_MSI_H
+#ifndef LIB_VFIO_USER_PCI_CAPS_MSI_H
+#define LIB_VFIO_USER_PCI_CAPS_MSI_H
 
 #include "common.h"
 
@@ -72,6 +72,6 @@ _Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
 }
 #endif
 
-#endif /* LM_CAP_MSI_H */
+#endif /* VFU_CAP_MSI_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

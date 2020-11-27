@@ -43,10 +43,10 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
-#include "muser.h"
-#include "muser_priv.h"
-#include "tran_sock.h"
+#include "libvfio-user.h"
 #include "migration.h"
+#include "private.h"
+#include "tran_sock.h"
 
 // FIXME: is this the value we want?
 #define SERVER_MAX_FDS 8
@@ -71,13 +71,13 @@ recv_blocking(int sock, void *buf, size_t len, int flags)
 }
 
 static int
-init_sock(lm_ctx_t *lm_ctx)
+init_sock(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int ret, unix_sock;
     mode_t mode;
 
-    assert(lm_ctx != NULL);
+    assert(vfu_ctx != NULL);
 
     /* FIXME SPDK can't easily run as non-root */
     mode =  umask(0000);
@@ -87,19 +87,19 @@ init_sock(lm_ctx_t *lm_ctx)
         goto out;
     }
 
-    if (lm_ctx->flags & LM_FLAG_ATTACH_NB) {
+    if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
         ret = fcntl(unix_sock, F_SETFL,
                     fcntl(unix_sock, F_GETFL, 0) | O_NONBLOCK);
         if (ret < 0) {
             ret = -errno;
             goto out;
         }
-        lm_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
+        vfu_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     } else {
-        lm_ctx->sock_flags = 0;
+        vfu_ctx->sock_flags = 0;
     }
 
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", lm_ctx->uuid);
+    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
     if (ret >= (int)sizeof addr.sun_path) {
         ret = -ENAMETOOLONG;
     }
@@ -131,10 +131,10 @@ out:
 }
 
 int
-vfio_user_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                    enum vfio_user_command cmd,
-                    struct iovec *iovecs, size_t nr_iovecs,
-                    int *fds, int count, int err)
+vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+               enum vfio_user_command cmd,
+               struct iovec *iovecs, size_t nr_iovecs,
+               int *fds, int count, int err)
 {
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
@@ -194,9 +194,9 @@ vfio_user_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 }
 
 int
-vfio_user_send(int sock, uint16_t msg_id, bool is_reply,
-               enum vfio_user_command cmd,
-               void *data, size_t data_len)
+vfu_send(int sock, uint16_t msg_id, bool is_reply,
+         enum vfio_user_command cmd,
+         void *data, size_t data_len)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -205,17 +205,16 @@ vfio_user_send(int sock, uint16_t msg_id, bool is_reply,
             .iov_len = data_len
         }
     };
-    return vfio_user_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
-                                ARRAY_SIZE(iovecs), NULL, 0, 0);
+    return vfu_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
+                          ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 int
-send_vfio_user_error(int sock, uint16_t msg_id,
+vfu_send_error(int sock, uint16_t msg_id,
                      enum vfio_user_command cmd,
                      int error)
 {
-    return vfio_user_send_iovec(sock, msg_id, true, cmd,
-                                NULL, 0, NULL, 0, error);
+    return vfu_send_iovec(sock, msg_id, true, cmd, NULL, 0, NULL, 0, error);
 }
 
 /*
@@ -228,8 +227,8 @@ send_vfio_user_error(int sock, uint16_t msg_id,
  * better.
  */
 int
-vfio_user_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void *data, size_t *len)
+vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+        uint16_t *msg_id, void *data, size_t *len)
 {
     int ret;
 
@@ -280,19 +279,19 @@ vfio_user_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
 }
 
 /*
- * Like vfio_user_recv(), but will automatically allocate reply data.
+ * Like vfu_recv(), but will automatically allocate reply data.
  *
  * FIXME: this does an unconstrained alloc of client-supplied data.
  */
 int
-vfio_user_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
-                         uint16_t *msg_id, void **datap, size_t *lenp)
+vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+              uint16_t *msg_id, void **datap, size_t *lenp)
 {
     void *data;
     size_t len;
     int ret;
 
-    ret = vfio_user_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
+    ret = vfu_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
 
     if (ret != 0) {
         return ret;
@@ -335,28 +334,28 @@ vfio_user_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
  * messages.
  */
 int
-vfio_user_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-                    struct iovec *iovecs, size_t nr_iovecs,
-                    int *send_fds, size_t fd_count,
-                    struct vfio_user_header *hdr,
-                    void *recv_data, size_t recv_len)
+vfu_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+              struct iovec *iovecs, size_t nr_iovecs,
+              int *send_fds, size_t fd_count,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len)
 {
-    int ret = vfio_user_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                                   send_fds, fd_count, 0);
+    int ret = vfu_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
+                             send_fds, fd_count, 0);
     if (ret < 0) {
         return ret;
     }
     if (hdr == NULL) {
         hdr = alloca(sizeof *hdr);
     }
-    return vfio_user_recv(sock, hdr, true, &msg_id, recv_data, &recv_len);
+    return vfu_recv(sock, hdr, true, &msg_id, recv_data, &recv_len);
 }
 
 int
-vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-              void *send_data, size_t send_len,
-              struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len)
+vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+        void *send_data, size_t send_len,
+        struct vfio_user_header *hdr,
+        void *recv_data, size_t recv_len)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -365,8 +364,8 @@ vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
             .iov_len = send_len
         }
     };
-    return vfio_user_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
-                               NULL, 0, hdr, recv_data, recv_len);
+    return vfu_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
+                         NULL, 0, hdr, recv_data, recv_len);
 }
 
 /*
@@ -385,8 +384,8 @@ vfio_user_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
  * available in newer library versions, so we don't use it.
  */
 int
-vfio_user_parse_version_json(const char *json_str,
-                             int *client_max_fdsp, size_t *pgsizep)
+vfu_parse_version_json(const char *json_str,
+                       int *client_max_fdsp, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -449,7 +448,7 @@ out:
 }
 
 int
-recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
+recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
              struct vfio_user_version **versionp)
 {
     struct vfio_user_version *cversion = NULL;
@@ -459,36 +458,37 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
 
     *versionp = NULL;
 
-    ret = vfio_user_recv_alloc(sock, &hdr, false, msg_idp,
-                                   (void **)&cversion, &vlen);
+    ret = vfu_recv_alloc(sock, &hdr, false, msg_idp,
+                         (void **)&cversion, &vlen);
 
     if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to receive version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, VFU_ERR, "failed to receive version: %s",
+                strerror(-ret));
         return ret;
     }
 
     if (hdr.cmd != VFIO_USER_VERSION) {
-        lm_log(lm_ctx, LM_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
-               *msg_idp, hdr.cmd, VFIO_USER_VERSION);
+        vfu_log(vfu_ctx, VFU_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
+                *msg_idp, hdr.cmd, VFIO_USER_VERSION);
         ret = -EINVAL;
         goto out;
     }
 
     if (vlen < sizeof (*cversion)) {
-        lm_log(lm_ctx, LM_ERR, "msg%hx (VFIO_USER_VERSION): invalid size %lu",
-               *msg_idp, vlen);
+        vfu_log(vfu_ctx, VFU_ERR,
+                "msg%hx (VFIO_USER_VERSION): invalid size %lu", *msg_idp, vlen);
         ret = -EINVAL;
         goto out;
     }
 
-    if (cversion->major != LIB_MUSER_VFIO_USER_VERS_MJ) {
-        lm_log(lm_ctx, LM_ERR, "unsupported client major %hu (must be %hu)",
-               cversion->major, LIB_MUSER_VFIO_USER_VERS_MJ);
+    if (cversion->major != LIB_VFIO_USER_MAJOR) {
+        vfu_log(vfu_ctx, VFU_ERR, "unsupported client major %hu (must be %hu)",
+                cversion->major, LIB_VFIO_USER_MAJOR);
         ret = -ENOTSUP;
         goto out;
     }
 
-    lm_ctx->client_max_fds = 1;
+    vfu_ctx->client_max_fds = 1;
 
     if (vlen > sizeof (*cversion)) {
         const char *json_str = (const char *)cversion->data;
@@ -496,40 +496,40 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
         size_t pgsize = 0;
 
         if (json_str[len - 1] != '\0') {
-            lm_log(lm_ctx, LM_ERR, "ignoring invalid JSON from client");
+            vfu_log(vfu_ctx, VFU_ERR, "ignoring invalid JSON from client");
             ret = -EINVAL;
             goto out;
         }
 
-        ret = vfio_user_parse_version_json(json_str, &lm_ctx->client_max_fds,
-                                           &pgsize);
+        ret = vfu_parse_version_json(json_str, &vfu_ctx->client_max_fds,
+                                     &pgsize);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
 #ifdef DEBUG
-            lm_log(lm_ctx, LM_ERR, "failed to parse client JSON \"%s\"",
-                   json_str);
+            vfu_log(vfu_ctx, VFU_ERR, "failed to parse client JSON \"%s\"",
+                    json_str);
 #else
-            lm_log(lm_ctx, LM_ERR, "failed to parse client JSON");
+            vfu_log(vfu_ctx, VFU_ERR, "failed to parse client JSON");
 #endif
             goto out;
         }
 
-        if (lm_ctx->migration != NULL && pgsize != 0) {
-            ret = migration_set_pgsize(lm_ctx->migration, pgsize);
+        if (vfu_ctx->migration != NULL && pgsize != 0) {
+            ret = migration_set_pgsize(vfu_ctx->migration, pgsize);
 
             if (ret != 0) {
-                lm_log(lm_ctx, LM_ERR, "refusing client page size of %zu",
-                       pgsize);
+                vfu_log(vfu_ctx, VFU_ERR, "refusing client page size of %zu",
+                        pgsize);
                 goto out;
             }
         }
 
         // FIXME: is the code resilient against ->client_max_fds == 0?
-        if (lm_ctx->client_max_fds < 0 ||
-            lm_ctx->client_max_fds > MUSER_CLIENT_MAX_FDS_LIMIT) {
-            lm_log(lm_ctx, LM_ERR, "refusing client max_fds of %d",
-                   lm_ctx->client_max_fds);
+        if (vfu_ctx->client_max_fds < 0 ||
+            vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_FDS_LIMIT) {
+            vfu_log(vfu_ctx, VFU_ERR, "refusing client max_fds of %d",
+                    vfu_ctx->client_max_fds);
             ret = -EINVAL;
             goto out;
         }
@@ -538,7 +538,7 @@ recv_version(lm_ctx_t *lm_ctx, int sock, uint16_t *msg_idp,
 out:
     if (ret != 0) {
         // FIXME: spec, is it OK to just have the header?
-        (void) send_vfio_user_error(sock, *msg_idp, hdr.cmd, ret);
+        (void) vfu_send_error(sock, *msg_idp, hdr.cmd, ret);
         free(cversion);
         cversion = NULL;
     }
@@ -548,7 +548,7 @@ out:
 }
 
 int
-send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
+send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
              struct vfio_user_version *cversion)
 {
     struct vfio_user_version sversion = { 0 };
@@ -556,7 +556,7 @@ send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
     char server_caps[1024];
     int slen;
 
-    if (lm_ctx->migration == NULL) {
+    if (vfu_ctx->migration == NULL) {
         slen = snprintf(server_caps, sizeof (server_caps),
             "{"
                 "\"capabilities\":{"
@@ -572,13 +572,13 @@ send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
                         "\"pgsize\":%zu"
                     "}"
                 "}"
-             "}", SERVER_MAX_FDS, migration_get_pgsize(lm_ctx->migration));
+             "}", SERVER_MAX_FDS, migration_get_pgsize(vfu_ctx->migration));
     }
 
     // FIXME: we should save the client minor here, and check that before trying
     // to send unsupported things.
-    sversion.major =  LIB_MUSER_VFIO_USER_VERS_MJ;
-    sversion.minor = MIN(cversion->minor, LIB_MUSER_VFIO_USER_VERS_MN);
+    sversion.major =  LIB_VFIO_USER_MAJOR;
+    sversion.minor = MIN(cversion->minor, LIB_VFIO_USER_MINOR);
 
     /* [0] is for the header. */
     iovecs[1].iov_base = &sversion;
@@ -587,70 +587,70 @@ send_version(lm_ctx_t *lm_ctx, int sock, uint16_t msg_id,
     /* Include the NUL. */
     iovecs[2].iov_len = slen + 1;
 
-    return vfio_user_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
-                                iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
+    return vfu_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
+                          iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 static int
-negotiate(lm_ctx_t *lm_ctx, int sock)
+negotiate(vfu_ctx_t *vfu_ctx, int sock)
 {
     struct vfio_user_version *client_version = NULL;
     uint16_t msg_id = 1;
     int ret;
 
-    ret = recv_version(lm_ctx, sock, &msg_id, &client_version);
+    ret = recv_version(vfu_ctx, sock, &msg_id, &client_version);
 
     if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to recv version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, VFU_ERR, "failed to recv version: %s", strerror(-ret));
         return ret;
     }
 
-    ret = send_version(lm_ctx, sock, msg_id, client_version);
+    ret = send_version(vfu_ctx, sock, msg_id, client_version);
 
     free(client_version);
 
     if (ret < 0) {
-        lm_log(lm_ctx, LM_ERR, "failed to send version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, VFU_ERR, "failed to send version: %s", strerror(-ret));
     }
 
     return ret;
 }
 
 /**
- * lm_ctx: libmuser context
- * FIXME: this shouldn't be happening as part of lm_ctx_create().
+ * vfu_ctx: libvfio-user context
+ * FIXME: this shouldn't be happening as part of vfu_ctx_create().
  */
 static int
-open_sock(lm_ctx_t *lm_ctx)
+open_sock(vfu_ctx_t *vfu_ctx)
 {
     int ret;
     int conn_fd;
 
-    assert(lm_ctx != NULL);
+    assert(vfu_ctx != NULL);
 
-    conn_fd = accept(lm_ctx->fd, NULL, NULL);
+    conn_fd = accept(vfu_ctx->fd, NULL, NULL);
     if (conn_fd == -1) {
         return conn_fd;
     }
 
-    ret = negotiate(lm_ctx, conn_fd);
+    ret = negotiate(vfu_ctx, conn_fd);
     if (ret < 0) {
         close(conn_fd);
         return ret;
     }
 
-    lm_ctx->conn_fd = conn_fd;
+    vfu_ctx->conn_fd = conn_fd;
     return conn_fd;
 }
 
 static int
-close_sock(lm_ctx_t *lm_ctx)
+close_sock(vfu_ctx_t *vfu_ctx)
 {
-    return close(lm_ctx->conn_fd);
+    return close(vfu_ctx->conn_fd);
 }
 
 static int
-get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
+get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                  int *fds, int *nr_fds)
 {
     int ret;
@@ -668,7 +668,7 @@ get_request_sock(lm_ctx_t *lm_ctx, struct vfio_user_header *hdr,
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    ret = recvmsg(lm_ctx->conn_fd, &msg, lm_ctx->sock_flags);
+    ret = recvmsg(vfu_ctx->conn_fd, &msg, vfu_ctx->sock_flags);
     if (ret == -1) {
         return -errno;
     }

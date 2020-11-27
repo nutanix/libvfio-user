@@ -1,6 +1,4 @@
 /*
- * Userspace mediated device sample application
- *
  * Copyright (c) 2019, Nutanix Inc. All rights reserved.
  *     Author: Thanos Makatos <thanos@nutanix.com>
  *             Swapnil Ingle <swapnil.ingle@nutanix.com>
@@ -41,19 +39,19 @@
 #include <string.h>
 
 #include "common.h"
-#include "muser.h"
+#include "libvfio-user.h"
 #include "tran_sock.h"
 
 static void
-null_log(UNUSED void *pvt, UNUSED lm_log_lvl_t lvl, char const *msg)
+null_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
 {
-	fprintf(stderr, "muser: %s", msg);
+	fprintf(stderr, "null: %s", msg);
 }
 
 
 static void* null_drive(void *arg)
 {
-    lm_ctx_t *lm_ctx = (lm_ctx_t*)arg;
+    vfu_ctx_t *vfu_ctx = (vfu_ctx_t*)arg;
     int ret = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     if (ret != 0) {
         fprintf(stderr, "failed to enable cancel state: %s\n", strerror(ret));
@@ -65,7 +63,7 @@ static void* null_drive(void *arg)
         return NULL;
     }
     printf("starting device emulation\n");
-    lm_ctx_drive(lm_ctx);
+    vfu_ctx_drive(vfu_ctx);
     return NULL;
 }
 
@@ -75,20 +73,20 @@ int main(int argc, char **argv)
     pthread_t thread;
 
     if (argc != 2) {
-        errx(EXIT_FAILURE, "missing MUSER socket path");
+        errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
-    lm_ctx_t *lm_ctx = lm_create_ctx(LM_TRANS_SOCK, argv[1], 0, NULL);
-    if (lm_ctx == NULL) {
-        err(EXIT_FAILURE, "failed to create libmuser context");
+    vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[1], 0, NULL);
+    if (vfu_ctx == NULL) {
+        err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
 
-    ret = lm_setup_log(lm_ctx, null_log, LM_DBG);
+    ret = vfu_setup_log(vfu_ctx, null_log, VFU_DBG);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = pthread_create(&thread, NULL, null_drive, lm_ctx);
+    ret = pthread_create(&thread, NULL, null_drive, vfu_ctx);
     if (ret != 0) {
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
@@ -104,7 +102,7 @@ int main(int argc, char **argv)
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
     }
-    lm_ctx_destroy(lm_ctx);
+    vfu_ctx_destroy(vfu_ctx);
 
     printf("device emulation stopped and cleaned up, press enter to exit\n");
     if (getchar() == EOF) {

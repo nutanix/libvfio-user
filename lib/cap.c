@@ -37,7 +37,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "muser.h"
+#include "libvfio-user.h"
 #include "cap.h"
 
 struct cap {
@@ -46,7 +46,7 @@ struct cap {
 };
 
 struct caps {
-    struct cap      caps[LM_MAX_CAPS]; /* FIXME only needs to be as big as nr_caps */
+    struct cap      caps[VFU_MAX_CAPS]; /* FIXME only needs to be as big as nr_caps */
     unsigned int    nr_caps;
 };
 
@@ -72,7 +72,7 @@ cap_is_accessed(struct cap *caps, int nr_caps, size_t count, loff_t offset)
 
         /*
          * FIXME write starts before capabilities but extends into them. I don't
-         * think that the while loop in lm_access will allow this in the first
+         * think that the while loop in vfu_access will allow this in the first
          * place.
          */
         assert(false);
@@ -97,7 +97,7 @@ cap_is_accessed(struct cap *caps, int nr_caps, size_t count, loff_t offset)
  * (offset + count).
  */
 static uint8_t *
-cap_find(lm_pci_config_space_t *config_space, struct caps *caps, loff_t offset,
+cap_find(vfu_pci_config_space_t *config_space, struct caps *caps, loff_t offset,
          size_t count)
 {
     struct cap *cap;
@@ -133,17 +133,17 @@ cap_is_valid(uint8_t id)
 }
 
 uint8_t *
-cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id)
+cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id)
 {
     uint8_t *pos;
-    lm_pci_config_space_t *config_space;
+    vfu_pci_config_space_t *config_space;
 
     if (!cap_is_valid(id)) {
         errno = EINVAL;
         return NULL;
     }
 
-    config_space = lm_get_pci_config_space(lm_ctx);
+    config_space = vfu_pci_get_config_space(vfu_ctx);
 
     if (config_space->hdr.cap == 0) {
         errno = ENOENT;
@@ -160,7 +160,7 @@ cap_find_by_id(lm_ctx_t *lm_ctx, uint8_t id)
         }
         pos = config_space->raw + *(pos + PCI_CAP_LIST_NEXT);
     }
-    errno = ENOENT;        
+    errno = ENOENT;
     return NULL;
 }
 
@@ -173,32 +173,32 @@ cap_header_is_accessed(uint8_t cap_offset, loff_t offset)
     return offset - cap_offset <= 1;
 }
 
-typedef ssize_t (cap_access) (lm_ctx_t *lm_ctx, uint8_t *cap, char *buf,
+typedef ssize_t (cap_access) (vfu_ctx_t *vfu_ctx, uint8_t *cap, char *buf,
                               size_t count, loff_t offset);
 
 static ssize_t
-handle_pmcs_write(lm_ctx_t *lm_ctx, struct pmcap *pm,
+handle_pmcs_write(vfu_ctx_t *vfu_ctx, struct pmcap *pm,
                   const struct pmcs *const pmcs)
 {
 
 	if (pm->pmcs.ps != pmcs->ps) {
-		lm_log(lm_ctx, LM_DBG, "power state set to %#x\n", pmcs->ps);
+		vfu_log(vfu_ctx, VFU_DBG, "power state set to %#x\n", pmcs->ps);
 	}
 	if (pm->pmcs.pmee != pmcs->pmee) {
-		lm_log(lm_ctx, LM_DBG, "PME enable set to %#x\n", pmcs->pmee);
+		vfu_log(vfu_ctx, VFU_DBG, "PME enable set to %#x\n", pmcs->pmee);
 	}
 	if (pm->pmcs.dse != pmcs->dse) {
-		lm_log(lm_ctx, LM_DBG, "data select set to %#x\n", pmcs->dse);
+		vfu_log(vfu_ctx, VFU_DBG, "data select set to %#x\n", pmcs->dse);
 	}
 	if (pm->pmcs.pmes != pmcs->pmes) {
-		lm_log(lm_ctx, LM_DBG, "PME status set to %#x\n", pmcs->pmes);
+		vfu_log(vfu_ctx, VFU_DBG, "PME status set to %#x\n", pmcs->pmes);
 	}
 	pm->pmcs = *pmcs;
 	return 0;
 }
 
 static ssize_t
-handle_pm_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
+handle_pm_write(vfu_ctx_t *vfu_ctx, uint8_t *cap, char *const buf,
                 const size_t count, const loff_t offset)
 {
     struct pmcap *pm = (struct pmcap *)cap;
@@ -214,28 +214,29 @@ handle_pm_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
 		if (count != sizeof(struct pmcs)) {
 			return -EINVAL;
 		}
-		return handle_pmcs_write(lm_ctx, pm, (struct pmcs *)buf);
+		return handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
 	}
 	return -EINVAL;
 }
 
 static ssize_t
-handle_mxc_write(lm_ctx_t *lm_ctx, struct msixcap *msix,
+handle_mxc_write(vfu_ctx_t *vfu_ctx, struct msixcap *msix,
                  const struct mxc *const mxc)
 {
 	assert(msix != NULL);
 	assert(mxc != NULL);
 
 	if (mxc->mxe != msix->mxc.mxe) {
-		lm_log(lm_ctx, LM_DBG, "%s MSI-X\n", mxc->mxe ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "%s MSI-X\n",
+                mxc->mxe ? "enable" : "disable");
 		msix->mxc.mxe = mxc->mxe;
 	}
 
 	if (mxc->fm != msix->mxc.fm) {
 		if (mxc->fm) {
-			lm_log(lm_ctx, LM_DBG, "all MSI-X vectors masked\n");
+			vfu_log(vfu_ctx, VFU_DBG, "all MSI-X vectors masked\n");
 		} else {
-			lm_log(lm_ctx, LM_DBG,
+			vfu_log(vfu_ctx, VFU_DBG,
                    "vector's mask bit determines whether vector is masked\n");
 		}
 		msix->mxc.fm = mxc->fm;
@@ -245,7 +246,7 @@ handle_mxc_write(lm_ctx_t *lm_ctx, struct msixcap *msix,
 }
 
 static ssize_t
-handle_msix_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
+handle_msix_write(vfu_ctx_t *vfu_ctx, uint8_t *cap, char *const buf,
                   const size_t count, const loff_t offset)
 {
     struct msixcap *msix = (struct msixcap *)cap;
@@ -253,79 +254,83 @@ handle_msix_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
 	if (count == sizeof(struct mxc)) {
 		switch (offset) {
 		case offsetof(struct msixcap, mxc):
-			return handle_mxc_write(lm_ctx, msix, (struct mxc *)buf);
+			return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
 		default:
-			lm_log(lm_ctx, LM_ERR, "invalid MSI-X write offset %ld\n", offset);
+			vfu_log(vfu_ctx, VFU_ERR,
+                    "invalid MSI-X write offset %ld\n", offset);
 			return -EINVAL;
 		}
 	}
-	lm_log(lm_ctx, LM_ERR, "invalid MSI-X write size %lu\n", count);
+	vfu_log(vfu_ctx, VFU_ERR, "invalid MSI-X write size %lu\n", count);
 	return -EINVAL;
 }
 
 static int
-handle_px_pxdc_write(lm_ctx_t *lm_ctx, struct pxcap *px, const union pxdc *const p)
+handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
+                     const union pxdc *const p)
 {
 	assert(px != NULL);
 	assert(p != NULL);
 
 	if (p->cere != px->pxdc.cere) {
 		px->pxdc.cere = p->cere;
-		lm_log(lm_ctx, LM_DBG, "CERE %s\n", p->cere ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "CERE %s\n", p->cere ? "enable" : "disable");
 	}
 
 	if (p->nfere != px->pxdc.nfere) {
 		px->pxdc.nfere = p->nfere;
-		lm_log(lm_ctx, LM_DBG, "NFERE %s\n", p->nfere ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "NFERE %s\n",
+                p->nfere ? "enable" : "disable");
 	}
 
 	if (p->fere != px->pxdc.fere) {
 		px->pxdc.fere = p->fere;
-		lm_log(lm_ctx, LM_DBG, "FERE %s\n", p->fere ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "FERE %s\n", p->fere ? "enable" : "disable");
 	}
 
 	if (p->urre != px->pxdc.urre) {
 		px->pxdc.urre = p->urre;
-		lm_log(lm_ctx, LM_DBG, "URRE %s\n", p->urre ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "URRE %s\n", p->urre ? "enable" : "disable");
 	}
 
 	if (p->ero != px->pxdc.ero) {
 		px->pxdc.ero = p->ero;
-		lm_log(lm_ctx, LM_DBG, "ERO %s\n", p->ero ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "ERO %s\n", p->ero ? "enable" : "disable");
 	}
 
 	if (p->mps != px->pxdc.mps) {
 		px->pxdc.mps = p->mps;
-		lm_log(lm_ctx, LM_DBG, "MPS set to %d\n", p->mps);
+		vfu_log(vfu_ctx, VFU_DBG, "MPS set to %d\n", p->mps);
 	}
 
 	if (p->ete != px->pxdc.ete) {
 		px->pxdc.ete = p->ete;
-		lm_log(lm_ctx, LM_DBG, "ETE %s\n", p->ete ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "ETE %s\n", p->ete ? "enable" : "disable");
 	}
 
 	if (p->pfe != px->pxdc.pfe) {
 		px->pxdc.pfe = p->pfe;
-		lm_log(lm_ctx, LM_DBG, "PFE %s\n", p->pfe ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "PFE %s\n", p->pfe ? "enable" : "disable");
 	}
 
 	if (p->appme != px->pxdc.appme) {
 		px->pxdc.appme = p->appme;
-		lm_log(lm_ctx, LM_DBG, "APPME %s\n", p->appme ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "APPME %s\n",
+                p->appme ? "enable" : "disable");
 	}
 
 	if (p->ens != px->pxdc.ens) {
 		px->pxdc.ens = p->ens;
-		lm_log(lm_ctx, LM_DBG, "ENS %s\n", p->ens ? "enable" : "disable");
+		vfu_log(vfu_ctx, VFU_DBG, "ENS %s\n", p->ens ? "enable" : "disable");
 	}
 
 	if (p->mrrs != px->pxdc.mrrs) {
 		px->pxdc.mrrs = p->mrrs;
-		lm_log(lm_ctx, LM_DBG, "MRRS set to %d\n", p->mrrs);
+		vfu_log(vfu_ctx, VFU_DBG, "MRRS set to %d\n", p->mrrs);
 	}
 
 	if (p->iflr) {
-		lm_log(lm_ctx, LM_DBG,
+		vfu_log(vfu_ctx, VFU_DBG,
 			"initiate function level reset\n");
 	}
 
@@ -333,18 +338,18 @@ handle_px_pxdc_write(lm_ctx_t *lm_ctx, struct pxcap *px, const union pxdc *const
 }
 
 static int
-handle_px_write_2_bytes(lm_ctx_t *lm_ctx, struct pxcap *px, char *const buf,
+handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *const buf,
                         loff_t off)
 {
 	switch (off) {
 	case offsetof(struct pxcap, pxdc):
-		return handle_px_pxdc_write(lm_ctx, px, (union pxdc *)buf);
+		return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
 	}
 	return -EINVAL;
 }
 
 static ssize_t
-handle_px_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
+handle_px_write(vfu_ctx_t *vfu_ctx, uint8_t *cap, char *const buf,
                 size_t count, loff_t offset)
 {
     struct pxcap *px = (struct pxcap *)cap;
@@ -352,7 +357,7 @@ handle_px_write(lm_ctx_t *lm_ctx, uint8_t *cap, char *const buf,
 	int err = -EINVAL;
 	switch (count) {
 	case 2:
-		err = handle_px_write_2_bytes(lm_ctx, px, buf, offset);
+		err = handle_px_write_2_bytes(vfu_ctx, px, buf, offset);
 		break;
 	}
 	if (err != 0) {
@@ -373,10 +378,10 @@ static const struct cap_handler {
 };
 
 ssize_t
-cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
+cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
                  loff_t offset)
 {
-    lm_pci_config_space_t *config_space;
+    vfu_pci_config_space_t *config_space;
     uint8_t *cap;
 
     if (caps == NULL) {
@@ -392,7 +397,7 @@ cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
     }
 
     /* we're now guaranteed that the access is within some capability */
-    config_space = lm_get_pci_config_space(lm_ctx);
+    config_space = vfu_pci_get_config_space(vfu_ctx);
     cap = cap_find(config_space, caps, offset, count);
     assert(cap != NULL); /* FIXME */
 
@@ -400,26 +405,26 @@ cap_maybe_access(lm_ctx_t *lm_ctx, struct caps *caps, char *buf, size_t count,
         /* FIXME how to deal with writes to capability header? */
         assert(false);
     }
-    return cap_handlers[cap[PCI_CAP_LIST_ID]].fn(lm_ctx, cap, buf, count,
+    return cap_handlers[cap[PCI_CAP_LIST_ID]].fn(vfu_ctx, cap, buf, count,
                                                  offset - (loff_t)(cap - config_space->raw));
 }
 
-struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps,
-                         int *err)
+struct caps *
+caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
 {
     int i;
     uint8_t *prev;
     uint8_t next;
-    lm_pci_config_space_t *config_space;
+    vfu_pci_config_space_t *config_space;
     struct caps *caps = NULL;
 
     *err = 0;
-    if (nr_caps <= 0 || nr_caps >= LM_MAX_CAPS) {
+    if (nr_caps <= 0 || nr_caps >= VFU_MAX_CAPS) {
         *err = EINVAL;
         return NULL;
     }
 
-    assert(lm_caps != NULL);
+    assert(vfu_caps != NULL);
 
     caps = calloc(1, sizeof *caps);
     if (caps == NULL) {
@@ -427,7 +432,7 @@ struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps,
         goto err_out;
     }
 
-    config_space = lm_get_pci_config_space(lm_ctx);
+    config_space = vfu_pci_get_config_space(vfu_ctx);
     /* points to the next field of the previous capability */
     prev = &config_space->hdr.cap;
 
@@ -435,7 +440,7 @@ struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps,
     next = PCI_STD_HEADER_SIZEOF;
 
     for (i = 0; i < nr_caps; i++) {
-        uint8_t *cap = (uint8_t*)lm_caps[i];
+        uint8_t *cap = (uint8_t*)vfu_caps[i];
         uint8_t id = cap[PCI_CAP_LIST_ID];
         size_t size;
 
@@ -460,7 +465,7 @@ struct caps *caps_create(lm_ctx_t *lm_ctx, lm_cap_t **lm_caps, int nr_caps,
         next += size;
         assert(next % 4 == 0); /* FIXME */
 
-        lm_log(lm_ctx, LM_DBG, "initialized capability %s %#x-%#x\n",
+        vfu_log(vfu_ctx, VFU_DBG, "initialized capability %s %#x-%#x\n",
                cap_handlers[id].name, caps->caps[i].start, caps->caps[i].end);
     }
     caps->nr_caps = nr_caps;

@@ -1,26 +1,45 @@
-Mediated Userspace Device
-=========================
+libvfio-user
+============
 
-Overview
---------
+vfio-user is a framework that allows implementing PCI devices in userspace.
+Clients (such as [qemu](https://qemu.org) talk the [vfio-user
+protocol](https://lists.gnu.org/archive/html/qemu-devel/2020-11/msg02458.html)
+over a UNIX socket to a server. This library, `libvfio-user`, provides an API
+for implementing such servers.
 
-MUSER is a framework that allows implementing PCI devices under the [vfio-user
-protocol](https://lists.gnu.org/archive/html/qemu-devel/2020-11/msg02458.html).
-MUSER is the _backend_ part of the vfio-user protocol, the frontend part is
-implemented by Oracle in https://github.com/oracle/qemu/tree/vfio-user-v0.1.
+[VFIO](https://www.kernel.org/doc/Documentation/vfio.txt) is a kernel facility
+for providing secure access to PCI devices in userspace (including pass-through
+to a VM). With `vfio-user`, instead of talking to the kernel, all interactions
+are done in userspace, without requiring any kernel component; the kernel `VFIO`
+implementation is not used at all for a `vfio-user` device.
+
+Put another way, `vfio-user` is to VFIO as
+[vhost-user](https://www.qemu.org/docs/master/interop/vhost-user.html) is to
+`vhost`.
+
+The `vfio-user` protocol is intentionally modelled after the VFIO `ioctl()`
+interface, and shares many of its definitions.  However, there is not an exact
+equivalence: for example, IOMMU groups are not represented in `vfio-user`.
+
+There many different purposes you might put this library to, such as prototyping
+novel devices, testing frameworks, implementing alternatives to qemu's device
+emulation, adapting a device class to work over a network, etc.
 
 The library abstracts most of the complexity around representing the device.
-Applications using libmuser provide a description of the device (eg. region and
-irq information) and as set of callbacks which are invoked by libmuser when
-those regions are accessed. See src/samples on how to build such an
-application.
+Applications using libvfio-user provide a description of the device (eg. region and
+IRQ information) and as set of callbacks which are invoked by `libvfio-user` when
+those regions are accessed.
 
-Currently there is one, single-threaded application instance per device,
-however the application can employ any form of concurrency needed. In the
-future we plan to make libmuser multi-threaded. The application can be
-implemented in whatever way is convenient, e.g. as a Python script using
-bindings, on the cloud, etc. There's also experimental support for polling.
+Currently there is one, single-threaded, application instance per device,
+however the application can employ any form of concurrency needed. In the future
+we plan to make libvfio-user multi-threaded. The application can be implemented
+in whatever way is convenient, e.g. as a Python script using the bindings, on
+the cloud, etc. There's also experimental support for polling.
 
+The library (and the protocol) are actively under development, and should not be
+considered a stable API or interface. Work is underway to integrate the protocol
+with `qemu` (as a client) and [SPDK](https://spdk.io) (on the server side,
+implementing a virtual NVMe controller).
 
 Memory Mapping the Device
 -------------------------
@@ -28,53 +47,61 @@ Memory Mapping the Device
 The device driver can allow parts of the virtual device to be memory mapped by
 the virtual machine (e.g. the PCI BARs). The business logic needs to implement
 the mmap callback and reply to the request passing the memory address whose
-backing pages are then used to satisfy the original mmap call. Currently
-reading and writing of the memory mapped memory by the client goes undetected
-by libmuser, the business logic needs to poll. In the future we plan to
-implement a mechanism in order to provide notifications to libmuser whenever a
-page is written to.
+backing pages are then used to satisfy the original mmap call. Currently reading
+and writing of the memory mapped memory by the client goes undetected by
+`libvfio-user`, the business logic needs to poll. In the future we plan to
+implement a mechanism in order to provide notifications to `libvfio-user`
+whenever a page is written to.
 
 
 Interrupts
 ----------
 
-Interrupts are implemented by passing the event file descriptor to libmuser
-and then notifying it about it. libmuser can then trigger interrupts simply by
-writing to it. This can be much more expensive compared to triggering interrupts
-from the kernel, however this performance penalty is perfectly acceptable when
-prototyping the functional aspect of a device driver.
+Interrupts are implemented by passing the event file descriptor to
+`libvfio-user` and then notifying it about it. `libvfio-user` can then trigger
+interrupts simply by writing to it. This can be much more expensive compared to
+triggering interrupts from the kernel, however this performance penalty is
+perfectly acceptable when prototyping the functional aspect of a device driver.
 
 
 Building muser
 ==============
 
-Just do:
+Build requirements:
 
-	make && make install
+ * `cmake` (v2 or above)
+ * `libjson-c-dev` / `libjson-c-devel`
+ * `libcmocka-dev` / `libcmocka-devel`
 
-By default a debug build is created, to create a release build do:
+To build:
 
-	make BUILD_TYPE=rel
+    make && make install
+    # optional
+    make test
+
+By default a debug build is created. To create a release build do:
+
+    make BUILD_TYPE=rel
 
 The kernel headers are necessary because VFIO structs and defines are reused.
-To enable Python bindings set the PYTHON_BINDINGS environment variable to a
+To enable Python bindings set the `PYTHON_BINDINGS` environment variable to a
 non-empty string.
 
-Finally build your program and link it to libmuser.so.
+Finally build your program and link with `libvfio-user.so`.
 
 Example
 =======
 
-Directory samples/ contains a client/server implementation. The server
-implements a device that can be programmed to trigger interrupts (INTx) to the
-client. This is done by writing the desired time in seconds since Epoch. The
-server then trigger an evenfd-based IRQ and then a message-based one (in order
-to demonstrate how it's done when passing of file descriptors isn't
+The [samples directory](./samples/) contains a client/server implementation. The
+server implements a device that can be programmed to trigger interrupts (INTx)
+to the client. This is done by writing the desired time in seconds since Epoch.
+The server then trigger an eventfd-based IRQ and then a message-based one (in
+order to demonstrate how it's done when passing of file descriptors isn't
 possible/desirable).
 
-The client excersices all commands in the vfio-protocol, and then proceeds
+The client excercises all commands in the vfio-user protocol, and then proceeds
 to perform live migration. The client spawns the destination server (this would
-be normally done by libvirt) and then migrates the device state, before
+be normally done by `libvirt`) and then migrates the device state, before
 switching entirely to the destination server. We re-use the source client
 instead of spawning a destination one as this is something libvirt/QEMU would
 normally do. To spice things up, the client programmes the source server to
@@ -83,7 +110,7 @@ programmed interrupt is delivered by the destination server.
 
 Start the source server as follows (pick whatever you like for `/tmp/mysock`):
 
-    rm -f /tmp/mysock && build/dbg/samples/server -v /tmp/mysock
+    rm -f /tmp/mysock* ; build/dbg/samples/server -v /tmp/mysock
 
 And then the client:
 
@@ -92,3 +119,14 @@ And then the client:
 After a couple of seconds the client will start live migration. The source
 server will exit and the destination server will start, watch the client
 terminal for destination server messages.
+
+History
+=======
+
+This project was formerly known as "muser", short for "Mediated Userspace
+Device". It implemented a proof-of-concept [VFIO mediated
+device](https://www.kernel.org/doc/Documentation/vfio-mediated-device.txt) in
+userspace.  Normally, VFIO mdev devices require a kernel module; `muser`
+implemented a small kernel module that forwarded onto userspace. The old
+kernel-module-based implementation can be found in the [kmod
+branch](https://github.com/nutanix/muser/tree/kmod).
