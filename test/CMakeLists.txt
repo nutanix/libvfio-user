@@ -26,8 +26,21 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-add_executable(unit-tests unit-tests.c)
-target_link_libraries(unit-tests cmocka json-c vfio-user)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUNIT_TEST \
+	-Wno-implicit-function-declaration \
+	-Wl,--wrap=_dma_controller_do_remove_region \
+	-Wl,--wrap=dma_controller_add_region \
+	-Wl,--wrap=dma_map_region")
 
+add_executable(unit-tests unit-tests.c mocks.c
+		../lib/cap.c
+		../lib/dma.c
+		../lib/irq.c
+		../lib/libvfio-user.c
+		../lib/migration.c
+		../lib/pci.c
+		../lib/tran_sock.c)
+
+target_link_libraries(unit-tests cmocka json-c)
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)

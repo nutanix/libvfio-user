@@ -1,9 +1,7 @@
 /*
- * Copyright (c) 2019 Nutanix Inc. All rights reserved.
+ * Copyright (c) 2020 Nutanix Inc. All rights reserved.
  *
  * Authors: Thanos Makatos <thanos@nutanix.com>
- *          Swapnil Ingle <swapnil.ingle@nutanix.com>
- *          Felipe Franciosi <felipe@nutanix.com>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -30,34 +28,12 @@
  *
  */
 
-/*
- * Private utilities used by the library and sample/test code.
- */
+#include <stdbool.h>
 
-#ifndef LIB_VFIO_USER_COMMON_H
-#define LIB_VFIO_USER_COMMON_H
+void unpatch_all(void);
 
-#include <stdint.h>
+void patch(void *fn);
 
-#define UNUSED __attribute__((unused))
-
-#define PAGE_SIZE           (size_t)sysconf(_SC_PAGE_SIZE)
-#define PAGE_ALIGNED(x)		(((x) & ((typeof(x))(PAGE_SIZE) - 1)) == 0)
-
-#define BIT(nr)             (1UL << (nr))
-
-#define ARRAY_SIZE(array)   (sizeof(array) / sizeof((array)[0]))
-
-#define likely(e)   __builtin_expect(!!(e), 1)
-#define unlikely(e) __builtin_expect(e, 0)
-
-/* XXX NB 2nd argument must be power of two */
-#define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
-#define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
-
-#define UNIT_TEST_SYMBOL(x) \
-    typeof(x) __wrap_##x __attribute__((weak, alias(#x)))
-
-#endif /* LIB_VFIO_USER_COMMON_H */
+bool is_patched(void *fn);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

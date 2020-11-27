@@ -499,51 +499,51 @@ handle_device_get_info(vu_ctx_t *vu_ctx, uint32_t size,
     return 0;
 }
 
+/*
+ * Handles a DMA map/unmap request.
+ *
+ * @vu_ctx: LM context
+ * @size: size, in bytes, of the memory pointed to be @dma_regions
+ * @map: whether this is a DMA map operation
+ * @fds: array of file descriptors. It's length must equal the number of DMA
+         regions, irrespectively if @nr_fds is 0.
+ * @nr_fds: size of above array. It must be either 0 or exactly match
+ *          the number of DMA regions in @dma_regions.
+ * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
+ *
+ * @returns 0 on success, -errno on failure.
+ */
 int
 handle_dma_map_or_unmap(vu_ctx_t *vu_ctx, uint32_t size, bool map,
                         int *fds, int nr_fds,
                         struct vfio_user_dma_region *dma_regions)
 {
     int nr_dma_regions;
-    int fdi = 0;
-    int ret, i;
+    int ret, i, fdi;
 
     assert(vu_ctx != NULL);
+    assert(fds != NULL);
+
+    if (vu_ctx->dma == NULL) {
+        return 0;
+    }
 
     if (size % sizeof(struct vfio_user_dma_region) != 0) {
         vu_log(vu_ctx, VU_ERR, "bad size of DMA regions %d", size);
         return -EINVAL;
     }
 
-    if (vu_ctx->dma == NULL) {
-        return 0;
-    }
-
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
 
-    for (i = 0; i < nr_dma_regions; i++) {
+    for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
         if (map) {
-            int fd;
-
-            /*
-             * FIXME: need a dma controller that allows non-fd region.
-             */
-            if (dma_regions[i].flags != VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                vu_log(vu_ctx, VU_INF,
-                       "FIXME: ignored non-mappable DMA region "
-                       "%#lx-%#lx offset=%#lx",
-                       dma_regions[i].addr,
-                       dma_regions[i].addr + dma_regions[i].size - 1,
-                       dma_regions[i].offset);
-                continue;
+            int fd = -1;
+            if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+                if (fdi == nr_fds) {
+                    return -EINVAL;
+                }
+                fd = fds[fdi++];
             }
-
-            if (fdi >= nr_fds) {
-                vu_log(vu_ctx, VU_ERR, "missing fd for mappable region %d", i);
-                return -EINVAL;
-            }
-
-            fd = fds[fdi++];
 
             ret = dma_controller_add_region(vu_ctx->dma,
                                             dma_regions[i].addr,

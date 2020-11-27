@@ -61,9 +61,8 @@ fds_are_same_file(int fd1, int fd2)
 {
     struct stat st1, st2;
 
-    if (fd1 == -1 || fd2 == -1) {
-        errno = EINVAL;
-        return -1;
+    if (fd1 == fd2) {
+        return true;
     }
 
     return (fstat(fd1, &st1) == 0 && fstat(fd2, &st2) == 0 &&
@@ -91,7 +90,7 @@ dma_controller_create(vu_ctx_t *vu_ctx, int max_regions)
     return dma;
 }
 
-static void
+void
 _dma_controller_do_remove_region(dma_controller_t *dma,
                                  dma_memory_region_t *region)
 {
@@ -112,6 +111,14 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
         }
     }
 }
+UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
+
+/*
+ * FIXME super ugly, but without this functions within the same compilation
+ * unit don't call the wrapped version, making unit testing impossible.
+ * Ideally we'd like the UNIT_TEST_SYMBOL macro to solve this.
+ */
+#define _dma_controller_do_remove_region __wrap__dma_controller_do_remove_region
 
 /*
  * FIXME no longer used. Also, it doesn't work for addresses that span two
@@ -174,6 +181,7 @@ dma_controller_remove_region(dma_controller_t *dma,
     }
     return -ENOENT;
 }
+UNIT_TEST_SYMBOL(dma_controller_remove_region);
 
 static inline void
 dma_controller_remove_regions(dma_controller_t *dma)
@@ -210,12 +218,9 @@ dma_controller_add_region(dma_controller_t *dma,
 {
     int idx;
     dma_memory_region_t *region;
-    int page_size;
+    int page_size = 0;
 
-    if (fd == -1) {
-        errno = EINVAL;
-        return -1;
-    }
+    assert(dma != NULL);
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
@@ -265,10 +270,12 @@ dma_controller_add_region(dma_controller_t *dma,
     idx = dma->nregions;
     region = &dma->regions[idx];
 
-    page_size = fd_get_blocksize(fd);
-    if (page_size < 0) {
-        vu_log(dma->vu_ctx, VU_ERR, "bad page size %d\n", page_size);
-        goto err;
+    if (fd != -1) {
+        page_size = fd_get_blocksize(fd);
+        if (page_size < 0) {
+            vu_log(dma->vu_ctx, VU_ERR, "bad page size %d\n", page_size);
+            goto err;
+        }
     }
     page_size = MAX(page_size, getpagesize());
 
@@ -279,19 +286,23 @@ dma_controller_add_region(dma_controller_t *dma,
     region->fd = fd;
     region->refcnt = 0;
 
-    region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
-                                       0, region->size);
-    if (region->virt_addr == MAP_FAILED) {
-        vu_log(dma->vu_ctx, VU_ERR,
-               "failed to memory map DMA region %#lx-%#lx: %s\n",
-               dma_addr, dma_addr + size, strerror(errno));
-        if (region->fd != -1) {
-            if (close(region->fd) == -1) {
-                vu_log(dma->vu_ctx, VU_DBG, "failed to close fd %d: %m\n",
-                       region->fd);
+    if (fd != -1) {
+        region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
+                                           0, region->size);
+        if (region->virt_addr == MAP_FAILED) {
+            vu_log(dma->vu_ctx, VU_ERR,
+                   "failed to memory map DMA region %#lx-%#lx: %s\n",
+                   dma_addr, dma_addr + size, strerror(errno));
+            if (region->fd != -1) {
+                if (close(region->fd) == -1) {
+                    vu_log(dma->vu_ctx, VU_DBG, "failed to close fd %d: %m\n",
+                           region->fd);
+                }
             }
+            goto err;
         }
-        goto err;
+    } else {
+        region->virt_addr = NULL;
     }
     dma->nregions++;
 
@@ -300,6 +311,7 @@ dma_controller_add_region(dma_controller_t *dma,
 err:
     return -idx - 1;
 }
+UNIT_TEST_SYMBOL(dma_controller_add_region);
 
 static inline void
 mmap_round(size_t *offset, size_t *size, size_t page_size)
@@ -334,6 +346,7 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
 
     return mmap_base + (offset - mmap_offset);
 }
+UNIT_TEST_SYMBOL(dma_map_region);
 
 int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
