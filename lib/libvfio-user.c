@@ -1393,23 +1393,29 @@ int vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
 
 static int
 copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
-                       struct vfu_sparse_mmap_areas *mmap_areas)
+                       struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas)
 {
-    int nr_mmap_areas;
-    size_t size;
+    struct vfu_sparse_mmap_areas *smmap_areas;
+    size_t areas_sz;
+    uint32_t i;
 
-    if (mmap_areas == NULL) {
-        return 0;
+    if (mmap_areas == NULL || nr_mmap_areas ==  0) {
+        return -EINVAL;
     }
 
-    nr_mmap_areas = mmap_areas->nr_mmap_areas;
-    size = sizeof(*mmap_areas) + (nr_mmap_areas * sizeof(struct vfu_mmap_area));
-    reg_info->mmap_areas = calloc(1, size);
-    if (reg_info->mmap_areas == NULL) {
+    areas_sz  = nr_mmap_areas * sizeof(struct vfu_mmap_area);
+
+    smmap_areas = calloc(1, sizeof(struct vfu_sparse_mmap_areas) + areas_sz);
+    if (smmap_areas == NULL) {
         return -ENOMEM;
     }
 
-    memcpy(reg_info->mmap_areas, mmap_areas, size);
+    smmap_areas->nr_mmap_areas = nr_mmap_areas;
+    for (i = 0; i < nr_mmap_areas; i++) {
+        smmap_areas->areas[i].start = mmap_areas[i].start;
+        smmap_areas->areas[i].size = mmap_areas[i].size;
+    }
+    reg_info->mmap_areas  = smmap_areas;
 
     return 0;
 }
@@ -1422,7 +1428,7 @@ static inline bool is_valid_pci_config_space_region(int flags, size_t size)
 
 int vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                      vfu_region_access_cb_t *region_access, int flags,
-                     struct vfu_sparse_mmap_areas *mmap_areas,
+                     struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
                      vfu_map_region_cb_t *map)
 {
     int ret;
@@ -1446,7 +1452,7 @@ int vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         }
         if (mmap_areas) {
             ret = copy_sparse_mmap_areas(&vfu_ctx->reg_info[region_idx],
-                                         mmap_areas);
+                                         mmap_areas, nr_mmap_areas);
             if (ret < 0) {
                 return ERROR(-ret);
             }
@@ -1525,7 +1531,8 @@ int vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
     migr_reg = &vfu_ctx->reg_info[(vfu_ctx->nr_regions - 1)];
 
     /* FIXME: Are there sparse areas need to be setup flags accordingly */
-    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas);
+    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas->areas,
+                                 migration->mmap_areas->nr_mmap_areas);
     if (ret < 0) {
         return ERROR(-ret);
     }
