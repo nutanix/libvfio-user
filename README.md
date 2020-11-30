@@ -130,3 +130,9 @@ userspace.  Normally, VFIO mdev devices require a kernel module; `muser`
 implemented a small kernel module that forwarded onto userspace. The old
 kernel-module-based implementation can be found in the [kmod
 branch](https://github.com/nutanix/muser/tree/kmod).
+
+License
+=======
+
+libvfio-user is released under the 3-clause BSD license. For more information
+see the LICENSE file.
