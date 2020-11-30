@@ -1026,14 +1026,16 @@ process_request(vfu_ctx_t *vfu_ctx)
     ret = exec_command(vfu_ctx, &hdr, ret, fds, &_nr_fds, _iovecs, &iovecs,
                        &nr_iovecs, &free_iovec_data);
 
+    for (i = _nr_fds; i < nr_fds; i++) {
+        close(fds[i]);
+    }
+
     /*
      * TODO: In case of error during command handling set errno respectively
      * in the reply message.
      */
+
     if (ret < 0) {
-        for (i = _nr_fds; i < nr_fds; i++) {
-            close(fds[i]);
-        }
         vfu_log(vfu_ctx, VFU_ERR, "failed to handle command %d: %s", hdr.cmd,
                 strerror(-ret));
     } else {
