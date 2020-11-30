@@ -134,5 +134,6 @@ branch](https://github.com/nutanix/muser/tree/kmod).
 License
 =======
 
+Copyright © 2019-2020  Nutanix Inc. All rights reserved.
 libvfio-user is released under the 3-clause BSD license. For more information
 see the LICENSE file.
