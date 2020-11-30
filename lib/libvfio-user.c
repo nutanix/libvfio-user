@@ -1226,22 +1226,6 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
 
-struct vfu_sparse_mmap_areas*
-copy_sparse_mmap_area(struct vfu_sparse_mmap_areas *src)
-{
-    struct vfu_sparse_mmap_areas *dest;
-    size_t size;
-
-    assert(src != NULL);
-
-    size = sizeof(*dest) + (src->nr_mmap_areas * sizeof(struct vfu_mmap_area));
-    dest = calloc(1, size);
-    if (dest != NULL) {
-        memcpy(dest, src, size);
-    }
-    return dest;
-}
-
 int
 vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
 {
