@@ -1202,7 +1202,7 @@ free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
 }
 
 void
-vfu_ctx_destroy(vfu_ctx_t *vfu_ctx)
+vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
 
     if (vfu_ctx == NULL) {
@@ -1314,7 +1314,7 @@ vfu_ctx_t *vfu_create_ctx(vfu_trans_t trans, const char *path, int flags,
 out:
     if (err != 0) {
         if (vfu_ctx != NULL) {
-            vfu_ctx_destroy(vfu_ctx);
+            vfu_destroy_ctx(vfu_ctx);
             vfu_ctx = NULL;
         }
         errno = -err;

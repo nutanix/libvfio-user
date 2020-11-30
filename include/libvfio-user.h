@@ -414,7 +414,7 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration);
  * @vfu_ctx: the libvfio-user context to destroy
  */
 void
-vfu_ctx_destroy(vfu_ctx_t *vfu_ctx);
+vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
  * Once the vfu_ctx is configured vfu_ctx_drive() drives it. This function waits

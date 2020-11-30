@@ -102,7 +102,7 @@ int main(int argc, char **argv)
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
     }
-    vfu_ctx_destroy(vfu_ctx);
+    vfu_destroy_ctx(vfu_ctx);
 
     printf("device emulation stopped and cleaned up, press enter to exit\n");
     if (getchar() == EOF) {
