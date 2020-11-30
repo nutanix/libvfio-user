@@ -154,15 +154,15 @@ irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 
 static int
 irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
-                      void *data)
+                      int *data)
 {
-    int32_t *d32;
     int efd;
     __u32 i;
+    size_t j;
 
     assert(data != NULL);
-    for (i = irq_set->start, d32 = data; i < (irq_set->start + irq_set->count);
-         i++, d32++) {
+    for (i = irq_set->start, j = 0; i < (irq_set->start + irq_set->count);
+         i++, j++) {
         efd = vfu_ctx->irqs->efds[i];
         if (efd >= 0) {
             if (close(efd) == -1) {
@@ -171,8 +171,9 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 
             vfu_ctx->irqs->efds[i] = -1;
         }
-        if (*d32 >= 0) {
-            vfu_ctx->irqs->efds[i] = *d32;
+        if (data[j] >= 0) {
+            vfu_ctx->irqs->efds[i] = data[j];
+            consume_fd(data, j);
         }
         vfu_log(vfu_ctx, VFU_DBG, "event fd[%d]=%d", i, vfu_ctx->irqs->efds[i]);
     }

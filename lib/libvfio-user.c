@@ -500,6 +500,12 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     return 0;
 }
 
+void
+consume_fd(int *fds, size_t index)
+{
+    fds[index] = -1;
+}
+
 /*
  * Handles a DMA map/unmap request.
  *
@@ -515,7 +521,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
  */
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
-                        int *fds, size_t *nr_fds,
+                        int *fds, size_t nr_fds,
                         struct vfio_user_dma_region *dma_regions)
 {
     int nr_dma_regions;
@@ -524,7 +530,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
 
     assert(vfu_ctx != NULL);
     assert(fds != NULL);
-    assert(nr_fds != NULL);
 
     if (vfu_ctx->dma == NULL) {
         return 0;
@@ -544,7 +549,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
         if (map) {
             int fd = -1;
             if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                if (fdi == *nr_fds) {
+                if (fdi == nr_fds) {
                     ret = -EINVAL;
                     break;
                 }
@@ -566,7 +571,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                 break;
             }
             if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                fdi++;
+                consume_fd(fds, fdi++);
             }
             vfu_log(vfu_ctx, VFU_DBG,
                     "added DMA region %#lx-%#lx offset=%#lx fd=%d",
@@ -598,9 +603,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             vfu_ctx->map_dma(vfu_ctx->pvt, dma_regions[i].addr,
                              dma_regions[i].size);
         }
-    }
-    if (map) {
-        *nr_fds = fdi;
     }
     return ret;
 }
@@ -856,7 +858,7 @@ UNIT_TEST_SYMBOL(get_next_command);
 
 int
 exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t *nr_fds,
+             int *fds, size_t nr_fds,
              struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
              bool *free_iovec_data)
 {
@@ -949,11 +951,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             }
             break;
         case VFIO_USER_DEVICE_SET_IRQS:
-            ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, *nr_fds,
+            ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, nr_fds,
                                          cmd_data);
-            if (ret < 0) {
-                *nr_fds = 0;
-            }
             break;
         case VFIO_USER_REGION_READ:
         case VFIO_USER_REGION_WRITE:
@@ -993,7 +992,7 @@ process_request(vfu_ctx_t *vfu_ctx)
     struct vfio_user_header hdr = { 0, };
     int ret;
     int *fds = NULL;
-    size_t nr_fds, _nr_fds, i;
+    size_t nr_fds, i;
     struct iovec _iovecs[2] = { { 0, } };
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
@@ -1021,13 +1020,14 @@ process_request(vfu_ctx_t *vfu_ctx)
     if (ret <= 0) {
         return ret;
     }
-    _nr_fds = nr_fds;
 
-    ret = exec_command(vfu_ctx, &hdr, ret, fds, &_nr_fds, _iovecs, &iovecs,
+    ret = exec_command(vfu_ctx, &hdr, ret, fds, nr_fds, _iovecs, &iovecs,
                        &nr_iovecs, &free_iovec_data);
 
-    for (i = _nr_fds; i < nr_fds; i++) {
-        close(fds[i]);
+    for (i = 0; i < nr_fds; i++) {
+        if (fds[i] != -1) {
+            close(fds[i]);
+        }
     }
 
     /*
