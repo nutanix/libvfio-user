@@ -506,7 +506,7 @@ int main(int argc, char *argv[])
              strerror(-ret));
     }
 
-    vfu_ctx_destroy(vfu_ctx);
+    vfu_destroy_ctx(vfu_ctx);
     free(server_data.bar1);
     return EXIT_SUCCESS;
 }

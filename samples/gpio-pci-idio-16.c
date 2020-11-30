@@ -136,7 +136,7 @@ main(int argc, char *argv[])
     }
 
 out:
-    vfu_ctx_destroy(vfu_ctx);
+    vfu_destroy_ctx(vfu_ctx);
     return ret;
 }
 

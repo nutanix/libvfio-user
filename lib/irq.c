@@ -366,7 +366,8 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     return dev_set_irqs(vfu_ctx, irq_set, data);
 }
 
-static int validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
+static int
+validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     if (vfu_ctx == NULL) {
         errno = EINVAL;
@@ -430,4 +431,4 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     return 0;
 }
 
-
+/* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
