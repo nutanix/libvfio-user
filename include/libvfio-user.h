@@ -73,11 +73,6 @@ struct vfu_mmap_area {
     uint64_t size;
 };
 
-struct vfu_sparse_mmap_areas {
-    int nr_mmap_areas;
-    struct vfu_mmap_area areas[];
-};
-
 /**
  * Prototype for memory access callback. The program MUST first map device
  * memory in its own virtual address space using vfu_mmap, do any additional work
