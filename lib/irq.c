@@ -363,7 +363,6 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
             data = irq_set + 1;
             break;
         default:
-            // FIXME?
             vfu_log(vfu_ctx, VFU_ERR, "invalid IRQ type %d",
                     irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK);
             return -EINVAL;
