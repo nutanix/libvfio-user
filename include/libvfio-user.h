@@ -73,11 +73,6 @@ struct vfu_mmap_area {
     uint64_t size;
 };
 
-struct vfu_sparse_mmap_areas {
-    int nr_mmap_areas;
-    struct vfu_mmap_area areas[];
-};
-
 /**
  * Prototype for memory access callback. The program MUST first map device
  * memory in its own virtual address space using vfu_mmap, do any additional work
@@ -229,9 +224,10 @@ typedef struct {
 } vfu_migration_callbacks_t;
 
 typedef struct {
-    size_t                       size;
-    vfu_migration_callbacks_t    callbacks;
-    struct vfu_sparse_mmap_areas *mmap_areas;
+    size_t                      size;
+    vfu_migration_callbacks_t   callbacks;
+    struct vfu_mmap_area        *mmap_areas;
+    uint32_t                    nr_mmap_areas;
 } vfu_migration_t;
 
 /*
@@ -331,13 +327,14 @@ enum {
  * @size: size of the region
  * @region_access: callback function to access region
  * @flags: region  flags
- * @mmap_areas: mmap areas info
- * @region_map: callback function to map region
+ * @mmap_areas: array of struct vfu_mmap_area
+ * @nr_mmap_areas: size of mmap_areas
+ * @map: callback function to map region
  */
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
-                 struct vfu_sparse_mmap_areas *mmap_areas,
+                 struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
                  vfu_map_region_cb_t *map);
 
 /*

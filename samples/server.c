@@ -380,8 +380,6 @@ int main(int argc, char *argv[])
             .state = VFU_MIGR_STATE_RUNNING
         }
     };
-    int nr_sparse_areas = 2, size = 1024, i;
-    struct vfu_sparse_mmap_areas *sparse_areas;
     vfu_ctx_t *vfu_ctx;
     vfu_pci_hdr_id_t id = {.raw = 0xdeadbeef};
     vfu_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
@@ -407,16 +405,6 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "BAR1");
     }
 
-    sparse_areas = calloc(1, sizeof(*sparse_areas) +
-			  (nr_sparse_areas * sizeof(struct vfu_mmap_area)));
-    if (sparse_areas == NULL) {
-        err(EXIT_FAILURE, "MMAP sparse areas ENOMEM");
-    }
-    sparse_areas->nr_mmap_areas = nr_sparse_areas;
-    for (i = 0; i < nr_sparse_areas; i++) {
-        sparse_areas->areas[i].start += size;
-        sparse_areas->areas[i].size = size;
-    }
     sigemptyset(&act.sa_mask);
     if (sigaction(SIGALRM, &act, NULL) == -1) {
         err(EXIT_FAILURE, "failed to register signal handler");
@@ -439,14 +427,18 @@ int main(int argc, char *argv[])
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
-                           &bar0_access, VFU_REG_FLAG_RW, NULL, NULL);
+                           &bar0_access, VFU_REG_FLAG_RW, NULL, 0, NULL);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
+    struct vfu_mmap_area mmap_areas[] = {
+        { .start  = 1024, .size = 1024 },
+        { .start  = 8192, .size = 1024 }
+    };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            sysconf(_SC_PAGESIZE), &bar1_access,
-                           VFU_REG_FLAG_RW, sparse_areas, map_area);
+                           VFU_REG_FLAG_RW, mmap_areas, 2, map_area);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
@@ -468,7 +460,8 @@ int main(int argc, char *argv[])
 
     vfu_migration_t migration = {
         .size = server_data.migration.migr_data_len,
-        .mmap_areas = sparse_areas,
+        .mmap_areas = mmap_areas,
+        .nr_mmap_areas = 2,
         .callbacks = {
             .transition = &migration_device_state_transition,
             .get_pending_bytes = &migration_get_pending_bytes,
@@ -515,7 +508,6 @@ int main(int argc, char *argv[])
 
     vfu_ctx_destroy(vfu_ctx);
     free(server_data.bar1);
-    free(sparse_areas);
     return EXIT_SUCCESS;
 }
 
