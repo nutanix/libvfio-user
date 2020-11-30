@@ -1397,10 +1397,9 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
 {
     struct vfu_sparse_mmap_areas *smmap_areas;
     size_t areas_sz;
-    uint32_t i;
 
     if (mmap_areas == NULL || nr_mmap_areas ==  0) {
-        return -EINVAL;
+        return 0;
     }
 
     areas_sz  = nr_mmap_areas * sizeof(struct vfu_mmap_area);
@@ -1411,10 +1410,7 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
     }
 
     smmap_areas->nr_mmap_areas = nr_mmap_areas;
-    for (i = 0; i < nr_mmap_areas; i++) {
-        smmap_areas->areas[i].start = mmap_areas[i].start;
-        smmap_areas->areas[i].size = mmap_areas[i].size;
-    }
+    memcpy(smmap_areas->areas, mmap_areas, areas_sz);
     reg_info->mmap_areas  = smmap_areas;
 
     return 0;
