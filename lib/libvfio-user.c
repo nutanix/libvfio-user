@@ -1531,8 +1531,8 @@ int vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
     migr_reg = &vfu_ctx->reg_info[(vfu_ctx->nr_regions - 1)];
 
     /* FIXME: Are there sparse areas need to be setup flags accordingly */
-    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas->areas,
-                                 migration->mmap_areas->nr_mmap_areas);
+    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas,
+                                 migration->nr_mmap_areas);
     if (ret < 0) {
         return ERROR(-ret);
     }

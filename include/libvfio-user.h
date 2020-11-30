@@ -229,9 +229,10 @@ typedef struct {
 } vfu_migration_callbacks_t;
 
 typedef struct {
-    size_t                       size;
-    vfu_migration_callbacks_t    callbacks;
-    struct vfu_sparse_mmap_areas *mmap_areas;
+    size_t                      size;
+    vfu_migration_callbacks_t   callbacks;
+    struct vfu_mmap_area        *mmap_areas;
+    uint32_t                    nr_mmap_areas;
 } vfu_migration_t;
 
 /*
