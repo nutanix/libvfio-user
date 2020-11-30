@@ -78,7 +78,8 @@ vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...)
     errno = _errno;
 }
 
-static inline int ERROR(int err)
+static inline int
+ERROR(int err)
 {
     errno = err;
     return -1;
@@ -1039,7 +1040,8 @@ process_request(vfu_ctx_t *vfu_ctx)
     return ret;
 }
 
-static int prepare_ctx(vfu_ctx_t *vfu_ctx)
+static int
+prepare_ctx(vfu_ctx_t *vfu_ctx)
 {
     vfu_reg_info_t *cfg_reg;
     const vfu_reg_info_t zero_reg = { 0 };
@@ -1245,8 +1247,8 @@ vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->trans->attach(vfu_ctx);
 }
 
-vfu_ctx_t *vfu_create_ctx(vfu_trans_t trans, const char *path, int flags,
-                        void *pvt)
+vfu_ctx_t *
+vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt)
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
@@ -1307,7 +1309,8 @@ out:
     return vfu_ctx;
 }
 
-int vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl)
+int
+vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl)
 {
 
     if (log_lvl != VFU_ERR && log_lvl != VFU_INF && log_lvl != VFU_DBG) {
@@ -1320,9 +1323,10 @@ int vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl)
     return 0;
 }
 
-int vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
-                             vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                             UNUSED bool extended)
+int
+vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
+                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
+                         UNUSED bool extended)
 {
     vfu_pci_config_space_t *config_space;
 
@@ -1349,7 +1353,8 @@ int vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
     return 0;
 }
 
-int vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
+int
+vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
 {
     int ret;
 
@@ -1400,16 +1405,18 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
-static inline bool is_valid_pci_config_space_region(int flags, size_t size)
+static inline bool
+is_valid_pci_config_space_region(int flags, size_t size)
 {
     return flags == VFU_REG_FLAG_RW && (size ==  PCI_CFG_SPACE_SIZE
             || size == PCI_CFG_SPACE_EXP_SIZE);
 }
 
-int vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
-                     vfu_region_access_cb_t *region_access, int flags,
-                     struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
-                     vfu_map_region_cb_t *map)
+int
+vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
+                 vfu_region_access_cb_t *region_access, int flags,
+                 struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
+                 vfu_map_region_cb_t *map)
 {
     int ret;
 
@@ -1446,7 +1453,8 @@ int vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     return 0;
 }
 
-int vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
+int
+vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 {
 
     assert(vfu_ctx != NULL);
@@ -1455,8 +1463,9 @@ int vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
     return 0;
 }
 
-int vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
-                            vfu_unmap_dma_cb_t *unmap_dma)
+int
+vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
+                        vfu_unmap_dma_cb_t *unmap_dma)
 {
 
     assert(vfu_ctx != NULL);
@@ -1475,8 +1484,9 @@ int vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
     return 0;
 }
 
-int vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
-                             uint32_t count)
+int
+vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
+                         uint32_t count)
 {
 
     assert(vfu_ctx != NULL);
@@ -1493,7 +1503,8 @@ int vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
     return 0;
 }
 
-int vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
+int
+vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
 {
     vfu_reg_info_t *migr_reg;
     int ret = 0;
