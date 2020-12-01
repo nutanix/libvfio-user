@@ -530,8 +530,7 @@ restore_fd(int *fds, size_t index, int fd)
  * @nr_fds: size of above array.
  * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
  *
- * @returns 0 on success, -errno on failure. @nr_fds receives the number of
- * mappable DMA regions that were successfully added.
+ * @returns 0 on success, -errno on failure.
  */
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
