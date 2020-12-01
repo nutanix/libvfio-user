@@ -673,6 +673,10 @@ get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
         return -errno;
     }
 
+    if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
+        return -EFAULT;
+    }
+
     for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
         if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
             continue;
