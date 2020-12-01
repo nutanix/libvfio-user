@@ -500,10 +500,24 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     return 0;
 }
 
-void
-consume_fd(int *fds, size_t index)
+int
+consume_fd(int *fds, size_t nr_fds, size_t index)
 {
-    fds[index] = -1;
+   int fd;
+
+   if (index >= nr_fds) {
+       return -EINVAL;
+   }
+
+   fd = fds[index];
+   fds[index] = -1;
+   return fd;
+}
+
+void
+restore_fd(int *fds, size_t index, int fd)
+{
+    fds[index] = fd;
 }
 
 /*
@@ -549,11 +563,11 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
         if (map) {
             int fd = -1;
             if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                if (fdi == nr_fds) {
-                    ret = -EINVAL;
+                fd = consume_fd(fds, nr_fds, fdi++);
+                if (fd < 0) {
+                    ret = fd;
                     break;
                 }
-                fd = fds[fdi];
             }
 
             ret = dma_controller_add_region(vfu_ctx->dma,
@@ -562,6 +576,9 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                             fd,
                                             dma_regions[i].offset);
             if (ret < 0) {
+                if (fd != -1) {
+                    restore_fd(fds, fdi - 1, fd);
+                }
                 vfu_log(vfu_ctx, VFU_INF,
                         "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
                         dma_regions[i].addr,
@@ -569,9 +586,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         dma_regions[i].offset, fd,
                         strerror(-ret));
                 break;
-            }
-            if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                consume_fd(fds, fdi++);
             }
             vfu_log(vfu_ctx, VFU_DBG,
                     "added DMA region %#lx-%#lx offset=%#lx fd=%d",

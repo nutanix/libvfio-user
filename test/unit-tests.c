@@ -98,7 +98,7 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
 }
 
 /*
- * Tests that adding multiple DMA regions where not all of them are mappable
+ * Tests that adding multiple DMA regions that not all of them are mappable
  * results in only the mappable one being memory mapped.
  */
 static void
@@ -120,7 +120,7 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
             .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
         }
     };
-    int fd = 0x8badf00d;
+    int fd = 0x0badf00d;
 
     patch(dma_controller_add_region);
     will_return(__wrap_dma_controller_add_region, 0);
@@ -168,7 +168,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
             .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
         }
     };
-    int fds[] = {0x8badf00d, 0xbad8f00d};
+    int fds[] = {0xa, 0xb};
 
     patch(dma_controller_add_region);
 
