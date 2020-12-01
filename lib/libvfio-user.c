@@ -514,12 +514,6 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
    return fd;
 }
 
-void
-restore_fd(int *fds, size_t index, int fd)
-{
-    fds[index] = fd;
-}
-
 /*
  * Handles a DMA map/unmap request.
  *
@@ -576,7 +570,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                             dma_regions[i].offset);
             if (ret < 0) {
                 if (fd != -1) {
-                    restore_fd(fds, fdi - 1, fd);
+                    close(fd);
                 }
                 vfu_log(vfu_ctx, VFU_INF,
                         "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
