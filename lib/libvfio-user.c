@@ -1039,6 +1039,7 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     for (i = 0; i < nr_fds; i++) {
         if (fds[i] != -1) {
+            vfu_log(vfu_ctx, VFU_INF, "closing fd=%d", fds[i]);
             close(fds[i]);
         }
     }
