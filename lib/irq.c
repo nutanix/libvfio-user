@@ -171,14 +171,12 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 
             vfu_ctx->irqs->efds[i] = -1;
         }
-        if (data[j] >= 0) { /* TODO IIUC this will always be >= 0? */
-            vfu_ctx->irqs->efds[i] = data[j];
-            /*
-             * We've already checked in handle_device_set_irqs that
-             * nr_fds == irq_set->count.
-             */
-            consume_fd(data, irq_set->count, j);
-        }
+        assert(data[j] >= 0);
+        /*
+         * We've already checked in handle_device_set_irqs that
+         * nr_fds == irq_set->count.
+         */
+        vfu_ctx->irqs->efds[i] = consume_fd(data, irq_set->count, j);
         vfu_log(vfu_ctx, VFU_DBG, "event fd[%d]=%d", i, vfu_ctx->irqs->efds[i]);
     }
 

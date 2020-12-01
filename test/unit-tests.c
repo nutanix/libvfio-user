@@ -140,8 +140,8 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
 }
 
 /*
- * Tests that handle_dma_map_or_unmap sets the correct number of file
- * descriptors when failing halfway through.
+ * Tests that handle_dma_map_or_unmap closes unconsumed file descriptors when
+ * failing halfway through.
  */
 static void
 test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
@@ -195,6 +195,10 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, fd, fds[1]);
     expect_value(__wrap_dma_controller_add_region, offset, r[2].offset);
     will_return(__wrap_dma_controller_add_region, -0x1234);
+
+    patch(close);
+    expect_value(__wrap_close, fd, 0xb);
+    will_return(__wrap_close, 0);
 
     assert_int_equal(-0x1234,
                      handle_dma_map_or_unmap(&vfu_ctx,
