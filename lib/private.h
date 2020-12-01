@@ -163,8 +163,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
 int
 process_request(vfu_ctx_t *vfu_ctx);
 
-void
-consume_fd(int *fds, size_t index);
+int
+consume_fd(int *fds, size_t nr_fds, size_t index);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
