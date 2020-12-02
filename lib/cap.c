@@ -182,16 +182,16 @@ handle_pmcs_write(vfu_ctx_t *vfu_ctx, struct pmcap *pm,
 {
 
 	if (pm->pmcs.ps != pmcs->ps) {
-		vfu_log(vfu_ctx, VFU_DBG, "power state set to %#x\n", pmcs->ps);
+		vfu_log(vfu_ctx, LOG_DEBUG, "power state set to %#x\n", pmcs->ps);
 	}
 	if (pm->pmcs.pmee != pmcs->pmee) {
-		vfu_log(vfu_ctx, VFU_DBG, "PME enable set to %#x\n", pmcs->pmee);
+		vfu_log(vfu_ctx, LOG_DEBUG, "PME enable set to %#x\n", pmcs->pmee);
 	}
 	if (pm->pmcs.dse != pmcs->dse) {
-		vfu_log(vfu_ctx, VFU_DBG, "data select set to %#x\n", pmcs->dse);
+		vfu_log(vfu_ctx, LOG_DEBUG, "data select set to %#x\n", pmcs->dse);
 	}
 	if (pm->pmcs.pmes != pmcs->pmes) {
-		vfu_log(vfu_ctx, VFU_DBG, "PME status set to %#x\n", pmcs->pmes);
+		vfu_log(vfu_ctx, LOG_DEBUG, "PME status set to %#x\n", pmcs->pmes);
 	}
 	pm->pmcs = *pmcs;
 	return 0;
@@ -227,16 +227,16 @@ handle_mxc_write(vfu_ctx_t *vfu_ctx, struct msixcap *msix,
 	assert(mxc != NULL);
 
 	if (mxc->mxe != msix->mxc.mxe) {
-		vfu_log(vfu_ctx, VFU_DBG, "%s MSI-X\n",
+		vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X\n",
                 mxc->mxe ? "enable" : "disable");
 		msix->mxc.mxe = mxc->mxe;
 	}
 
 	if (mxc->fm != msix->mxc.fm) {
 		if (mxc->fm) {
-			vfu_log(vfu_ctx, VFU_DBG, "all MSI-X vectors masked\n");
+			vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked\n");
 		} else {
-			vfu_log(vfu_ctx, VFU_DBG,
+			vfu_log(vfu_ctx, LOG_DEBUG,
                    "vector's mask bit determines whether vector is masked\n");
 		}
 		msix->mxc.fm = mxc->fm;
@@ -256,12 +256,12 @@ handle_msix_write(vfu_ctx_t *vfu_ctx, uint8_t *cap, char *const buf,
 		case offsetof(struct msixcap, mxc):
 			return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
 		default:
-			vfu_log(vfu_ctx, VFU_ERR,
+			vfu_log(vfu_ctx, LOG_ERR,
                     "invalid MSI-X write offset %ld\n", offset);
 			return -EINVAL;
 		}
 	}
-	vfu_log(vfu_ctx, VFU_ERR, "invalid MSI-X write size %lu\n", count);
+	vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu\n", count);
 	return -EINVAL;
 }
 
@@ -274,63 +274,63 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
 
 	if (p->cere != px->pxdc.cere) {
 		px->pxdc.cere = p->cere;
-		vfu_log(vfu_ctx, VFU_DBG, "CERE %s\n", p->cere ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "CERE %s\n", p->cere ? "enable" : "disable");
 	}
 
 	if (p->nfere != px->pxdc.nfere) {
 		px->pxdc.nfere = p->nfere;
-		vfu_log(vfu_ctx, VFU_DBG, "NFERE %s\n",
+		vfu_log(vfu_ctx, LOG_DEBUG, "NFERE %s\n",
                 p->nfere ? "enable" : "disable");
 	}
 
 	if (p->fere != px->pxdc.fere) {
 		px->pxdc.fere = p->fere;
-		vfu_log(vfu_ctx, VFU_DBG, "FERE %s\n", p->fere ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "FERE %s\n", p->fere ? "enable" : "disable");
 	}
 
 	if (p->urre != px->pxdc.urre) {
 		px->pxdc.urre = p->urre;
-		vfu_log(vfu_ctx, VFU_DBG, "URRE %s\n", p->urre ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "URRE %s\n", p->urre ? "enable" : "disable");
 	}
 
 	if (p->ero != px->pxdc.ero) {
 		px->pxdc.ero = p->ero;
-		vfu_log(vfu_ctx, VFU_DBG, "ERO %s\n", p->ero ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "ERO %s\n", p->ero ? "enable" : "disable");
 	}
 
 	if (p->mps != px->pxdc.mps) {
 		px->pxdc.mps = p->mps;
-		vfu_log(vfu_ctx, VFU_DBG, "MPS set to %d\n", p->mps);
+		vfu_log(vfu_ctx, LOG_DEBUG, "MPS set to %d\n", p->mps);
 	}
 
 	if (p->ete != px->pxdc.ete) {
 		px->pxdc.ete = p->ete;
-		vfu_log(vfu_ctx, VFU_DBG, "ETE %s\n", p->ete ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "ETE %s\n", p->ete ? "enable" : "disable");
 	}
 
 	if (p->pfe != px->pxdc.pfe) {
 		px->pxdc.pfe = p->pfe;
-		vfu_log(vfu_ctx, VFU_DBG, "PFE %s\n", p->pfe ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "PFE %s\n", p->pfe ? "enable" : "disable");
 	}
 
 	if (p->appme != px->pxdc.appme) {
 		px->pxdc.appme = p->appme;
-		vfu_log(vfu_ctx, VFU_DBG, "APPME %s\n",
+		vfu_log(vfu_ctx, LOG_DEBUG, "APPME %s\n",
                 p->appme ? "enable" : "disable");
 	}
 
 	if (p->ens != px->pxdc.ens) {
 		px->pxdc.ens = p->ens;
-		vfu_log(vfu_ctx, VFU_DBG, "ENS %s\n", p->ens ? "enable" : "disable");
+		vfu_log(vfu_ctx, LOG_DEBUG, "ENS %s\n", p->ens ? "enable" : "disable");
 	}
 
 	if (p->mrrs != px->pxdc.mrrs) {
 		px->pxdc.mrrs = p->mrrs;
-		vfu_log(vfu_ctx, VFU_DBG, "MRRS set to %d\n", p->mrrs);
+		vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d\n", p->mrrs);
 	}
 
 	if (p->iflr) {
-		vfu_log(vfu_ctx, VFU_DBG,
+		vfu_log(vfu_ctx, LOG_DEBUG,
 			"initiate function level reset\n");
 	}
 
@@ -465,7 +465,7 @@ caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
         next += size;
         assert(next % 4 == 0); /* FIXME */
 
-        vfu_log(vfu_ctx, VFU_DBG, "initialized capability %s %#x-%#x\n",
+        vfu_log(vfu_ctx, LOG_DEBUG, "initialized capability %s %#x-%#x\n",
                cap_handlers[id].name, caps->caps[i].start, caps->caps[i].end);
     }
     caps->nr_caps = nr_caps;

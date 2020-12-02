@@ -58,7 +58,7 @@ static char *irq_to_str[] = {
 };
 
 void
-vfu_log(UNUSED vfu_ctx_t *vfu_ctx, UNUSED vfu_log_lvl_t lvl,
+vfu_log(UNUSED vfu_ctx_t *vfu_ctx, UNUSED int level,
         const char *fmt, ...)
 {
     va_list ap;

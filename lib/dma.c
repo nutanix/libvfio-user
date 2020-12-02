@@ -101,13 +101,13 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
 
     err = dma_unmap_region(region, region->virt_addr, region->size);
     if (err != 0) {
-        vfu_log(dma->vfu_ctx, VFU_DBG, "failed to unmap fd=%d vaddr=%p-%p\n",
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d vaddr=%p-%p\n",
                region->fd, region->virt_addr,
                region->virt_addr + region->size - 1);
     }
     if (region->fd != -1) {
         if (close(region->fd) == -1) {
-            vfu_log(dma->vfu_ctx, VFU_DBG,
+            vfu_log(dma->vfu_ctx, LOG_DEBUG,
                     "failed to close fd %d: %m\n", region->fd);
         }
     }
@@ -160,7 +160,7 @@ dma_controller_remove_region(dma_controller_t *dma,
             if (region->refcnt > 0) {
                 err = unmap_dma(data, region->dma_addr, region->size);
                 if (err != 0) {
-                    vfu_log(dma->vfu_ctx, VFU_ERR,
+                    vfu_log(dma->vfu_ctx, LOG_ERR,
                            "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
                            region->dma_addr, region->dma_addr + region->size,
                            strerror(-err));
@@ -194,7 +194,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        vfu_log(dma->vfu_ctx, VFU_INF, "unmap vaddr=%p IOVA=%lx",
+        vfu_log(dma->vfu_ctx, LOG_INFO, "unmap vaddr=%p IOVA=%lx",
                region->virt_addr, region->dma_addr);
 
         _dma_controller_do_remove_region(dma, region);
@@ -229,7 +229,7 @@ dma_controller_add_region(dma_controller_t *dma,
         /* First check if this is the same exact region. */
         if (region->dma_addr == dma_addr && region->size == size) {
             if (offset != region->offset) {
-                vfu_log(dma->vfu_ctx, VFU_ERR,
+                vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad offset for new DMA region %#lx-%#lx, want=%ld, existing=%ld\n",
                        dma_addr, dma_addr + size, offset, region->offset);
                 goto err;
@@ -241,7 +241,7 @@ dma_controller_add_region(dma_controller_t *dma,
                  * the same file, however in the majority of cases we'll be
                  * using a single fd.
                  */
-                vfu_log(dma->vfu_ctx, VFU_ERR,
+                vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
                        fd, offset, offset + size, region->fd);
                 goto err;
@@ -254,7 +254,7 @@ dma_controller_add_region(dma_controller_t *dma,
              dma_addr < region->dma_addr + region->size) ||
             (region->dma_addr >= dma_addr &&
              region->dma_addr < dma_addr + size)) {
-            vfu_log(dma->vfu_ctx, VFU_INF,
+            vfu_log(dma->vfu_ctx, LOG_INFO,
                    "new DMA region %#lx+%#lx overlaps with DMA region %#lx-%#lx\n",
                    dma_addr, size, region->dma_addr, region->size);
             goto err;
@@ -263,7 +263,7 @@ dma_controller_add_region(dma_controller_t *dma,
 
     if (dma->nregions == dma->max_regions) {
         idx = dma->max_regions;
-        vfu_log(dma->vfu_ctx, VFU_ERR,
+        vfu_log(dma->vfu_ctx, LOG_ERR,
                "reached maxed regions, recompile with higher number of DMA regions\n");
         goto err;
     }
@@ -274,7 +274,7 @@ dma_controller_add_region(dma_controller_t *dma,
     if (fd != -1) {
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
-            vfu_log(dma->vfu_ctx, VFU_ERR, "bad page size %d\n", page_size);
+            vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d\n", page_size);
             goto err;
         }
     }
@@ -291,12 +291,12 @@ dma_controller_add_region(dma_controller_t *dma,
         region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
                                            0, region->size);
         if (region->virt_addr == MAP_FAILED) {
-            vfu_log(dma->vfu_ctx, VFU_ERR,
+            vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %#lx-%#lx: %s\n",
                    dma_addr, dma_addr + size, strerror(errno));
             if (region->fd != -1) {
                 if (close(region->fd) == -1) {
-                    vfu_log(dma->vfu_ctx, VFU_DBG,
+                    vfu_log(dma->vfu_ctx, LOG_DEBUG,
                             "failed to close fd %d: %m\n", region->fd);
                 }
             }

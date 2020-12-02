@@ -58,7 +58,7 @@
 #include "irq.h"
 
 void
-vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...)
+vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 {
     va_list ap;
     char buf[BUFSIZ];
@@ -66,14 +66,14 @@ vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...)
 
     assert(vfu_ctx != NULL);
 
-    if (vfu_ctx->log == NULL || lvl > vfu_ctx->log_lvl || fmt == NULL) {
+    if (vfu_ctx->log == NULL || level > vfu_ctx->log_level || fmt == NULL) {
         return;
     }
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    vfu_ctx->log(vfu_ctx->pvt, lvl, buf);
+    vfu_ctx->log(vfu_ctx->pvt, level, buf);
     errno = _errno;
 }
 
@@ -149,7 +149,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             sparse->areas[i].offset = mmap_areas->areas[i].start;
             sparse->areas[i].size = mmap_areas->areas[i].size;
-            vfu_log(vfu_ctx, VFU_DBG, "%s: area %d %#llx-%#llx", __func__,
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
                     i, sparse->areas[i].offset,
                     sparse->areas[i].offset + sparse->areas[i].size);
         }
@@ -225,7 +225,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index,
     vfu_reg = &vfu_ctx->reg_info[index];
 
     if (index >= vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, VFU_DBG, "bad region index %d", index);
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d", index);
         return -EINVAL;
     }
 
@@ -247,7 +247,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index,
         dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index), *vfio_reg);
     }
 
-    vfu_log(vfu_ctx, VFU_DBG, "region_info[%d] offset %#llx flags %#x size %llu "
+    vfu_log(vfu_ctx, LOG_DEBUG, "region_info[%d] offset %#llx flags %#x size %llu "
             "argsz %u",
             (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
             (*vfio_reg)->size, (*vfio_reg)->argsz);
@@ -294,7 +294,7 @@ handle_pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     if (is_write) {
         ret = cap_maybe_access(vfu_ctx, vfu_ctx->caps, buf, count, pos);
         if (ret < 0) {
-            vfu_log(vfu_ctx, VFU_ERR, "bad access to capabilities %#lx-%#lx\n",
+            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
                     pos, pos + count);
             return ret;
         }
@@ -316,12 +316,12 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
 
     idx = vfu_get_region(pos, count, &offset);
     if (idx < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "invalid region %d", idx);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid region %d", idx);
         return idx;
     }
 
     if (idx < 0 || idx >= (int)vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, VFU_ERR, "bad region %d", idx);
+        vfu_log(vfu_ctx, LOG_ERR, "bad region %d", idx);
         return -EINVAL;
     }
 
@@ -332,7 +332,7 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
 
     if (is_migr_reg(vfu_ctx, idx)) {
         if (offset + count > vfu_ctx->reg_info[idx].size) {
-            vfu_log(vfu_ctx, VFU_ERR, "read %#lx-%#lx past end of migration region (%#x)",
+            vfu_log(vfu_ctx, LOG_ERR, "read %#lx-%#lx past end of migration region (%#x)",
                     offset, offset + count - 1,
                     vfu_ctx->reg_info[idx].size);
             return -EINVAL;
@@ -353,7 +353,7 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
                                          is_write);
     }
 
-    vfu_log(vfu_ctx, VFU_ERR, "no callback for region %d", idx);
+    vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d", idx);
 
     return -EINVAL;
 }
@@ -397,7 +397,7 @@ _vfu_access(vfu_ctx_t *vfu_ctx, char *buf, uint32_t count, uint64_t *ppos,
         }
         ret = do_access(vfu_ctx, buf, size, *ppos, is_write);
         if (ret <= 0) {
-            vfu_log(vfu_ctx, VFU_ERR, "failed to %s %#lx-%#lx: %s",
+            vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %s",
                     is_write ? "write to" : "read from", *ppos, *ppos + size - 1,
                     strerror(-ret));
             /*
@@ -406,7 +406,7 @@ _vfu_access(vfu_ctx_t *vfu_ctx, char *buf, uint32_t count, uint64_t *ppos,
             return -EFAULT;
         }
         if (ret != (int)size) {
-            vfu_log(vfu_ctx, VFU_DBG, "bad read %d != %ld", ret, size);
+            vfu_log(vfu_ctx, LOG_DEBUG, "bad read %d != %ld", ret, size);
         }
         count -= size;
         done += size;
@@ -427,7 +427,7 @@ vfu_access(vfu_ctx_t *vfu_ctx, bool is_write, char *rwbuf, uint32_t count,
     assert(rwbuf != NULL);
     assert(pos != NULL);
 
-    vfu_log(vfu_ctx, VFU_DBG, "%s %#lx-%#lx", is_write ? "W" : "R", *pos,
+    vfu_log(vfu_ctx, LOG_DEBUG, "%s %#lx-%#lx", is_write ? "W" : "R", *pos,
             *pos + count - 1);
 
 #ifdef VFU_VERBOSE_LOGGING
@@ -440,7 +440,7 @@ vfu_access(vfu_ctx_t *vfu_ctx, bool is_write, char *rwbuf, uint32_t count,
     ret = vfu_pci_hdr_access(vfu_ctx, &_count, pos, is_write, rwbuf);
     if (ret != 0) {
         /* FIXME shouldn't we fail here? */
-        vfu_log(vfu_ctx, VFU_ERR, "failed to access PCI header: %s",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
                 strerror(-ret));
 #ifdef VFU_VERBOSE_LOGGING
         dump_buffer("buffer write", rwbuf, _count);
@@ -494,7 +494,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     dev_info->num_regions = vfu_ctx->nr_regions;
     dev_info->num_irqs = VFU_DEV_NUM_IRQS;
 
-    vfu_log(vfu_ctx, VFU_DBG, "sent devinfo flags %#x, num_regions %d, num_irqs"
+    vfu_log(vfu_ctx, LOG_DEBUG, "sent devinfo flags %#x, num_regions %d, num_irqs"
             " %d", dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
 
     return 0;
@@ -543,7 +543,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
     }
 
     if (size % sizeof(struct vfio_user_dma_region) != 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "bad size of DMA regions %d", size);
+        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA regions %d", size);
         return -EINVAL;
     }
 
@@ -572,7 +572,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                 if (fd != -1) {
                     close(fd);
                 }
-                vfu_log(vfu_ctx, VFU_INF,
+                vfu_log(vfu_ctx, LOG_INFO,
                         "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
                         dma_regions[i].addr,
                         dma_regions[i].addr + dma_regions[i].size - 1,
@@ -580,7 +580,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         strerror(-ret));
                 break;
             }
-            vfu_log(vfu_ctx, VFU_DBG,
+            vfu_log(vfu_ctx, LOG_DEBUG,
                     "added DMA region %#lx-%#lx offset=%#lx fd=%d",
                     dma_regions[i].addr,
                     dma_regions[i].addr + dma_regions[i].size - 1,
@@ -591,14 +591,14 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                                dma_regions[i].size,
                                                vfu_ctx->unmap_dma, vfu_ctx->pvt);
             if (ret < 0) {
-                vfu_log(vfu_ctx, VFU_INF,
+                vfu_log(vfu_ctx, LOG_INFO,
                         "failed to remove DMA region %#lx-%#lx: %s",
                         dma_regions[i].addr,
                         dma_regions[i].addr + dma_regions[i].size - 1,
                         strerror(-ret));
                 break;
             }
-            vfu_log(vfu_ctx, VFU_DBG,
+            vfu_log(vfu_ctx, LOG_DEBUG,
                     "removed DMA region %#lx-%#lx",
                     dma_regions[i].addr,
                     dma_regions[i].addr + dma_regions[i].size - 1);
@@ -617,7 +617,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
 static int
 handle_device_reset(vfu_ctx_t *vfu_ctx)
 {
-    vfu_log(vfu_ctx, VFU_DBG, "Device reset called by client");
+    vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
     if (vfu_ctx->reset != NULL) {
         return vfu_ctx->reset(vfu_ctx->pvt);
     }
@@ -631,19 +631,19 @@ validate_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     assert(region_access != NULL);
 
     if (size < sizeof *region_access) {
-        vfu_log(vfu_ctx, VFU_ERR, "message size too small (%d)", size);
+        vfu_log(vfu_ctx, LOG_ERR, "message size too small (%d)", size);
         return -EINVAL;
     }
 
     if (region_access->region > vfu_ctx->nr_regions ||  region_access->count <= 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "bad region %d and/or count %d",
+        vfu_log(vfu_ctx, LOG_ERR, "bad region %d and/or count %d",
                 region_access->region, region_access->count);
         return -EINVAL;
     }
 
     if (device_is_stopped_and_copying(vfu_ctx->migration) &&
         !is_migr_reg(vfu_ctx, region_access->region)) {
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                 "cannot access region %d while device in stop-and-copy state",
                 region_access->region);
         return -EINVAL;
@@ -652,7 +652,7 @@ validate_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     if (cmd == VFIO_USER_REGION_WRITE &&
         size - sizeof *region_access != region_access->count)
     {
-        vfu_log(vfu_ctx, VFU_ERR, "bad region access, expected %lu, actual %d",
+        vfu_log(vfu_ctx, LOG_ERR, "bad region access, expected %lu, actual %d",
                 size - sizeof *region_access, region_access->count);
         return -EINVAL;
     }
@@ -697,7 +697,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
 
     ret = vfu_access(vfu_ctx, cmd == VFIO_USER_REGION_WRITE, buf, count, &offset);
     if (ret != (int)region_access->count) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to %s %#x-%#lx: %d",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %d",
                 cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
                 region_access->count,
                 region_access->offset + region_access->count - 1, ret);
@@ -770,7 +770,7 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(dirty_bitmap != NULL);
 
     if (size < sizeof *dirty_bitmap || size != dirty_bitmap->argsz) {
-        vfu_log(vfu_ctx, VFU_ERR, "invalid header size %u", size);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid header size %u", size);
         return -EINVAL;
     }
 
@@ -784,7 +784,7 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                                      (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
                                      size - sizeof *dirty_bitmap);
     } else {
-        vfu_log(vfu_ctx, VFU_ERR, "bad flags %#x", dirty_bitmap->flags);
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_bitmap->flags);
         ret = -EINVAL;
     }
 
@@ -805,17 +805,17 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
     assert(hdr != NULL);
 
     if (size < sizeof hdr) {
-        vfu_log(vfu_ctx, VFU_ERR, "short header read %ld", size);
+        vfu_log(vfu_ctx, LOG_ERR, "short header read %ld", size);
         return -EINVAL;
     }
 
     if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        vfu_log(vfu_ctx, VFU_ERR, "header not a request");
+        vfu_log(vfu_ctx, LOG_ERR, "header not a request");
         return -EINVAL;
     }
 
     if (hdr->msg_size < sizeof hdr) {
-        vfu_log(vfu_ctx, VFU_ERR, "bad size in header %d", hdr->msg_size);
+        vfu_log(vfu_ctx, LOG_ERR, "bad size in header %d", hdr->msg_size);
         return -EINVAL;
     }
 
@@ -842,7 +842,7 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
             return 0;
         }
         if (ret != -EINTR) {
-            vfu_log(vfu_ctx, VFU_ERR, "failed to receive request: %s",
+            vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %s",
                    strerror(-ret));
         }
         return ret;
@@ -852,9 +852,9 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
             return -EINTR;
         }
         if (errno == 0) {
-            vfu_log(vfu_ctx, VFU_INF, "vfio-user client closed connection");
+            vfu_log(vfu_ctx, LOG_INFO, "vfio-user client closed connection");
         } else {
-            vfu_log(vfu_ctx, VFU_ERR, "end of file: %m");
+            vfu_log(vfu_ctx, LOG_ERR, "end of file: %m");
         }
         return -ENOTCONN;
     }
@@ -906,7 +906,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             goto reply;
         }
         if (ret != (int)hdr->msg_size) {
-            vfu_log(vfu_ctx, VFU_ERR, "short read, expected=%d, actual=%d",
+            vfu_log(vfu_ctx, LOG_ERR, "short read, expected=%d, actual=%d",
                     hdr->msg_size, ret);
             ret = -EINVAL;
             goto reply;
@@ -915,7 +915,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
 
     if (device_is_stopped_and_copying(vfu_ctx->migration)
         && !(hdr->cmd == VFIO_USER_REGION_READ || hdr->cmd == VFIO_USER_REGION_WRITE)) {
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stop-and-copy state", hdr->cmd);
         ret = -EINVAL;
         goto reply;
@@ -982,7 +982,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             }
             break;
         default:
-            vfu_log(vfu_ctx, VFU_ERR, "bad command %d", hdr->cmd);
+            vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
             ret = -EINVAL;
             goto reply;
     }
@@ -1033,7 +1033,7 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     for (i = 0; i < nr_fds; i++) {
         if (fds[i] != -1) {
-            vfu_log(vfu_ctx, VFU_INF, "closing fd=%d", fds[i]);
+            vfu_log(vfu_ctx, LOG_INFO, "closing fd=%d", fds[i]);
             close(fds[i]);
         }
     }
@@ -1044,7 +1044,7 @@ process_request(vfu_ctx_t *vfu_ctx)
      */
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to handle command %d: %s", hdr.cmd,
+        vfu_log(vfu_ctx, LOG_ERR, "failed to handle command %d: %s", hdr.cmd,
                 strerror(-ret));
     } else {
         ret = 0;
@@ -1054,7 +1054,7 @@ process_request(vfu_ctx_t *vfu_ctx)
     ret = vfu_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true,
                          0, iovecs, nr_iovecs, NULL, 0, -ret);
     if (unlikely(ret < 0)) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to complete command: %s",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to complete command: %s",
                 strerror(-ret));
     }
     if (iovecs != NULL && iovecs != _iovecs) {
@@ -1092,7 +1092,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
         if (vfu_ctx->conn_fd < 0) {
             err = vfu_ctx->conn_fd;
             if (err != EINTR) {
-                vfu_log(vfu_ctx, VFU_ERR, "failed to attach: %s",
+                vfu_log(vfu_ctx, LOG_ERR, "failed to attach: %s",
                        strerror(-err));
             }
             return err;
@@ -1210,7 +1210,7 @@ vfu_mmap(vfu_ctx_t *vfu_ctx, off_t offset, size_t length)
 {
     if ((vfu_ctx == NULL) || (length == 0) || !PAGE_ALIGNED(offset)) {
         if (vfu_ctx != NULL) {
-            vfu_log(vfu_ctx, VFU_DBG, "bad device mmap region %#lx-%#lx\n",
+            vfu_log(vfu_ctx, LOG_DEBUG, "bad device mmap region %#lx-%#lx\n",
                    offset, offset + length);
         }
         errno = EINVAL;
@@ -1311,7 +1311,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     // Set other context data.
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
-    vfu_ctx->log_lvl = VFU_ERR;
+    vfu_ctx->log_level = LOG_ERR;
 
     vfu_ctx->uuid = strdup(path);
     if (vfu_ctx->uuid == NULL) {
@@ -1353,15 +1353,15 @@ out:
 }
 
 int
-vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl)
+vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 {
 
-    if (log_lvl != VFU_ERR && log_lvl != VFU_INF && log_lvl != VFU_DBG) {
+    if (log_level != LOG_ERR && log_level != LOG_INFO && log_level != LOG_DEBUG) {
         return ERROR(EINVAL);
     }
 
     vfu_ctx->log = log;
-    vfu_ctx->log_lvl = log_lvl;
+    vfu_ctx->log_level = log_level;
 
     return 0;
 }
@@ -1382,7 +1382,7 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
      * clean up and redo it.
      */
     if (vfu_ctx->pci_config_space != NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "PCI configuration space header already setup");
+        vfu_log(vfu_ctx, LOG_ERR, "PCI configuration space header already setup");
         return ERROR(EEXIST);
     }
 
@@ -1396,7 +1396,7 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
         size = PCI_CFG_SPACE_EXP_SIZE;
         break;
     default:
-        vfu_log(vfu_ctx, VFU_ERR, "invalid PCI type %d", pci_type);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %d", pci_type);
         return ERROR(EINVAL);
     }
 
@@ -1423,18 +1423,18 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
     assert(vfu_ctx != NULL);
 
     if (vfu_ctx->caps != NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "capabilities are already setup");
+        vfu_log(vfu_ctx, LOG_ERR, "capabilities are already setup");
         return ERROR(EEXIST);
     }
 
     if (caps == NULL || nr_caps == 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "Invalid args passed");
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid args passed");
         return ERROR(EINVAL);
     }
 
     vfu_ctx->caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
     if (vfu_ctx->caps == NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to create PCI capabilities: %s",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to create PCI capabilities: %s",
                strerror(ret));
         return ERROR(ret);
     }
@@ -1501,7 +1501,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         }
         break;
     default:
-        vfu_log(vfu_ctx, VFU_ERR, "Invalid region index %d", region_idx);
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid region index %d", region_idx);
         return ERROR(EINVAL);
     }
 
@@ -1547,7 +1547,7 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
     assert(vfu_ctx != NULL);
 
     if (type < VFU_DEV_INTX_IRQ || type > VFU_DEV_REQ_IRQ) {
-        vfu_log(vfu_ctx, VFU_ERR, "Invalid IRQ index %d, should be between "
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ index %d, should be between "
                "(%d to %d)", type, VFU_DEV_INTX_IRQ,
                VFU_DEV_REQ_IRQ);
         return ERROR(EINVAL);
@@ -1569,7 +1569,7 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
     //FIXME: Validate args.
 
     if (vfu_ctx->migr_reg != NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "device migration is already setup");
+        vfu_log(vfu_ctx, LOG_ERR, "device migration is already setup");
         return ERROR(EEXIST);
     }
 
@@ -1588,7 +1588,7 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
 
     vfu_ctx->migration = init_migration(migration, &ret);
     if (vfu_ctx->migration == NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to initialize device migration");
+        vfu_log(vfu_ctx, LOG_ERR, "failed to initialize device migration");
         free(migr_reg->mmap_areas);
         return ERROR(ret);
     }

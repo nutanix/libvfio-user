@@ -70,7 +70,7 @@ struct server_data {
 };
 
 static void
-_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
+_log(UNUSED void *pvt, UNUSED int level, char const *msg)
 {
     fprintf(stderr, "server: %s\n", msg);
 }
@@ -79,10 +79,10 @@ static int
 arm_timer(struct server_data *server_data, time_t t)
 {
     struct itimerval new = {.it_value.tv_sec = t - time(NULL) };
-    vfu_log(server_data->vfu_ctx, VFU_DBG,
+    vfu_log(server_data->vfu_ctx, LOG_DEBUG,
             "arming timer to trigger in %ld seconds", new.it_value.tv_sec);
     if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
-        vfu_log(server_data->vfu_ctx, VFU_ERR, "failed to arm timer: %m");
+        vfu_log(server_data->vfu_ctx, LOG_ERR, "failed to arm timer: %m");
         return -errno;
     }
     return 0;
@@ -95,7 +95,7 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
     struct server_data *server_data = pvt;
 
     if (count != sizeof(time_t) || offset != 0) {
-        vfu_log(server_data->vfu_ctx, VFU_ERR, "bad BAR0 access %#lx-%#lx",
+        vfu_log(server_data->vfu_ctx, LOG_ERR, "bad BAR0 access %#lx-%#lx",
                 offset, offset + count - 1);
         errno = EINVAL;
         return -1;
@@ -303,7 +303,7 @@ migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
     struct server_data *server_data = pvt;
 
     if (server_data->migration.data_size < size) {
-        vfu_log(server_data->vfu_ctx, VFU_ERR,
+        vfu_log(server_data->vfu_ctx, LOG_ERR,
                 "invalid migration data read %#llx-%#llx",
                 offset, offset + size - 1);
         return -EINVAL;
@@ -328,7 +328,7 @@ migration_write_data(void *pvt, void *data, __u64 size, __u64 offset)
     assert(data != NULL);
 
     if (offset + size > server_data->migration.migr_data_len) {
-        vfu_log(server_data->vfu_ctx, VFU_ERR,
+        vfu_log(server_data->vfu_ctx, LOG_ERR,
                 "invalid write %#llx-%#llx", offset, offset + size - 1);
     }
 
@@ -347,7 +347,7 @@ migration_data_written(void *pvt, __u64 count, __u64 offset)
     assert(server_data != NULL);
 
     if (offset + count > server_data->migration.migr_data_len) {
-        vfu_log(server_data->vfu_ctx, VFU_ERR,
+        vfu_log(server_data->vfu_ctx, LOG_ERR,
                 "bad migration data range %#llx-%#llx",
                 offset, offset + count - 1);
         return -EINVAL;
@@ -417,7 +417,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
 
-    ret = vfu_setup_log(vfu_ctx, _log, verbose ? VFU_DBG : VFU_ERR);
+    ret = vfu_setup_log(vfu_ctx, _log, verbose ? LOG_DEBUG : LOG_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }

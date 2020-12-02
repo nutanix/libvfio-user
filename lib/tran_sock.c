@@ -462,27 +462,27 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
                          (void **)&cversion, &vlen);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to receive version: %s",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to receive version: %s",
                 strerror(-ret));
         return ret;
     }
 
     if (hdr.cmd != VFIO_USER_VERSION) {
-        vfu_log(vfu_ctx, VFU_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
+        vfu_log(vfu_ctx, LOG_ERR, "msg%hx: invalid cmd %hu (expected %hu)",
                 *msg_idp, hdr.cmd, VFIO_USER_VERSION);
         ret = -EINVAL;
         goto out;
     }
 
     if (vlen < sizeof (*cversion)) {
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                 "msg%hx (VFIO_USER_VERSION): invalid size %lu", *msg_idp, vlen);
         ret = -EINVAL;
         goto out;
     }
 
     if (cversion->major != LIB_VFIO_USER_MAJOR) {
-        vfu_log(vfu_ctx, VFU_ERR, "unsupported client major %hu (must be %hu)",
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %hu)",
                 cversion->major, LIB_VFIO_USER_MAJOR);
         ret = -ENOTSUP;
         goto out;
@@ -496,7 +496,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         size_t pgsize = 0;
 
         if (json_str[len - 1] != '\0') {
-            vfu_log(vfu_ctx, VFU_ERR, "ignoring invalid JSON from client");
+            vfu_log(vfu_ctx, LOG_ERR, "ignoring invalid JSON from client");
             ret = -EINVAL;
             goto out;
         }
@@ -507,10 +507,10 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
 #ifdef DEBUG
-            vfu_log(vfu_ctx, VFU_ERR, "failed to parse client JSON \"%s\"",
+            vfu_log(vfu_ctx, LOG_ERR, "failed to parse client JSON \"%s\"",
                     json_str);
 #else
-            vfu_log(vfu_ctx, VFU_ERR, "failed to parse client JSON");
+            vfu_log(vfu_ctx, LOG_ERR, "failed to parse client JSON");
 #endif
             goto out;
         }
@@ -519,7 +519,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
             ret = migration_set_pgsize(vfu_ctx->migration, pgsize);
 
             if (ret != 0) {
-                vfu_log(vfu_ctx, VFU_ERR, "refusing client page size of %zu",
+                vfu_log(vfu_ctx, LOG_ERR, "refusing client page size of %zu",
                         pgsize);
                 goto out;
             }
@@ -528,7 +528,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         // FIXME: is the code resilient against ->client_max_fds == 0?
         if (vfu_ctx->client_max_fds < 0 ||
             vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_FDS_LIMIT) {
-            vfu_log(vfu_ctx, VFU_ERR, "refusing client max_fds of %d",
+            vfu_log(vfu_ctx, LOG_ERR, "refusing client max_fds of %d",
                     vfu_ctx->client_max_fds);
             ret = -EINVAL;
             goto out;
@@ -601,7 +601,7 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
     ret = recv_version(vfu_ctx, sock, &msg_id, &client_version);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to recv version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "failed to recv version: %s", strerror(-ret));
         return ret;
     }
 
@@ -610,7 +610,7 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
     free(client_version);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to send version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "failed to send version: %s", strerror(-ret));
     }
 
     return ret;

@@ -138,14 +138,14 @@ handle_device_state(vfu_ctx_t *vfu_ctx, void *pvt,
     }
 
     if (*device_state & ~VFIO_DEVICE_STATE_MASK) {
-        vfu_log(vfu_ctx, VFU_ERR, "bad device state %#x", *device_state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad device state %#x", *device_state);
         return -EINVAL;
     }
 
     if (!_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
         /* TODO print descriptive device state names instead of raw value */
-        vfu_log(vfu_ctx, VFU_ERR, "bad transition from state %d to state %d",
+        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %d to state %d",
                migr->info.device_state, *device_state);
         return -EINVAL;
     }
@@ -179,7 +179,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, void *pvt,
     if (ret == 0) {
         migr->info.device_state = *device_state;
     } else if (ret < 0) {
-        vfu_log(vfu_ctx, VFU_ERR, "failed to transition to state %d: %s",
+        vfu_log(vfu_ctx, LOG_ERR, "failed to transition to state %d: %s",
                 *device_state, strerror(-ret));
     }
 
@@ -249,7 +249,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, void *pvt,
     assert(migr != NULL);
 
     if (is_write) {
-        vfu_log(vfu_ctx, VFU_ERR, "data_offset is RO when saving");
+        vfu_log(vfu_ctx, LOG_ERR, "data_offset is RO when saving");
         return -EINVAL;
     }
 
@@ -267,7 +267,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, void *pvt,
          */
         break;
     default:
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                 "reading data_offset out of sequence is undefined");
         return -EINVAL;
     }
@@ -291,7 +291,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, void *pvt, struct migration *migr,
         break;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
-            vfu_log(vfu_ctx, VFU_ERR, "bad write to migration data_offset");
+            vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
             ret = -EINVAL;
         } else {
             ret = 0;
@@ -299,7 +299,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, void *pvt, struct migration *migr,
         break;
     default:
         /* TODO improve error message */
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                 "bad access to migration data_offset in state %d",
                 migr->info.device_state);
         ret = -EINVAL;
@@ -320,13 +320,13 @@ handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (is_write) {
         /* TODO improve error message */
-        vfu_log(vfu_ctx, VFU_ERR, "data_size is RO when saving");
+        vfu_log(vfu_ctx, LOG_ERR, "data_size is RO when saving");
         return -EINVAL;
     }
 
     if (migr->iter.state != VFIO_USER_MIGR_ITER_STATE_STARTED &&
         migr->iter.state != VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED) {
-        vfu_log(vfu_ctx, VFU_ERR,
+        vfu_log(vfu_ctx, LOG_ERR,
                 "reading data_size ouf of sequence is undefined");
         return -EINVAL;
     }
@@ -368,7 +368,7 @@ handle_data_size(vfu_ctx_t *vfu_ctx, void *pvt, struct migration *migr,
         break;
     default:
         /* TODO improve error message */
-        vfu_log(vfu_ctx, VFU_ERR, "bad access to data_size");
+        vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
         ret = -EINVAL;
     }
 
@@ -391,7 +391,7 @@ handle_region_access_registers(vfu_ctx_t *vfu_ctx, void *pvt,
     switch (pos) {
     case offsetof(struct vfio_device_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
-            vfu_log(vfu_ctx, VFU_ERR,
+            vfu_log(vfu_ctx, LOG_ERR,
                     "bad device_state access size %ld", count);
             return -EINVAL;
         }
@@ -399,7 +399,7 @@ handle_region_access_registers(vfu_ctx_t *vfu_ctx, void *pvt,
         break;
     case offsetof(struct vfio_device_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
-            vfu_log(vfu_ctx, VFU_ERR,
+            vfu_log(vfu_ctx, LOG_ERR,
                     "bad pending_bytes access size %ld", count);
             return -EINVAL;
         }
@@ -407,7 +407,7 @@ handle_region_access_registers(vfu_ctx_t *vfu_ctx, void *pvt,
         break;
     case offsetof(struct vfio_device_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
-            vfu_log(vfu_ctx, VFU_ERR,
+            vfu_log(vfu_ctx, LOG_ERR,
                     "bad data_offset access size %ld", count);
             return -EINVAL;
         }
@@ -415,14 +415,14 @@ handle_region_access_registers(vfu_ctx_t *vfu_ctx, void *pvt,
         break;
     case offsetof(struct vfio_device_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
-            vfu_log(vfu_ctx, VFU_ERR,
+            vfu_log(vfu_ctx, LOG_ERR,
                     "bad data_size access size %ld", count);
             return -EINVAL;
         }
         ret = handle_data_size(vfu_ctx, pvt, migr, (__u64*)buf, is_write);
         break;
     default:
-        vfu_log(vfu_ctx, VFU_ERR, "bad migration region register offset %#lx",
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration region register offset %#lx",
                pos);
         return -EINVAL;
     }
