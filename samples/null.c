@@ -43,7 +43,7 @@
 #include "tran_sock.h"
 
 static void
-null_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
+null_log(UNUSED void *pvt, UNUSED int level, char const *msg)
 {
 	fprintf(stderr, "null: %s", msg);
 }
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
 
-    ret = vfu_setup_log(vfu_ctx, null_log, VFU_DBG);
+    ret = vfu_setup_log(vfu_ctx, null_log, LOG_DEBUG);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }

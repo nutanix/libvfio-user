@@ -41,6 +41,7 @@
 #include <stdint.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <syslog.h>
 
 #include "pci.h"
 #include "pci_caps/pm.h"
@@ -110,19 +111,14 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
 
 #define VFU_DMA_REGIONS  0x10
 
-typedef enum {
-    VFU_ERR,
-    VFU_INF,
-    VFU_DBG
-} vfu_log_lvl_t;
-
 /**
  * Callback function signature for log function
  * @pvt: private pointer
+ * @level: log level as defined in syslog(3)
  * @vfu_log_fn_t: typedef for log function.
  * @msg: message
  */
-typedef void (vfu_log_fn_t) (void *pvt, vfu_log_lvl_t lvl, const char *msg);
+typedef void (vfu_log_fn_t) (void *pvt, int level, const char *msg);
 
 /**
  * Callback function that gets called when a capability is accessed. The
@@ -261,10 +257,10 @@ vfu_create_ctx(vfu_trans_t trans, const char *path,
  * Setup logging information.
  * @vfu_ctx: the libvfio-user context
  * @log: logging function
- * @log_lvl: logging level
+ * @level: logging level as defined in syslog(3)
  */
 int
-vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl);
+vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
 //      Or should we pass whole vfu_pci_hdr_t to be filled by user.
@@ -637,7 +633,7 @@ uint8_t *
 vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id);
 
 void
-vfu_log(vfu_ctx_t *vfu_ctx, vfu_log_lvl_t lvl, const char *fmt, ...);
+vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...);
 
 #ifdef __cplusplus
 }

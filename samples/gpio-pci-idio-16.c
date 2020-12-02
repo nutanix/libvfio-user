@@ -46,7 +46,7 @@
 #include "tran_sock.h"
 
 static void
-_log(UNUSED void *pvt, UNUSED vfu_log_lvl_t lvl, char const *msg)
+_log(UNUSED void *pvt, UNUSED int level, char const *msg)
 {
     fprintf(stderr, "gpio: %s\n", msg);
 }
@@ -109,7 +109,7 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
-    ret = vfu_setup_log(vfu_ctx, _log, verbose ? VFU_DBG : VFU_ERR);
+    ret = vfu_setup_log(vfu_ctx, _log, verbose ? LOG_DEBUG : LOG_ERR);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }

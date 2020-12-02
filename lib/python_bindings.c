@@ -129,7 +129,7 @@ struct _region_info {
 static const struct _region_info _0_ri;
 
 static PyObject *log_fn;
-static vfu_log_lvl_t log_lvl = VFU_ERR;
+static int log_level = LOG_ERR;
 
 static void
 _log_fn(void *pvt, const char *msg)
@@ -148,7 +148,7 @@ _log_fn(void *pvt, const char *msg)
 static PyObject *
 libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    static char *kwlist[] = {"vid", "did", "uuid", "log", "log_lvl",
+    static char *kwlist[] = {"vid", "did", "uuid", "log", "log_level",
                              "bar0", "bar1", "bar2", "bar3", "bar4", "bar5", "rom", "cfg", "vga",
                              "intx", "msi", "msix", "err", "req",
                              NULL};
@@ -166,7 +166,7 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
             &dev_info.pci_info.id.did,
             &dev_info.uuid,
             &log_fn,
-            &log_lvl,
+            &log_level,
             &_ri[0].perm, &_ri[0].size, &_ri[0].fn,
             &_ri[1].perm, &_ri[1].size, &_ri[1].fn,
             &_ri[2].perm, &_ri[2].size, &_ri[2].fn,
@@ -216,7 +216,7 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
             return NULL;
         }
         dev_info.log = _log_fn;
-        dev_info.log_lvl = log_lvl;
+        dev_info.log_level = log_level;
     }
 
     err = vfu_ctx_run(&dev_info);

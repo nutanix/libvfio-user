@@ -105,7 +105,7 @@ struct vfu_ctx {
     int                     fd;
     int                     conn_fd;
     vfu_reset_cb_t          *reset;
-    vfu_log_lvl_t           log_lvl;
+    int           log_level;
     vfu_log_fn_t            *log;
     size_t                  nr_regions;
     vfu_reg_info_t          *reg_info;
