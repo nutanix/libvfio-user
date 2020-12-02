@@ -1033,7 +1033,13 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     for (i = 0; i < nr_fds; i++) {
         if (fds[i] != -1) {
-            vfu_log(vfu_ctx, LOG_INFO, "closing fd=%d", fds[i]);
+            if (ret < 0) {
+                vfu_log(vfu_ctx, LOG_WARNING,
+                        "closing unexpected fd %d (index %zu) from cmd %u",
+                        fds[i], i, hdr.cmd);
+            } else {
+                vfu_log(vfu_ctx, LOG_DEBUG, "closing fd %d", fds[i]);
+            }
             close(fds[i]);
         }
     }
