@@ -38,7 +38,7 @@ else
 endif
 
 ifeq ($(VERBOSE),)
-       MAKEFLAGS += -s
+    MAKEFLAGS += -s
 endif
 
 BUILD_DIR_BASE = $(CURDIR)/build
