@@ -4,6 +4,4 @@ compiler: gcc
 before_install:
   - sudo apt-get -y install libjson-c-dev libcmocka-dev
 script:
-  - make
-  - make BUILD_TYPE=rel
-  - make test
+  - make pre-push
