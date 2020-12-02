@@ -42,13 +42,6 @@ extern "C" {
 #endif
 
 /*
- * These are already defined in include/uapi/linux/pci_regs.h, however that
- * file doesn't seem to installed.
- */
-#define PCI_CFG_SPACE_SIZE      256
-#define PCI_CFG_SPACE_EXP_SIZE  4096
-
-/*
  * TODO lots of the sizes of each member are defined in pci_regs.h, use those
  * instead?
  */
