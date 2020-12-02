@@ -434,9 +434,9 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
-    struct vfu_mmap_area mmap_areas[] = {
-        { .start  = 1024, .size = 1024 },
-        { .start  = 8192, .size = 1024 }
+    struct iovec mmap_areas[] = {
+        { .iov_base  = (void*)0x400, .iov_len = 0x400 },
+        { .iov_base  = (void*)0x2000, .iov_len = 0x400 }
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            sysconf(_SC_PAGESIZE), &bar1_access,

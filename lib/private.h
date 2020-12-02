@@ -69,7 +69,7 @@ struct migration;
 
 struct vfu_sparse_mmap_areas {
     int nr_mmap_areas;
-    struct vfu_mmap_area areas[];
+    struct iovec areas[];
 };
 
 typedef struct  {

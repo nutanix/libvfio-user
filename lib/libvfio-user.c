@@ -147,8 +147,8 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
 
         mmap_areas = vfu_reg->mmap_areas;
         for (i = 0; i < nr_mmap_areas; i++) {
-            sparse->areas[i].offset = mmap_areas->areas[i].start;
-            sparse->areas[i].size = mmap_areas->areas[i].size;
+            sparse->areas[i].offset = (__u64)mmap_areas->areas[i].iov_base;
+            sparse->areas[i].size = mmap_areas->areas[i].iov_len;
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
                     i, sparse->areas[i].offset,
                     sparse->areas[i].offset + sparse->areas[i].size);
@@ -1450,7 +1450,7 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
 
 static int
 copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
-                       struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas)
+                       struct iovec *mmap_areas, uint32_t nr_mmap_areas)
 {
     struct vfu_sparse_mmap_areas *smmap_areas;
     size_t areas_sz;
@@ -1459,7 +1459,7 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
         return 0;
     }
 
-    areas_sz  = nr_mmap_areas * sizeof(struct vfu_mmap_area);
+    areas_sz  = nr_mmap_areas * sizeof(struct iovec);
 
     smmap_areas = calloc(1, sizeof(struct vfu_sparse_mmap_areas) + areas_sz);
     if (smmap_areas == NULL) {
@@ -1476,7 +1476,7 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
-                 struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
+                 struct iovec *mmap_areas, uint32_t nr_mmap_areas,
                  vfu_map_region_cb_t *map)
 {
     int ret;
