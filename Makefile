@@ -38,7 +38,7 @@ else
 endif
 
 ifeq ($(VERBOSE),)
-	MAKEFLAGS += -s
+    MAKEFLAGS += -s
 endif
 
 BUILD_DIR_BASE = $(CURDIR)/build
@@ -46,8 +46,7 @@ BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
 INSTALL_PREFIX ?= /usr/local
 
-PHONY_TARGETS := all realclean buildclean force_cmake export install-export tags
-
+PHONY_TARGETS := all test pre-push realclean buildclean force_cmake tags
 .PHONY: $(PHONY_TARGETS)
 
 all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
@@ -55,6 +54,10 @@ all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
 
 test: all
 	cd $(BUILD_DIR)/test; ctest --verbose
+
+pre-push: realclean
+	make test
+	make test BUILD_TYPE=rel
 
 realclean:
 	rm -rf $(BUILD_DIR_BASE)
