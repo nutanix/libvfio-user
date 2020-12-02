@@ -238,17 +238,24 @@ typedef struct {
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
+typedef enum {
+    VFU_DEV_TYPE_PCI
+} vfu_dev_type_t;
+
 /**
  * Creates libvfio-user context.
+ *
  * @trans: transport type
  * @path: path to socket file.
  * @flags: context flag
  * @pvt: private data
+ * @dev_type: device type
+ *
  * @returns the vfu_ctx to be used or NULL on error. Sets errno.
  */
 vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path,
-               int flags, void *pvt);
+               int flags, void *pvt, vfu_dev_type_t dev_type);
 
 /**
  * Setup logging information.
@@ -261,18 +268,32 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl);
 
 //TODO: Check other PCI header registers suitable to be filled by device.
 //      Or should we pass whole vfu_pci_hdr_t to be filled by user.
+
+typedef enum {
+    VFU_PCI_TYPE_CONVENTIONAL,
+    VFU_PCI_TYPE_PCI_X_1,
+    VFU_PCI_TYPE_PCI_X_2,
+    VFU_PCI_TYPE_EXPRESS
+} vfu_pci_type_t;
+
 /**
- * Setup PCI header data.
+ * Setup PCI configuration space header data. This function must be called only
+ * once per libvfio-user context.
+ *
  * @vfu_ctx: the libvfio-user context
  * @id: Device and vendor ID
  * @ss: Subsystem vendor and device ID
  * @cc: Class code
- * @extended: support extended PCI config space
+ * @pci_type: PCI type (convention PCI, PCI-X mode 1, PCI-X mode2, PCI-Express)
+ * @revision: PCI/PCI-X/PCIe revision
+ *
+ * @returns 0 on success, -1 on failure and sets errno.
  */
 int
 vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
                          vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         bool extended);
+                         vfu_pci_type_t pci_type,
+                         int revision __attribute__((unused)));
 
 //TODO: Support variable size capabilities.
 /**
@@ -322,6 +343,13 @@ enum {
 
 /**
  * Set up a region.
+ *
+ * If this is the PCI configuration space, the @size argument is ignored. The
+ * size of the region is determined by the PCI type (set when the libvfio-user
+ * context is created). Accesses to the PCI configuration space header and the
+ * PCI capabilities are handled internally; the user supplied callback is not
+ * called.
+ *
  * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
  * @size: size of the region
@@ -330,6 +358,8 @@ enum {
  * @mmap_areas: array of struct vfu_mmap_area
  * @nr_mmap_areas: size of mmap_areas
  * @map: callback function to map region
+ *
+ * @returns 0 on success, -1 on error, Sets errno.
  */
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,

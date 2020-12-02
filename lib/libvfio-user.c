@@ -1277,8 +1277,15 @@ vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->trans->attach(vfu_ctx);
 }
 
+bool
+is_valid_pci_type(vfu_pci_type_t t)
+{
+    return t >= VFU_PCI_TYPE_CONVENTIONAL && t <= VFU_PCI_TYPE_EXPRESS;
+}
+
 vfu_ctx_t *
-vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt)
+vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
+               vfu_dev_type_t dev_type)
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
@@ -1288,10 +1295,16 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt)
         return NULL;
     }
 
+    if (dev_type != VFU_DEV_TYPE_PCI) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
     if (vfu_ctx == NULL) {
         return NULL;
     }
+    vfu_ctx->dev_type = dev_type;
     vfu_ctx->trans = &sock_transport_ops;
 
     //FIXME: Validate arguments.
@@ -1356,21 +1369,39 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, vfu_log_lvl_t log_lvl)
 int
 vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
                          vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         UNUSED bool extended)
+                         vfu_pci_type_t pci_type,
+                         int revision __attribute__((unused)))
 {
     vfu_pci_config_space_t *config_space;
+    size_t size;
 
     assert(vfu_ctx != NULL);
 
+    /*
+     * TODO there no real reason why we shouldn't allow this, we should just
+     * clean up and redo it.
+     */
     if (vfu_ctx->pci_config_space != NULL) {
-        vfu_log(vfu_ctx, VFU_ERR, "pci header already setup");
+        vfu_log(vfu_ctx, VFU_ERR, "PCI configuration space header already setup");
         return ERROR(EEXIST);
     }
 
-    /* TODO: supported extended PCI config space. */
+    switch (vfu_ctx->pci_type) {
+    case VFU_PCI_TYPE_CONVENTIONAL:
+    case VFU_PCI_TYPE_PCI_X_1:
+        size = PCI_CFG_SPACE_SIZE;
+        break;
+    case VFU_PCI_TYPE_PCI_X_2:
+    case VFU_PCI_TYPE_EXPRESS:
+        size = PCI_CFG_SPACE_EXP_SIZE;
+        break;
+    default:
+        vfu_log(vfu_ctx, VFU_ERR, "invalid PCI type %d", pci_type);
+        return ERROR(EINVAL);
+    }
 
     // Allocate a buffer for the config space.
-    config_space = calloc(1, PCI_CFG_SPACE_SIZE);
+    config_space = calloc(1, size);
     if (config_space == NULL) {
         return ERROR(ENOMEM);
     }
@@ -1379,6 +1410,7 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
     config_space->hdr.ss = ss;
     config_space->hdr.cc = cc;
     vfu_ctx->pci_config_space = config_space;
+    vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
 
     return 0;
 }
@@ -1435,13 +1467,6 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
-static inline bool
-is_valid_pci_config_space_region(int flags, size_t size)
-{
-    return flags == VFU_REG_FLAG_RW && (size ==  PCI_CFG_SPACE_SIZE
-            || size == PCI_CFG_SPACE_EXP_SIZE);
-}
-
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
@@ -1456,8 +1481,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     case VFU_PCI_DEV_BAR0_REGION_IDX ... VFU_PCI_DEV_VGA_REGION_IDX:
         // Validate the config region provided.
         if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
-            !is_valid_pci_config_space_region(flags, size)) {
-                return ERROR(EINVAL);
+            flags != VFU_REG_FLAG_RW) {
+            return ERROR(EINVAL);
         }
 
         vfu_ctx->reg_info[region_idx].flags = flags;
