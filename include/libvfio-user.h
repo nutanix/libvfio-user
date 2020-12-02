@@ -305,12 +305,11 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
 int
 vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 
-// Region flags.
-#define VFU_REG_FLAG_READ    (1 << 0)
-#define VFU_REG_FLAG_WRITE   (1 << 1)
-#define VFU_REG_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define VFU_REG_FLAG_RW      (VFU_REG_FLAG_READ | VFU_REG_FLAG_WRITE)
-#define VFU_REG_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+#define VFU_REGION_FLAG_READ    (1 << 0)
+#define VFU_REGION_FLAG_WRITE   (1 << 1)
+#define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
+#define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
 /**
  * Prototype for region access callback. When a region is accessed, libvfio-user

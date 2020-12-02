@@ -1104,7 +1104,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
     // Set a default config region if none provided.
     /* TODO should it be enough to check that the size of region is 0? */
     if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
-        cfg_reg->flags = VFU_REG_FLAG_RW;
+        cfg_reg->flags = VFU_REGION_FLAG_RW;
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
     }
 
@@ -1118,7 +1118,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
 
     // Set type for region registers.
     for (i = 0; i < PCI_BARS_NR; i++) {
-        if (!(vfu_ctx->reg_info[i].flags & VFU_REG_FLAG_MEM)) {
+        if (!(vfu_ctx->reg_info[i].flags & VFU_REGION_FLAG_MEM)) {
             vfu_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
         }
     }
@@ -1481,7 +1481,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     case VFU_PCI_DEV_BAR0_REGION_IDX ... VFU_PCI_DEV_VGA_REGION_IDX:
         // Validate the config region provided.
         if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
-            flags != VFU_REG_FLAG_RW) {
+            flags != VFU_REGION_FLAG_RW) {
             return ERROR(EINVAL);
         }
 
@@ -1583,7 +1583,7 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
         return ERROR(-ret);
     }
 
-    migr_reg->flags = VFU_REG_FLAG_RW;
+    migr_reg->flags = VFU_REGION_FLAG_RW;
     migr_reg->size = sizeof(struct vfio_device_migration_info) + migration->size;
 
     vfu_ctx->migration = init_migration(migration, &ret);

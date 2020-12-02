@@ -68,7 +68,7 @@ vfu_pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
         cfg_addr = ~(reg_info[bar_index].size) + 1;
     }
 
-    if ((reg_info[bar_index].flags & VFU_REG_FLAG_MEM)) {
+    if ((reg_info[bar_index].flags & VFU_REGION_FLAG_MEM)) {
         mask = PCI_BASE_ADDRESS_MEM_MASK;
     } else {
         mask = PCI_BASE_ADDRESS_IO_MASK;
