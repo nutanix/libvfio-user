@@ -76,7 +76,8 @@ int main(int argc, char **argv)
         errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
-    vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[1], 0, NULL);
+    vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[1], 0, NULL,
+                                        VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }

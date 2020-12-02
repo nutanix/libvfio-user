@@ -238,17 +238,24 @@ typedef struct {
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
+typedef enum {
+    VFU_DEV_TYPE_PCI
+} vfu_dev_type_t;
+
 /**
  * Creates libvfio-user context.
+ *
  * @trans: transport type
  * @path: path to socket file.
  * @flags: context flag
  * @pvt: private data
+ * @dev_type: device type
+ *
  * @returns the vfu_ctx to be used or NULL on error. Sets errno.
  */
 vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path,
-               int flags, void *pvt);
+               int flags, void *pvt, vfu_dev_type_t dev_type);
 
 /**
  * Setup logging information.

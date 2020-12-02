@@ -411,7 +411,8 @@ int main(int argc, char *argv[])
     }
 
     server_data.vfu_ctx = vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind],
-                                                   0, &server_data);
+                                                   0, &server_data,
+                                                   VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }

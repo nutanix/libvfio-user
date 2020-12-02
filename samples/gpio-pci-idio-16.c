@@ -99,7 +99,8 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, NULL);
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, NULL,
+                             VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         if (errno == EINTR) {
             printf("interrupted\n");

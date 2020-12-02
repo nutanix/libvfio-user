@@ -1278,7 +1278,8 @@ vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
 }
 
 vfu_ctx_t *
-vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt)
+vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
+               vfu_dev_type_t dev_type)
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
@@ -1288,10 +1289,16 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt)
         return NULL;
     }
 
+    if (dev_type != VFU_DEV_TYPE_PCI) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
     if (vfu_ctx == NULL) {
         return NULL;
     }
+    vfu_ctx->dev_type = dev_type;
     vfu_ctx->trans = &sock_transport_ops;
 
     //FIXME: Validate arguments.
