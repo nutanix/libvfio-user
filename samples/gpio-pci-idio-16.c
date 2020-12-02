@@ -122,7 +122,7 @@ main(int argc, char *argv[])
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
-                           &bar2_access, VFU_REG_FLAG_RW, NULL, 0, NULL);
+                           &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, NULL);
     if (ret < 0) {
         fprintf(stderr, "failed to setup region\n");
         goto out;

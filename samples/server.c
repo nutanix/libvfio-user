@@ -429,7 +429,7 @@ int main(int argc, char *argv[])
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
-                           &bar0_access, VFU_REG_FLAG_RW, NULL, 0, NULL);
+                           &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, NULL);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
@@ -440,7 +440,7 @@ int main(int argc, char *argv[])
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            sysconf(_SC_PAGESIZE), &bar1_access,
-                           VFU_REG_FLAG_RW, mmap_areas, 2, map_area);
+                           VFU_REGION_FLAG_RW, mmap_areas, 2, map_area);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }

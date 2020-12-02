@@ -195,9 +195,9 @@ libvfio_user_run(PyObject *self, PyObject *args, PyObject *kwargs)
         if (_ri[i].perm != NULL) {
             for (j = 0; j < strlen(_ri[i].perm); j++) {
                 if (_ri[i].perm[j] == 'r') {
-                    flags |= VFU_REG_FLAG_READ;
+                    flags |= VFU_REGION_FLAG_READ;
                 } else if (_ri[i].perm[j] == 'w') {
-                    flags |= VFU_REG_FLAG_WRITE;
+                    flags |= VFU_REGION_FLAG_WRITE;
                 } else {
                     /* FIXME shouldn't print to stderr */
                     fprintf(stderr, "bad permission '%c'\n", _ri[i].perm[j]);

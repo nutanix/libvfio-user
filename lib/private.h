@@ -75,7 +75,7 @@ struct vfu_sparse_mmap_areas {
 typedef struct  {
 
     /*
-     * Region flags, see VFU_REG_FLAG_XXX above.
+     * Region flags, see VFU_REGION_FLAG_READ and friends.
      */
     uint32_t            flags;
 
@@ -93,7 +93,7 @@ typedef struct  {
 
     /*
      * Callback function that is called when the region is memory mapped.
-     * Required if VFU_REG_FLAG_MEM is set, otherwise ignored.
+     * Required if VFU_REGION_FLAG_MEM is set, otherwise ignored.
      */
     vfu_map_region_cb_t     *map;
     struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
