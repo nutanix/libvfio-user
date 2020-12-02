@@ -114,7 +114,8 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc, false);
+    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc, 
+                                   VFU_PCI_TYPE_CONVENTIONAL, 0);
     if (ret < 0) {
         fprintf(stderr, "failed to setup pci header\n");
         goto out;

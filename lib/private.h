@@ -130,6 +130,7 @@ struct vfu_ctx {
     vfu_irqs_t              *irqs;
     int                     ready;
     vfu_dev_type_t          dev_type;
+    vfu_pci_type_t          pci_type;
 };
 
 int

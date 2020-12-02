@@ -71,6 +71,10 @@ int main(int argc, char **argv)
 {
     int ret;
     pthread_t thread;
+    vfu_pci_hdr_id_t id = { 0 };
+    vfu_pci_hdr_ss_t ss = { 0 };
+    vfu_pci_hdr_cc_t cc = { { 0 } };
+
 
     if (argc != 2) {
         errx(EXIT_FAILURE, "missing vfio-user socket path");
@@ -86,6 +90,9 @@ int main(int argc, char **argv)
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup log");
     }
+
+    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc,
+                                   VFU_PCI_TYPE_CONVENTIONAL, 0);
 
     ret = pthread_create(&thread, NULL, null_drive, vfu_ctx);
     if (ret != 0) {
