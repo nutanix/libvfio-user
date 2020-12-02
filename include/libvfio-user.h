@@ -69,11 +69,6 @@ typedef struct {
 
 typedef struct vfu_ctx vfu_ctx_t;
 
-struct vfu_mmap_area {
-    uint64_t start;
-    uint64_t size;
-};
-
 /**
  * Prototype for memory access callback. The program MUST first map device
  * memory in its own virtual address space using vfu_mmap, do any additional work
@@ -222,7 +217,7 @@ typedef struct {
 typedef struct {
     size_t                      size;
     vfu_migration_callbacks_t   callbacks;
-    struct vfu_mmap_area        *mmap_areas;
+    struct iovec                *mmap_areas;
     uint32_t                    nr_mmap_areas;
 } vfu_migration_t;
 
@@ -351,7 +346,7 @@ enum {
  * @size: size of the region
  * @region_access: callback function to access region
  * @flags: region  flags
- * @mmap_areas: array of struct vfu_mmap_area
+ * @mmap_areas: array of memory mappable areas
  * @nr_mmap_areas: size of mmap_areas
  * @map: callback function to map region
  *
@@ -360,7 +355,7 @@ enum {
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
-                 struct vfu_mmap_area *mmap_areas, uint32_t nr_mmap_areas,
+                 struct iovec *mmap_areas, uint32_t nr_mmap_areas,
                  vfu_map_region_cb_t *map);
 
 /*
