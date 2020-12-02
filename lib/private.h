@@ -99,6 +99,12 @@ typedef struct  {
     struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
 } vfu_reg_info_t;
 
+struct pci_dev {
+    vfu_pci_type_t          type;
+    vfu_pci_config_space_t  *config_space;
+    struct caps             *caps;
+};
+
 struct vfu_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
@@ -109,9 +115,8 @@ struct vfu_ctx {
     vfu_log_fn_t            *log;
     size_t                  nr_regions;
     vfu_reg_info_t          *reg_info;
-    vfu_pci_config_space_t  *pci_config_space;
+    struct pci_dev          pci;
     struct transport_ops    *trans;
-    struct caps             *caps;
     uint64_t                flags;
     char                    *uuid;
     vfu_map_dma_cb_t        *map_dma;
@@ -130,7 +135,6 @@ struct vfu_ctx {
     vfu_irqs_t              *irqs;
     int                     ready;
     vfu_dev_type_t          dev_type;
-    vfu_pci_type_t          pci_type;
 };
 
 int

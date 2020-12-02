@@ -292,14 +292,14 @@ handle_pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
     count = MIN(pci_config_space_size(vfu_ctx), count);
     if (is_write) {
-        ret = cap_maybe_access(vfu_ctx, vfu_ctx->caps, buf, count, pos);
+        ret = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, pos);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
                     pos, pos + count);
             return ret;
         }
     } else {
-        memcpy(buf, vfu_ctx->pci_config_space->raw + pos, count);
+        memcpy(buf, vfu_ctx->pci.config_space->raw + pos, count);
     }
     return count;
 }
@@ -1111,9 +1111,9 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
     }
 
     // This maybe allocated by vfu_setup_pci_config_hdr().
-    if (vfu_ctx->pci_config_space == NULL) {
-        vfu_ctx->pci_config_space = calloc(1, cfg_reg->size);
-        if (vfu_ctx->pci_config_space == NULL) {
+    if (vfu_ctx->pci.config_space == NULL) {
+        vfu_ctx->pci.config_space = calloc(1, cfg_reg->size);
+        if (vfu_ctx->pci.config_space == NULL) {
             return -ENOMEM;
         }
     }
@@ -1121,7 +1121,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
     // Set type for region registers.
     for (i = 0; i < PCI_BARS_NR; i++) {
         if (!(vfu_ctx->reg_info[i].flags & VFU_REGION_FLAG_MEM)) {
-            vfu_ctx->pci_config_space->hdr.bars[i].io.region_type |= 0x1;
+            vfu_ctx->pci.config_space->hdr.bars[i].io.region_type |= 0x1;
         }
     }
 
@@ -1142,7 +1142,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
         size = sizeof(int) * max_ivs;
         vfu_ctx->irqs = calloc(1, sizeof(vfu_irqs_t) + size);
         if (vfu_ctx->irqs == NULL) {
-            // vfu_ctx->pci_config_space should be free'ed by vfu_destroy_ctx().
+            // vfu_ctx->pci.config_space should be free'ed by vfu_destroy_ctx().
             return  -ENOMEM;
         }
 
@@ -1157,13 +1157,13 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
 
         // Reflect on the config space whether INTX is available.
         if (vfu_ctx->irq_count[VFU_DEV_INTX_IRQ] != 0) {
-            vfu_ctx->pci_config_space->hdr.intr.ipin = 1; // INTA#
+            vfu_ctx->pci.config_space->hdr.intr.ipin = 1; // INTA#
         }
     }
 
-    if (vfu_ctx->caps != NULL) {
-        vfu_ctx->pci_config_space->hdr.sts.cl = 0x1;
-        vfu_ctx->pci_config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
+    if (vfu_ctx->pci.caps != NULL) {
+        vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
+        vfu_ctx->pci.config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
     }
     vfu_ctx->ready = 1;
 
@@ -1244,7 +1244,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     }
 
     free(vfu_ctx->uuid);
-    free(vfu_ctx->pci_config_space);
+    free(vfu_ctx->pci.config_space);
     if (vfu_ctx->trans->detach != NULL) {
         vfu_ctx->trans->detach(vfu_ctx);
     }
@@ -1253,7 +1253,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     }
     free_sparse_mmap_areas(vfu_ctx);
     free(vfu_ctx->reg_info);
-    free(vfu_ctx->caps);
+    free(vfu_ctx->pci.caps);
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
@@ -1383,12 +1383,12 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
      * TODO there no real reason why we shouldn't allow this, we should just
      * clean up and redo it.
      */
-    if (vfu_ctx->pci_config_space != NULL) {
+    if (vfu_ctx->pci.config_space != NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "PCI configuration space header already setup");
         return ERROR(EEXIST);
     }
 
-    switch (vfu_ctx->pci_type) {
+    switch (vfu_ctx->pci.type) {
     case VFU_PCI_TYPE_CONVENTIONAL:
     case VFU_PCI_TYPE_PCI_X_1:
         size = PCI_CFG_SPACE_SIZE;
@@ -1411,7 +1411,7 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
     config_space->hdr.id = id;
     config_space->hdr.ss = ss;
     config_space->hdr.cc = cc;
-    vfu_ctx->pci_config_space = config_space;
+    vfu_ctx->pci.config_space = config_space;
     vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
 
     return 0;
@@ -1424,7 +1424,7 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
 
     assert(vfu_ctx != NULL);
 
-    if (vfu_ctx->caps != NULL) {
+    if (vfu_ctx->pci.caps != NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "capabilities are already setup");
         return ERROR(EEXIST);
     }
@@ -1434,8 +1434,8 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
         return ERROR(EINVAL);
     }
 
-    vfu_ctx->caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
-    if (vfu_ctx->caps == NULL) {
+    vfu_ctx->pci.caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
+    if (vfu_ctx->pci.caps == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to create PCI capabilities: %s",
                strerror(ret));
         return ERROR(ret);
@@ -1606,7 +1606,7 @@ inline vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
-    return vfu_ctx->pci_config_space;
+    return vfu_ctx->pci.config_space;
 }
 
 /*
@@ -1616,7 +1616,7 @@ inline uint8_t *
 vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
-    return (uint8_t *)&vfu_ctx->pci_config_space->non_std;
+    return (uint8_t *)&vfu_ctx->pci.config_space->non_std;
 }
 
 inline vfu_reg_info_t *
