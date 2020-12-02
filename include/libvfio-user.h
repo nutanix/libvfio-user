@@ -133,14 +133,6 @@ typedef ssize_t (vfu_cap_access_t) (void *pvt, uint8_t id,
                                     char *buf, size_t count,
                                     loff_t offset, bool is_write);
 
-/* FIXME does it have to be packed as well? */
-typedef union {
-    struct msicap msi;
-    struct msixcap msix;
-    struct pmcap pm;
-    struct pxcap px;
-} vfu_cap_t;
-
 typedef enum {
     VFU_TRANS_SOCK,
     VFU_TRANS_MAX
@@ -285,6 +277,14 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
                          vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
                          vfu_pci_type_t pci_type,
                          int revision __attribute__((unused)));
+
+/* FIXME does it have to be packed as well? */
+typedef union {
+    struct msicap msi;
+    struct msixcap msix;
+    struct pmcap pm;
+    struct pxcap px;
+} vfu_cap_t;
 
 //TODO: Support variable size capabilities.
 /**
