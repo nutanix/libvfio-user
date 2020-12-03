@@ -305,7 +305,7 @@ vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi);
  */
 int
 vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, uint16_t cap_id, bool extended,
-                       void *data, size_t size);
+                       void *data);
 
 /**
  * Callback function that gets called when a capability is accessed.
@@ -334,6 +334,9 @@ typedef ssize_t (vfu_cap_access_cb_t) (void *pvt, uint8_t id,
  * and PCI_EXT_CAP_ID_VNDR), this can be used to add a capability where reads
  * and writes are delegated to a callback.
  *
+ * Note the size of the capability is derived either from the ID, or from an
+ * embedded length field for PCI_(EXT_)CAP_ID_VNDR.
+ *
  * @vfu_ctx: the libvfio-user context
  * @cap: capability ID to add
  * @extended: true if an extended capability (PCI_EXT_CAP_ID_*)
@@ -342,7 +345,7 @@ typedef ssize_t (vfu_cap_access_cb_t) (void *pvt, uint8_t id,
  */
 int
 vfu_pci_add_capability_cb(vfu_ctx_t *vfu_ctx, uint16_t cap_id, bool extended,
-                          size_t size, vfu_cap_access_cb_t cb, void *pvt);
+                          vfu_cap_access_cb_t cb, void *pvt);
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
