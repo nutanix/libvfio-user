@@ -120,6 +120,14 @@ After a couple of seconds the client will start live migration. The source
 server will exit and the destination server will start, watch the client
 terminal for destination server messages.
 
+
+Mailing List
+============
+
+libvfio-user development is discussed in libvfio-user-devel@nongnu.org.
+Subscribe here: https://lists.gnu.org/mailman/listinfo/libvfio-user-devel.
+
+
 History
 =======
 
