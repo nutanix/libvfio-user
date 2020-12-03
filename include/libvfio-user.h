@@ -100,9 +100,18 @@ vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
 
 /*
  * Returns a pointer to the standard part of the PCI configuration space.
+ * FIXME: spdk uses this to fiddle with the BARs
  */
 vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
+
+/**
+ * Returns the non-standard part of the PCI configuration space.
+ * @vfu_ctx: the libvfio-user context
+ * FIXME: do we need this?
+ */
+uint8_t *
+vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
 
 #define VFU_DMA_REGIONS  0x10
 
@@ -115,38 +124,10 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
  */
 typedef void (vfu_log_fn_t) (void *pvt, int level, const char *msg);
 
-/**
- * Callback function that gets called when a capability is accessed. The
- * callback is not called when the ID and next fields are accessed, these are
- * handled by the library.
- *
- * @pvt: private pointer
- * @id: capability ID being accessed
- * @buf: pointer to data being read or written
- * @count: number of bytes being read or written
- * @offset: offset within the capability
- * @is_write: whether the capability is read or written
- *
- * @returns the number of bytes read or written
- */
-typedef ssize_t (vfu_cap_access_t) (void *pvt, uint8_t id,
-                                    char *buf, size_t count,
-                                    loff_t offset, bool is_write);
-
-/* FIXME does it have to be packed as well? */
-typedef union {
-    struct msicap msi;
-    struct msixcap msix;
-    struct pmcap pm;
-    struct pxcap px;
-} vfu_cap_t;
-
 typedef enum {
     VFU_TRANS_SOCK,
     VFU_TRANS_MAX
 } vfu_trans_t;
-
-#define VFU_MAX_CAPS (PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF
 
 /*
  * FIXME the names of migration callback functions are probably far too long,
@@ -257,9 +238,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path,
 int
 vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
 
-//TODO: Check other PCI header registers suitable to be filled by device.
-//      Or should we pass whole vfu_pci_hdr_t to be filled by user.
-
 typedef enum {
     VFU_PCI_TYPE_CONVENTIONAL,
     VFU_PCI_TYPE_PCI_X_1,
@@ -268,33 +246,103 @@ typedef enum {
 } vfu_pci_type_t;
 
 /**
- * Setup PCI configuration space header data. This function must be called only
- * once per libvfio-user context.
+ * Initialize the context for a PCI device. Returns an initialized buffer for a
+ * type 0 PCI configuration space of the needed size.
+ *
+ * This buffer consists of the standard 64-byte PCI header and the remaining
+ * space depending on @pci_type, either PCI_CFG_SPACE_SIZE or
+ * PCI_CFG_SPACE_EXP_SIZE.
  *
  * @vfu_ctx: the libvfio-user context
- * @id: Device and vendor ID
- * @ss: Subsystem vendor and device ID
- * @cc: Class code
  * @pci_type: PCI type (convention PCI, PCI-X mode 1, PCI-X mode2, PCI-Express)
  * @revision: PCI/PCI-X/PCIe revision
- *
- * @returns 0 on success, -1 on failure and sets errno.
  */
-int
-vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
-                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         vfu_pci_type_t pci_type,
-                         int revision __attribute__((unused)));
+vfu_pci_hdr_t *
+vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type, int revision UNUSED);
 
-//TODO: Support variable size capabilities.
+/*
+ * FIXME
+ */
+void
+vfu_pci_set_id(vfu_ctx_t *vfu_ctx, uint16_t vid, uint16_t did,
+               uint16_t ssid, uint16_t ssvid);
+
+/*
+ * FIXME
+ */
+void
+vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi);
+
+// FIXME: what else do we need? multi-function flag in "header type" ? rid?
+
 /**
- * Setup PCI capabilities.
+ * Add a PCI capability to PCI config space.
+ *
+ * Certain standard capabilities are handled entirely within the library:
+ *
+ * PCI_CAP_ID_EXP (pxcap)
+ * PCI_CAP_ID_MSIX (msixcap)
+ * PCI_CAP_ID_PM (pmcap)
+ *
+ * However, they must still be explicitly initialized and added here.
+ *
+ * FIXME: are we really making the user init these too? why? Is there a better
+ * API?
+ *
+ * The contents of @data is copied in. It must start with either a struct
+ * pci_cap or a struct pci_extcap, with the ID field set (the 'next' field is
+ * ignored).  If the capability is not one of the handled ones above (e.g.
+ * PCI_CAP_ID_VNDR), the library will allow all reads and disallow all writes
+ * for the capability from the client.
+ *
+ * Note the size of the capability is derived either from the ID, or from an
+ * embedded length field for PCI_(EXT_)CAP_ID_VNDR.
+ *
  * @vfu_ctx: the libvfio-user context
- * @caps: array of (vfu_cap_t *)
- * *nr_caps: number of elements in @caps
+ * @cap: capability ID to add
+ * @extended: true if an extended capability (PCI_EXT_CAP_ID_*)
+ * @data: capability data, not including the capability header
  */
 int
-vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
+vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, uint16_t cap_id, bool extended,
+                       void *data, size_t size);
+
+/**
+ * Callback function that gets called when a capability is accessed.
+ *
+ * @pvt: private pointer
+ * @id: capability ID being accessed
+ * @buf: pointer to data being read or written
+ * @count: number of bytes being read or written
+ * @offset: offset within the capability (including the header)
+ * @is_write: whether the capability is read or written
+ *
+ * @returns the number of bytes read or written
+ *
+ * FIXME: cb would have to identify each cap by "pvt" - is that OK?
+ * FIXME: this can already be handled by region callback - do we need this
+ * too?
+ */
+typedef ssize_t (vfu_cap_access_cb_t) (void *pvt, uint8_t id,
+                                       char *buf, size_t count,
+                                       loff_t offset, bool is_write);
+
+/**
+ * Add a PCI capability to PCI config space with a callback.
+ *
+ * For capabilities not handled by the library, (in particular PCI_CAP_ID_VNDR
+ * and PCI_EXT_CAP_ID_VNDR), this can be used to add a capability where reads
+ * and writes are delegated to a callback.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @cap: capability ID to add
+ * @extended: true if an extended capability (PCI_EXT_CAP_ID_*)
+ * @cb: callback
+ * @pvt: private data for callback
+ */
+int
+vfu_pci_add_capability_cb(vfu_ctx_t *vfu_ctx, uint16_t cap_id, bool extended,
+                          size_t size, vfu_cap_access_cb_t cb, void *pvt);
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
@@ -599,13 +647,6 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
  * Advanced stuff.
  */
 
-/**
- * Returns the non-standard part of the PCI configuration space.
- * @vfu_ctx: the libvfio-user context
- */
-uint8_t *
-vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
-
 /*
  * Attempts to attach to the transport. LIBVFIO_USER_FLAG_ATTACH_NB must be set
  * when creating the context. Returns 0 on success and -1 on error. If errno is
@@ -620,6 +661,10 @@ vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx);
 /*
  * FIXME need to make sure that there can be at most one capability with a given
  * ID, otherwise this function will return the first one with this ID.
+ *
+ * FIXME do we want this? It's only used right now to get MSI-X enabled by
+ * spdk... specific API?
+ *
  * @vfu_ctx: the libvfio-user context
  * @id: capability id
  */

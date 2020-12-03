@@ -177,6 +177,7 @@ typedef union {
 } __attribute__ ((packed)) vfu_pci_hdr_t;
 _Static_assert(sizeof(vfu_pci_hdr_t) == 0x40, "bad PCI header size");
 
+/* FIXME: get rid of these, they don't seem to have much value? */
 typedef struct {
     uint8_t raw[PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF];
 } __attribute__ ((packed)) vfu_pci_non_std_config_space_t;
