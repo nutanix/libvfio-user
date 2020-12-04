@@ -128,7 +128,7 @@ struct vfu_ctx {
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];
     vfu_irqs_t              *irqs;
-    int                     ready;
+    bool                    ready;
     vfu_dev_type_t          dev_type;
     vfu_pci_type_t          pci_type;
 };
