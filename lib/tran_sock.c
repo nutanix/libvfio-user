@@ -107,7 +107,7 @@ init_sock(vfu_ctx_t *vfu_ctx)
     /* start listening business */
     ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
     if (ret < 0) {
-	    ret = errno;
+	    ret = -errno;
         goto out;
     }
 
