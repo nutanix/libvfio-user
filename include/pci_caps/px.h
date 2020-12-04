@@ -30,6 +30,10 @@
  *
  */
 
+/*
+ * PCI Express capability
+ */
+
 #ifndef LIB_VFIO_USER_PCI_CAPS_PX_H
 #define LIB_VFIO_USER_PCI_CAPS_PX_H
 
