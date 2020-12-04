@@ -92,12 +92,45 @@ Finally build your program and link with `libvfio-user.so`.
 Example
 =======
 
-The [samples directory](./samples/) contains a client/server implementation. The
-server implements a device that can be programmed to trigger interrupts (INTx)
-to the client. This is done by writing the desired time in seconds since Epoch.
-The server then trigger an eventfd-based IRQ and then a message-based one (in
-order to demonstrate how it's done when passing of file descriptors isn't
-possible/desirable).
+The [samples directory](./samples/) contains various libvfio-user samples.
+
+
+lspci
+-----
+
+[lspci](./samples/lspci.c) implements an example of how to dump the PCI header
+of a libvfio-user device and examine it with lspci(8):
+
+    # lspci -vv -F <(build/dbg/samples/lspci)
+    00:00.0 Non-VGA unclassified device: Device 0000:0000
+            Control: I/O- Mem- BusMaster- SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
+            Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
+            Region 0: I/O ports at <unassigned> [disabled]
+            Region 1: I/O ports at <unassigned> [disabled]
+            Region 2: I/O ports at <unassigned> [disabled]
+            Region 3: I/O ports at <unassigned> [disabled]
+            Region 4: I/O ports at <unassigned> [disabled]
+            Region 5: I/O ports at <unassigned> [disabled]
+            Capabilities: [40] Power Management version 0
+                    Flags: PMEClk- DSI- D1- D2- AuxCurrent=0mA PME(D0-,D1-,D2-,D3hot-,D3cold-)
+                    Status: D0 NoSoftRst+ PME-Enable- DSel=0 DScale=0 PME-
+
+The above sample implements a very simple PCI device that supports the Power
+Management PCI capability. The sample can be trivially modified to change the
+PCI configuration space header and add more PCI capabilities.
+
+
+Client/Server Implementation
+----------------------------
+
+[Client](./samples/client.c)/[server](./samples/server.c) implements a basic
+client/server model were basic tasks are performed.
+
+The server implements a device that can be programmed to trigger interrupts
+(INTx) to the client. This is done by writing the desired time in seconds since
+Epoch.  The server then trigger an eventfd-based IRQ and then a message-based
+one (in order to demonstrate how it's done when passing of file descriptors
+isn't possible/desirable).
 
 The client excercises all commands in the vfio-user protocol, and then proceeds
 to perform live migration. The client spawns the destination server (this would
