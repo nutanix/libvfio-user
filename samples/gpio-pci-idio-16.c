@@ -128,6 +128,11 @@ main(int argc, char *argv[])
         goto out;
     }
 
+    ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup irq counts");
+    }
+
     ret = vfu_ctx_drive(vfu_ctx);
     if (ret != 0) {
         if (ret != -ENOTCONN && ret != -EINTR) {
