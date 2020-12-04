@@ -34,6 +34,7 @@
 #define LIB_VFIO_USER_CAP_H
 
 #include "libvfio-user.h"
+#include "pci_caps/common.h"
 
 struct caps;
 
@@ -56,6 +57,11 @@ cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
 
 uint8_t *
 cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id);
+
+int
+extended_caps_create(vfu_ctx_t *vfu_ctx, struct pcie_extended_cap **caps,
+                     size_t count);
+
 
 #endif /* LIB_VFIO_USER_CAP_H */
 

@@ -38,6 +38,7 @@
 #include <assert.h>
 #include <alloca.h>
 #include <string.h>
+#include <linux/pci_regs.h>
 
 #include "dma.h"
 #include "libvfio-user.h"
@@ -325,6 +326,76 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     assert_int_equal(0, process_request(&vfu_ctx));
 }
 
+static void
+test_extended_caps(void **state __attribute__((unused)))
+{
+    char config_space[PCI_CFG_SPACE_EXP_SIZE] = {0};
+    vfu_ctx_t vfu_ctx = {
+        .pci.config_space = (vfu_pci_config_space_t*)config_space
+    };
+    size_t vsec1_size = 0x10, vsec2_size = 0x20;
+    size_t vsec1_data_size, vsec2_data_size;
+    struct pcie_extended_cap *vsec1 = alloca(vsec1_size);
+    struct pcie_extended_cap *vsec2 = alloca(vsec2_size);
+    struct pcie_extended_cap *caps[] = {vsec1, vsec2};
+    uint32_t *header;
+
+    vsec1->hdr.cap_id = PCI_EXT_CAP_ID_VNDR;
+    vsec1->hdr.cap_vers_num = 0x1;
+    vsec1->hdr.next_cap_off = 0xab; /* should be overwritten */
+    vsec1->vsec.hdr.id = 0x2;
+    vsec1->vsec.hdr.rev = 0x3;
+    vsec1->vsec.hdr.len = vsec1_size;
+    vsec1_data_size = vsec1->vsec.hdr.len - offsetof(struct pcie_extended_cap,
+                                                     vsec.data);
+    memset((uint8_t*)vsec1 + offsetof(struct pcie_extended_cap, vsec.data),
+           0xab, vsec1_data_size);
+
+    vsec2->hdr.cap_id = PCI_EXT_CAP_ID_VNDR,
+    vsec1->hdr.cap_vers_num = 0x4;
+    vsec1->hdr.next_cap_off = 0xcd; /* should be overwritten */
+    vsec2->vsec.hdr.id = 0x5;
+    vsec2->vsec.hdr.rev = 0x6;
+    vsec2->vsec.hdr.len = vsec2_size;
+    vsec2_data_size = vsec2->vsec.hdr.len - offsetof(struct pcie_extended_cap,
+                                                     vsec.data);
+
+    memset((uint8_t*)vsec2 + offsetof(struct pcie_extended_cap, vsec.data),
+           0xcd, vsec2_data_size);
+
+
+    assert_int_equal(0, extended_caps_create(&vfu_ctx, caps, ARRAY_SIZE(caps)));
+
+    /* check 1st capability */
+    header = (uint32_t*)(config_space + PCI_CFG_SPACE_SIZE);
+    assert_int_equal(PCI_EXT_CAP_ID_VNDR, PCI_EXT_CAP_ID(*header));
+    assert_int_equal(vsec1->hdr.cap_vers_num, PCI_EXT_CAP_VER(*header));
+    assert_int_equal(PCI_CFG_SPACE_SIZE + vsec1->vsec.hdr.len,
+                     PCI_EXT_CAP_NEXT(*header));
+    header++;
+    assert_int_equal(vsec1->vsec.hdr.id, PCI_VNDR_HEADER_ID(*header));
+    assert_int_equal(vsec1->vsec.hdr.rev, PCI_VNDR_HEADER_REV(*header));
+    assert_int_equal(vsec1->vsec.hdr.len, PCI_VNDR_HEADER_LEN(*header));
+    assert_int_equal(0, memcmp(vsec1->vsec.data, header + 1, vsec1_data_size));
+
+    /* check 2nd capability */
+    header--;
+    header = (uint32_t*)(config_space + PCI_EXT_CAP_NEXT(*header));
+    assert_int_equal(PCI_EXT_CAP_ID_VNDR, PCI_EXT_CAP_ID(*header));
+    assert_int_equal(vsec2->hdr.cap_vers_num, PCI_EXT_CAP_VER(*header));
+    assert_int_equal(0, PCI_EXT_CAP_NEXT(*header));
+    header++;
+    assert_int_equal(vsec2->vsec.hdr.id, PCI_VNDR_HEADER_ID(*header));
+    assert_int_equal(vsec2->vsec.hdr.rev, PCI_VNDR_HEADER_REV(*header));
+    assert_int_equal(vsec2->vsec.hdr.len, PCI_VNDR_HEADER_LEN(*header));
+    assert_int_equal(0, memcmp(vsec2->vsec.data, header + 1, vsec2_data_size));
+
+    /*
+     * FIXME check that configuration space before and after the capabilities
+     * hasn't been modified.
+     */
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -348,6 +419,7 @@ int main(void)
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_no_fd, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
+        cmocka_unit_test_setup(test_extended_caps, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

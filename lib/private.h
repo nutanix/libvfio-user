@@ -103,6 +103,7 @@ struct pci_dev {
     vfu_pci_type_t          type;
     vfu_pci_config_space_t  *config_space;
     struct caps             *caps;
+    struct extended_caps    *extended_caps;
 };
 
 struct vfu_ctx {
