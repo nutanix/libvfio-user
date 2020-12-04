@@ -1072,8 +1072,8 @@ process_request(vfu_ctx_t *vfu_ctx)
     return ret;
 }
 
-static int
-prepare_ctx(vfu_ctx_t *vfu_ctx)
+int
+vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 {
     vfu_reg_info_t *cfg_reg;
     const vfu_reg_info_t zero_reg = { 0 };
@@ -1097,7 +1097,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
                 vfu_log(vfu_ctx, LOG_ERR, "failed to attach: %s",
                        strerror(-err));
             }
-            return err;
+            return ERROR(err);
         }
     }
 
@@ -1114,7 +1114,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->pci.config_space == NULL) {
         vfu_ctx->pci.config_space = calloc(1, cfg_reg->size);
         if (vfu_ctx->pci.config_space == NULL) {
-            return -ENOMEM;
+            return ERROR(ENOMEM);
         }
     }
 
@@ -1143,7 +1143,7 @@ prepare_ctx(vfu_ctx_t *vfu_ctx)
         vfu_ctx->irqs = calloc(1, sizeof(vfu_irqs_t) + size);
         if (vfu_ctx->irqs == NULL) {
             // vfu_ctx->pci.config_space should be free'ed by vfu_destroy_ctx().
-            return  -ENOMEM;
+            return ERROR(ENOMEM);
         }
 
         // Set context irq information.
@@ -1179,9 +1179,9 @@ vfu_ctx_drive(vfu_ctx_t *vfu_ctx)
         return ERROR(EINVAL);
     }
 
-    err = prepare_ctx(vfu_ctx);
-    if (err < 0) {
-        return ERROR(-err);
+    err = vfu_realize_ctx(vfu_ctx);
+    if (err == -1) {
+        return -1;
     }
 
     do {
@@ -1271,9 +1271,9 @@ vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
         return ERROR(EINVAL);
     }
 
-    err = prepare_ctx(vfu_ctx);
-    if (err < 0) {
-        return ERROR(-err);
+    err = vfu_realize_ctx(vfu_ctx);
+    if (err == -1) {
+        return err;
     }
 
     return vfu_ctx->trans->attach(vfu_ctx);

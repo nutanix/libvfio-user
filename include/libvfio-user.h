@@ -62,7 +62,7 @@ typedef uint64_t dma_addr_t;
 
 typedef struct {
     dma_addr_t dma_addr;
-    int region;
+    int region; /* TODO replace region and length with struct iovec */
     int length;
     uint64_t offset;
 } dma_sg_t;
@@ -616,6 +616,18 @@ vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
  */
 int
 vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx);
+
+/*
+ * Finalizes the device making it ready for vfu_ctx_drive or vfu_ctx_try_attach.
+ * This function is optional as it is automatically called by vfu_ctx_drive or
+ * vfu_ctx_try_attach. Calling it multiple times is idempotent.
+ *
+ * @vfu_ctx: the libvfio-user context
+ *
+ * @returns: 0 on success, -1 on error. Sets errno.
+ */
+int
+vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
  * FIXME need to make sure that there can be at most one capability with a given
