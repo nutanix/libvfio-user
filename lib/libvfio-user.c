@@ -1396,6 +1396,7 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
         return ERROR(EEXIST);
     }
 
+    vfu_ctx->pci.type = pci_type;
     switch (vfu_ctx->pci.type) {
     case VFU_PCI_TYPE_CONVENTIONAL:
     case VFU_PCI_TYPE_PCI_X_1:
