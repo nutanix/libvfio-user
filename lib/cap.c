@@ -40,6 +40,13 @@
 #include "libvfio-user.h"
 #include "cap.h"
 
+/*
+ * PCI capabilities are stored after the the PCI configuration space header
+ * (vfu_ctx->config_space), as the would in an actual PCI device. We also
+ * maintain an array that points to the beginning and end of each capability
+ * (struct caps) to easily tell which capbility is accessed and whether the
+ * access is valid, e.g. it doesn't span multiple capabilities.
+ */
 struct cap {
     uint8_t start;
     uint8_t end;
@@ -451,7 +458,7 @@ caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
 
         size = cap_handlers[id].size;
         if (size == 0) {
-            *err = EINVAL;
+            *err = ENOTSUP;
             goto err_out;
         }
 
@@ -465,8 +472,8 @@ caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
         next += size;
         assert(next % 4 == 0); /* FIXME */
 
-        vfu_log(vfu_ctx, LOG_DEBUG, "initialized capability %s %#x-%#x\n",
-               cap_handlers[id].name, caps->caps[i].start, caps->caps[i].end);
+        vfu_log(vfu_ctx, LOG_DEBUG, "initialized PCI capability %s %#x-%#x",
+                cap_handlers[id].name, caps->caps[i].start, caps->caps[i].end);
     }
     caps->nr_caps = nr_caps;
 
