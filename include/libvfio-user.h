@@ -296,6 +296,11 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
 int
 vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 
+int
+vfu_pcie_setup_extended_caps(vfu_ctx_t *vfu_ctx,
+                             struct pcie_extended_cap **caps,
+                             size_t count);
+
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
 #define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?

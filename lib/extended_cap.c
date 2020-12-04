@@ -28,57 +28,72 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_PCI_CAPS_COMMON_H
-#define LIB_VFIO_USER_PCI_CAPS_COMMON_H
-
-#include <stddef.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct cap_hdr {
-    uint8_t id;
-    uint8_t next;
-} __attribute__((packed));
-_Static_assert(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
-_Static_assert(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
-_Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
-
-/*
- * PCI Express extended capability header.
- */
-struct pcie_extended_cap_hdr {
-    unsigned int cap_id:16;
-    unsigned int cap_vers_num:4;
-    unsigned int next_cap_off:12;
-} __attribute__((packed));
-
-/* PCI Express vendor-specific capability header */
-struct pcie_cap_vs_hdr {
-    unsigned int id:16;
-    unsigned int rev:4;
-    unsigned int len:12;
-} __attribute__((packed));
-
-/* PCI Express vendor-specific capability */
-struct pcie_cap_vsec {
-    struct pcie_cap_vs_hdr hdr;
-    uint8_t                data[];
-} __attribute__((packed));
-
-/* PCI Express capability */
-struct pcie_extended_cap {
-    struct pcie_extended_cap_hdr hdr;
-    union {
-        struct pcie_cap_vsec vsec;
-    };
-} __attribute__((packed)) __attribute__((aligned (4)));
-
-#ifdef __cplusplus
+static bool
+cap_is_valid(uint16_t id)
+{
+    return id >= PCI_EXT_CAP_ID_ERR && id <= PCI_EXT_CAP_ID_MAX;
 }
-#endif
 
-#endif /* LIB_VFIO_USER_PCI_CAPS_COMMON_H */
+static const struct cap_handler {
+    char *name;
+    uint16_t size;
+    cap_access *fn;
+} cap_handlers[PCI_EXT_CAP_ID_MAX + 1] = {
+    [PCI_EXT_CAP_ID_VNDR] = {"Vendor-Specific", 0, NULL},
+};
+
+int
+extended_caps_create(vfu_ctx_t *vfu_ctx, struct pcie_extended_cap **caps,
+                     size_t count) {
+
+    vfu_pci_config_space_t *config_space;
+    int i;
+    struct pcie_extended_cap_hdr *prev, *cur;
+    int ret = 0;
+    size_t prev_size;
+
+	assert(vfu_ctx != NULL);
+    assert(caps != NULL);
+    assert(count > 0);
+
+    config_space = vfu_pci_get_config_space(vfu_ctx);
+    for (i = 0, prev = NULL; i < count; i++) {
+
+        size_t size;
+
+        if (!cap_is_valid(caps[i]->hdr.id)) {
+            return -EINVAL;
+        }
+
+        if (caps[i]->hdr.id == PCI_EXT_CAP_ID_VNDR) {
+            size = caps[i]->vsec.hdr.len;
+        } else if (cap_handler[caps[i]->hdr.id].size == 0) {
+            return -ENOTSUP;
+        } else {
+            size = cap_handler[caps[i]->hdr.id].size;
+        }
+
+        if (prev == NULL) {
+            cur = config_space->extended;
+        } else {
+            cur = ((uint16_t*)prev) + prev_size;
+        }
+
+        memcpy(cur, cap[i], size);
+        cur->next_cap_off = 0;
+
+        if (prev != NULL) {
+            prev->next_cap_off = cur - config_space->extended;
+        }
+
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "initialized PCI extended capability %s %#x-%#x\n",
+                cap_handlers[id].name, cur - prev, cur - prev + size - 1);
+
+        prev = cur;
+        prev_size = size;            
+    }
+    return 0;
+}
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

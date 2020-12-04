@@ -1445,6 +1445,37 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
     return 0;
 }
 
+int
+vfu_pcie_setup_extended_caps(vfu_ctx_t *vfu_ctx,
+                             struct pcie_extended_cap **caps,
+                             size_t count)
+{
+    int ret;
+
+    assert(vfu_ctx != NULL);
+
+    if (vfu_ctx->dev_type != VFU_DEV_TYPE_PCI ||
+        (vfu_ctx->pci.type != VFU_PCI_TYPE_PCI_X_2 &&
+         vfu_ctx->pci.type != VFU_PCI_TYPE_EXPRESS)) {
+        vfu_log(vfu_ctx, LOG_ERR, "not a PCI-X 2.0 or PCI Express device");
+        return ERROR(EINVAL);
+    }
+
+    if (count == 0) {
+        return 0;
+    }
+
+    assert(caps != NULL);
+
+    ret = extended_caps_create(vfu_ctx, caps, count);
+    if (ret < 0) {
+        return ERROR(-ret);
+    }
+
+    return 0;
+}
+
+
 static int
 copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
                        struct iovec *mmap_areas, uint32_t nr_mmap_areas)

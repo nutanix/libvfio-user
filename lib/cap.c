@@ -477,4 +477,79 @@ err_out:
     return NULL;
 }
 
+static bool
+extended_cap_is_valid(uint16_t id)
+{
+    return id >= PCI_EXT_CAP_ID_ERR && id <= PCI_EXT_CAP_ID_MAX;
+}
+
+static const struct extended_cap_handler {
+    char *name;
+    uint16_t size;
+    cap_access *fn;
+} extended_cap_handlers[PCI_EXT_CAP_ID_MAX + 1] = {
+    [PCI_EXT_CAP_ID_VNDR] = {"Vendor-Specific", 0, NULL},
+};
+
+int
+extended_caps_create(vfu_ctx_t *vfu_ctx, struct pcie_extended_cap **caps,
+                     size_t count) {
+
+    vfu_pci_config_space_t *config_space;
+    size_t i, prev_size;
+    struct pcie_extended_cap_hdr *prev, *cur;
+
+    assert(vfu_ctx != NULL);
+    assert(caps != NULL);
+    assert(count > 0);
+
+    config_space = vfu_pci_get_config_space(vfu_ctx);
+    for (i = 0, prev = NULL; i < count; i++) {
+
+        size_t size;
+
+        if (!extended_cap_is_valid(caps[i]->hdr.cap_id)) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad extended capability ID %#x",
+                    caps[i]->hdr.cap_id);
+            return -EINVAL;
+        }
+
+        if (caps[i]->hdr.cap_id == PCI_EXT_CAP_ID_VNDR) {
+            size = caps[i]->vsec.hdr.len;
+        } else if (extended_cap_handlers[caps[i]->hdr.cap_id].size == 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad unsupported capability %#x",
+                    caps[i]->hdr.cap_id);
+            return -ENOTSUP;
+        } else {
+            size = extended_cap_handlers[caps[i]->hdr.cap_id].size;
+        }
+
+        /* FIXME need to check alignment */
+
+        if (prev == NULL) {
+            cur = (struct pcie_extended_cap_hdr*)config_space->extended;
+        } else {
+            cur = (struct pcie_extended_cap_hdr*)((uint8_t*)prev + prev_size);
+            prev->next_cap_off = (uint8_t*)cur - config_space->extended + PCI_CFG_SPACE_SIZE;
+        }
+
+        if ((size_t)((uint8_t*)cur - config_space->extended) + size >= PCI_CFG_SPACE_EXP_SIZE) {
+            vfu_log(vfu_ctx, LOG_ERR, "too many extended capabilities");
+            return -E2BIG;
+        }
+
+        memcpy(cur, caps[i], size);
+        cur->next_cap_off = 0;
+
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "initialized PCI extended capability %s %#x-%#x\n",
+                extended_cap_handlers[caps[i]->hdr.cap_id].name, cur - prev,
+                cur - prev + size - 1);
+
+        prev = cur;
+        prev_size = size;
+    }
+    return 0;
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
