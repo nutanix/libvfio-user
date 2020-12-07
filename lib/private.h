@@ -117,8 +117,6 @@ struct vfu_ctx {
     vfu_map_dma_cb_t        *map_dma;
     vfu_unmap_dma_cb_t      *unmap_dma;
 
-    int                     sock_flags;
-
     int                     client_max_fds;
 
     vfu_reg_info_t          *migr_reg;
