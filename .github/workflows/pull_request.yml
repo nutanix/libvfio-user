@@ -4,15 +4,16 @@ jobs:
   ubuntu-20:
     runs-on: ubuntu-20.04
     steps:
+      - uses: actions/checkout@v2
       - name: pre-push
         run: |
           sudo apt-get -y install libjson-c-dev libcmocka-dev
-          make pre-push
-  ubuntu-16:
-    runs-on: ubuntu-16.04
+          make pre-push VERBOSE=1
+  ubuntu-18:
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: pre-push
         run: |
           sudo apt-get -y install libjson-c-dev libcmocka-dev
-          make pre-push
+          make pre-push VERBOSE=1
