@@ -1,0 +1,17 @@
+name: pull_request
+on: pull_request
+jobs:
+  ubuntu-20.04:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: pre-push
+        run: |
+          sudo apt-get -y install libjson-c-dev libcmocka-dev
+          make pre-push
+  ubuntu-16.04:
+    runs-on: ubuntu-16.04
+    steps:
+      - name: pre-push
+        run: |
+          sudo apt-get -y install libjson-c-dev libcmocka-dev
+          make pre-push
