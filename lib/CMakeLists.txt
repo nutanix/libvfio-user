@@ -30,6 +30,13 @@
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 
+#
+# FIXME: we're not updating this yet, so it has no meaning.
+#
+set(LIBMAJOR 0)
+set(LIBMINOR 0)
+set(LIBPATCH 1)
+
 set(LIBOBJS
     $<TARGET_OBJECTS:cap>
     $<TARGET_OBJECTS:dma>
@@ -41,14 +48,21 @@ set(LIBOBJS
 
 add_library(vfio-user-shared SHARED ${LIBOBJS})
 target_link_libraries(vfio-user-shared json-c pthread)
-set_target_properties(vfio-user-shared PROPERTIES LINKER_LANGUAGE C)
-set_target_properties(vfio-user-shared PROPERTIES OUTPUT_NAME vfio-user
+set_target_properties(vfio-user-shared PROPERTIES
+                      LINKER_LANGUAGE C)
+set_target_properties(vfio-user-shared PROPERTIES
+                      OUTPUT_NAME vfio-user
                       CLEAN_DIRECT_OUTPUT 1)
+set_target_properties(vfio-user-shared PROPERTIES
+                      SOVERSION ${LIBMAJOR}
+                      VERSION ${LIBMAJOR}.${LIBMINOR}.${LIBPATCH})
 
 add_library(vfio-user-static STATIC ${LIBOBJS})
 target_link_libraries(vfio-user-static json-c pthread)
-set_target_properties(vfio-user-static PROPERTIES LINKER_LANGUAGE C)
-set_target_properties(vfio-user-static PROPERTIES OUTPUT_NAME vfio-user
+set_target_properties(vfio-user-static PROPERTIES
+                      LINKER_LANGUAGE C)
+set_target_properties(vfio-user-static PROPERTIES
+                      OUTPUT_NAME vfio-user
                       CLEAN_DIRECT_OUTPUT 1)
 
 set(UT_CFLAGS "-O0 -ggdb --coverage")
