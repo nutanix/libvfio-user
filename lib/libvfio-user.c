@@ -1088,7 +1088,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     uint32_t max_ivs = 0, i;
     size_t size;
 
-    if (vfu_ctx->ready) {
+    if (vfu_ctx->realized) {
         return 0;
     }
 
@@ -1156,7 +1156,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
         vfu_ctx->pci.config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
     }
-    vfu_ctx->ready = true;
+    vfu_ctx->realized = true;
 
     return 0;
 }
@@ -1166,13 +1166,8 @@ vfu_ctx_drive(vfu_ctx_t *vfu_ctx)
 {
     int err;
 
-    if (vfu_ctx == NULL) {
+    if (vfu_ctx == NULL || !vfu_ctx->realized) {
         return ERROR(EINVAL);
-    }
-
-    err = vfu_realize_ctx(vfu_ctx);
-    if (err == -1) {
-        return -1;
     }
 
     do {
@@ -1191,7 +1186,9 @@ vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
         return -ENOTSUP;
     }
 
-    assert(vfu_ctx->ready);
+    if (!vfu_ctx->realized) {
+        return ERROR(EINVAL);
+    }
     err = process_request(vfu_ctx);
 
     return err >= 0 ? 0 : err;

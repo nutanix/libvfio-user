@@ -133,6 +133,11 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup irq counts");
     }
 
+    ret = vfu_realize_ctx(vfu_ctx);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to realize device");
+    }
+
     ret = vfu_attach_ctx(vfu_ctx);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to attach device");

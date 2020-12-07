@@ -62,6 +62,11 @@ static void* null_drive(void *arg)
         fprintf(stderr, "failed to enable cancel type: %s\n", strerror(ret));
         return NULL;
     }
+    ret = vfu_realize_ctx(vfu_ctx);
+    if (ret < 0) {
+        fprintf(stderr, "failed to realize device\n");
+        return NULL;
+    }
     ret = vfu_attach_ctx(vfu_ctx);
     if (ret < 0) {
         fprintf(stderr, "failed to attach device\n");

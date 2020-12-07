@@ -606,6 +606,16 @@ uint8_t *
 vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
 
 /*
+ * Finalizes the device making it ready for vfu_attach_ctx(). This function is
+ * mandatory to be called before vfu_attach_ctx().
+ * @vfu_ctx: the libvfio-user context
+ *
+ * @returns: 0 on success, -1 on error. Sets errno.
+ */
+int
+vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
+
+/*
  * Attempts to attach to the transport. Attach is mandatory before
  * vfu_ctx_drive() or vfu_ctx_poll() and is non blocking if context is created
  * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
@@ -617,18 +627,6 @@ vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
  */
 int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
-
-/*
- * Finalizes the device making it ready for vfu_attach_ctx().
- * This function is optional as it is automatically called by vfu_ctx_drive or
- * vfu_attach_ctx. Calling it multiple times is idempotent.
- *
- * @vfu_ctx: the libvfio-user context
- *
- * @returns: 0 on success, -1 on error. Sets errno.
- */
-int
-vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
  * FIXME need to make sure that there can be at most one capability with a given
