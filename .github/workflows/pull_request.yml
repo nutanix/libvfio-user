@@ -11,6 +11,7 @@ jobs:
   ubuntu-16:
     runs-on: ubuntu-16.04
     steps:
+      - uses: actions/checkout@v2
       - name: pre-push
         run: |
           sudo apt-get -y install libjson-c-dev libcmocka-dev
