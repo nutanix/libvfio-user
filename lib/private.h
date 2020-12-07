@@ -119,8 +119,6 @@ struct vfu_ctx {
 
     /* TODO there should be a void * variable to store transport-specific stuff */
     /* VFU_TRANS_SOCK */
-    int                     sock_flags;
-
     int                     client_max_fds;
 
     vfu_reg_info_t          *migr_reg;

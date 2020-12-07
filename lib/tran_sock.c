@@ -94,9 +94,6 @@ init_sock(vfu_ctx_t *vfu_ctx)
             ret = -errno;
             goto out;
         }
-        vfu_ctx->sock_flags = MSG_DONTWAIT | MSG_WAITALL;
-    } else {
-        vfu_ctx->sock_flags = 0;
     }
 
     ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
@@ -653,7 +650,7 @@ static int
 get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                  int *fds, size_t *nr_fds)
 {
-    int ret;
+    int ret, sock_flags = 0;
     struct iovec iov = {.iov_base = hdr, .iov_len = sizeof *hdr};
     struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
     struct cmsghdr *cmsg;
@@ -668,7 +665,10 @@ get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    ret = recvmsg(vfu_ctx->conn_fd, &msg, vfu_ctx->sock_flags);
+    if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+        sock_flags = MSG_DONTWAIT | MSG_WAITALL;
+    }
+    ret = recvmsg(vfu_ctx->conn_fd, &msg, sock_flags);
     if (ret == -1) {
         return -errno;
     }
