@@ -117,8 +117,6 @@ struct vfu_ctx {
     vfu_map_dma_cb_t        *map_dma;
     vfu_unmap_dma_cb_t      *unmap_dma;
 
-    /* TODO there should be a void * variable to store transport-specific stuff */
-    /* VFU_TRANS_SOCK */
     int                     client_max_fds;
 
     vfu_reg_info_t          *migr_reg;
