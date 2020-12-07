@@ -1085,28 +1085,11 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 {
     vfu_reg_info_t *cfg_reg;
     const vfu_reg_info_t zero_reg = { 0 };
-    int err;
     uint32_t max_ivs = 0, i;
     size_t size;
 
     if (vfu_ctx->ready) {
         return 0;
-    }
-
-    /*
-     * With LIBVFIO_USER_FLAG_ATTACH_NB caller is always expected to call
-     * vfu_ctx_try_attach().
-     */
-    if ((vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) == 0) {
-        vfu_ctx->conn_fd = vfu_ctx->trans->attach(vfu_ctx);
-        if (vfu_ctx->conn_fd < 0) {
-            err = vfu_ctx->conn_fd;
-            if (err != EINTR) {
-                vfu_log(vfu_ctx, LOG_ERR, "failed to attach: %s",
-                       strerror(-err));
-            }
-            return ERROR(err);
-        }
     }
 
     cfg_reg = &vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX];
@@ -1269,20 +1252,10 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 }
 
 int
-vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx)
+vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
 {
-    int err;
 
     assert(vfu_ctx != NULL);
-
-    if ((vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) == 0) {
-        return ERROR(EINVAL);
-    }
-
-    err = vfu_realize_ctx(vfu_ctx);
-    if (err == -1) {
-        return err;
-    }
 
     return vfu_ctx->trans->attach(vfu_ctx);
 }
