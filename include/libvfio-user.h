@@ -272,7 +272,7 @@ typedef union {
  * Setup PCI capabilities.
  * @vfu_ctx: the libvfio-user context
  * @caps: array of (vfu_cap_t *)
- * *nr_caps: number of elements in @caps
+ * @nr_caps: number of elements in @caps
  */
 int
 vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
@@ -600,9 +600,8 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
 
-/*
- * FIXME need to make sure that there can be at most one capability with a given
- * ID, otherwise this function will return the first one with this ID.
+/* FIXME this function is broken as the can be multiples capabilities with the
+ * same ID, e.g. the vendor-specific capability.
  * @vfu_ctx: the libvfio-user context
  * @id: capability id
  */
