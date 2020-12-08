@@ -115,24 +115,6 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
  */
 typedef void (vfu_log_fn_t) (void *pvt, int level, const char *msg);
 
-/**
- * Callback function that gets called when a capability is accessed. The
- * callback is not called when the ID and next fields are accessed, these are
- * handled by the library.
- *
- * @pvt: private pointer
- * @id: capability ID being accessed
- * @buf: pointer to data being read or written
- * @count: number of bytes being read or written
- * @offset: offset within the capability
- * @is_write: whether the capability is read or written
- *
- * @returns the number of bytes read or written
- */
-typedef ssize_t (vfu_cap_access_t) (void *pvt, uint8_t id,
-                                    char *buf, size_t count,
-                                    loff_t offset, bool is_write);
-
 typedef enum {
     VFU_TRANS_SOCK,
     VFU_TRANS_MAX
