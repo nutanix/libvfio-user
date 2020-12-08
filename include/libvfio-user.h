@@ -619,7 +619,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
  * Attempts to attach to the transport. Attach is mandatory before
  * vfu_ctx_drive() or vfu_ctx_poll() and is non blocking if context is created
  * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
- * Returns clients file descriptor on success and -1 on error. If errno is
+ * Returns client's file descriptor on success and -1 on error. If errno is
  * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
  * the operation must be retried.
  *
