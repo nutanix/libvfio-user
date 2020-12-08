@@ -284,6 +284,10 @@ pci_config_space_size(vfu_ctx_t *vfu_ctx)
     return region_size(vfu_ctx, VFU_PCI_DEV_CFG_REGION_IDX);
 }
 
+/*
+ * Accesses the non-standard part (offset >= 0x40) of the PCI configuration
+ * space.
+ */
 static ssize_t
 handle_pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                                loff_t pos, bool is_write)
@@ -299,6 +303,10 @@ handle_pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
             return ret;
         }
     } else {
+        /*
+         * It is legitimate to read the non-standard part of the PCI config
+         * space even if there are no capabilities.
+         */
         memcpy(buf, vfu_ctx->pci.config_space->raw + pos, count);
     }
     return count;
