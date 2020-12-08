@@ -30,22 +30,26 @@
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 
-add_library(vfio-user SHARED
+set(LIBOBJS
     $<TARGET_OBJECTS:cap>
     $<TARGET_OBJECTS:dma>
     $<TARGET_OBJECTS:irq>
     $<TARGET_OBJECTS:libvfio-user>
     $<TARGET_OBJECTS:migration>
     $<TARGET_OBJECTS:pci>
-    $<TARGET_OBJECTS:tran_sock>
-    common.h
-    irq.h
-    private.h
-    tran_sock.h)
+    $<TARGET_OBJECTS:tran_sock>)
 
-set_target_properties(vfio-user PROPERTIES LINKER_LANGUAGE C)
+add_library(vfio-user-shared SHARED ${LIBOBJS})
+target_link_libraries(vfio-user-shared json-c pthread)
+set_target_properties(vfio-user-shared PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(vfio-user-shared PROPERTIES OUTPUT_NAME vfio-user
+                      CLEAN_DIRECT_OUTPUT 1)
 
-target_link_libraries(vfio-user json-c pthread)
+add_library(vfio-user-static STATIC ${LIBOBJS})
+target_link_libraries(vfio-user-static json-c pthread)
+set_target_properties(vfio-user-static PROPERTIES LINKER_LANGUAGE C)
+set_target_properties(vfio-user-static PROPERTIES OUTPUT_NAME vfio-user
+                      CLEAN_DIRECT_OUTPUT 1)
 
 set(UT_CFLAGS "-O0 -ggdb --coverage")
 set(UT_LFLAGS "--coverage")
@@ -66,7 +70,7 @@ add_library_ut(migration migration.c)
 add_library_ut(pci pci.c)
 add_library_ut(tran_sock tran_sock.c)
 
-install(TARGETS vfio-user
+install(TARGETS vfio-user-shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 if (DEFINED ENV{PYTHON_BINDINGS})
