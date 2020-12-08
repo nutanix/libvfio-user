@@ -1162,34 +1162,18 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 }
 
 int
-vfu_ctx_drive(vfu_ctx_t *vfu_ctx)
+vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
 {
     int err;
+    int blocking = vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB ? 0 : 1;
 
-    if (vfu_ctx == NULL || !vfu_ctx->realized) {
+    if (!vfu_ctx->realized) {
         return ERROR(EINVAL);
     }
 
     do {
         err = process_request(vfu_ctx);
-    } while (err >= 0);
-
-    return err;
-}
-
-int
-vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
-{
-    int err;
-
-    if (unlikely((vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) == 0)) {
-        return -ENOTSUP;
-    }
-
-    if (!vfu_ctx->realized) {
-        return ERROR(EINVAL);
-    }
-    err = process_request(vfu_ctx);
+    } while (err >= 0 && blocking);
 
     return err >= 0 ? 0 : err;
 }

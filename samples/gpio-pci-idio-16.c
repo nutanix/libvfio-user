@@ -143,7 +143,7 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to attach device");
     }
 
-    ret = vfu_ctx_drive(vfu_ctx);
+    ret = vfu_ctx_poll(vfu_ctx);
     if (ret != 0) {
         if (ret != -ENOTCONN && ret != -EINTR) {
             fprintf(stderr, "failed to realize device emulation\n");

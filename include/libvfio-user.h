@@ -436,24 +436,10 @@ void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Once the vfu_ctx is configured vfu_ctx_drive() drives it. This function waits
- * for commands coming from the client, and processes them in a loop.
- *
- * @vfu_ctx: the libvfio-user context to drive
- *
- * @returns 0 on success, -errno on failure.
- */
-int
-vfu_ctx_drive(vfu_ctx_t *vfu_ctx);
-
-/**
- * Polls, without blocking, an vfu_ctx. This is an alternative to using
- * a thread and making a blocking call to vfu_ctx_drive(). Instead, the
- * application can periodically poll the context directly from one of
- * its own threads.
- *
- * This is only allowed when LIBVFIO_USER_FLAG_ATTACH_NB is specified during
- * creation.
+ * Polls the vfu_ctx and processes the command recieved from client.
+ * Non-blocking poll if vfu_ctx is created with LIBVFIO_USER_FLAG_ATTACH_NB,
+ * otherwise blocking. With non-blocking poll application can periodically poll
+ * the context directly from one of its own threads.
  *
  * @vfu_ctx: The libvfio-user context to poll
  *
@@ -617,7 +603,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
  * Attempts to attach to the transport. Attach is mandatory before
- * vfu_ctx_drive() or vfu_ctx_poll() and is non blocking if context is created
+ * vfu_ctx_poll() and is non blocking if context is created
  * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
  * Returns client's file descriptor on success and -1 on error. If errno is
  * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
