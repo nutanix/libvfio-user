@@ -348,12 +348,21 @@ test_realize_ctx(void **state __attribute__((unused)))
 static void
 test_attach_ctx(void **state __attribute__((unused)))
 {
+    int dummy_attach(vfu_ctx_t *vfu_ctx)
+    {
+        assert(vfu_ctx != NULL);
+
+        return 222;
+    }
+
+    struct transport_ops transport_ops = {
+        .attach = &dummy_attach,
+    };
     vfu_ctx_t vfu_ctx = {
-        .trans = &sock_transport_ops,
-        .fd = 111
+        .trans = &transport_ops,
     };
 
-    assert_int_equal(-1, vfu_attach_ctx(&vfu_ctx));
+    assert_int_equal(222, vfu_attach_ctx(&vfu_ctx));
 }
 
 /*
