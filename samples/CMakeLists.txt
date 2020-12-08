@@ -28,18 +28,18 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-add_executable(server server.c)
-target_link_libraries(server vfio-user ssl crypto)
-
 add_executable(client client.c
                ../lib/tran_sock.c ../lib/migration.c)
 target_link_libraries(client json-c)
 
+add_executable(server server.c)
+target_link_libraries(server vfio-user-static ssl crypto)
+
 add_executable(null null.c)
-target_link_libraries(null vfio-user pthread)
+target_link_libraries(null vfio-user-static pthread)
 
 add_executable(gpio-pci-idio-16 gpio-pci-idio-16.c)
-target_link_libraries(gpio-pci-idio-16 vfio-user)
+target_link_libraries(gpio-pci-idio-16 vfio-user-static)
 
 add_executable(lspci lspci.c)
-target_link_libraries(lspci vfio-user)
+target_link_libraries(lspci vfio-user-static)
