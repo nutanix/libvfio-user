@@ -345,15 +345,26 @@ test_realize_ctx(void **state __attribute__((unused)))
     assert_null(vfu_ctx.pci.caps);
 }
 
+static int
+dummy_attach(vfu_ctx_t *vfu_ctx)
+{
+    assert(vfu_ctx != NULL);
+
+    return 222;
+}
+
 static void
 test_attach_ctx(void **state __attribute__((unused)))
 {
+    struct transport_ops transport_ops = {
+        .attach = &dummy_attach,
+    };
     vfu_ctx_t vfu_ctx = {
-        .trans = &sock_transport_ops,
+        .trans = &transport_ops,
         .fd = 111
     };
 
-    assert_int_equal(-1, vfu_attach_ctx(&vfu_ctx));
+    assert_int_equal(222, vfu_attach_ctx(&vfu_ctx));
 }
 
 /*
