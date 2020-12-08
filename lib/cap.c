@@ -373,12 +373,23 @@ handle_px_write(vfu_ctx_t *vfu_ctx, uint8_t *cap, char *const buf,
 	return count;
 }
 
+static ssize_t
+handle_vsc_write(vfu_ctx_t *vfu_ctx __attribute__ ((unused)), uint8_t *cap,
+                 char *const buf, const size_t count, const loff_t offset)
+{
+    /* FIXME we shouldn't allow then length field to be modified, right? */
+
+    memcpy(cap + offset, buf, count);
+    return count;
+}
+
 static const struct cap_handler {
     char *name;
     size_t size;
     cap_access *fn;
 } cap_handlers[PCI_CAP_ID_MAX + 1] = {
     [PCI_CAP_ID_PM] = {"PM", PCI_PM_SIZEOF, handle_pm_write},
+    [PCI_CAP_ID_VNDR] = {"Vendor-Specific", 0, handle_vsc_write},
     [PCI_CAP_ID_EXP] = {"PCI Express", PCI_CAP_EXP_ENDPOINT_SIZEOF_V2,
                         handle_px_write},
     [PCI_CAP_ID_MSIX] = {"MSI-X", PCI_CAP_MSIX_SIZEOF, handle_msix_write},
@@ -456,10 +467,14 @@ caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
             goto err_out;
         }
 
-        size = cap_handlers[id].size;
-        if (size == 0) {
-            *err = ENOTSUP;
-            goto err_out;
+        if (id == PCI_CAP_ID_VNDR) {
+            size = cap[PCI_CAP_LIST_NEXT + 1];
+        } else {
+            size = cap_handlers[id].size;
+            if (size == 0) {
+                *err = ENOTSUP;
+                goto err_out;
+            }
         }
 
         caps->caps[i].start = next;

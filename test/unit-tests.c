@@ -38,12 +38,14 @@
 #include <assert.h>
 #include <alloca.h>
 #include <string.h>
+#include <linux/pci_regs.h>
 
 #include "dma.h"
 #include "libvfio-user.h"
 #include "private.h"
 #include "migration.h"
 #include "tran_sock.h"
+#include "cap.h"
 
 static void
 test_dma_map_without_dma(void **state __attribute__((unused)))
@@ -395,6 +397,93 @@ test_run_ctx(UNUSED void **state)
 }
 
 /*
+ * FIXME expand and validate
+ */
+static void
+test_vfu_ctx_create(void **state __attribute__((unused)))
+{
+    vfu_ctx_t *vfu_ctx = NULL;
+    vfu_pci_hdr_id_t id = { 0 };
+    vfu_pci_hdr_ss_t ss = { 0 };
+    vfu_pci_hdr_cc_t cc = { 0 };
+    vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM}};
+    vfu_cap_t *caps[] = { &pm };
+
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
+                             NULL, VFU_DEV_TYPE_PCI);
+    assert_non_null(vfu_ctx);
+    assert_int_equal(0,
+                     vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc,
+                                              VFU_PCI_TYPE_CONVENTIONAL, 0));
+    assert_int_equal(0, vfu_pci_setup_caps(vfu_ctx, caps, 1));
+    assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
+}
+
+static void
+test_pci_caps(void **state __attribute__((unused)))
+{
+    vfu_pci_config_space_t config_space;
+    vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space };
+    vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM, .pmcs.raw = 0xabcd }};
+    vfu_cap_t *vsc[2] = {
+        alloca(sizeof(struct vsc) + 5),
+        alloca(sizeof(struct vsc) + 13)
+    };
+    vfu_cap_t *vfu_caps[] = { &pm, vsc[0], vsc[1] };
+    struct caps *caps;
+    int err;
+    struct pmcap pmcap = { .pmcs.raw = 0xef01 };
+    off_t off;
+
+    vsc[0]->vsc.hdr.id = PCI_CAP_ID_VNDR;
+    vsc[0]->vsc.size = 8;
+    memcpy(vsc[0]->vsc.data, "abcde", 5);
+
+    vsc[1]->vsc.hdr.id = PCI_CAP_ID_VNDR;
+    vsc[1]->vsc.size = 16;
+    memcpy(vsc[1]->vsc.data, "Hello world.", 12);
+
+    caps = caps_create(&vfu_ctx, vfu_caps, 3, &err);
+    assert_non_null(caps);
+
+    /* check that capability list is placed correctly */
+    assert_int_equal(PCI_CAP_ID_PM,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_CAP_LIST_ID]);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_CAP_LIST_NEXT]);
+    assert_int_equal(PCI_CAP_ID_VNDR,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_ID]);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_NEXT]);
+    assert_int_equal(8,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_NEXT + 1]);
+    assert_int_equal(PCI_CAP_ID_VNDR,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size]);
+    assert_int_equal(0,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size + PCI_CAP_LIST_NEXT]);
+    assert_int_equal(vsc[1]->vsc.size,
+                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size + PCI_CAP_LIST_NEXT + 1]);
+
+    /*  check writing PMCS */
+    assert_int_equal(0,
+        cap_maybe_access(&vfu_ctx, caps, (char*)&pmcap.pmcs,
+                         sizeof(struct pmcs),
+                         PCI_STD_HEADER_SIZEOF + offsetof(struct pmcap, pmcs)));
+    assert_memory_equal(
+        &config_space.raw[PCI_STD_HEADER_SIZEOF + offsetof(struct pmcap, pmcs)],
+        &pmcap.pmcs.raw, sizeof(struct pmcs));
+
+    /*
+     * Check that pci_cap_access returns 0 when reading a non-vendor-specific
+     * capability which doesn't have a callback.
+     */
+    off = PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_FLAGS + 1;
+    assert_int_equal(5,
+        cap_maybe_access(&vfu_ctx, caps, (char*)vsc[0]->vsc.data, 5, off));
+    assert_memory_equal(&config_space.raw[off], vsc[0]->vsc.data, 5);
+}
+
+/*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
  * run a function before/after ALL unit tests have finished, we can extend it
@@ -419,7 +508,9 @@ int main(void)
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_realize_ctx, setup),
         cmocka_unit_test_setup(test_attach_ctx, setup),
-        cmocka_unit_test_setup(test_run_ctx, setup)
+        cmocka_unit_test_setup(test_run_ctx, setup),
+        cmocka_unit_test_setup(test_vfu_ctx_create, setup),
+        cmocka_unit_test_setup(test_pci_caps, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

@@ -45,6 +45,15 @@ _Static_assert(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
 _Static_assert(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
 _Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
 
+/*
+ * Vendor-specific capability
+ */
+struct vsc {
+    struct cap_hdr  hdr;
+    uint8_t         size;
+    uint8_t         data[];
+} __attribute__ ((packed));
+
 #ifdef __cplusplus
 }
 #endif
