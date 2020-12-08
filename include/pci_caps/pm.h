@@ -52,14 +52,19 @@ struct pc {
 _Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
 
 struct pmcs {
-    unsigned int ps:2;
-    unsigned int res1:1;
-    unsigned int nsfrst:1;
-    unsigned int res2:4;
-    unsigned int pmee:1;
-    unsigned int dse:4;
-    unsigned int dsc:2;
-    unsigned int pmes:1;
+    union {
+        uint16_t raw;
+        struct {
+            unsigned int ps:2;
+            unsigned int res1:1;
+            unsigned int nsfrst:1;
+            unsigned int res2:4;
+            unsigned int pmee:1;
+            unsigned int dse:4;
+            unsigned int dsc:2;
+            unsigned int pmes:1;
+        };
+    };
 } __attribute__((packed));
 _Static_assert(sizeof(struct pc) == 0x2, "bad PMCS size");
 

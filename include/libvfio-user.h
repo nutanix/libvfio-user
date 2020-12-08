@@ -221,6 +221,7 @@ vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path,
                int flags, void *pvt, vfu_dev_type_t dev_type);
 
+
 /**
  * Setup logging information.
  * @vfu_ctx: the libvfio-user context
@@ -261,15 +262,18 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
 
 /* FIXME does it have to be packed as well? */
 typedef union {
-    struct msicap msi;
-    struct msixcap msix;
-    struct pmcap pm;
-    struct pxcap px;
+    struct msicap   msi;
+    struct msixcap  msix;
+    struct pmcap    pm;
+    struct pxcap    px;
+    struct vsc      vsc;
 } vfu_cap_t;
 
 //TODO: Support variable size capabilities.
+
 /**
  * Setup PCI capabilities.
+ *
  * @vfu_ctx: the libvfio-user context
  * @caps: array of (vfu_cap_t *)
  * @nr_caps: number of elements in @caps
