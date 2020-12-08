@@ -214,10 +214,9 @@ typedef struct {
 } vfu_migration_t;
 
 /*
- * Attaching to the transport is non-blocking. The library will not attempt
- * to attach during context creation time. The caller must then manually
- * call vfu_ctx_try_attach(), which is non-blocking, as many times as
- * necessary.
+ * Attaching to the transport is non-blocking.
+ * The caller must then manually call vfu_attach_ctx(),
+ * which is non-blocking, as many times as necessary.
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
@@ -607,27 +606,27 @@ uint8_t *
 vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
 
 /*
- * Attempts to attach to the transport. LIBVFIO_USER_FLAG_ATTACH_NB must be set
- * when creating the context. Returns 0 on success and -1 on error. If errno is
- * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
- * the operation must be retried.
- *
- * @vfu_ctx: the libvfio-user context
- */
-int
-vfu_ctx_try_attach(vfu_ctx_t *vfu_ctx);
-
-/*
- * Finalizes the device making it ready for vfu_ctx_drive or vfu_ctx_try_attach.
- * This function is optional as it is automatically called by vfu_ctx_drive or
- * vfu_ctx_try_attach. Calling it multiple times is idempotent.
- *
+ * Finalizes the device making it ready for vfu_attach_ctx(). This function is
+ * mandatory to be called before vfu_attach_ctx().
  * @vfu_ctx: the libvfio-user context
  *
  * @returns: 0 on success, -1 on error. Sets errno.
  */
 int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
+
+/*
+ * Attempts to attach to the transport. Attach is mandatory before
+ * vfu_ctx_drive() or vfu_ctx_poll() and is non blocking if context is created
+ * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
+ * Returns client's file descriptor on success and -1 on error. If errno is
+ * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
+ * the operation must be retried.
+ *
+ * @vfu_ctx: the libvfio-user context
+ */
+int
+vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
  * FIXME need to make sure that there can be at most one capability with a given

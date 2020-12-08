@@ -325,6 +325,37 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     assert_int_equal(0, process_request(&vfu_ctx));
 }
 
+static void
+test_realize_ctx(void **state __attribute__((unused)))
+{
+    vfu_reg_info_t *cfg_reg;
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS + 1] = { 0 };
+    vfu_ctx_t vfu_ctx = {
+        .reg_info = reg_info,
+        .nr_regions = VFU_PCI_DEV_NUM_REGIONS + 1
+    };
+
+    assert_int_equal(0, vfu_realize_ctx(&vfu_ctx));
+    assert_true(vfu_ctx.realized);
+    cfg_reg = &vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX];
+    assert_int_equal(VFU_REGION_FLAG_RW, cfg_reg->flags);
+    assert_int_equal(PCI_CFG_SPACE_SIZE, cfg_reg->size);
+    assert_non_null(vfu_ctx.pci.config_space);
+    assert_non_null(vfu_ctx.irqs);
+    assert_null(vfu_ctx.pci.caps);
+}
+
+static void
+test_attach_ctx(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = {
+        .trans = &sock_transport_ops,
+        .fd = 111
+    };
+
+    assert_int_equal(-1, vfu_attach_ctx(&vfu_ctx));
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -348,6 +379,8 @@ int main(void)
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_no_fd, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
+        cmocka_unit_test_setup(test_realize_ctx, setup),
+        cmocka_unit_test_setup(test_attach_ctx, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
