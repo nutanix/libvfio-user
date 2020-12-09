@@ -1079,6 +1079,8 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     return ret;
 }
+UNIT_TEST_SYMBOL(process_request);
+#define process_request __wrap_process_request
 
 int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
@@ -1165,7 +1167,9 @@ int
 vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
 {
     int err;
-    int blocking = vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB ? 0 : 1;
+    bool blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+
+    assert(vfu_ctx != NULL);
 
     if (!vfu_ctx->realized) {
         return ERROR(EINVAL);

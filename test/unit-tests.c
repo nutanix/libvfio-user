@@ -365,6 +365,35 @@ test_attach_ctx(void **state __attribute__((unused)))
     assert_int_equal(222, vfu_attach_ctx(&vfu_ctx));
 }
 
+static void
+test_ctx_poll(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = {
+        .realized = false,
+    };
+
+    // device un-realized
+    assert_int_equal(-1, vfu_ctx_poll(&vfu_ctx));
+
+    // device realized, with NB vfu_ctx
+    vfu_ctx.realized = true;
+    vfu_ctx.flags = LIBVFIO_USER_FLAG_ATTACH_NB;
+
+    patch(process_request);
+    expect_value(__wrap_process_request, vfu_ctx, &vfu_ctx);
+    will_return(__wrap_process_request, 0);
+    assert_int_equal(0, vfu_ctx_poll(&vfu_ctx));
+
+    // device realized, with blocking vfu_ctx
+    vfu_ctx.flags = 0;
+    expect_value(__wrap_process_request, vfu_ctx, &vfu_ctx);
+    will_return(__wrap_process_request, 0);
+
+    expect_value(__wrap_process_request, vfu_ctx, &vfu_ctx);
+    will_return(__wrap_process_request, -1);
+    assert_int_equal(-1, vfu_ctx_poll(&vfu_ctx));
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -390,6 +419,7 @@ int main(void)
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_realize_ctx, setup),
         cmocka_unit_test_setup(test_attach_ctx, setup),
+        cmocka_unit_test_setup(test_ctx_poll, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
