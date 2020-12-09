@@ -446,7 +446,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
  * @returns 0 on success, -errno on failure.
  */
 int
-vfu_ctx_poll(vfu_ctx_t *vfu_ctx);
+vfu_run_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
  * Triggers an interrupt.
@@ -603,7 +603,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
  * Attempts to attach to the transport. Attach is mandatory before
- * vfu_ctx_poll() and is non blocking if context is created
+ * vfu_run_ctx() and is non blocking if context is created
  * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
  * Returns client's file descriptor on success and -1 on error. If errno is
  * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and

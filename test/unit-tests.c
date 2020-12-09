@@ -366,14 +366,14 @@ test_attach_ctx(void **state __attribute__((unused)))
 }
 
 static void
-test_ctx_poll(UNUSED void **state)
+test_run_ctx(UNUSED void **state)
 {
     vfu_ctx_t vfu_ctx = {
         .realized = false,
     };
 
     // device un-realized
-    assert_int_equal(-1, vfu_ctx_poll(&vfu_ctx));
+    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
 
     // device realized, with NB vfu_ctx
     vfu_ctx.realized = true;
@@ -382,7 +382,7 @@ test_ctx_poll(UNUSED void **state)
     patch(process_request);
     expect_value(__wrap_process_request, vfu_ctx, &vfu_ctx);
     will_return(__wrap_process_request, 0);
-    assert_int_equal(0, vfu_ctx_poll(&vfu_ctx));
+    assert_int_equal(0, vfu_run_ctx(&vfu_ctx));
 
     // device realized, with blocking vfu_ctx
     vfu_ctx.flags = 0;
@@ -391,7 +391,7 @@ test_ctx_poll(UNUSED void **state)
 
     expect_value(__wrap_process_request, vfu_ctx, &vfu_ctx);
     will_return(__wrap_process_request, -1);
-    assert_int_equal(-1, vfu_ctx_poll(&vfu_ctx));
+    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
 }
 
 /*
@@ -419,7 +419,7 @@ int main(void)
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_realize_ctx, setup),
         cmocka_unit_test_setup(test_attach_ctx, setup),
-        cmocka_unit_test_setup(test_ctx_poll, setup)
+        cmocka_unit_test_setup(test_run_ctx, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

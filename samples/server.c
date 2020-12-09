@@ -496,7 +496,7 @@ int main(int argc, char *argv[])
     }
 
     do {
-        ret = vfu_ctx_poll(vfu_ctx);
+        ret = vfu_run_ctx(vfu_ctx);
         if (ret == -EINTR) {
             if (irq_triggered) {
                 irq_triggered = false;

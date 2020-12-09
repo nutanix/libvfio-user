@@ -1164,7 +1164,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 }
 
 int
-vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
+vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 {
     int err;
     bool blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
