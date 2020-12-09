@@ -141,18 +141,51 @@ normally do. To spice things up, the client programmes the source server to
 trigger an interrupt and then quickly migrates to the destination server; the
 programmed interrupt is delivered by the destination server.
 
-Start the source server as follows (pick whatever you like for `/tmp/mysock`):
+Start the source server as follows (pick whatever you like for
+`/tmp/vfio-user.sock`):
 
-    rm -f /tmp/mysock* ; build/dbg/samples/server -v /tmp/mysock
+    rm -f /tmp/vfio-user.sock* ; build/dbg/samples/server -v /tmp/vfio-user.sock
 
 And then the client:
 
-    build/dbg/samples/client /tmp/mysock
+    build/dbg/samples/client /tmp/vfio-user.sock
 
 After a couple of seconds the client will start live migration. The source
 server will exit and the destination server will start, watch the client
 terminal for destination server messages.
 
+gpio
+----
+
+A [gpio](./samples/gpio-pci-idio-16.c) server implements a very simple GPIO
+device that can be used with a Linux VM.
+
+First, download and build [this branch of
+qemu](https://github.com/oracle/qemu/pull/1).
+
+Start the `gpio` server process:
+
+    rm /tmp/vfio-user.sock
+    ./build/dbg/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
+
+Create a Linux install image, or use a pre-made one. You'll probably also need
+to build the `gpio-pci-idio-16` kernel module yourself - it's part of the
+standard Linux kernel, but not usually built and shipped on x86. Start your
+guest VM:
+
+    ./x86_64-softmmu/qemu-system-x86_64 -mem-prealloc -m 1024 \
+      -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=mem,share=yes,size=1073741824 \
+      -kernel ~/vmlinuz -initrd ~/initrd -nographic \
+      -append "console=ttyS0 root=/dev/sda1 single" \
+      -hda ~/bionic-server-cloudimg-amd64-0.raw \
+      -device vfio-user-pci,socket=/tmp/vfio-user.sock
+
+Log in to your guest VM, and you should be able to load the module and observe
+the emulated GPIO device's pins:
+
+    insmod gpio-pci-idio-16.ko
+    cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
+    for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
 
 Mailing List
 ============
