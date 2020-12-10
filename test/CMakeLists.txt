@@ -52,6 +52,7 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=exec_command")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=close")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=vfu_send_iovec")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=free")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=process_request")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)

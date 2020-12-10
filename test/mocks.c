@@ -37,6 +37,7 @@
 #include "mocks.h"
 #include "dma.h"
 #include "migration.h"
+#include "../lib/private.h"
 
 struct function
 {
@@ -147,6 +148,18 @@ __wrap_free(void *ptr)
     check_expected(ptr);
 }
 
+int
+__wrap_process_request(vfu_ctx_t *vfu_ctx)
+{
+
+    if (!is_patched(process_request)) {
+        return __real_process_request(vfu_ctx);
+    }
+    check_expected(vfu_ctx);
+
+    return mock();
+}
+
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
@@ -157,7 +170,8 @@ static struct function funcs[] = {
     {.addr = &__wrap_exec_command},
     {.addr = &__wrap_close},
     {.addr = &__wrap_vfu_send_iovec},
-    {.addr = &__wrap_free}
+    {.addr = &__wrap_free},
+    {.addr = &__wrap_process_request}
 };
 
 static struct function*
