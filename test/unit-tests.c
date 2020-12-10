@@ -329,7 +329,7 @@ static void
 test_realize_ctx(void **state __attribute__((unused)))
 {
     vfu_reg_info_t *cfg_reg;
-    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS + 1] = { 0 };
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS + 1] = { { 0 } };
     vfu_ctx_t vfu_ctx = {
         .reg_info = reg_info,
         .nr_regions = VFU_PCI_DEV_NUM_REGIONS + 1
