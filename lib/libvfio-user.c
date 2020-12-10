@@ -1079,6 +1079,8 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     return ret;
 }
+UNIT_TEST_SYMBOL(process_request);
+#define process_request __wrap_process_request
 
 int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
@@ -1162,34 +1164,21 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 }
 
 int
-vfu_ctx_drive(vfu_ctx_t *vfu_ctx)
+vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 {
     int err;
+    bool blocking;
 
-    if (vfu_ctx == NULL || !vfu_ctx->realized) {
-        return ERROR(EINVAL);
-    }
-
-    do {
-        err = process_request(vfu_ctx);
-    } while (err >= 0);
-
-    return err;
-}
-
-int
-vfu_ctx_poll(vfu_ctx_t *vfu_ctx)
-{
-    int err;
-
-    if (unlikely((vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) == 0)) {
-        return -ENOTSUP;
-    }
+    assert(vfu_ctx != NULL);
 
     if (!vfu_ctx->realized) {
         return ERROR(EINVAL);
     }
-    err = process_request(vfu_ctx);
+
+    blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+    do {
+        err = process_request(vfu_ctx);
+    } while (err >= 0 && blocking);
 
     return err >= 0 ? 0 : err;
 }

@@ -73,7 +73,7 @@ static void* null_drive(void *arg)
         return NULL;
     }
     printf("starting device emulation\n");
-    vfu_ctx_drive(vfu_ctx);
+    vfu_run_ctx(vfu_ctx);
     return NULL;
 }
 
