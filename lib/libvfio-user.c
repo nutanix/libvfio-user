@@ -1167,7 +1167,7 @@ int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 {
     int err;
-    bool blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+    bool blocking;
 
     assert(vfu_ctx != NULL);
 
@@ -1175,6 +1175,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
         return ERROR(EINVAL);
     }
 
+    blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
     do {
         err = process_request(vfu_ctx);
     } while (err >= 0 && blocking);

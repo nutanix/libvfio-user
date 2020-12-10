@@ -437,9 +437,13 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
  * Polls the vfu_ctx and processes the command recieved from client.
- * Non-blocking poll if vfu_ctx is created with LIBVFIO_USER_FLAG_ATTACH_NB,
- * otherwise blocking. With non-blocking poll application can periodically poll
- * the context directly from one of its own threads.
+ * - Blocking vfu_ctx:
+ *   Blocks until new request is recieved from client and continues processing
+ *   the requests. Exits only in case of error or if the client disconnects.
+ * - Non-blocking vfu_ctx(LIBVFIO_USER_FLAG_ATTACH_NB):
+ *   Processes one request from client if its available, otherwise it
+ *   immediatelly returns and the caller is responsible for periodically
+ *   calling again.
  *
  * @vfu_ctx: The libvfio-user context to poll
  *
