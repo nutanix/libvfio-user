@@ -89,7 +89,8 @@ vfu_send_error(int sock, uint16_t msg_id,
  */
 int
 vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
-         uint16_t *msg_id, void *data, size_t *len);
+         uint16_t *msg_id, void *data, size_t *len, int *fds, size_t *nr_fds);
+
 
 /*
  * Receive a message from the other end, but automatically allocate a buffer for
@@ -112,9 +113,10 @@ int
 vfu_msg_iovec(int sock, uint16_t msg_id,
               enum vfio_user_command cmd,
               struct iovec *iovecs, size_t nr_iovecs,
-              int *send_fds, size_t fd_count,
+              int *send_fds, size_t send_fd_count,
               struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len);
+              void *recv_data, size_t recv_len,
+              int *recv_fds, size_t *recv_fd_count);
 
 /*
  * Send and receive a message to the other end.  @hdr is filled with the reply
@@ -125,7 +127,8 @@ vfu_msg(int sock, uint16_t msg_id,
         enum vfio_user_command cmd,
         void *send_data, size_t send_len,
         struct vfio_user_header *hdr,
-        void *recv_data, size_t recv_len);
+        void *recv_data, size_t recv_len,
+        int *recv_fds, size_t *recv_fd_count);
 
 #endif /* LIB_VFIO_USER_TRAN_SOCK_H */
 

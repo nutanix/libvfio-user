@@ -70,22 +70,6 @@ typedef struct {
 typedef struct vfu_ctx vfu_ctx_t;
 
 /**
- * Prototype for memory access callback. The program MUST first map device
- * memory in its own virtual address space using vfu_mmap, do any additional work
- * required, and finally return that memory. When a region is memory mapped,
- * libvfio-user calls the previously registered callback with the following
- * arguments:
- *
- * @pvt: private pointer
- * @off: offset of memory area being memory mapped
- * @len: length of memory area being memory mapped
- *
- * @returns the memory address returned by vfu_mmap, or MAP_FAILED on failure
- */
-typedef unsigned long (vfu_map_region_cb_t) (void *pvt, unsigned long off,
-                                             unsigned long len);
-
-/**
  * Creates a mapping of a device region into the caller's virtual memory. It
  * must be called by vfu_map_region_cb_t.
  *
@@ -332,7 +316,8 @@ enum {
  * @flags: region  flags
  * @mmap_areas: array of memory mappable areas
  * @nr_mmap_areas: size of mmap_areas
- * @map: callback function to map region
+ * @fd: file descriptor of the file backing the region if it's a mappable
+ *      region
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -340,7 +325,7 @@ int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 vfu_map_region_cb_t *map);
+                 int fd);
 
 /*
  * Callback function that is called when the guest resets the device.

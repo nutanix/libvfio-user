@@ -232,14 +232,6 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 }
 
-unsigned long map_area(UNUSED void *pvt, UNUSED unsigned long off,
-                       UNUSED unsigned long len)
-{
-    assert(false);
-
-    return 0;
-}
-
 static int device_reset(UNUSED void *pvt)
 {
     printf("device reset callback\n");
@@ -386,6 +378,7 @@ int main(int argc, char *argv[])
     vfu_pci_hdr_id_t id = {.raw = 0xdeadbeef};
     vfu_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
     vfu_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
+    FILE *fp;
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -431,7 +424,7 @@ int main(int argc, char *argv[])
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
-                           &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, NULL);
+                           &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
@@ -440,13 +433,20 @@ int main(int argc, char *argv[])
      * Setup BAR1 to be 3 pages in size where only the first and the last pages
      * are mappable.
      */
+    if ((fp = tmpfile()) == NULL) {
+        err(EXIT_FAILURE, "failed to create BAR1 file");
+    }
+    if (ftruncate(fileno(fp), 0x3000) == -1) {
+        err(EXIT_FAILURE, "failed to truncate BAR1 file");
+    }
     struct iovec mmap_areas[] = {
         { .iov_base  = (void*)0, .iov_len = 0x1000 },
         { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
+    /* FIXME add unit test where we check that the sparse regions do not execeed region size */
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            0x3000, &bar1_access, VFU_REGION_FLAG_RW,
-                           mmap_areas, 3, map_area);
+                           mmap_areas, 2, fileno(fp));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }

@@ -199,7 +199,7 @@ static void
 send_device_reset(int sock)
 {
     int ret = vfu_msg(sock, 1, VFIO_USER_DEVICE_RESET,
-                      NULL, 0, NULL, NULL, 0);
+                      NULL, 0, NULL, NULL, 0, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to reset device: %s\n", strerror(-ret));
     }
@@ -207,10 +207,10 @@ send_device_reset(int sock)
 
 /* returns whether a VFIO migration capability is found */
 static bool
-get_region_vfio_caps(struct vfio_info_cap_header *header)
+get_region_vfio_caps(struct vfio_info_cap_header *header,
+                     struct vfio_region_info_cap_sparse_mmap *sparse)
 {
     struct vfio_region_info_cap_type *type;
-    struct vfio_region_info_cap_sparse_mmap *sparse;
     unsigned int i;
     bool migr = false;
 
@@ -247,13 +247,14 @@ get_region_vfio_caps(struct vfio_info_cap_header *header)
 }
 
 static void
-do_get_device_region_info(int sock, struct vfio_region_info *region_info)
+do_get_device_region_info(int sock, struct vfio_region_info *region_info,
+                          int *fds, size_t *nr_fds)
 {
     int ret = vfu_msg(sock, 0,
                   VFIO_USER_DEVICE_GET_REGION_INFO,
                   region_info, region_info->argsz,
                   NULL,
-                  region_info, region_info->argsz);
+                  region_info, region_info->argsz, fds, nr_fds);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device region info: %s",
                 strerror(-ret));
@@ -266,19 +267,24 @@ get_device_region_info(int sock, uint32_t index)
     struct vfio_region_info *region_info;
     size_t cap_sz;
     size_t size = sizeof(struct vfio_region_info);
+    size_t nr_fds = CLIENT_MAX_FDS;
+    int fds[nr_fds];
 
     region_info = alloca(size);
     region_info->argsz = size;
     region_info->index = index;
 
-    do_get_device_region_info(sock, region_info);
+    do_get_device_region_info(sock, region_info, NULL, 0);
     if (region_info->argsz > size) {
         size = region_info->size;
         region_info = alloca(size);
         region_info->argsz = size;
         region_info->index = index;
-        do_get_device_region_info(sock, region_info);
+        do_get_device_region_info(sock, region_info, fds, &nr_fds);
         assert(region_info->size == size);
+        assert(nr_fds == 2);
+        assert(fds[0] >= 0);
+        assert(fds[1] >= 0);
     }
 
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
@@ -286,7 +292,25 @@ get_device_region_info(int sock, uint32_t index)
            "cap_sz %lu\n", __func__, index, region_info->offset,
            region_info->flags, region_info->size, cap_sz);
     if (cap_sz) {
-        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1))) {
+        struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
+        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
+                                 sparse)) {
+            if (sparse != NULL) {
+                size_t i;
+                assert(nr_fds == 2);
+                assert(sparse->nr_areas == 2);
+                for (i = 0; i < sparse->nr_areas; i++) {
+                    void *addr = mmap(NULL, sparse->areas[i].size,
+                                      PROT_READ | PROT_WRITE, MAP_SHARED,
+                                      fds[i], sparse->areas[i].offset);
+                    if (addr == MAP_FAILED) {
+                        err(EXIT_FAILURE,
+                            "failed to mmap sparse region %lu (%#llx-%#llx)",
+                            i, sparse->areas[i].offset,
+                            sparse->areas[i].offset + sparse->areas[i].size - 1);
+                    }
+                }
+            }
             return true;
         }
     }
@@ -323,7 +347,7 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
                   VFIO_USER_DEVICE_GET_INFO,
                   dev_info, sizeof(*dev_info),
                   NULL,
-                  dev_info, sizeof(*dev_info));
+                  dev_info, sizeof(*dev_info), NULL, 0);
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
@@ -356,7 +380,7 @@ configure_irqs(int sock)
                       VFIO_USER_DEVICE_GET_IRQ_INFO,
                       &vfio_irq_info, sizeof vfio_irq_info,
                       NULL,
-                      &vfio_irq_info, sizeof vfio_irq_info);
+                      &vfio_irq_info, sizeof vfio_irq_info, NULL, 0);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to get  %s info: %s", irq_to_str[i],
                  strerror(-ret));
@@ -386,7 +410,7 @@ configure_irqs(int sock)
     ret = vfu_msg_iovec(sock, msg_id, VFIO_USER_DEVICE_SET_IRQS,
                         iovecs, ARRAY_SIZE(iovecs),
                         &irq_fd, 1,
-                        NULL, NULL, 0);
+                        NULL, NULL, 0, NULL, 0);
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to send configure IRQs message: %s",
@@ -435,7 +459,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     ret = vfu_msg_iovec(sock, 0, op,
                         send_iovecs, nr_send_iovecs,
                         NULL, 0, NULL,
-                        &recv_data, recv_data_len);
+                        &recv_data, recv_data_len, NULL, 0);
     if (ret != 0) {
         warnx("failed to %s region %d %#lx-%#lx: %s",
              is_write ? "write to" : "read from", region, offset,
@@ -475,8 +499,8 @@ wait_for_irqs(int sock, int irq_fd)
     printf("INTx triggered!\n");
 
     size = sizeof(vfio_user_irq_info);
-    ret = vfu_recv(sock, &hdr, false, &msg_id,
-                   &vfio_user_irq_info, &size);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &vfio_user_irq_info, &size,
+                   NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to receive IRQ message: %s",
              strerror(-ret));
@@ -534,7 +558,7 @@ handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
     uint16_t msg_id = 5;
     void *data;
 
-    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to receive DMA read: %s", strerror(-ret));
     }
@@ -584,7 +608,7 @@ handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
     uint16_t msg_id = 6;
     void *data;
 
-    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to recieve DMA read");
     }
@@ -664,7 +688,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     ret = vfu_msg_iovec(sock, 0, VFIO_USER_DIRTY_PAGES,
                         iovecs, ARRAY_SIZE(iovecs),
                         NULL, 0,
-                        &hdr, data, ARRAY_SIZE(data));
+                        &hdr, data, ARRAY_SIZE(data), NULL, 0);
     if (ret != 0) {
         errx(EXIT_FAILURE, "failed to start dirty page logging: %s",
              strerror(-ret));
@@ -903,7 +927,7 @@ map_dma_regions(int sock, int max_fds, struct vfio_user_dma_region *dma_regions,
         ret = vfu_msg_iovec(sock, i, VFIO_USER_DMA_MAP,
                             iovecs, ARRAY_SIZE(iovecs),
                             dma_region_fds + (i * max_fds), max_fds,
-                            NULL, NULL, 0);
+                            NULL, NULL, 0, NULL, 0);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to map DMA regions: %s", strerror(-ret));
         }
@@ -1028,7 +1052,7 @@ int main(int argc, char *argv[])
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
     ret = vfu_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                   &dirty_bitmap, sizeof dirty_bitmap,
-                  NULL, NULL, 0);
+                  NULL, NULL, 0, NULL, 0);
     if (ret != 0) {
         errx(EXIT_FAILURE, "failed to start dirty page logging: %s",
              strerror(-ret));
@@ -1053,7 +1077,7 @@ int main(int argc, char *argv[])
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
     ret = vfu_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                   &dirty_bitmap, sizeof dirty_bitmap,
-                  NULL, NULL, 0);
+                  NULL, NULL, 0, NULL, 0);
     if (ret != 0) {
         errx(EXIT_FAILURE, "failed to stop dirty page logging: %s",
              strerror(-ret));
@@ -1068,7 +1092,7 @@ int main(int argc, char *argv[])
      */
     ret = vfu_msg(sock, 7, VFIO_USER_DMA_UNMAP,
                   dma_regions, sizeof *dma_regions * server_max_fds,
-                  NULL, NULL, 0);
+                  NULL, NULL, 0, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to unmap DMA regions: %s", strerror(-ret));
     }
