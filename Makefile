@@ -41,6 +41,8 @@ ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
 
+CMAKE = cmake
+
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
@@ -69,7 +71,7 @@ force_cmake: $(BUILD_DIR)/Makefile
 
 $(BUILD_DIR)/Makefile:
 	mkdir -p $(BUILD_DIR)
-	cd $(BUILD_DIR); cmake \
+	cd $(BUILD_DIR); $(CMAKE) \
 		-D "CMAKE_C_FLAGS:STRING=$(CFLAGS)" \
 		-D "CMAKE_BUILD_TYPE:STRING=$(CMAKE_BUILD_TYPE)" \
 		-D "CMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)" \
