@@ -168,6 +168,10 @@ process_request(vfu_ctx_t *vfu_ctx);
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
+long
+dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
+                struct vfio_region_info **vfio_reg);
+
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
