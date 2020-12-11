@@ -123,6 +123,8 @@ bar1_access(UNUSED void *pvt, UNUSED char * const buf, UNUSED size_t count,
 {
     assert(false);
 
+    /* FIXME assert that only the 2nd page is accessed */
+
     return -ENOTSUP;
 }
 
@@ -434,13 +436,17 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
 
+    /*
+     * Setup BAR1 to be 3 pages in size where only the first and the last pages
+     * are mappable.
+     */
     struct iovec mmap_areas[] = {
-        { .iov_base  = (void*)0x400, .iov_len = 0x400 },
-        { .iov_base  = (void*)0x2000, .iov_len = 0x400 }
+        { .iov_base  = (void*)0, .iov_len = 0x1000},
+        { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
-                           sysconf(_SC_PAGESIZE), &bar1_access,
-                           VFU_REGION_FLAG_RW, mmap_areas, 2, map_area);
+                           0x3000, &bar1_access, VFU_REGION_FLAG_RW,
+                           mmap_areas, 3, map_area);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }

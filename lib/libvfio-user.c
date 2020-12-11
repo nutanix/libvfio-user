@@ -218,7 +218,8 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     vfu_reg = &vfu_ctx->reg_info[index];
 
     if (index >= vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d", index);
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
+                index);
         return -EINVAL;
     }
 
