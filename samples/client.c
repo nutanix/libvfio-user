@@ -207,25 +207,12 @@ send_device_reset(int sock)
 
 /* returns whether a VFIO migration capability is found */
 static bool
-get_region_vfio_caps(int sock, size_t cap_sz)
+get_region_vfio_caps(struct vfio_info_cap_header *header)
 {
-    struct vfio_info_cap_header *header, *_header;
     struct vfio_region_info_cap_type *type;
     struct vfio_region_info_cap_sparse_mmap *sparse;
     unsigned int i;
-    ssize_t ret;
     bool migr = false;
-
-    header = _header = calloc(cap_sz, 1);
-    if (header == NULL) {
-        err(EXIT_FAILURE, NULL);
-    }
-
-    ret = recv(sock, header, cap_sz, 0);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to receive VFIO cap info");
-    }
-    assert((size_t)ret == cap_sz);
 
     while (true) {
         switch (header->id) {
@@ -256,7 +243,6 @@ get_region_vfio_caps(int sock, size_t cap_sz)
         }
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
-    free(_header);
     return migr;
 }
 
@@ -295,13 +281,12 @@ get_device_region_info(int sock, uint32_t index)
         assert(region_info->size == size);
     }
 
-#error now need to parse caps
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
     printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
            "cap_sz %lu\n", __func__, index, region_info->offset,
            region_info->flags, region_info->size, cap_sz);
     if (cap_sz) {
-        if (get_region_vfio_caps(sock, cap_sz)) {
+        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1))) {
             return true;
         }
     }
@@ -342,6 +327,11 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
+    }
+
+    if (dev_info->num_regions != 2) {
+        errx(EXIT_FAILURE, "bad number of device regions %d",
+             dev_info->num_regions);
     }
 
     printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
