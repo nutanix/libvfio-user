@@ -492,7 +492,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            reg_info_out);
 }
 
-static int
+int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                        struct vfio_device_info *dev_info)
 {
@@ -696,7 +696,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     if (cmd == VFIO_USER_REGION_READ) {
         *len += region_access->count;
     }
-    *data = malloc(*len);
+    *data = calloc(1, *len);
     if (*data == NULL) {
         return -ENOMEM;
     }
@@ -884,8 +884,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
              bool *free_iovec_data)
 {
     int ret;
-    struct vfio_irq_info irq_info;
-    struct vfio_device_info dev_info;
+    struct vfio_irq_info *irq_info;
+    struct vfio_device_info *dev_info;
     struct vfio_region_info *dev_reg_info = NULL;
     void *cmd_data = NULL;
 
@@ -943,10 +943,15 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
                                           fds, nr_fds, cmd_data);
             break;
         case VFIO_USER_DEVICE_GET_INFO:
-            ret = handle_device_get_info(vfu_ctx, hdr->msg_size, &dev_info);
+            dev_info = calloc(1, sizeof *dev_info);
+            if (dev_info == NULL) {
+                ret = -ENOMEM;
+                goto reply;
+            }
+            ret = handle_device_get_info(vfu_ctx, hdr->msg_size, dev_info);
             if (ret >= 0) {
-                _iovecs[1].iov_base = &dev_info;
-                _iovecs[1].iov_len = dev_info.argsz;
+                _iovecs[1].iov_base = dev_info;
+                _iovecs[1].iov_len = dev_info->argsz;
                 *iovecs = _iovecs;
                 *nr_iovecs = 2;
             }
@@ -962,11 +967,16 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             }
             break;
         case VFIO_USER_DEVICE_GET_IRQ_INFO:
+            irq_info = calloc(1, sizeof *irq_info);
+            if (irq_info == NULL) {
+                ret = -ENOMEM;
+                goto reply;
+            }
             ret = handle_device_get_irq_info(vfu_ctx, hdr->msg_size, cmd_data,
-                                             &irq_info);
+                                             irq_info);
             if (ret == 0) {
-                _iovecs[1].iov_base = &irq_info;
-                _iovecs[1].iov_len = sizeof irq_info;
+                _iovecs[1].iov_base = irq_info;
+                _iovecs[1].iov_len = sizeof *irq_info;
                 *iovecs = _iovecs;
                 *nr_iovecs = 2;
             }
@@ -977,12 +987,14 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             break;
         case VFIO_USER_REGION_READ:
         case VFIO_USER_REGION_WRITE:
-            *iovecs = _iovecs;
             ret = handle_region_access(vfu_ctx, hdr->msg_size, hdr->cmd,
-                                       &(*iovecs)[1].iov_base,
-                                       &(*iovecs)[1].iov_len,
+                                       &(_iovecs[1].iov_base),
+                                       &(_iovecs[1].iov_len),
                                        cmd_data);
-            *nr_iovecs = 2;
+            if (ret == 0) {
+                *iovecs = _iovecs;
+                *nr_iovecs = 2;
+            }
             break;
         case VFIO_USER_DEVICE_RESET:
             ret = handle_device_reset(vfu_ctx);
@@ -1081,14 +1093,16 @@ process_request(vfu_ctx_t *vfu_ctx)
         ret = 0;
     }
 
-    if (iovecs != NULL && iovecs != _iovecs) {
+    if (iovecs != NULL) {
         if (free_iovec_data) {
             size_t i;
-            for (i = 0; i < nr_iovecs; i++) {
+            for (i = 1; i < nr_iovecs; i++) {
                 free(iovecs[i].iov_base);
             }
         }
-        free(iovecs);
+        if (iovecs != _iovecs) {
+            free(iovecs);
+        }
     }
 
     return ret;
