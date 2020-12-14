@@ -168,6 +168,10 @@ process_request(vfu_ctx_t *vfu_ctx);
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
+int
+handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
+                       struct vfio_device_info *dev_info);
+
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

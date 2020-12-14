@@ -486,7 +486,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_out);
 }
 
-static int
+int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                        struct vfio_device_info *dev_info)
 {
