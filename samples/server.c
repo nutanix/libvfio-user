@@ -441,7 +441,7 @@ int main(int argc, char *argv[])
      * are mappable.
      */
     struct iovec mmap_areas[] = {
-        { .iov_base  = (void*)0, .iov_len = 0x1000},
+        { .iov_base  = (void*)0, .iov_len = 0x1000 },
         { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,

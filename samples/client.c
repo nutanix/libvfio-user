@@ -264,7 +264,7 @@ static bool
 get_device_region_info(int sock, uint32_t index)
 {
     struct vfio_region_info *region_info;
-    size_t cap_sz UNUSED;
+    size_t cap_sz;
     size_t size = sizeof(struct vfio_region_info);
 
     region_info = alloca(size);
