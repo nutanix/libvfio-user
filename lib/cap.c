@@ -40,6 +40,8 @@
 #include "libvfio-user.h"
 #include "cap.h"
 
+#define VFU_MAX_CAPS 48
+
 /*
  * PCI capabilities are stored after the the PCI configuration space header
  * (vfu_ctx->config_space), as they would in an actual PCI device. We also
