@@ -27,5 +27,5 @@ jobs:
           #yum list
           yum -y install make gcc-4.8.5 epel-release
           yum repolist
-          yum -y install cmake json-c-devel libcmocka-devel
+          yum -y install cmake json-c-devel libcmocka-devel openssl-devel
           make pre-push VERBOSE=1

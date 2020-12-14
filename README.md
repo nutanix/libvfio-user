@@ -70,8 +70,8 @@ Building muser
 Build requirements:
 
  * `cmake` (v2 or above)
- * `libjson-c-dev` / `libjson-c-devel`
- * `libcmocka-dev` / `libcmocka-devel`
+ * `apt install libjson-c-dev libcmocka-dev libssl-dev` *or*
+ * `yum install json-c-devel libcmocka-devel openssl-devel`
 
 To build:
 
