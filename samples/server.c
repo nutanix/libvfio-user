@@ -519,6 +519,7 @@ int main(int argc, char *argv[])
     }
 
     vfu_destroy_ctx(vfu_ctx);
+    free(server_data.migration.migr_data);
     free(server_data.bar1);
     return EXIT_SUCCESS;
 }
