@@ -983,7 +983,7 @@ int main(int argc, char *argv[])
      */
     negotiate(sock, &server_max_fds, &pgsize);
 
-    /* try to access a bogus region, we should het an error */
+    /* try to access a bogus region, we should get an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof ret);
     if (ret != -EINVAL) {
         errx(EXIT_FAILURE,
@@ -1006,10 +1006,11 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "failed to read PCI configuration space: %s\n",
              strerror(-ret));
     }
-    assert(config_space.id.raw == 0xdeadbeef);
-    assert(config_space.ss.raw == 0xcafebabe);
-    assert(config_space.cc.pi == 0xab && config_space.cc.scc == 0xcd
-           && config_space.cc.bcc == 0xef);
+
+    assert(config_space.id.vid == 0xdead);
+    assert(config_space.id.did == 0xbeef);
+    assert(config_space.ss.vid == 0xcafe);
+    assert(config_space.ss.sid == 0xbabe);
 
     /* XXX VFIO_USER_DEVICE_RESET */
     send_device_reset(sock);

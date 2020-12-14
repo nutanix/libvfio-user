@@ -339,27 +339,15 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 int
-vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
-                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         vfu_pci_type_t pci_type,
-                         int revision __attribute__((unused)))
+vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
+             int hdr_type, int revision UNUSED)
 {
     vfu_pci_config_space_t *config_space;
     size_t size;
 
     assert(vfu_ctx != NULL);
 
-    /*
-     * TODO there no real reason why we shouldn't allow this, we should just
-     * clean up and redo it.
-     */
-    if (vfu_ctx->pci.config_space != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "PCI configuration space header already setup");
-        return ERROR(EEXIST);
-    }
-
-    vfu_ctx->pci.type = pci_type;
-    switch (vfu_ctx->pci.type) {
+    switch (pci_type) {
     case VFU_PCI_TYPE_CONVENTIONAL:
     case VFU_PCI_TYPE_PCI_X_1:
         size = PCI_CFG_SPACE_SIZE;
@@ -369,8 +357,23 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
         size = PCI_CFG_SPACE_EXP_SIZE;
         break;
     default:
-        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %d", pci_type);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %u", pci_type);
         return ERROR(EINVAL);
+    }
+
+    if (hdr_type != PCI_HEADER_TYPE_NORMAL) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI header type %d", hdr_type);
+        return ERROR(EINVAL);
+    }
+
+    /*
+     * TODO there no real reason why we shouldn't allow this, we should just
+     * clean up and redo it.
+     */
+    if (vfu_ctx->pci.config_space != NULL) {
+        vfu_log(vfu_ctx, LOG_ERR,
+                "PCI configuration space header already setup");
+        return ERROR(EEXIST);
     }
 
     // Allocate a buffer for the config space.
@@ -379,13 +382,29 @@ vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
         return ERROR(ENOMEM);
     }
 
-    config_space->hdr.id = id;
-    config_space->hdr.ss = ss;
-    config_space->hdr.cc = cc;
+    vfu_ctx->pci.type = pci_type;
     vfu_ctx->pci.config_space = config_space;
     vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
 
     return 0;
+}
+
+void
+vfu_pci_set_id(vfu_ctx_t *vfu_ctx, uint16_t vid, uint16_t did,
+               uint16_t ssvid, uint16_t ssid)
+{
+    vfu_ctx->pci.config_space->hdr.id.vid = vid;
+    vfu_ctx->pci.config_space->hdr.id.did = did;
+    vfu_ctx->pci.config_space->hdr.ss.vid = ssvid;
+    vfu_ctx->pci.config_space->hdr.ss.sid = ssid;
+}
+
+void
+vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi)
+{
+    vfu_ctx->pci.config_space->hdr.cc.bcc = base;
+    vfu_ctx->pci.config_space->hdr.cc.scc = sub;
+    vfu_ctx->pci.config_space->hdr.cc.pi = pi;
 }
 
 int

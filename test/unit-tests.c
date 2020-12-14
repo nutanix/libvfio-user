@@ -516,9 +516,6 @@ static void
 test_vfu_ctx_create(void **state __attribute__((unused)))
 {
     vfu_ctx_t *vfu_ctx = NULL;
-    vfu_pci_hdr_id_t id = { 0 };
-    vfu_pci_hdr_ss_t ss = { 0 };
-    vfu_pci_hdr_cc_t cc = { { 0 } };
     vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM}};
     vfu_cap_t *caps[] = { &pm };
 
@@ -527,9 +524,8 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_non_null(vfu_ctx);
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_ERR_IRQ]);
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
-    assert_int_equal(0,
-                     vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc,
-                                              VFU_PCI_TYPE_CONVENTIONAL, 0));
+    assert_int_equal(0, vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+                        PCI_HEADER_TYPE_NORMAL, 0));
     assert_int_equal(0, vfu_pci_setup_caps(vfu_ctx, caps, 1));
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
 }

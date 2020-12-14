@@ -42,9 +42,6 @@ int main(void)
     int i, j;
     char *buf;
     const int bytes_per_line = 0x10;
-    vfu_pci_hdr_id_t id = { 0 };
-    vfu_pci_hdr_ss_t ss = { 0 };
-    vfu_pci_hdr_cc_t cc = { { 0 } };
     vfu_cap_t pm = { .pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 } };
     vfu_cap_t *vsc = alloca(sizeof(*vsc) + 0xd);
     vfu_cap_t *caps[2] = { &pm, vsc };
@@ -54,8 +51,9 @@ int main(void)
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
-    if (vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc, VFU_PCI_TYPE_CONVENTIONAL, 0) < 0) {
-        err(EXIT_FAILURE, "failed to setup PCI configuration space header");
+    if (vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+                     PCI_HEADER_TYPE_NORMAL, 0) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
     vsc->vsc.hdr.id = PCI_CAP_ID_VNDR;
     vsc->vsc.size = 0x10;
