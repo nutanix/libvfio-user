@@ -33,6 +33,7 @@
 #ifndef LIB_VFIO_USER_PRIVATE_H
 #define LIB_VFIO_USER_PRIVATE_H
 
+#include "pci_caps.h"
 #include "dma.h"
 
 static inline int
@@ -73,32 +74,23 @@ struct vfu_sparse_mmap_areas {
 };
 
 typedef struct  {
-
-    /*
-     * Region flags, see VFU_REGION_FLAG_READ and friends.
-     */
+    /* Region flags, see VFU_REGION_FLAG_READ and friends. */
     uint32_t            flags;
-
-    /*
-     * Size of the region.
-     */
+    /* Size of the region. */
     uint32_t            size;
-
-    /*
-     * Callback function that is called when the region is read or written.
-     * Note that the memory of the region is owned by the user, except for the
-     * standard header (first 64 bytes) of the PCI configuration space.
-     */
+    /* Callback that is called when the region is read or written. */
     vfu_region_access_cb_t  *cb;
-
-    struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+    /* Sparse mmap areas if set. */
+    struct vfu_sparse_mmap_areas *mmap_areas;
+    /* fd for a mappable region, or -1. */
     int fd;
 } vfu_reg_info_t;
 
 struct pci_dev {
     vfu_pci_type_t          type;
     vfu_pci_config_space_t  *config_space;
-    struct caps             *caps;
+    struct pci_cap          caps[VFU_MAX_CAPS];
+    size_t                  nr_caps;
 };
 
 struct vfu_ctx {
