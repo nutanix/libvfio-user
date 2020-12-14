@@ -484,7 +484,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                               struct vfio_region_info *reg_info_in,
                               struct vfio_region_info **reg_info_out)
 {
-    if (size != sizeof(*reg_info_in)) {
+    if (size < sizeof(*reg_info_in)) {
         return -EINVAL;
     }
 

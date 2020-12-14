@@ -329,7 +329,7 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
         errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
     }
 
-    if (dev_info->num_regions != 2) {
+    if (dev_info->num_regions != 10) {
         errx(EXIT_FAILURE, "bad number of device regions %d",
              dev_info->num_regions);
     }
