@@ -29,7 +29,7 @@
 #
 
 cmake_minimum_required (VERSION 2.6)
-project(libvfio-user)
+project(libvfio-user LANGUAGES C)
 include(GNUInstallDirs)
 
 find_package(PkgConfig REQUIRED)
