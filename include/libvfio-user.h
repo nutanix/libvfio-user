@@ -99,7 +99,12 @@ void *
 vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
 
 /*
- * Returns a pointer to the standard part of the PCI configuration space.
+ * Returns a pointer to the PCI configuration space.
+ *
+ * PCI config space consists of an initial 64-byte vfu_pci_hdr_t, plus
+ * additional space, either containing capabilities, or device-specific
+ * configuration.  Standard confspace is 256 bytes; extended config space is
+ * 4096 bytes.
  */
 vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
@@ -569,17 +574,6 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
  */
 int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
-
-/*
- * Advanced stuff.
- */
-
-/**
- * Returns the non-standard part of the PCI configuration space.
- * @vfu_ctx: the libvfio-user context
- */
-uint8_t *
-vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx);
 
 /*
  * Finalizes the device making it ready for vfu_attach_ctx(). This function is

@@ -1590,23 +1590,13 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
 }
 
 /*
- * Returns a pointer to the standard part of the PCI configuration space.
+ * Returns a pointer to the PCI configuration space.
  */
 inline vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
     return vfu_ctx->pci.config_space;
-}
-
-/*
- * Returns a pointer to the non-standard part of the PCI configuration space.
- */
-inline uint8_t *
-vfu_get_pci_non_std_config_space(vfu_ctx_t *vfu_ctx)
-{
-    assert(vfu_ctx != NULL);
-    return (uint8_t *)&vfu_ctx->pci.config_space->non_std;
 }
 
 inline vfu_reg_info_t *
