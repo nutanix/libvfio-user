@@ -483,6 +483,19 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_memory_equal(&config_space.raw[off], vsc[0]->vsc.data, 5);
 }
 
+static void
+test_device_get_info(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef};
+    struct vfio_device_info d = { 0 };
+
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof d, &d));
+    assert_int_equal(sizeof d, d.argsz);
+    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET, d.flags);
+    assert_int_equal(vfu_ctx.nr_regions, d.num_regions);
+    assert_int_equal(VFU_DEV_NUM_IRQS, d.num_irqs);
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -511,6 +524,7 @@ int main(void)
         cmocka_unit_test_setup(test_run_ctx, setup),
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
+        cmocka_unit_test_setup(test_device_get_info, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
