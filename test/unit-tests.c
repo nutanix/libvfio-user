@@ -405,7 +405,7 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     vfu_ctx_t *vfu_ctx = NULL;
     vfu_pci_hdr_id_t id = { 0 };
     vfu_pci_hdr_ss_t ss = { 0 };
-    vfu_pci_hdr_cc_t cc = { 0 };
+    vfu_pci_hdr_cc_t cc = { { 0 } };
     vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM}};
     vfu_cap_t *caps[] = { &pm };
 
