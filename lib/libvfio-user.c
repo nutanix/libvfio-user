@@ -154,12 +154,6 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
                     sparse->areas[i].offset + sparse->areas[i].size);
         }
     }
-
-    /*
-     * FIXME VFIO_REGION_INFO_FLAG_MMAP is valid if the region is
-     * memory-mappable in general, not only if it supports sparse mmap.
-     */
-    vfio_reg->flags |= VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS;
 }
 
 #define VFU_REGION_SHIFT 40
@@ -211,13 +205,12 @@ is_migr_reg(vfu_ctx_t *vfu_ctx, int index)
     return &vfu_ctx->reg_info[index] == vfu_ctx->migr_reg;
 }
 
-static long
-dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index,
+long
+dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
                 struct vfio_region_info **vfio_reg)
 {
     vfu_reg_info_t *vfu_reg;
     size_t caps_size;
-    uint32_t argsz;
 
     assert(vfu_ctx != NULL);
     assert(vfio_reg != NULL);
@@ -225,26 +218,38 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index,
     vfu_reg = &vfu_ctx->reg_info[index];
 
     if (index >= vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d", index);
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
+                index);
         return -EINVAL;
     }
 
-    caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index),
-                                   vfu_reg->mmap_areas);
-    argsz = caps_size + sizeof(struct vfio_region_info);
+    if (argsz < sizeof(struct vfio_region_info)) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad argsz %d", argsz);
+        return -EINVAL;
+    }
+
+    /*
+     * TODO We assume that the client expects to receive argsz bytes.
+     */
     *vfio_reg = calloc(1, argsz);
     if (!*vfio_reg) {
         return -ENOMEM;
     }
-    /* FIXME document in the protocol that vfio_req->argsz is ignored */
-    (*vfio_reg)->argsz = argsz;
+    caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index),
+                                   vfu_reg->mmap_areas);
+    (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
     (*vfio_reg)->flags = vfu_reg->flags;
     (*vfio_reg)->index = index;
     (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
     (*vfio_reg)->size = vfu_reg->size;
 
     if (caps_size > 0) {
-        dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index), *vfio_reg);
+        if (vfu_reg->mmap_areas != NULL) {
+            (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
+        }
+        if (argsz >= (*vfio_reg)->argsz) {
+            dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index), *vfio_reg);
+        }
     }
 
     vfu_log(vfu_ctx, LOG_DEBUG, "region_info[%d] offset %#llx flags %#x size %llu "
@@ -479,11 +484,12 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                               struct vfio_region_info *reg_info_in,
                               struct vfio_region_info **reg_info_out)
 {
-    if (size != sizeof(*reg_info_in) || size != reg_info_in->argsz) {
+    if (size < sizeof(*reg_info_in)) {
         return -EINVAL;
     }
 
-    return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_out);
+    return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_in->argsz,
+                           reg_info_out);
 }
 
 int
@@ -955,7 +961,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
                                                 &dev_reg_info);
             if (ret == 0) {
                 _iovecs[1].iov_base = dev_reg_info;
-                _iovecs[1].iov_len = dev_reg_info->argsz;
+                _iovecs[1].iov_len = hdr->msg_size;
                 *iovecs = _iovecs;
                 *nr_iovecs = 2;
             }

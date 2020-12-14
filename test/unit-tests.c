@@ -396,6 +396,68 @@ test_run_ctx(UNUSED void **state)
     assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
 }
 
+static void
+test_get_region_info(UNUSED void **state)
+{
+    vfu_reg_info_t reg_info[] = {
+        {
+            .size = 0xcadebabe
+        },
+        {
+            .flags = VFU_REGION_FLAG_RW,
+            .size = 0xdeadbeef
+        }
+    };
+    vfu_ctx_t vfu_ctx = {
+        .nr_regions = 2,
+        .reg_info = reg_info
+    };
+    uint32_t index = 0;
+    uint32_t argsz = 0;
+    struct vfio_region_info *vfio_reg;
+    struct vfu_sparse_mmap_areas *mmap_areas = alloca(sizeof(struct vfu_sparse_mmap_areas) + sizeof(struct iovec));
+   
+    /* bad argsz */
+    assert_int_equal(-EINVAL, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+
+    /* bad region */
+    index = vfu_ctx.nr_regions;
+    argsz = sizeof(struct vfio_region_info);
+    assert_int_equal(-EINVAL, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+
+    /* no region caps */
+    index = 1;
+    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(sizeof(struct vfio_region_info), vfio_reg->argsz);
+    assert_int_equal(VFU_REGION_FLAG_RW, vfio_reg->flags);
+    assert_int_equal(1, vfio_reg->index);
+    assert_int_equal(0x10000000000, region_to_offset(vfio_reg->index));
+    assert_int_equal(0xdeadbeef, vfio_reg->size);
+
+    /* regions caps (sparse mmap) but argsz too small */
+    mmap_areas->nr_mmap_areas = 1; 
+    mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
+    mmap_areas->areas[0].iov_len = 0x0d15ea5e;
+    vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
+    vfu_ctx.reg_info[1].flags |= VFIO_REGION_INFO_FLAG_MMAP;
+    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(argsz + sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area),
+                     vfio_reg->argsz);
+    assert_int_equal(VFU_REGION_FLAG_RW | VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
+                     vfio_reg->flags);
+
+    /* region caps and argsz large enough */
+    argsz += sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area);
+    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    struct vfio_region_info_cap_sparse_mmap *sparse = (struct vfio_region_info_cap_sparse_mmap*)(vfio_reg + 1);
+    assert_int_equal(VFIO_REGION_INFO_CAP_SPARSE_MMAP, sparse->header.id);
+    assert_int_equal(1, sparse->header.version);
+    assert_int_equal(0, sparse->header.next);
+    assert_int_equal(1, sparse->nr_areas);
+
+    /* FIXME add check for migration region and for multiple sparse areas */
+}
+
 /*
  * FIXME expand and validate
  */
@@ -525,6 +587,7 @@ int main(void)
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
+        cmocka_unit_test_setup(test_get_region_info, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
