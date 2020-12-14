@@ -30,10 +30,11 @@
  *
  */
 
-#include <stdio.h>
 #include <err.h>
-#include <stdlib.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "libvfio-user.h"
 
@@ -42,9 +43,9 @@ int main(void)
     int i, j;
     char *buf;
     const int bytes_per_line = 0x10;
-    vfu_cap_t pm = { .pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 } };
-    vfu_cap_t *vsc = alloca(sizeof(*vsc) + 0xd);
-    vfu_cap_t *caps[2] = { &pm, vsc };
+    struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
+    struct pmcap pm = { { 0 } };
+
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
                                         LIBVFIO_USER_FLAG_ATTACH_NB, NULL,
                                         VFU_DEV_TYPE_PCI);
@@ -55,11 +56,23 @@ int main(void)
                      PCI_HEADER_TYPE_NORMAL, 0) < 0) {
         err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
-    vsc->vsc.hdr.id = PCI_CAP_ID_VNDR;
-    vsc->vsc.size = 0x10;
-    if (vfu_pci_setup_caps(vfu_ctx, caps, 2) < 0) {
-        err(EXIT_FAILURE, "failed to setup PCI capabilities");
+
+    pm.hdr.id = PCI_CAP_ID_PM;
+    pm.pmcs.nsfrst = 0x1;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, &pm) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
     }
+
+    memset(vsc, 0, 0x10);
+    vsc->hdr.id = PCI_CAP_ID_VNDR;
+    vsc->size = 0x10;
+    memcpy(vsc->data, "abcdefgh", 8);
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, vsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
     if (vfu_realize_ctx(vfu_ctx) < 0) {
         err(EXIT_FAILURE, "failed to realize device");
     }

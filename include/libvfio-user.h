@@ -233,7 +233,8 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  *    by the relevant PCI specification
  *  - all accesses to the standard PCI header (i.e. the first 64 bytes of the
  *    region) are handled by the library
- *  - all accesses to known PCI capabilities are handled by the library
+ *  - all accesses to known PCI capabilities (see vfu_pci_add_capability())
+ *    are handled by the library
  *  - if no callback is provided, reads to other areas are a simple memcpy(),
  *    and writes are an error
  *  - otherwise, the callback is expected to handle the access
@@ -522,8 +523,6 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /*
  * Supported PCI regions.
- *
- * FIXME: update with CFG behaviour etc.
  */
 enum {
     VFU_PCI_DEV_BAR0_REGION_IDX,
@@ -594,26 +593,57 @@ vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi);
 vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
 
-/* FIXME does it have to be packed as well? */
-typedef union {
-    struct msicap   msi;
-    struct msixcap  msix;
-    struct pmcap    pm;
-    struct pxcap    px;
-    struct vsc      vsc;
-} vfu_cap_t;
-
-//TODO: Support variable size capabilities.
+#define VFU_CAP_FLAG_EXTENDED (1 << 0)
+#define VFU_CAP_FLAG_CALLBACK (1 << 1)
+#define VFU_CAP_FLAG_READONLY (1 << 2)
 
 /**
- * Setup PCI capabilities.
+ * Add a PCI capability to PCI config space.
+ *
+ * Certain standard capabilities are handled entirely within the library:
+ *
+ * PCI_CAP_ID_EXP (pxcap)
+ * PCI_CAP_ID_MSIX (msixcap)
+ * PCI_CAP_ID_PM (pmcap)
+ *
+ * However, they must still be explicitly initialized and added here.
+ *
+ * The contents of @data are copied in. It must start with either a struct
+ * cap_hdr or a struct ext_cap_hdr, with the ID field set; the 'next' field is
+ * ignored.  For PCI_CAP_ID_VNDR or PCI_EXT_CAP_ID_VNDR, the embedded size field
+ * must also be set; in general, any non-fixed-size capability must be
+ * initialized such that the size can be derived at this point.
+ *
+ * If @pos is non-zero, the capability will be placed at the given offset within
+ * configuration space. It must not overlap the PCI standard header, or any
+ * existing capability. If @pos is zero, the capability will be placed at a
+ * suitable offset automatically.
+ *
+ * The @flags field can be set as follows:
+ *
+ * VFU_CAP_FLAG_EXTENDED: this is an extended capability; supported if device is
+ * of PCI type VFU_PCI_TYPE_{PCI_X_2,EXPRESS}.
+ *
+ * VFU_CAP_FLAG_CALLBACK: all accesses to the capability are delegated to the
+ * callback for the region VFU_PCI_DEV_CFG_REGION_IDX. The callback should copy
+ * data into and out of the capability as needed (this could be directly on the
+ * config space area from vfi_pci_get_config_space()). It is not supported to
+ * allow writes to the initial capability header (ID/next fields).
+ *
+ * VFU_CAP_FLAG_READONLY: if VFU_CAP_FLAG_CALLBACK is not set, this prevents
+ * clients from writing to the capability.  By default, clients are allowed to
+ * write to any part of the capability, excluding the initial header.
+ *
+ * Returns the offset of the capability in config space, or -1 on error, with
+ * errno set.
  *
  * @vfu_ctx: the libvfio-user context
- * @caps: array of (vfu_cap_t *)
- * @nr_caps: number of elements in @caps
+ * @pos: specific offset for the capability, or 0.
+ * @flags: VFU_CAP_FLAG_*
+ * @data: capability data, including the header
  */
-int
-vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
+ssize_t
+vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data);
 
 /**
  * Find the offset within config space of a given capability (if there are

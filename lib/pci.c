@@ -36,7 +36,7 @@
 #include <string.h>
 #include <sys/param.h>
 
-#include "cap.h"
+#include "pci_caps.h"
 #include "common.h"
 #include "libvfio-user.h"
 #include "pci.h"
@@ -217,13 +217,15 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 }
 
 static int
-pci_hdr_write(vfu_ctx_t *vfu_ctx, vfu_pci_config_space_t *cfg_space,
-              const char *buf, size_t count, loff_t offset)
+pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
 {
+    vfu_pci_config_space_t *cfg_space;
     int ret = 0;
 
     assert(vfu_ctx != NULL);
     assert(buf != NULL);
+
+    cfg_space = vfu_pci_get_config_space(vfu_ctx);
 
     switch (offset) {
     case PCI_COMMAND:
@@ -269,29 +271,90 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, vfu_pci_config_space_t *cfg_space,
     return ret;
 }
 
-static int
-pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t *countp,
-               loff_t *offsetp, bool is_write)
+/*
+ * Access to the standard PCI header at the given offset.
+ */
+static ssize_t
+pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
+               loff_t offset, bool is_write)
 {
-    vfu_pci_config_space_t *cfg_space = vfu_pci_get_config_space(vfu_ctx);
-    size_t count;
-    int err = 0;
+    ssize_t ret;
 
-    assert(countp != NULL);
-    assert(offsetp != NULL);
-
-    count = MIN(*countp, (size_t)(PCI_STD_HEADER_SIZEOF - *offsetp));
+    assert(count <= PCI_STD_HEADER_SIZEOF);
 
     if (is_write) {
-        err = pci_hdr_write(vfu_ctx, cfg_space, buf, count, *offsetp);
+        ret = pci_hdr_write(vfu_ctx, buf, count, offset);
+        if (ret < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to write to PCI header: %s",
+                    strerror(-ret));
+        } else {
+            dump_buffer("buffer write", buf, count);
+            ret = count;
+        }
     } else {
-        memcpy(buf, cfg_space->hdr.raw + *offsetp, count);
+        memcpy(buf, pci_config_space_ptr(vfu_ctx, offset), count);
+        ret = count;
     }
 
-    *countp -= count;
-    *offsetp += count;
+    return ret;
+}
 
-    return err;
+/*
+ * Access to the PCI config space that isn't handled by pci_hdr_access() or a
+ * capability handler.
+ */
+ssize_t
+pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
+                  loff_t offset, bool is_write)
+{
+    vfu_region_access_cb_t *cb =
+        vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb;
+
+    if (cb != NULL) {
+        return cb(vfu_ctx, buf, count, offset, is_write);
+    }
+
+    if (is_write) {
+        vfu_log(vfu_ctx, LOG_ERR, "no callback for write to config space "
+                "offset %u size %zu\n", offset, count);
+        return -EINVAL;
+    }
+
+    memcpy(buf, pci_config_space_ptr(vfu_ctx, offset), count);
+    return count;
+}
+
+/*
+ * Return the next segment and the callback used to handle the access. We may
+ * need to split up an access that straddles capabilities and normal config
+ * space.
+ */
+static size_t
+pci_config_space_next_segment(vfu_ctx_t *ctx, size_t count, loff_t offset,
+                              vfu_region_access_cb_t **cb)
+{
+    struct pci_cap *cap;
+
+    if (offset < PCI_STD_HEADER_SIZEOF) {
+        *cb = pci_hdr_access;
+        return MIN(count, (size_t)(PCI_STD_HEADER_SIZEOF - offset));
+    }
+
+    cap = cap_find_by_offset(ctx, offset, count);
+
+    if (cap == NULL) {
+        *cb = pci_nonstd_access;
+        return count;
+    }
+
+    /* If we have config space before the capability. */
+    if (offset < (loff_t)cap->off) {
+        *cb = pci_nonstd_access;
+        return cap->off - offset;
+    }
+
+    *cb = pci_cap_access;
+    return MIN(count, cap->size);
 }
 
 /*
@@ -308,59 +371,26 @@ ssize_t
 pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t offset, bool is_write)
 {
-    vfu_region_access_cb_t *cb;
     loff_t start = offset;
-    ssize_t ret;
-    int rc;
+    ssize_t ret = 0;
 
     assert(vfu_ctx != NULL);
 
-    cb = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb;
+    while (count > 0) {
+        vfu_region_access_cb_t *cb;
+        size_t size;
 
-    if (offset < PCI_STD_HEADER_SIZEOF) {
-        rc = pci_hdr_access(vfu_ctx, buf, &count, &offset, is_write);
-        if (rc < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
-                    strerror(-rc));
-            dump_buffer("buffer write", buf, count);
-            return rc;
-        }
-    }
+        size = pci_config_space_next_segment(vfu_ctx, count, offset, &cb);
 
-    if (count == 0) {
-        return offset - start;
-    }
+        ret = cb(vfu_ctx, buf, size, offset, is_write);
 
-    if (is_write) {
-        rc = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, offset);
-
-        if (rc < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
-                    offset, offset + count);
-            return rc;
-        } else if (rc > 0) {
-            offset += count;
-            return offset - start;
+        // FIXME: partial reads, still return an error?
+        if (ret < 0) {
+            return ret;
         }
 
-        if (cb == NULL) {
-            vfu_log(vfu_ctx, LOG_ERR, "config space write: no callback");
-            return -EINVAL;
-        }
-
-    } else {
-        if (cb == NULL) {
-            memcpy(buf, vfu_ctx->pci.config_space->raw + offset, count);
-            offset += count;
-            return offset - start;
-        }
-    }
-
-    ret = cb(vfu_ctx, buf, count, offset, is_write);
-    offset += ret;
-
-    if (ret < 0) {
-        return ret;
+        offset += ret;
+        count -= ret;
     }
 
     return offset - start;
@@ -433,33 +463,6 @@ vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi)
     vfu_ctx->pci.config_space->hdr.cc.bcc = base;
     vfu_ctx->pci.config_space->hdr.cc.scc = sub;
     vfu_ctx->pci.config_space->hdr.cc.pi = pi;
-}
-
-int
-vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
-{
-    int ret;
-
-    assert(vfu_ctx != NULL);
-
-    if (vfu_ctx->pci.caps != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "capabilities are already setup");
-        return ERROR(EEXIST);
-    }
-
-    if (caps == NULL || nr_caps == 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid args passed");
-        return ERROR(EINVAL);
-    }
-
-    vfu_ctx->pci.caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
-    if (vfu_ctx->pci.caps == NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to create PCI capabilities: %s",
-               strerror(ret));
-        return ERROR(ret);
-    }
-
-    return 0;
 }
 
 inline vfu_pci_config_space_t *

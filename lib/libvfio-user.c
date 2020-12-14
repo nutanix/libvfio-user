@@ -49,7 +49,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-#include "cap.h"
 #include "dma.h"
 #include "irq.h"
 #include "libvfio-user.h"
@@ -1034,10 +1033,10 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         }
     }
 
-    if (vfu_ctx->pci.caps != NULL) {
+    if (vfu_ctx->pci.nr_caps != 0) {
         vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
-        vfu_ctx->pci.config_space->hdr.cap = PCI_STD_HEADER_SIZEOF;
     }
+
     vfu_ctx->realized = true;
 
     return 0;
@@ -1093,7 +1092,6 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     }
     free_sparse_mmap_areas(vfu_ctx);
     free(vfu_ctx->reg_info);
-    free(vfu_ctx->pci.caps);
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
