@@ -146,7 +146,10 @@ __wrap_vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 void
 __wrap_free(void *ptr)
 {
-    assert(false);
+    if (!is_patched(free)) {
+        __real_free(ptr);
+        return;
+    }
     check_expected(ptr);
 }
 

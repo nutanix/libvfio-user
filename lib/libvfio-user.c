@@ -1484,6 +1484,32 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
+static int
+setup_sparse_areas(vfu_reg_info_t *r, struct iovec *mmap_areas,
+                   uint32_t nr_mmap_areas, int fd)
+{
+    int ret, i;
+
+    assert(r != NULL);
+
+    if (fd == -1) {
+        return -EBADF;
+    }
+    r->fd = fd;
+    ret = copy_sparse_mmap_areas(r, mmap_areas, nr_mmap_areas);
+    if (ret < 0) {
+        return ret;
+    }
+    for (i = 0; i < r->mmap_areas->nr_mmap_areas; i++) {
+        struct iovec *a = &r->mmap_areas->areas[i];
+        if ((unsigned long long)a->iov_base + a->iov_len > r->size) {
+            free(r->mmap_areas);
+            return -EINVAL;
+        }
+    }
+    return 0;
+}
+
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
@@ -1507,12 +1533,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         vfu_ctx->reg_info[region_idx].fn = region_access;
 
         if (nr_mmap_areas > 0) {
-            if (fd == -1) {
-                return ERROR(EBADF);
-            }
-            vfu_ctx->reg_info[region_idx].fd = fd;
-            ret = copy_sparse_mmap_areas(&vfu_ctx->reg_info[region_idx],
-                                         mmap_areas, nr_mmap_areas);
+            ret = setup_sparse_areas(&vfu_ctx->reg_info[region_idx], mmap_areas,
+                                     nr_mmap_areas, fd);
             if (ret < 0) {
                 return ERROR(-ret);
             }

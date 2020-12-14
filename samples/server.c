@@ -443,7 +443,6 @@ int main(int argc, char *argv[])
         { .iov_base  = (void*)0, .iov_len = 0x1000 },
         { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
-    /* FIXME add unit test where we check that the sparse regions do not execeed region size */
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            0x3000, &bar1_access, VFU_REGION_FLAG_RW,
                            mmap_areas, 2, fileno(fp));

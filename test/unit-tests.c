@@ -580,6 +580,45 @@ test_device_get_info(void **state __attribute__((unused)))
 }
 
 /*
+ * Performs various checks when adding sparse memory regions.
+ */
+static void
+test_setup_sparse_region(void **state __attribute__((unused)))
+{
+    vfu_reg_info_t reg_info;
+    vfu_ctx_t vfu_ctx = { .reg_info = &reg_info };
+    struct iovec mmap_areas[2] = {
+        [0] = {
+            .iov_base = (void*)0x0,
+            .iov_len = 0x1000
+        },
+        [1] = {
+            .iov_base = (void*)0x1000,
+            .iov_len = 0x1000
+        }
+    };
+
+    /* bad fd */
+    assert_int_equal(-1,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, -1));
+    assert_int_equal(EBADF, errno);
+
+    /* sparse region exceeds region size */
+    mmap_areas[1].iov_len = 0x1001;
+    assert_int_equal(-1,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    assert_int_equal(EINVAL, errno);
+
+    /* sparse region within region size */
+    mmap_areas[1].iov_len = 0x1000;
+    assert_int_equal(0,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+}
+
+/*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
  * run a function before/after ALL unit tests have finished, we can extend it
@@ -608,7 +647,8 @@ int main(void)
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
-        cmocka_unit_test_setup(test_get_region_info, setup)
+        cmocka_unit_test_setup(test_get_region_info, setup),
+        cmocka_unit_test_setup(test_setup_sparse_region, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
