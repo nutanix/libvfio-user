@@ -37,8 +37,9 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "libvfio-user.h"
 #include "cap.h"
+#include "common.h"
+#include "libvfio-user.h"
 
 #define VFU_MAX_CAPS \
     ((PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF)
@@ -129,48 +130,6 @@ cap_find(vfu_pci_config_space_t *config_space, struct caps *caps, loff_t offset,
         }
         cap++;
     }
-    return NULL;
-}
-
-static bool
-cap_is_valid(uint8_t id)
-{
-    /* TODO 0 is a valid capability ID (Null Capability), check
-     * https://pcisig.com/sites/default/files/files/PCI_Code-ID_r_1_11__v24_Jan_2019.pdf:
-     *
-     */
-    return id >= PCI_CAP_ID_PM && id <= PCI_CAP_ID_MAX;
-}
-
-uint8_t *
-cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id)
-{
-    uint8_t *pos;
-    vfu_pci_config_space_t *config_space;
-
-    if (!cap_is_valid(id)) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    config_space = vfu_pci_get_config_space(vfu_ctx);
-
-    if (config_space->hdr.cap == 0) {
-        errno = ENOENT;
-        return NULL;
-    }
-
-    pos = config_space->raw + config_space->hdr.cap;
-    while (true) {
-        if (*(pos + PCI_CAP_LIST_ID) == id) {
-            return pos;
-        }
-        if (*(pos + PCI_CAP_LIST_NEXT) == 0) {
-            break;
-        }
-        pos = config_space->raw + *(pos + PCI_CAP_LIST_NEXT);
-    }
-    errno = ENOENT;
     return NULL;
 }
 
@@ -430,6 +389,16 @@ cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
                                                  offset - (loff_t)(cap - config_space->raw));
 }
 
+static bool
+cap_is_valid(uint8_t id)
+{
+    /* TODO 0 is a valid capability ID (Null Capability), check
+     * https://pcisig.com/sites/default/files/files/PCI_Code-ID_r_1_11__v24_Jan_2019.pdf:
+     *
+     */
+    return id >= PCI_CAP_ID_PM && id <= PCI_CAP_ID_MAX;
+}
+
 struct caps *
 caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
 {
@@ -500,6 +469,60 @@ caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **vfu_caps, int nr_caps, int *err)
 err_out:
     free(caps);
     return NULL;
+}
+
+size_t
+vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
+{
+    vfu_pci_config_space_t *config_space;
+
+    config_space = vfu_pci_get_config_space(vfu_ctx);
+
+    if (offset == 0) {
+        offset = config_space->hdr.cap;
+    } else {
+        offset = config_space->raw[offset + PCI_CAP_LIST_NEXT];
+    }
+
+    if (offset == 0) {
+        errno = ENOENT;
+        return 0;
+    }
+
+    for (;;) {
+        if (config_space->raw[offset + PCI_CAP_LIST_ID] == cap_id) {
+            break;
+        }
+
+        offset = config_space->raw[offset + PCI_CAP_LIST_NEXT];
+
+        if (offset == 0) {
+            errno = ENOENT;
+            break;
+        }
+    }
+
+    return offset;
+}
+
+size_t
+vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, int cap_id)
+{
+    return vfu_pci_find_next_capability(vfu_ctx, 0, cap_id);
+}
+
+size_t
+vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx UNUSED,
+                                 size_t pos UNUSED, int cap_id UNUSED)
+{
+    errno = ENOTSUP;
+    return 0;
+}
+
+size_t
+vfu_pci_find_ext_capability(vfu_ctx_t *vfu_ctx, int cap_id)
+{
+    return vfu_pci_find_next_ext_capability(vfu_ctx, 0, cap_id);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
