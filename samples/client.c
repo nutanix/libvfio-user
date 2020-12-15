@@ -199,7 +199,7 @@ static void
 send_device_reset(int sock)
 {
     int ret = vfu_msg(sock, 1, VFIO_USER_DEVICE_RESET,
-                      NULL, 0, NULL, NULL, 0, NULL, 0);
+                      NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to reset device: %s\n", strerror(-ret));
     }
@@ -250,11 +250,9 @@ static void
 do_get_device_region_info(int sock, struct vfio_region_info *region_info,
                           int *fds, size_t *nr_fds)
 {
-    int ret = vfu_msg(sock, 0,
-                  VFIO_USER_DEVICE_GET_REGION_INFO,
-                  region_info, region_info->argsz,
-                  NULL,
-                  region_info, region_info->argsz, fds, nr_fds);
+    int ret = vfu_msg_fds(sock, 0, VFIO_USER_DEVICE_GET_REGION_INFO,
+                          region_info, region_info->argsz, NULL,
+                          region_info, region_info->argsz, fds, nr_fds);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device region info: %s",
                 strerror(-ret));
@@ -347,7 +345,7 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
                   VFIO_USER_DEVICE_GET_INFO,
                   dev_info, sizeof(*dev_info),
                   NULL,
-                  dev_info, sizeof(*dev_info), NULL, 0);
+                  dev_info, sizeof(*dev_info));
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
@@ -380,7 +378,7 @@ configure_irqs(int sock)
                       VFIO_USER_DEVICE_GET_IRQ_INFO,
                       &vfio_irq_info, sizeof vfio_irq_info,
                       NULL,
-                      &vfio_irq_info, sizeof vfio_irq_info, NULL, 0);
+                      &vfio_irq_info, sizeof vfio_irq_info);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to get  %s info: %s", irq_to_str[i],
                  strerror(-ret));
@@ -499,8 +497,7 @@ wait_for_irqs(int sock, int irq_fd)
     printf("INTx triggered!\n");
 
     size = sizeof(vfio_user_irq_info);
-    ret = vfu_recv(sock, &hdr, false, &msg_id, &vfio_user_irq_info, &size,
-                   NULL, 0);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &vfio_user_irq_info, &size);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to receive IRQ message: %s",
              strerror(-ret));
@@ -558,7 +555,7 @@ handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
     uint16_t msg_id = 5;
     void *data;
 
-    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size, NULL, 0);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to receive DMA read: %s", strerror(-ret));
     }
@@ -608,7 +605,7 @@ handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
     uint16_t msg_id = 6;
     void *data;
 
-    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size, NULL, 0);
+    ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to recieve DMA read");
     }
@@ -1052,7 +1049,7 @@ int main(int argc, char *argv[])
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
     ret = vfu_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                   &dirty_bitmap, sizeof dirty_bitmap,
-                  NULL, NULL, 0, NULL, 0);
+                  NULL, NULL, 0);
     if (ret != 0) {
         errx(EXIT_FAILURE, "failed to start dirty page logging: %s",
              strerror(-ret));
@@ -1077,7 +1074,7 @@ int main(int argc, char *argv[])
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
     ret = vfu_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
                   &dirty_bitmap, sizeof dirty_bitmap,
-                  NULL, NULL, 0, NULL, 0);
+                  NULL, NULL, 0);
     if (ret != 0) {
         errx(EXIT_FAILURE, "failed to stop dirty page logging: %s",
              strerror(-ret));
@@ -1092,7 +1089,7 @@ int main(int argc, char *argv[])
      */
     ret = vfu_msg(sock, 7, VFIO_USER_DMA_UNMAP,
                   dma_regions, sizeof *dma_regions * server_max_fds,
-                  NULL, NULL, 0, NULL, 0);
+                  NULL, NULL, 0);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to unmap DMA regions: %s", strerror(-ret));
     }

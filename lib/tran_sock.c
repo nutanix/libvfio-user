@@ -236,7 +236,6 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
     }
 
     if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
-        assert(false);
         return -EFAULT;
     }
 
@@ -271,8 +270,9 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
  * better.
  */
 int
-vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
-         uint16_t *msg_id, void *data, size_t *len, int *fds, size_t *nr_fds)
+vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
+             uint16_t *msg_id, void *data, size_t *len, int *fds,
+             size_t *nr_fds)
 {
     int ret;
 
@@ -322,6 +322,13 @@ vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
     return 0;
 }
 
+int
+vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+         uint16_t *msg_id, void *data, size_t *len)
+{
+    return vfu_recv_fds(sock, hdr, is_reply, msg_id, data, len, NULL, NULL);
+}
+
 /*
  * Like vfu_recv(), but will automatically allocate reply data.
  *
@@ -335,7 +342,7 @@ vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
     size_t len;
     int ret;
 
-    ret = vfu_recv(sock, hdr, is_reply, msg_id, NULL, NULL, NULL, 0);
+    ret = vfu_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
 
     if (ret != 0) {
         return ret;
@@ -393,15 +400,16 @@ vfu_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
     if (hdr == NULL) {
         hdr = alloca(sizeof *hdr);
     }
-    return vfu_recv(sock, hdr, true, &msg_id, recv_data, &recv_len, recv_fds,
-                    recv_fd_count);
+    return vfu_recv_fds(sock, hdr, true, &msg_id, recv_data, &recv_len,
+                        recv_fds, recv_fd_count);
 }
 
 int
-vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-        void *send_data, size_t send_len,
-        struct vfio_user_header *hdr,
-        void *recv_data, size_t recv_len, int *recv_fds, size_t *recv_fd_count)
+vfu_msg_fds(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+            void *send_data, size_t send_len,
+            struct vfio_user_header *hdr,
+            void *recv_data, size_t recv_len, int *recv_fds,
+            size_t *recv_fd_count)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -413,6 +421,16 @@ vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
     return vfu_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
                          NULL, 0, hdr, recv_data, recv_len, recv_fds,
                          recv_fd_count);
+}
+
+int
+vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+        void *send_data, size_t send_len,
+        struct vfio_user_header *hdr,
+        void *recv_data, size_t recv_len)
+{
+    return vfu_msg_fds(sock, msg_id, cmd, send_data, send_len, hdr, recv_data,
+                       recv_len, NULL, NULL);
 }
 
 /*
