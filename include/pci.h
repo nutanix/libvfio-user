@@ -177,19 +177,13 @@ typedef union {
 } __attribute__ ((packed)) vfu_pci_hdr_t;
 _Static_assert(sizeof(vfu_pci_hdr_t) == 0x40, "bad PCI header size");
 
-typedef struct {
-    uint8_t raw[PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF];
-} __attribute__ ((packed)) vfu_pci_non_std_config_space_t;
-_Static_assert(sizeof(vfu_pci_non_std_config_space_t) == 0xc0,
-               "bad non-standard PCI configuration space size");
-
+/*
+ * Note that extended config space is 4096 bytes.
+ */
 typedef struct {
     union {
         uint8_t raw[PCI_CFG_SPACE_SIZE];
-        struct {
-            vfu_pci_hdr_t hdr;
-            vfu_pci_non_std_config_space_t non_std;
-        } __attribute__ ((packed));
+        vfu_pci_hdr_t hdr;
     } __attribute__ ((packed));
     uint8_t extended[];
 } __attribute__ ((packed)) vfu_pci_config_space_t;
