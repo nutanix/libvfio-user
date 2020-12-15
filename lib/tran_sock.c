@@ -214,6 +214,52 @@ vfu_send_error(int sock, uint16_t msg_id,
     return vfu_send_iovec(sock, msg_id, true, cmd, NULL, 0, NULL, 0, error);
 }
 
+static int
+get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
+        int sock_flags)
+{
+    int ret;
+    struct iovec iov = {.iov_base = data, .iov_len = len};
+    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
+    struct cmsghdr *cmsg;
+
+    if (nr_fds != NULL && *nr_fds > 0) {
+        assert(fds != NULL);
+        msg.msg_controllen = CMSG_SPACE(sizeof(int) * *nr_fds);
+        msg.msg_control = alloca(msg.msg_controllen);
+        *nr_fds = 0;
+    }
+
+    ret = recvmsg(sock_fd, &msg, sock_flags);
+    if (ret == -1) {
+        return -errno;
+    }
+
+    if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
+        return -EFAULT;
+    }
+
+    if (nr_fds != NULL) {
+        for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+            if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
+                continue;
+            }
+            if (cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
+                return -EINVAL;
+            }
+            int size = cmsg->cmsg_len - CMSG_LEN(0);
+            if (size % sizeof(int) != 0) {
+                return -EINVAL;
+            }
+            *nr_fds = (int)(size / sizeof(int));
+            memcpy(fds, CMSG_DATA(cmsg), *nr_fds * sizeof(int));
+            break;
+        }
+    }
+
+    return ret;
+}
+
 /*
  * Receive a vfio-user message.  If "len" is set to non-zero, the message should
  * include data of that length, which is stored in the pre-allocated "data"
@@ -224,14 +270,15 @@ vfu_send_error(int sock, uint16_t msg_id,
  * better.
  */
 int
-vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
-        uint16_t *msg_id, void *data, size_t *len)
+vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
+             uint16_t *msg_id, void *data, size_t *len, int *fds,
+             size_t *nr_fds)
 {
     int ret;
 
     /* FIXME if ret == -1 then fcntl can overwrite recv's errno */
 
-    ret = recv_blocking(sock, hdr, sizeof(*hdr), 0);
+    ret = get_msg(hdr, sizeof *hdr, fds, nr_fds, sock, 0);
     if (ret == -1) {
         return -errno;
     }
@@ -273,6 +320,13 @@ vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
         *len = ret;
     }
     return 0;
+}
+
+int
+vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+         uint16_t *msg_id, void *data, size_t *len)
+{
+    return vfu_recv_fds(sock, hdr, is_reply, msg_id, data, len, NULL, NULL);
 }
 
 /*
@@ -333,26 +387,29 @@ vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
 int
 vfu_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
               struct iovec *iovecs, size_t nr_iovecs,
-              int *send_fds, size_t fd_count,
+              int *send_fds, size_t send_fd_count,
               struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len)
+              void *recv_data, size_t recv_len,
+              int *recv_fds, size_t *recv_fd_count)
 {
     int ret = vfu_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                             send_fds, fd_count, 0);
+                             send_fds, send_fd_count, 0);
     if (ret < 0) {
         return ret;
     }
     if (hdr == NULL) {
         hdr = alloca(sizeof *hdr);
     }
-    return vfu_recv(sock, hdr, true, &msg_id, recv_data, &recv_len);
+    return vfu_recv_fds(sock, hdr, true, &msg_id, recv_data, &recv_len,
+                        recv_fds, recv_fd_count);
 }
 
 int
-vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-        void *send_data, size_t send_len,
-        struct vfio_user_header *hdr,
-        void *recv_data, size_t recv_len)
+vfu_msg_fds(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+            void *send_data, size_t send_len,
+            struct vfio_user_header *hdr,
+            void *recv_data, size_t recv_len, int *recv_fds,
+            size_t *recv_fd_count)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -362,7 +419,18 @@ vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
         }
     };
     return vfu_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
-                         NULL, 0, hdr, recv_data, recv_len);
+                         NULL, 0, hdr, recv_data, recv_len, recv_fds,
+                         recv_fd_count);
+}
+
+int
+vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+        void *send_data, size_t send_len,
+        struct vfio_user_header *hdr,
+        void *recv_data, size_t recv_len)
+{
+    return vfu_msg_fds(sock, msg_id, cmd, send_data, send_len, hdr, recv_data,
+                       recv_len, NULL, NULL);
 }
 
 /*
@@ -650,15 +718,7 @@ static int
 get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                  int *fds, size_t *nr_fds)
 {
-    int ret, sock_flags = 0;
-    struct iovec iov = {.iov_base = hdr, .iov_len = sizeof *hdr};
-    struct msghdr msg = {.msg_iov = &iov, .msg_iovlen = 1};
-    struct cmsghdr *cmsg;
-
-    msg.msg_controllen = CMSG_SPACE(sizeof(int) * *nr_fds);
-    msg.msg_control = alloca(msg.msg_controllen);
-
-    *nr_fds = 0;
+    int sock_flags = 0;
 
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
@@ -668,32 +728,7 @@ get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
         sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     }
-    ret = recvmsg(vfu_ctx->conn_fd, &msg, sock_flags);
-    if (ret == -1) {
-        return -errno;
-    }
-
-    if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
-        return -EFAULT;
-    }
-
-    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-        if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
-            continue;
-        }
-        if (cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
-            return -EINVAL;
-        }
-        int size = cmsg->cmsg_len - CMSG_LEN(0);
-        if (size % sizeof(int) != 0) {
-            return -EINVAL;
-        }
-        *nr_fds = (int)(size / sizeof(int));
-        memcpy(fds, CMSG_DATA(cmsg), *nr_fds * sizeof(int));
-        break;
-    }
-
-    return ret;
+    return get_msg(hdr, sizeof *hdr, fds, nr_fds, vfu_ctx->conn_fd, sock_flags);
 }
 
 struct transport_ops sock_transport_ops = {

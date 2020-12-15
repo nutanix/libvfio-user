@@ -92,6 +92,15 @@ vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
          uint16_t *msg_id, void *data, size_t *len);
 
 /*
+ * Same as vfu_recv except it receives passed file descriptors. See vfu_msg on
+ * the semantics of @fds and @nr_fds.
+ */
+int
+vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
+             uint16_t *msg_id, void *data, size_t *len, int *fds,
+             size_t *nr_fds);
+
+/*
  * Receive a message from the other end, but automatically allocate a buffer for
  * it, which must be freed by the caller.  If there is no data, *datap is set to
  * NULL.
@@ -105,16 +114,25 @@ vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
  * iovecs array should leave the first entry empty, as it will be used for the
  * header.
  *
- * If specified, the given fds are sent to the other side. @hdr is filled with
- * the reply header if non-NULL.
+ * If specified, the given @send_fds are sent to the other side. @hdr is filled
+ * with the reply header if non-NULL.
+ *
+ * @recv_fds and @recv_fd_count are used to receive file descriptors.
+ * If @recv_fd_count is NULL then @recv_fds is ignored and no file descriptors
+ * are received. If @recv_fd_count is non-NULL then it contains the number of
+ * file descriptors that can be stored in @recv_fds, in which case @recv_fds
+ * must point to sufficient memory. On return, @recv_fd_count contains the
+ * number of file decriptors actually received, which does not exceeed the
+ * original value of @recv_fd_count.
  */
 int
 vfu_msg_iovec(int sock, uint16_t msg_id,
               enum vfio_user_command cmd,
               struct iovec *iovecs, size_t nr_iovecs,
-              int *send_fds, size_t fd_count,
+              int *send_fds, size_t send_fd_count,
               struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len);
+              void *recv_data, size_t recv_len,
+              int *recv_fds, size_t *recv_fd_count);
 
 /*
  * Send and receive a message to the other end.  @hdr is filled with the reply
@@ -126,6 +144,19 @@ vfu_msg(int sock, uint16_t msg_id,
         void *send_data, size_t send_len,
         struct vfio_user_header *hdr,
         void *recv_data, size_t recv_len);
+
+/*
+ * Same as vfu_msg excecpt that file descriptors can be received, see
+ * vfu_msg_iovec for the semantics of @recv_fds and @recv_fd_count.
+ */
+int
+vfu_msg_fds(int sock, uint16_t msg_id,
+            enum vfio_user_command cmd,
+            void *send_data, size_t send_len,
+            struct vfio_user_header *hdr,
+            void *recv_data, size_t recv_len,
+            int *recv_fds, size_t *recv_fd_count);
+
 
 #endif /* LIB_VFIO_USER_TRAN_SOCK_H */
 

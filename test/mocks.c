@@ -100,8 +100,8 @@ __wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
 int
 __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                    size_t size, int *fds, size_t *nr_fds,
-                    struct iovec *_iovecs, struct iovec **iovecs,
+                    size_t size, int *fds, size_t *nr_fds, size_t **fds_out,
+                    int *nr_fds_out, struct iovec *_iovecs, struct iovec **iovecs,
                     size_t *nr_iovecs, bool *free_iovec_data)
 {
     check_expected(vfu_ctx);
@@ -109,6 +109,8 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     check_expected(size);
     check_expected(fds);
     check_expected(nr_fds);
+    check_expected(fds_out);
+    check_expected(nr_fds_out);
     check_expected(_iovecs);
     check_expected(iovecs);
     check_expected(nr_iovecs);
@@ -144,7 +146,10 @@ __wrap_vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 void
 __wrap_free(void *ptr)
 {
-    assert(false);
+    if (!is_patched(free)) {
+        __real_free(ptr);
+        return;
+    }
     check_expected(ptr);
 }
 

@@ -91,12 +91,8 @@ typedef struct  {
      */
     vfu_region_access_cb_t  *fn;
 
-    /*
-     * Callback function that is called when the region is memory mapped.
-     * Required if VFU_REGION_FLAG_MEM is set, otherwise ignored.
-     */
-    vfu_map_region_cb_t     *map;
     struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
+    int fd;
 } vfu_reg_info_t;
 
 struct pci_dev {
@@ -158,7 +154,7 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
 
 int
 exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t nr_fds,
+             int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
              struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
              bool *free_iovec_data);
 
@@ -171,9 +167,10 @@ consume_fd(int *fds, size_t nr_fds, size_t index);
 int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                        struct vfio_device_info *dev_info);
+
 long
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
-                struct vfio_region_info **vfio_reg);
+                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 

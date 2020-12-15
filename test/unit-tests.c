@@ -302,6 +302,8 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     expect_value(__wrap_exec_command, size, 0x0000beef);
     expect_check(__wrap_exec_command, fds, &set_fds, &exec_command);
     expect_any(__wrap_exec_command, nr_fds);
+    expect_any(__wrap_exec_command, fds_out);
+    expect_any(__wrap_exec_command, nr_fds_out);
     expect_any(__wrap_exec_command, _iovecs);
     expect_any(__wrap_exec_command, iovecs);
     expect_any(__wrap_exec_command, nr_iovecs);
@@ -405,10 +407,12 @@ test_get_region_info(UNUSED void **state)
         },
         {
             .flags = VFU_REGION_FLAG_RW,
-            .size = 0xdeadbeef
+            .size = 0xdeadbeef,
+            .fd = 0x12345
         }
     };
     vfu_ctx_t vfu_ctx = {
+        .client_max_fds = 1,
         .nr_regions = 2,
         .reg_info = reg_info
     };
@@ -416,23 +420,32 @@ test_get_region_info(UNUSED void **state)
     uint32_t argsz = 0;
     struct vfio_region_info *vfio_reg;
     struct vfu_sparse_mmap_areas *mmap_areas = alloca(sizeof(struct vfu_sparse_mmap_areas) + sizeof(struct iovec));
-   
+    int *fds = NULL;
+    size_t nr_fds;
+
     /* bad argsz */
-    assert_int_equal(-EINVAL, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(-EINVAL,
+                     dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
+                                     &fds, &nr_fds));
 
     /* bad region */
     index = vfu_ctx.nr_regions;
     argsz = sizeof(struct vfio_region_info);
-    assert_int_equal(-EINVAL, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(-EINVAL,
+                     dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
+                                     &fds, &nr_fds));
 
     /* no region caps */
     index = 1;
-    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(0,
+                     dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
+                                     &fds, &nr_fds));
     assert_int_equal(sizeof(struct vfio_region_info), vfio_reg->argsz);
     assert_int_equal(VFU_REGION_FLAG_RW, vfio_reg->flags);
     assert_int_equal(1, vfio_reg->index);
     assert_int_equal(0x10000000000, region_to_offset(vfio_reg->index));
     assert_int_equal(0xdeadbeef, vfio_reg->size);
+    assert_int_equal(0, nr_fds);
 
     /* regions caps (sparse mmap) but argsz too small */
     mmap_areas->nr_mmap_areas = 1; 
@@ -440,20 +453,28 @@ test_get_region_info(UNUSED void **state)
     mmap_areas->areas[0].iov_len = 0x0d15ea5e;
     vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
     vfu_ctx.reg_info[1].flags |= VFIO_REGION_INFO_FLAG_MMAP;
-    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(0,
+                     dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
+                                     &fds, &nr_fds));
     assert_int_equal(argsz + sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area),
                      vfio_reg->argsz);
     assert_int_equal(VFU_REGION_FLAG_RW | VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
                      vfio_reg->flags);
+    assert_int_equal(0, nr_fds);
 
     /* region caps and argsz large enough */
     argsz += sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area);
-    assert_int_equal(0, dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg));
+    assert_int_equal(0,
+                     dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
+                                     &fds, &nr_fds));
     struct vfio_region_info_cap_sparse_mmap *sparse = (struct vfio_region_info_cap_sparse_mmap*)(vfio_reg + 1);
     assert_int_equal(VFIO_REGION_INFO_CAP_SPARSE_MMAP, sparse->header.id);
     assert_int_equal(1, sparse->header.version);
     assert_int_equal(0, sparse->header.next);
     assert_int_equal(1, sparse->nr_areas);
+    assert_non_null(fds);
+    assert_int_equal(1, nr_fds);
+    assert_int_equal(0x12345, fds[0]);
 
     /* FIXME add check for migration region and for multiple sparse areas */
 }
@@ -559,6 +580,45 @@ test_device_get_info(void **state __attribute__((unused)))
 }
 
 /*
+ * Performs various checks when adding sparse memory regions.
+ */
+static void
+test_setup_sparse_region(void **state __attribute__((unused)))
+{
+    vfu_reg_info_t reg_info;
+    vfu_ctx_t vfu_ctx = { .reg_info = &reg_info };
+    struct iovec mmap_areas[2] = {
+        [0] = {
+            .iov_base = (void*)0x0,
+            .iov_len = 0x1000
+        },
+        [1] = {
+            .iov_base = (void*)0x1000,
+            .iov_len = 0x1000
+        }
+    };
+
+    /* bad fd */
+    assert_int_equal(-1,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, -1));
+    assert_int_equal(EBADF, errno);
+
+    /* sparse region exceeds region size */
+    mmap_areas[1].iov_len = 0x1001;
+    assert_int_equal(-1,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    assert_int_equal(EINVAL, errno);
+
+    /* sparse region within region size */
+    mmap_areas[1].iov_len = 0x1000;
+    assert_int_equal(0,
+                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+}
+
+/*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
  * run a function before/after ALL unit tests have finished, we can extend it
@@ -587,7 +647,8 @@ int main(void)
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
-        cmocka_unit_test_setup(test_get_region_info, setup)
+        cmocka_unit_test_setup(test_get_region_info, setup),
+        cmocka_unit_test_setup(test_setup_sparse_region, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

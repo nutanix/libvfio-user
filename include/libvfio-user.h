@@ -188,28 +188,6 @@ void *
 vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
 
 /**
- * Prototype for memory access callback. The program MUST first map device
- * memory in its own virtual address space using vfu_mmap, do any additional work
- * required, and finally return that memory. When a region is memory mapped,
- * libvfio-user calls the previously registered callback with the following
- * arguments:
- *
- * @pvt: private pointer
- * @off: offset of memory area being memory mapped
- * @len: length of memory area being memory mapped
- *
- * @returns the memory address returned by vfu_mmap, or MAP_FAILED on failure
- */
-typedef unsigned long (vfu_map_region_cb_t) (void *pvt, unsigned long off,
-                                             unsigned long len);
-
-#define VFU_REGION_FLAG_READ    (1 << 0)
-#define VFU_REGION_FLAG_WRITE   (1 << 1)
-#define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
-#define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-#define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
-
-/**
  * Prototype for region access callback. When a region is accessed, libvfio-user
  * calls the previously registered callback with the following arguments:
  *
@@ -224,6 +202,12 @@ typedef unsigned long (vfu_map_region_cb_t) (void *pvt, unsigned long off,
 typedef ssize_t (vfu_region_access_cb_t) (void *pvt, char *buf, size_t count,
                                           loff_t offset, bool is_write);
 
+#define VFU_REGION_FLAG_READ    (1 << 0)
+#define VFU_REGION_FLAG_WRITE   (1 << 1)
+#define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
+#define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
+#define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+
 /**
  * Set up a region.
  *
@@ -236,11 +220,30 @@ typedef ssize_t (vfu_region_access_cb_t) (void *pvt, char *buf, size_t count,
  * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
  * @size: size of the region
- * @region_access: callback function to access region
- * @flags: region  flags
- * @mmap_areas: array of memory mappable areas
- * @nr_mmap_areas: size of mmap_areas
- * @map: callback function to map region
+ * @region_access: callback function to access region. If the region is memory
+ *  mappable and the client accesses the region or part of sparse area, then
+ *  the callback is not called.
+ * @flags: region flags (VFU_REGION_FLAG_)
+ * @mmap_areas: array of memory mappable areas. This array provides to the
+ *  server greater control of which specific areas should be memory mapped by
+ *  the client. Each element in the @mmap_areas array describes one such area.
+ *  Ignored if @nr_mmap_areas is 0 or if the region is not memory mappable.
+ * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
+ *  region is not memory mappable.
+ * @fd: file descriptor of the file backing the region if it's a mappable
+ *  region. It is the server's responsibility to create a file suitable for
+ *  memory mapping by the client. Ignored if the region is not memory mappable.
+ *
+ * A note on memory-mappable regions: the client can memory map any part of the
+ * file descriptor, even if not supposed to do so acocrding to @mmap_areas.
+ * There is no way in Linux to avoid this.
+ *
+ * TODO maybe we should introduce per-sparse region file descriptors so that
+ * the client cannot possibly memory map areas it's not supposed to. Even if
+ * the client needs to have region under the same backing file, it is possible
+ * to create linear device-mapper targets, one for each area, and provide file
+ * descriptors of these DM targets. This is something we can document and
+ * demonstrate in a sample.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -248,7 +251,7 @@ int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 vfu_map_region_cb_t *map);
+                 int fd);
 
 /*
  * Callback function that is called when the guest resets the device.

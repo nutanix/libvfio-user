@@ -107,9 +107,9 @@ get_vfio_caps_size(bool is_migr_reg, struct vfu_sparse_mmap_areas *m)
  * Sparse mmap information stays after struct vfio_region_info and cap_offest
  * points accordingly.
  */
-static void
+static int
 dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
-             struct vfio_region_info *vfio_reg)
+             struct vfio_region_info *vfio_reg, int **fds, size_t *nr_fds)
 {
     struct vfio_info_cap_header *header;
     struct vfio_region_info_cap_type *type = NULL;
@@ -118,6 +118,8 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
 
     assert(vfu_ctx != NULL);
     assert(vfio_reg != NULL);
+    assert(fds != NULL);
+    assert(nr_fds != NULL);
 
     header = (struct vfio_info_cap_header*)(vfio_reg + 1);
 
@@ -140,13 +142,25 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             vfio_reg->cap_offset = sizeof(struct vfio_region_info);
             sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
         }
+
+        /*
+         * FIXME need to figure out how to break message into smaller messages
+         * so that we don't exceed client_max_fds
+         */
+        assert(nr_mmap_areas <= vfu_ctx->client_max_fds);
+
+        *fds = malloc(nr_mmap_areas * sizeof(int));
+        if (*fds == NULL) {
+            return -ENOMEM;
+        }
         sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
         sparse->header.version = 1;
         sparse->header.next = 0;
-        sparse->nr_areas = nr_mmap_areas;
+        sparse->nr_areas = *nr_fds = nr_mmap_areas;
 
         mmap_areas = vfu_reg->mmap_areas;
         for (i = 0; i < nr_mmap_areas; i++) {
+            (*fds)[i] = vfu_reg->fd;
             sparse->areas[i].offset = (__u64)mmap_areas->areas[i].iov_base;
             sparse->areas[i].size = mmap_areas->areas[i].iov_len;
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
@@ -154,6 +168,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
                     sparse->areas[i].offset + sparse->areas[i].size);
         }
     }
+    return 0;
 }
 
 #define VFU_REGION_SHIFT 40
@@ -207,7 +222,7 @@ is_migr_reg(vfu_ctx_t *vfu_ctx, int index)
 
 long
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
-                struct vfio_region_info **vfio_reg)
+                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds)
 {
     vfu_reg_info_t *vfu_reg;
     size_t caps_size;
@@ -243,12 +258,14 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
     (*vfio_reg)->size = vfu_reg->size;
 
+    *nr_fds = 0;
     if (caps_size > 0) {
         if (vfu_reg->mmap_areas != NULL) {
             (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
         }
         if (argsz >= (*vfio_reg)->argsz) {
-            dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index), *vfio_reg);
+            dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index),
+                         *vfio_reg, fds, nr_fds);
         }
     }
 
@@ -482,14 +499,15 @@ vfu_access(vfu_ctx_t *vfu_ctx, bool is_write, char *rwbuf, uint32_t count,
 static int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                               struct vfio_region_info *reg_info_in,
-                              struct vfio_region_info **reg_info_out)
+                              struct vfio_region_info **reg_info_out,
+                              int **fds, size_t *nr_fds)
 {
     if (size < sizeof(*reg_info_in)) {
         return -EINVAL;
     }
 
     return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_in->argsz,
-                           reg_info_out);
+                           reg_info_out, fds, nr_fds);
 }
 
 int
@@ -879,7 +897,7 @@ UNIT_TEST_SYMBOL(get_next_command);
 
 int
 exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t nr_fds,
+             int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
              struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
              bool *free_iovec_data)
 {
@@ -958,7 +976,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             break;
         case VFIO_USER_DEVICE_GET_REGION_INFO:
             ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size, cmd_data,
-                                                &dev_reg_info);
+                                                &dev_reg_info, fds_out,
+                                                nr_fds_out);
             if (ret == 0) {
                 _iovecs[1].iov_base = dev_reg_info;
                 _iovecs[1].iov_len = hdr->msg_size;
@@ -1024,8 +1043,9 @@ process_request(vfu_ctx_t *vfu_ctx)
 {
     struct vfio_user_header hdr = { 0, };
     int ret;
-    int *fds = NULL;
+    int *fds = NULL, *fds_out = NULL;
     size_t nr_fds, i;
+    size_t nr_fds_out = 0;
     struct iovec _iovecs[2] = { { 0, } };
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
@@ -1054,8 +1074,8 @@ process_request(vfu_ctx_t *vfu_ctx)
         return ret;
     }
 
-    ret = exec_command(vfu_ctx, &hdr, ret, fds, nr_fds, _iovecs, &iovecs,
-                       &nr_iovecs, &free_iovec_data);
+    ret = exec_command(vfu_ctx, &hdr, ret, fds, nr_fds, &fds_out, &nr_fds_out,
+                       _iovecs, &iovecs, &nr_iovecs, &free_iovec_data);
 
     for (i = 0; i < nr_fds; i++) {
         if (fds[i] != -1) {
@@ -1081,7 +1101,7 @@ process_request(vfu_ctx_t *vfu_ctx)
     if (!(hdr.flags.no_reply)) {
         // FIXME: SPEC: should the reply include the command? I'd say yes?
         ret = vfu_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true,
-                             0, iovecs, nr_iovecs, NULL, 0, -ret);
+                             0, iovecs, nr_iovecs, fds_out, nr_fds_out, -ret);
         if (unlikely(ret < 0)) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to complete command: %s",
                     strerror(-ret));
@@ -1465,11 +1485,37 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
+static int
+setup_sparse_areas(vfu_reg_info_t *r, struct iovec *mmap_areas,
+                   uint32_t nr_mmap_areas, int fd)
+{
+    int ret, i;
+
+    assert(r != NULL);
+
+    if (fd == -1) {
+        return -EBADF;
+    }
+    r->fd = fd;
+    ret = copy_sparse_mmap_areas(r, mmap_areas, nr_mmap_areas);
+    if (ret < 0) {
+        return ret;
+    }
+    for (i = 0; i < r->mmap_areas->nr_mmap_areas; i++) {
+        struct iovec *a = &r->mmap_areas->areas[i];
+        if ((unsigned long long)a->iov_base + a->iov_len > r->size) {
+            free(r->mmap_areas);
+            return -EINVAL;
+        }
+    }
+    return 0;
+}
+
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 vfu_map_region_cb_t *map)
+                 int fd)
 {
     int ret;
 
@@ -1487,12 +1533,9 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         vfu_ctx->reg_info[region_idx].size = size;
         vfu_ctx->reg_info[region_idx].fn = region_access;
 
-        if (map != NULL) {
-            vfu_ctx->reg_info[region_idx].map = map;
-        }
-        if (mmap_areas) {
-            ret = copy_sparse_mmap_areas(&vfu_ctx->reg_info[region_idx],
-                                         mmap_areas, nr_mmap_areas);
+        if (nr_mmap_areas > 0) {
+            ret = setup_sparse_areas(&vfu_ctx->reg_info[region_idx], mmap_areas,
+                                     nr_mmap_areas, fd);
             if (ret < 0) {
                 return ERROR(-ret);
             }
