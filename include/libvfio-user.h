@@ -226,7 +226,7 @@ typedef ssize_t (vfu_region_access_cb_t) (void *pvt, char *buf, size_t count,
  * @flags: region flags (VFU_REGION_FLAG_)
  * @mmap_areas: array of memory mappable areas. This array provides to the
  *  server greater control of which specific areas should be memory mapped by
- *  the client. Each element in the @mmap_areas array describes on such area.
+ *  the client. Each element in the @mmap_areas array describes one such area.
  *  Ignored if @nr_mmap_areas is 0 or if the region is not memory mappable.
  * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
  *  region is not memory mappable.
