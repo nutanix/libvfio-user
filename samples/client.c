@@ -207,25 +207,12 @@ send_device_reset(int sock)
 
 /* returns whether a VFIO migration capability is found */
 static bool
-get_region_vfio_caps(int sock, size_t cap_sz)
+get_region_vfio_caps(struct vfio_info_cap_header *header)
 {
-    struct vfio_info_cap_header *header, *_header;
     struct vfio_region_info_cap_type *type;
     struct vfio_region_info_cap_sparse_mmap *sparse;
     unsigned int i;
-    ssize_t ret;
     bool migr = false;
-
-    header = _header = calloc(cap_sz, 1);
-    if (header == NULL) {
-        err(EXIT_FAILURE, NULL);
-    }
-
-    ret = recv(sock, header, cap_sz, 0);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to receive VFIO cap info");
-    }
-    assert((size_t)ret == cap_sz);
 
     while (true) {
         switch (header->id) {
@@ -256,47 +243,70 @@ get_region_vfio_caps(int sock, size_t cap_sz)
         }
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
-    free(_header);
     return migr;
+}
+
+static void
+do_get_device_region_info(int sock, struct vfio_region_info *region_info)
+{
+    int ret = vfu_msg(sock, 0,
+                  VFIO_USER_DEVICE_GET_REGION_INFO,
+                  region_info, region_info->argsz,
+                  NULL,
+                  region_info, region_info->argsz);
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to get device region info: %s",
+                strerror(-ret));
+    }
+}
+
+static bool
+get_device_region_info(int sock, uint32_t index)
+{
+    struct vfio_region_info *region_info;
+    size_t cap_sz;
+    size_t size = sizeof(struct vfio_region_info);
+
+    region_info = alloca(size);
+    region_info->argsz = size;
+    region_info->index = index;
+
+    do_get_device_region_info(sock, region_info);
+    if (region_info->argsz > size) {
+        size = region_info->size;
+        region_info = alloca(size);
+        region_info->argsz = size;
+        region_info->index = index;
+        do_get_device_region_info(sock, region_info);
+        assert(region_info->size == size);
+    }
+
+    cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
+    printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
+           "cap_sz %lu\n", __func__, index, region_info->offset,
+           region_info->flags, region_info->size, cap_sz);
+    if (cap_sz) {
+        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /*
  * Returns the index of the migration region if found, -1 otherwise.
  */
 static int
-get_device_region_info(int sock, struct vfio_device_info *client_dev_info)
+get_device_regions_info(int sock, struct vfio_device_info *client_dev_info)
 {
-    struct vfio_region_info region_info;
-    uint16_t msg_id = 1;
-    size_t cap_sz;
-    int ret, migr_reg_index = -1;
+    int migr_reg_index = -1;
     unsigned int i;
 
     for (i = 0; i < client_dev_info->num_regions; i++) {
-        memset(&region_info, 0, sizeof(region_info));
-        region_info.argsz = sizeof(region_info);
-        region_info.index = i;
-        msg_id++;
-        ret = vfu_msg(sock, msg_id,
-                      VFIO_USER_DEVICE_GET_REGION_INFO,
-                      &region_info, sizeof region_info,
-                      NULL,
-                      &region_info, sizeof(region_info));
-        if (ret < 0) {
-            errx(EXIT_FAILURE, "failed to get device region info: %s",
-                    strerror(-ret));
+        if (get_device_region_info(sock, i)) {
+            assert(migr_reg_index == -1);
+            migr_reg_index = i;
         }
-
-	    cap_sz = region_info.argsz - sizeof(struct vfio_region_info);
-        printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
-               "cap_sz %lu\n", __func__, i, region_info.offset,
-               region_info.flags, region_info.size, cap_sz);
-	    if (cap_sz) {
-            if (get_region_vfio_caps(sock, cap_sz)) {
-                assert(migr_reg_index == -1);
-                migr_reg_index = i;
-            }
-	    }
     }
     return migr_reg_index;
 }
@@ -317,6 +327,11 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device info: %s", strerror(-ret));
+    }
+
+    if (dev_info->num_regions != 10) {
+        errx(EXIT_FAILURE, "bad number of device regions %d",
+             dev_info->num_regions);
     }
 
     printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
@@ -952,7 +967,7 @@ int main(int argc, char *argv[])
     get_device_info(sock, &client_dev_info);
 
     /* XXX VFIO_USER_DEVICE_GET_REGION_INFO */
-    migr_reg_index = get_device_region_info(sock, &client_dev_info);
+    migr_reg_index = get_device_regions_info(sock, &client_dev_info);
     if (migr_reg_index == -1) {
         errx(EXIT_FAILURE, "could not find migration region");
     }
