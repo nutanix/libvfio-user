@@ -48,7 +48,7 @@ repository:
 #labels:
   #- name: bug
   #  color: CC0000
-  #  description: An issue with the system 🐛.
+  #  description: An issue with the system
 
 # Milestones: define milestones for Issues and Pull Requests
 #milestones:
