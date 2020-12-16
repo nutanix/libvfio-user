@@ -208,6 +208,32 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
                                              true, fds, 2, r));
 }
 
+/*
+ * Checks that handle_dma_map_or_unmap returns 0 when dma_controller_add_region 
+ * succeeds.
+ */
+static void
+test_dma_map_return_value(void **state __attribute__((unused)))
+{
+    dma_controller_t dma = { 0 };
+    vfu_ctx_t vfu_ctx = { .dma = &dma };
+    dma.vfu_ctx = &vfu_ctx;
+    struct vfio_user_dma_region r = { 0 };
+    int fd = 0;
+
+    patch(dma_controller_add_region);
+    expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
+    expect_value(__wrap_dma_controller_add_region, dma_addr, r.addr);
+    expect_value(__wrap_dma_controller_add_region, size, r.size);
+    expect_value(__wrap_dma_controller_add_region, fd, -1);
+    expect_value(__wrap_dma_controller_add_region, offset, r.offset);
+    will_return(__wrap_dma_controller_add_region, 2);
+    
+    assert_int_equal(0,
+        handle_dma_map_or_unmap(&vfu_ctx, sizeof(struct vfio_user_dma_region),
+            true, &fd, 0, &r));
+}
+
 static void
 test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
 {
@@ -652,7 +678,8 @@ int main(void)
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
-        cmocka_unit_test_setup(test_setup_sparse_region, setup)
+        cmocka_unit_test_setup(test_setup_sparse_region, setup),
+        cmocka_unit_test_setup(test_dma_map_return_value, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
