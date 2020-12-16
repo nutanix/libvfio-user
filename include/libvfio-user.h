@@ -88,7 +88,8 @@ typedef enum {
 } vfu_dev_type_t;
 
 /**
- * Creates libvfio-user context.
+ * Creates libvfio-user context. By default one ERR and one REQ IRQs are
+ * initialized, this can be overridden with vfu_setup_device_nr_irqs.
  *
  * @trans: transport type
  * @path: path to socket file.

@@ -525,6 +525,8 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
                              NULL, VFU_DEV_TYPE_PCI);
     assert_non_null(vfu_ctx);
+    assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_ERR_IRQ]);
+    assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
     assert_int_equal(0,
                      vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc,
                                               VFU_PCI_TYPE_CONVENTIONAL, 0));
