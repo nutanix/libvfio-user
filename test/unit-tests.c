@@ -278,6 +278,30 @@ test_dma_controller_remove_region_no_fd(void **state __attribute__((unused)))
     assert_int_equal(0, dma_controller_remove_region(dma, r.dma_addr, r.size, NULL, NULL));
 }
 
+static int fds[] = { 0xab, 0xcd };
+
+static int
+set_fds(const long unsigned int value, const long unsigned int data)
+{
+    assert(value != 0);
+    if ((void*)data == &get_next_command) {
+        memcpy((int*)value, fds, ARRAY_SIZE(fds) * sizeof(int));
+    } else if ((void*)data == &exec_command) {
+        ((int*)value)[0] = -1;
+    }
+    return 1;
+}
+
+static int
+set_nr_fds(const long unsigned int value,
+           const long unsigned int data __attribute__((unused)))
+{
+    int *nr_fds = (int*)value;
+    assert(nr_fds != NULL);
+    *nr_fds = ARRAY_SIZE(fds);
+    return 1;
+}
+
 /*
  * Tests that if if exec_command fails then process_request frees passed file
  * descriptors.
@@ -285,27 +309,6 @@ test_dma_controller_remove_region_no_fd(void **state __attribute__((unused)))
 static void
 test_process_command_free_passed_fds(void **state __attribute__((unused)))
 {
-    int fds[] = {0xab, 0xcd};
-    int set_fds(const long unsigned int value,
-                const long unsigned int data)
-    {
-        assert(value != 0);
-        if ((void*)data == &get_next_command) {
-            memcpy((int*)value, fds, ARRAY_SIZE(fds) * sizeof(int));
-        } else if ((void*)data == &exec_command) {
-            ((int*)value)[0] = -1;
-        }
-        return 1;
-    }
-    int set_nr_fds(const long unsigned int value,
-                   const long unsigned int data __attribute__((unused)))
-    {
-        int *nr_fds = (int*)value;
-        assert(nr_fds != NULL);
-        *nr_fds = ARRAY_SIZE(fds);
-        return 1;
-    }
-
     vfu_ctx_t vfu_ctx = {
         .conn_fd = 0xcafebabe,
         .migration = (struct migration*)0x8badf00d
@@ -375,16 +378,17 @@ test_realize_ctx(void **state __attribute__((unused)))
     assert_null(vfu_ctx.pci.caps);
 }
 
+static int
+dummy_attach(vfu_ctx_t *vfu_ctx)
+{
+    assert(vfu_ctx != NULL);
+
+    return 222;
+}
+
 static void
 test_attach_ctx(void **state __attribute__((unused)))
 {
-    int dummy_attach(vfu_ctx_t *vfu_ctx)
-    {
-        assert(vfu_ctx != NULL);
-
-        return 222;
-    }
-
     struct transport_ops transport_ops = {
         .attach = &dummy_attach,
     };

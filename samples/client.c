@@ -155,7 +155,7 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
     }
 
     if (sversion->major != LIB_VFIO_USER_MAJOR) {
-        errx(EXIT_FAILURE, "unsupported server major %hu (must be %hu)",
+        errx(EXIT_FAILURE, "unsupported server major %hu (must be %u)",
                sversion->major, LIB_VFIO_USER_MAJOR);
     }
 
@@ -163,7 +163,7 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
      * The server is supposed to tell us the minimum agreed version.
      */
     if (sversion->minor > LIB_VFIO_USER_MINOR) {
-        errx(EXIT_FAILURE, "unsupported server minor %hu (must be %hu)",
+        errx(EXIT_FAILURE, "unsupported server minor %hu (must be <= %u)",
                sversion->minor, LIB_VFIO_USER_MINOR);
     }
 
@@ -437,21 +437,25 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
             .iov_len = data_len
         }
     };
-    struct {
-        struct vfio_user_region_access region_access;
-        char data[data_len];
-    } __attribute__((packed)) recv_data;
-    int op, ret;
+
+    struct vfio_user_region_access *recv_data;
     size_t nr_send_iovecs, recv_data_len;
+    int op, ret;
 
     if (is_write) {
         op = VFIO_USER_REGION_WRITE;
         nr_send_iovecs = 3;
-        recv_data_len = sizeof(recv_data.region_access);
+        recv_data_len = sizeof(*recv_data);
     } else {
         op = VFIO_USER_REGION_READ;
         nr_send_iovecs = 2;
-        recv_data_len = sizeof(recv_data);
+        recv_data_len = sizeof (*recv_data) + data_len;
+    }
+
+    recv_data = calloc(1, recv_data_len);
+
+    if (recv_data == NULL) {
+        err(EXIT_FAILURE, "failed to alloc recv_data");
     }
 
     ret = vfu_msg_iovec(sock, 0, op,
@@ -462,12 +466,14 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         warnx("failed to %s region %d %#lx-%#lx: %s",
              is_write ? "write to" : "read from", region, offset,
              offset + data_len - 1, strerror(-ret));
+        free(recv_data);
         return ret;
     }
-    if (recv_data.region_access.count != data_len) {
+    if (recv_data->count != data_len) {
         warnx("bad %s data count, expected=%lu, actual=%d",
              is_write ? "write" : "read", data_len,
-             recv_data.region_access.count);
+             recv_data->count);
+        free(recv_data);
         return -EINVAL;
     }
 
@@ -476,8 +482,9 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
      * response into an iovec, but it's some work to implement it.
      */
     if (!is_write) {
-        memcpy(data, recv_data.data, data_len);
+        memcpy(data, ((char *)recv_data) + sizeof (*recv_data), data_len);
     }
+    free(recv_data);
     return 0;
 }
 
