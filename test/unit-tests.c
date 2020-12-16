@@ -650,6 +650,36 @@ test_setup_sparse_region(void **state __attribute__((unused)))
                                       0x2000, NULL, 0, mmap_areas, 2, 0));
 }
 
+static void
+test_dma_map_sg(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    size_t size = sizeof(dma_controller_t) + sizeof(dma_memory_region_t);
+    dma_controller_t *dma = alloca(size);
+    dma_sg_t sg = { .region = 1 };
+    struct iovec iovec = { 0 };
+
+    memset(dma, 0, size);
+    dma->vfu_ctx = &vfu_ctx;
+    dma->nregions = 1;
+
+    /* bad region */
+    assert_int_equal(-EINVAL, dma_map_sg(dma, &sg, &iovec, 1));
+
+    /* w/o fd */
+    sg.region = 0;
+    assert_int_equal(-EFAULT, dma_map_sg(dma, &sg, &iovec, 1));
+
+    /* w/ fd */
+    dma->regions[0].virt_addr = (void*)0xdead0000;
+    sg.offset = 0x0000beef;
+    sg.length = 0xcafebabe;
+    assert_int_equal(0, dma_map_sg(dma, &sg, &iovec, 1));
+    assert_int_equal(0xdeadbeef, iovec.iov_base);
+    assert_int_equal((int)0x00000000cafebabe, iovec.iov_len);
+
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -681,7 +711,8 @@ int main(void)
         cmocka_unit_test_setup(test_device_get_info, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
-        cmocka_unit_test_setup(test_dma_map_return_value, setup)
+        cmocka_unit_test_setup(test_dma_map_return_value, setup),
+        cmocka_unit_test_setup(test_dma_map_sg, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
