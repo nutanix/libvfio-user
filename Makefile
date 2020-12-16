@@ -58,8 +58,11 @@ test: all
 	cd $(BUILD_DIR)/test; ctest --verbose
 
 pre-push: realclean
-	make test
-	make test BUILD_TYPE=rel
+	make test CC=gcc
+	make test CC=gcc BUILD_TYPE=rel
+	make realclean
+	make test CC=clang
+	make test CC=clang BUILD_TYPE=rel
 
 realclean:
 	rm -rf $(BUILD_DIR_BASE)
