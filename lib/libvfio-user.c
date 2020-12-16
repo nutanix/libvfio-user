@@ -612,6 +612,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         strerror(-ret));
                 break;
             }
+            ret = 0;
             vfu_log(vfu_ctx, LOG_DEBUG,
                     "added DMA region %#lx-%#lx offset=%#lx fd=%d",
                     dma_regions[i].addr,
