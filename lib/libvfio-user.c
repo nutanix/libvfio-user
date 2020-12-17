@@ -1320,6 +1320,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
     if (vfu_ctx == NULL) {
+        errno = ENOMEM;
         return NULL;
     }
     vfu_ctx->dev_type = dev_type;
@@ -1333,8 +1334,8 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     vfu_ctx->uuid = strdup(path);
     if (vfu_ctx->uuid == NULL) {
-        err = errno;
-        goto out;
+        err = -errno;
+        goto err_out;
     }
 
     /*
@@ -1346,37 +1347,33 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof *vfu_ctx->reg_info);
     if (vfu_ctx->reg_info == NULL) {
         err = -ENOMEM;
-        goto out;
+        goto err_out;
     }
 
     if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_ERR_IRQ, 1) == -1) {
         err = -errno;
-        goto out;
+        goto err_out;
     }
     if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_REQ_IRQ, 1) == -1) {
         err = -errno;
-        goto out;
+        goto err_out;
     }
 
     if (vfu_ctx->trans->init != NULL) {
         err = vfu_ctx->trans->init(vfu_ctx);
         if (err < 0) {
-            goto out;
+            goto err_out;
         }
         vfu_ctx->fd = err;
     }
-    err = 0;
-
-out:
-    if (err != 0) {
-        if (vfu_ctx != NULL) {
-            vfu_destroy_ctx(vfu_ctx);
-            vfu_ctx = NULL;
-        }
-        errno = -err;
-    }
 
     return vfu_ctx;
+
+err_out:
+    vfu_destroy_ctx(vfu_ctx);
+    errno = -err;
+
+    return NULL;
 }
 
 int
@@ -1576,16 +1573,14 @@ vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
 
     assert(vfu_ctx != NULL);
 
+    // Create the internal DMA controller.
+    vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
+    if (vfu_ctx->dma == NULL) {
+        return ERROR(ENOMEM);
+    }
+
     vfu_ctx->map_dma = map_dma;
     vfu_ctx->unmap_dma = unmap_dma;
-
-    // Create the internal DMA controller.
-    if (vfu_ctx->unmap_dma != NULL) {
-        vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
-        if (vfu_ctx->dma == NULL) {
-            return ERROR(ENOMEM);
-        }
-    }
 
     return 0;
 }

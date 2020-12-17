@@ -705,6 +705,15 @@ test_dma_addr_to_sg(void **state __attribute__((unused)))
     /* TODO test more scenarios */
 }
 
+static void
+test_vfu_setup_device_dma_cb(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+
+    assert_int_equal(0, vfu_setup_device_dma_cb(&vfu_ctx, NULL, NULL));
+    assert_non_null(vfu_ctx.dma);
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -738,7 +747,8 @@ int main(void)
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
         cmocka_unit_test_setup(test_dma_map_sg, setup),
-        cmocka_unit_test_setup(test_dma_addr_to_sg, setup)
+        cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
+        cmocka_unit_test_setup(test_vfu_setup_device_dma_cb, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
