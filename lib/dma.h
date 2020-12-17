@@ -181,6 +181,20 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
     }
 }
 
+static inline void
+dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
+            uint32_t len, int prot, int region_index)
+{
+    const dma_memory_region_t *const region = &dma->regions[region_index];
+    sg->dma_addr = region->dma_addr;
+    sg->region = region_index;
+    sg->offset = dma_addr - region->dma_addr;
+    sg->length = len;
+    if (_dma_should_mark_dirty(dma, prot)) {
+        _dma_mark_dirty(dma, region, sg);
+    }
+}
+
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
  * A single linear dma address span may need to be split into multiple
  * scatter gather regions due to limitations of how memory can be mapped.
@@ -207,13 +221,7 @@ dma_addr_to_sg(const dma_controller_t *dma,
     if (likely(max_sg > 0 && len > 0 &&
                dma_addr >= region->dma_addr && dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
-        sg->dma_addr = region->dma_addr;
-        sg->region = region_hint;
-        sg->offset = dma_addr - region->dma_addr;
-        sg->length = len;
-        if (_dma_should_mark_dirty(dma, prot)) {
-            _dma_mark_dirty(dma, region, sg);
-        }
+        dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
         return 1;
     }
     // Slow path: search through regions.
