@@ -67,6 +67,7 @@ typedef struct {
     int region; /* TODO replace region and length with struct iovec */
     int length;
     uint64_t offset;
+    bool mappable;
 } dma_sg_t;
 
 typedef struct vfu_ctx vfu_ctx_t;

@@ -193,6 +193,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
     if (_dma_should_mark_dirty(dma, prot)) {
         _dma_mark_dirty(dma, region, sg);
     }
+    sg->mappable = region->virt_addr != NULL;
 }
 
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
