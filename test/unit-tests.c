@@ -680,6 +680,31 @@ test_dma_map_sg(void **state __attribute__((unused)))
 
 }
 
+static void
+test_dma_addr_to_sg(void **state __attribute__((unused)))
+{
+    dma_controller_t *dma = alloca(sizeof(dma_controller_t) + sizeof(dma_memory_region_t));
+    dma_sg_t sg;
+    dma_memory_region_t *r;
+
+    dma->nregions = 1;
+    r = &dma->regions[0];
+    r->dma_addr = 0x1000;
+    r->size = 0x4000;
+    r->virt_addr = (void*)0xdeadbeef;
+
+    /* fast path, region hint hit */
+    assert_int_equal(1,
+        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_NONE));
+    assert_int_equal(r->dma_addr, sg.dma_addr);
+    assert_int_equal(0, sg.region);
+    assert_int_equal(0x2000 - r->dma_addr, sg.offset);
+    assert_int_equal(0x400, sg.length);
+    assert_true(sg.mappable);
+
+    /* TODO test more scenarios */
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -712,7 +737,8 @@ int main(void)
         cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
-        cmocka_unit_test_setup(test_dma_map_sg, setup)
+        cmocka_unit_test_setup(test_dma_map_sg, setup),
+        cmocka_unit_test_setup(test_dma_addr_to_sg, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
