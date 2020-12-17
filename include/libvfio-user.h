@@ -287,7 +287,9 @@ typedef void (vfu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 typedef int (vfu_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
 
 /**
- * Setup device DMA map/unmap callbacks.
+ * Setup device DMA map/unmap callbacks. This will also enable bookkeeping of
+ * DMA regions received from client, otherwise they will be just acknowledged.
+ *
  * @vfu_ctx: the libvfio-user context
  * @map_dma: DMA region map callback (optional)
  * @unmap_dma: DMA region unmap callback (optional)

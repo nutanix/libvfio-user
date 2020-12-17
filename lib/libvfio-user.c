@@ -1334,7 +1334,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     vfu_ctx->uuid = strdup(path);
     if (vfu_ctx->uuid == NULL) {
-        err = errno;
+        err = -errno;
         goto err_out;
     }
 
@@ -1365,13 +1365,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
             goto err_out;
         }
         vfu_ctx->fd = err;
-    }
-
-    // Create the internal DMA controller.
-    vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
-    if (vfu_ctx->dma == NULL) {
-        err = -ENOMEM;
-        goto err_out;
     }
 
     return vfu_ctx;
@@ -1579,7 +1572,12 @@ vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
 {
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->dma != NULL);
+
+    // Create the internal DMA controller.
+    vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
+    if (vfu_ctx->dma == NULL) {
+        return ERROR(ENOMEM);
+    }
 
     vfu_ctx->map_dma = map_dma;
     vfu_ctx->unmap_dma = unmap_dma;
