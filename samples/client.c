@@ -461,7 +461,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     ret = vfu_msg_iovec(sock, 0, op,
                         send_iovecs, nr_send_iovecs,
                         NULL, 0, NULL,
-                        &recv_data, recv_data_len, NULL, 0);
+                        recv_data, recv_data_len, NULL, 0);
     if (ret != 0) {
         warnx("failed to %s region %d %#lx-%#lx: %s",
              is_write ? "write to" : "read from", region, offset,
