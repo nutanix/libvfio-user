@@ -375,13 +375,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
-                    sg[cnt].dma_addr = region->dma_addr;
-                    sg[cnt].region = idx;
-                    sg[cnt].offset = dma_addr - region->dma_addr;
-                    sg[cnt].length = region_len;
-                    if (_dma_should_mark_dirty(dma, prot)) {
-                        _dma_mark_dirty(dma, region, sg);
-                    }
+                    dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
                 }
 
                 cnt++;
