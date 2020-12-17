@@ -74,6 +74,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <errno.h>
 
 #include "libvfio-user.h"
 #include "common.h"
@@ -237,10 +238,20 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
     dma_memory_region_t *region;
     int i;
 
+    assert(dma != NULL);
+    assert(sg != NULL);
+    assert(iov != NULL);
+
     for (i = 0; i < cnt; i++) {
+        if (sg[i].region >= dma->nregions) {
+            return -EINVAL;
+        }
+        region = &dma->regions[sg[i].region];
+        if (region->virt_addr == NULL) {
+            return -EFAULT;
+        }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %#lx-%#lx\n",
                sg->dma_addr + sg->offset, sg->dma_addr + sg->offset + sg->length);
-        region = &dma->regions[sg[i].region];
         iov[i].iov_base = region->virt_addr + sg[i].offset;
         iov[i].iov_len = sg[i].length;
         region->refcnt++;

@@ -1349,6 +1349,15 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto out;
     }
 
+    if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_ERR_IRQ, 1) == -1) {
+        err = -errno;
+        goto out;
+    }
+    if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_REQ_IRQ, 1) == -1) {
+        err = -errno;
+        goto out;
+    }
+
     if (vfu_ctx->trans->init != NULL) {
         err = vfu_ctx->trans->init(vfu_ctx);
         if (err < 0) {
