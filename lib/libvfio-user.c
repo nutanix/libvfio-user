@@ -905,7 +905,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
     int ret;
     struct vfio_irq_info *irq_info;
     struct vfio_device_info *dev_info;
-    struct vfio_region_info *dev_reg_info = NULL;
+    struct vfio_region_info *dev_region_info_in, *dev_region_info_out = NULL;
     void *cmd_data = NULL;
 
     assert(vfu_ctx != NULL);
@@ -976,12 +976,14 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             }
             break;
         case VFIO_USER_DEVICE_GET_REGION_INFO:
-            ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size, cmd_data,
-                                                &dev_reg_info, fds_out,
+            dev_region_info_in = cmd_data;
+            ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size,
+                                                dev_region_info_in,
+                                                &dev_region_info_out, fds_out,
                                                 nr_fds_out);
             if (ret == 0) {
-                _iovecs[1].iov_base = dev_reg_info;
-                _iovecs[1].iov_len = hdr->msg_size;
+                _iovecs[1].iov_base = dev_region_info_out;
+                _iovecs[1].iov_len = dev_region_info_in->argsz;
                 *iovecs = _iovecs;
                 *nr_iovecs = 2;
             }
