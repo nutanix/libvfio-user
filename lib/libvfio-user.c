@@ -51,11 +51,12 @@
 
 #include "cap.h"
 #include "dma.h"
+#include "irq.h"
 #include "libvfio-user.h"
+#include "migration.h"
+#include "pci.h"
 #include "private.h"
 #include "tran_sock.h"
-#include "migration.h"
-#include "irq.h"
 
 void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
@@ -75,13 +76,6 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
     va_end(ap);
     vfu_ctx->log(vfu_ctx, level, buf);
     errno = _errno;
-}
-
-static inline int
-ERROR(int err)
-{
-    errno = err;
-    return -1;
 }
 
 static size_t
@@ -169,21 +163,6 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         }
     }
     return 0;
-}
-
-#define VFU_REGION_SHIFT 40
-#define VFU_REGION_MASK  ((1ULL << VFU_REGION_SHIFT) - 1)
-
-uint64_t
-region_to_offset(uint32_t region)
-{
-    return (uint64_t)region << VFU_REGION_SHIFT;
-}
-
-uint32_t
-offset_to_region(uint64_t offset)
-{
-    return (offset >> VFU_REGION_SHIFT) & VFU_REGION_MASK;
 }
 
 #ifdef VFU_VERBOSE_LOGGING
@@ -293,47 +272,6 @@ vfu_get_region(loff_t pos, size_t count, loff_t *off)
     return r;
 }
 
-static uint32_t
-region_size(vfu_ctx_t *vfu_ctx, int region)
-{
-        assert(region >= VFU_PCI_DEV_BAR0_REGION_IDX && region <= VFU_PCI_DEV_VGA_REGION_IDX);
-        return vfu_ctx->reg_info[region].size;
-}
-
-static uint32_t
-pci_config_space_size(vfu_ctx_t *vfu_ctx)
-{
-    return region_size(vfu_ctx, VFU_PCI_DEV_CFG_REGION_IDX);
-}
-
-/*
- * Accesses the non-standard part (offset >= 0x40) of the PCI configuration
- * space.
- */
-static ssize_t
-handle_pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                               loff_t pos, bool is_write)
-{
-    int ret;
-
-    count = MIN(pci_config_space_size(vfu_ctx), count);
-    if (is_write) {
-        ret = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, pos);
-        if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
-                    pos, pos + count);
-            return ret;
-        }
-    } else {
-        /*
-         * It is legitimate to read the non-standard part of the PCI config
-         * space even if there are no capabilities.
-         */
-        memcpy(buf, vfu_ctx->pci.config_space->raw + pos, count);
-    }
-    return count;
-}
-
 static ssize_t
 do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_write)
 {
@@ -356,8 +294,7 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
     }
 
     if (idx == VFU_PCI_DEV_CFG_REGION_IDX) {
-        return handle_pci_config_space_access(vfu_ctx, buf, count, offset,
-                                              is_write);
+        return pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
     }
 
     if (is_migr_reg(vfu_ctx, idx)) {
@@ -465,18 +402,21 @@ vfu_access(vfu_ctx_t *vfu_ctx, bool is_write, char *rwbuf, uint32_t count,
 #endif
 
     _count = count;
-    ret = vfu_pci_hdr_access(vfu_ctx, &_count, pos, is_write, rwbuf);
-    if (ret != 0) {
-        /* FIXME shouldn't we fail here? */
-        vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
-                strerror(-ret));
+
+    if (pci_is_hdr_access(*pos)) {
+        ret = pci_hdr_access(vfu_ctx, &_count, pos, is_write, rwbuf);
+        if (ret != 0) {
+            /* FIXME shouldn't we fail here? */
+            vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
+                    strerror(-ret));
 #ifdef VFU_VERBOSE_LOGGING
-        dump_buffer("buffer write", rwbuf, _count);
+            dump_buffer("buffer write", rwbuf, _count);
 #endif
+        }
     }
 
     /*
-     * count is how much has been processed by vfu_pci_hdr_access,
+     * count is how much has been processed by pci_hdr_access,
      * _count is how much there's left to be processed by vfu_access
      */
     processed = count - _count;
@@ -1151,7 +1091,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
     }
 
-    // This maybe allocated by vfu_setup_pci_config_hdr().
+    // This may have been allocated by vfu_setup_pci_config_hdr().
     if (vfu_ctx->pci.config_space == NULL) {
         vfu_ctx->pci.config_space = calloc(1, cfg_reg->size);
         if (vfu_ctx->pci.config_space == NULL) {
@@ -1285,12 +1225,6 @@ vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->trans->attach(vfu_ctx);
 }
 
-bool
-is_valid_pci_type(vfu_pci_type_t t)
-{
-    return t >= VFU_PCI_TYPE_CONVENTIONAL && t <= VFU_PCI_TYPE_EXPRESS;
-}
-
 vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
                vfu_dev_type_t dev_type)
@@ -1376,83 +1310,6 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 
     vfu_ctx->log = log;
     vfu_ctx->log_level = log_level;
-
-    return 0;
-}
-
-int
-vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
-                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         vfu_pci_type_t pci_type,
-                         int revision __attribute__((unused)))
-{
-    vfu_pci_config_space_t *config_space;
-    size_t size;
-
-    assert(vfu_ctx != NULL);
-
-    /*
-     * TODO there no real reason why we shouldn't allow this, we should just
-     * clean up and redo it.
-     */
-    if (vfu_ctx->pci.config_space != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "PCI configuration space header already setup");
-        return ERROR(EEXIST);
-    }
-
-    vfu_ctx->pci.type = pci_type;
-    switch (vfu_ctx->pci.type) {
-    case VFU_PCI_TYPE_CONVENTIONAL:
-    case VFU_PCI_TYPE_PCI_X_1:
-        size = PCI_CFG_SPACE_SIZE;
-        break;
-    case VFU_PCI_TYPE_PCI_X_2:
-    case VFU_PCI_TYPE_EXPRESS:
-        size = PCI_CFG_SPACE_EXP_SIZE;
-        break;
-    default:
-        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %d", pci_type);
-        return ERROR(EINVAL);
-    }
-
-    // Allocate a buffer for the config space.
-    config_space = calloc(1, size);
-    if (config_space == NULL) {
-        return ERROR(ENOMEM);
-    }
-
-    config_space->hdr.id = id;
-    config_space->hdr.ss = ss;
-    config_space->hdr.cc = cc;
-    vfu_ctx->pci.config_space = config_space;
-    vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
-
-    return 0;
-}
-
-int
-vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
-{
-    int ret;
-
-    assert(vfu_ctx != NULL);
-
-    if (vfu_ctx->pci.caps != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "capabilities are already setup");
-        return ERROR(EEXIST);
-    }
-
-    if (caps == NULL || nr_caps == 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid args passed");
-        return ERROR(EINVAL);
-    }
-
-    vfu_ctx->pci.caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
-    if (vfu_ctx->pci.caps == NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to create PCI capabilities: %s",
-               strerror(ret));
-        return ERROR(ret);
-    }
 
     return 0;
 }
@@ -1631,16 +1488,6 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
     vfu_ctx->migr_reg = migr_reg;
 
     return 0;
-}
-
-/*
- * Returns a pointer to the PCI configuration space.
- */
-inline vfu_pci_config_space_t *
-vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
-{
-    assert(vfu_ctx != NULL);
-    return vfu_ctx->pci.config_space;
 }
 
 inline vfu_reg_info_t *
