@@ -473,12 +473,12 @@ test_get_region_info(UNUSED void **state)
     assert_int_equal(sizeof(struct vfio_region_info), vfio_reg->argsz);
     assert_int_equal(VFU_REGION_FLAG_RW, vfio_reg->flags);
     assert_int_equal(1, vfio_reg->index);
-    assert_int_equal(0x10000000000, region_to_offset(vfio_reg->index));
+    assert_int_equal(0x10000000000, vfio_reg->offset);
     assert_int_equal(0xdeadbeef, vfio_reg->size);
     assert_int_equal(0, nr_fds);
 
     /* regions caps (sparse mmap) but argsz too small */
-    mmap_areas->nr_mmap_areas = 1; 
+    mmap_areas->nr_mmap_areas = 1;
     mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
     mmap_areas->areas[0].iov_len = 0x0d15ea5e;
     vfu_ctx.reg_info[1].mmap_areas = mmap_areas;

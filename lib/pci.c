@@ -216,21 +216,18 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
     return 0;
 }
 
-static inline int
-pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
-                  const char *buf, size_t count)
+static int
+pci_hdr_write(vfu_ctx_t *vfu_ctx, vfu_pci_config_space_t *cfg_space,
+              const char *buf, size_t count, loff_t offset)
 {
-    vfu_pci_config_space_t *pci;
     int ret = 0;
 
     assert(vfu_ctx != NULL);
     assert(buf != NULL);
 
-    pci = vfu_pci_get_config_space(vfu_ctx);
-
     switch (offset) {
     case PCI_COMMAND:
-        ret = handle_command_write(vfu_ctx, pci, buf, count);
+        ret = handle_command_write(vfu_ctx, cfg_space, buf, count);
         break;
     case PCI_STATUS:
         vfu_log(vfu_ctx, LOG_INFO, "write to status ignored\n");
@@ -240,12 +237,13 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
         ret = -EINVAL;
         break;
     case PCI_INTERRUPT_LINE:
-        pci->hdr.intr.iline = buf[0];
-        vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x\n", pci->hdr.intr.iline);
+        cfg_space->hdr.intr.iline = buf[0];
+        vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x\n", cfg_space->hdr.intr.iline);
         break;
     case PCI_LATENCY_TIMER:
-        pci->hdr.mlt = (uint8_t)buf[0];
-        vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx\n", pci->hdr.mlt);
+        cfg_space->hdr.mlt = (uint8_t)buf[0];
+        vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx\n",
+                cfg_space->hdr.mlt);
         break;
     case PCI_BASE_ADDRESS_0:
     case PCI_BASE_ADDRESS_1:
@@ -256,7 +254,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
         pci_hdr_write_bar(vfu_ctx, BAR_INDEX(offset), buf);
         break;
     case PCI_ROM_ADDRESS:
-        ret = handle_erom_write(vfu_ctx, pci, buf, count);
+        ret = handle_erom_write(vfu_ctx, cfg_space, buf, count);
         break;
     default:
         vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#x-%#lx not handled\n",
@@ -265,84 +263,109 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
     }
 
 #ifdef VFU_VERBOSE_LOGGING
-    dump_buffer("PCI header", (char*)pci->hdr.raw, 0xff);
+    dump_buffer("PCI header", (const char *)cfg_space->hdr.raw, 0xff);
 #endif
 
     return ret;
 }
 
-/*
- * @pci_hdr: the PCI header
- * @reg_info: region info
- * @rw: the command
- * @write: whether this is a PCI header write
- * @count: output parameter that receives the number of bytes read/written
- */
-int
-pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
-               uint64_t *pos, bool is_write, char *buf)
+static int
+pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t *countp,
+               loff_t *offsetp, bool is_write)
 {
-    uint32_t _count;
-    loff_t _pos;
+    vfu_pci_config_space_t *cfg_space = vfu_pci_get_config_space(vfu_ctx);
+    size_t count;
     int err = 0;
 
-    assert(vfu_ctx != NULL);
-    assert(count != NULL);
-    assert(pos != NULL);
-    assert(buf != NULL);
+    assert(countp != NULL);
+    assert(offsetp != NULL);
 
-    _pos = *pos - region_to_offset(VFU_PCI_DEV_CFG_REGION_IDX);
-    _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
+    count = MIN(*countp, (size_t)(PCI_STD_HEADER_SIZEOF - *offsetp));
 
     if (is_write) {
-        err = pci_hdr_write(vfu_ctx, _pos, buf, _count);
+        err = pci_hdr_write(vfu_ctx, cfg_space, buf, count, *offsetp);
     } else {
-        memcpy(buf, vfu_pci_get_config_space(vfu_ctx)->hdr.raw + _pos, _count);
+        memcpy(buf, cfg_space->hdr.raw + *offsetp, count);
     }
-    *pos += _count;
-    *count -= _count;
+
+    *countp -= count;
+    *offsetp += count;
+
     return err;
 }
 
-static uint32_t
-pci_config_space_size(vfu_ctx_t *vfu_ctx)
-{
-    return vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
-}
-
 /*
- * Accesses the non-standard part (offset >= 0x40) of the PCI configuration
- * space.
+ * Special handler for config space: we handle all accesses to the standard PCI
+ * header, as well as to any capabilities.
+ *
+ * Outside of those areas, if a callback is specified for the region, we'll use
+ * that; otherwise, writes are not allowed, and reads are satisfied with
+ * memcpy().
  */
 ssize_t
 pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                        loff_t pos, bool is_write)
+                        loff_t offset, bool is_write)
 {
-    int ret;
+    vfu_region_access_cb_t *cb =
+        vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].fn;
+    loff_t start = offset;
+    ssize_t ret;
+    int rc;
 
-    count = MIN(pci_config_space_size(vfu_ctx), count);
-    if (is_write) {
-        ret = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, pos);
-        if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
-                    pos, pos + count);
-            return ret;
+    if (offset < PCI_STD_HEADER_SIZEOF) {
+        rc = pci_hdr_access(vfu_ctx, buf, &count, &offset, is_write);
+        if (rc < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
+                    strerror(-rc));
+            dump_buffer("buffer write", buf, count);
+            return rc;
         }
-    } else {
-        /*
-         * It is legitimate to read the non-standard part of the PCI config
-         * space even if there are no capabilities.
-         */
-        memcpy(buf, vfu_ctx->pci.config_space->raw + pos, count);
     }
-    return count;
+
+    if (count == 0) {
+        return offset - start;
+    }
+
+    if (is_write) {
+        rc = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, offset);
+
+        if (rc < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
+                    offset, offset + count);
+            return rc;
+        } else if (rc > 0) {
+            offset += count;
+            return offset - start;
+        }
+
+        if (cb == NULL) {
+            vfu_log(vfu_ctx, LOG_ERR, "config space write: no callback");
+            return -EINVAL;
+        }
+
+    } else {
+        if (cb == NULL) {
+            memcpy(buf, vfu_ctx->pci.config_space->raw + offset, count);
+            offset += count;
+            return offset - start;
+        }
+    }
+
+    ret = cb(vfu_ctx, buf, count, offset, is_write);
+    offset += ret;
+
+    if (ret < 0) {
+        return ret;
+    }
+
+    return offset - start;
 }
 
 int
 vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
              int hdr_type, int revision UNUSED)
 {
-    vfu_pci_config_space_t *config_space;
+    vfu_pci_config_space_t *cfg_space;
     size_t size;
 
     assert(vfu_ctx != NULL);
@@ -377,13 +400,13 @@ vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
     }
 
     // Allocate a buffer for the config space.
-    config_space = calloc(1, size);
-    if (config_space == NULL) {
+    cfg_space = calloc(1, size);
+    if (cfg_space == NULL) {
         return ERROR(ENOMEM);
     }
 
     vfu_ctx->pci.type = pci_type;
-    vfu_ctx->pci.config_space = config_space;
+    vfu_ctx->pci.config_space = cfg_space;
     vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
 
     return 0;

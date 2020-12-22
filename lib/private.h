@@ -35,22 +35,12 @@
 
 #include "dma.h"
 
-#define VFU_REGION_SHIFT 40
-#define VFU_REGION_MASK  ((1ULL << VFU_REGION_SHIFT) - 1)
-
 static inline int
 ERROR(int err)
 {
     errno = err;
     return -1;
 }
-
-#ifdef VFU_VERBOSE_LOGGING
-void
-dump_buffer(const char *prefix, const char *buf, uint32_t count);
-#else
-#define dump_buffer(prefix, buf, count)
-#endif
 
 struct transport_ops {
     int (*init)(vfu_ctx_t*);
@@ -139,24 +129,11 @@ struct vfu_ctx {
     vfu_dev_type_t          dev_type;
 };
 
-int
-vfu_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
-                   uint64_t *pos, bool write, char *buf);
+void
+dump_buffer(const char *prefix, const char *buf, uint32_t count);
 
 vfu_reg_info_t *
 vfu_get_region_info(vfu_ctx_t *vfu_ctx);
-
-static inline uint64_t
-region_to_offset(uint32_t region)
-{
-    return (uint64_t)region << VFU_REGION_SHIFT;
-}
-
-static inline uint32_t
-offset_to_region(uint64_t offset)
-{
-    return (offset >> VFU_REGION_SHIFT) & VFU_REGION_MASK;
-}
 
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,

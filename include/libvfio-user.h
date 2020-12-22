@@ -205,32 +205,14 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 #define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
 
 /**
- * Set up a region.
+ * Set up a device region.
  *
- * If this is the PCI configuration space, the @size argument is ignored. The
- * size of the region is determined by the PCI type (set when the libvfio-user
- * context is created). Accesses to the PCI configuration space header and the
- * PCI capabilities are handled internally; the user supplied callback is not
- * called.
+ * A region is an area of device memory that can be accessed by the client,
+ * either via VFIO_USER_REGION_READ/WRITE, or directly by mapping the region
+ * into the client's address space.
  *
- * @vfu_ctx: the libvfio-user context
- * @region_idx: region index
- * @size: size of the region
- * @region_access: callback function to access region. If the region is memory
- *  mappable and the client accesses the region or part of sparse area, then
- *  the callback is not called.
- * @flags: region flags (VFU_REGION_FLAG_)
- * @mmap_areas: array of memory mappable areas. This array provides to the
- *  server greater control of which specific areas should be memory mapped by
- *  the client. Each element in the @mmap_areas array describes one such area.
- *  Ignored if @nr_mmap_areas is 0 or if the region is not memory mappable.
- * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
- *  region is not memory mappable.
- * @fd: file descriptor of the file backing the region if it's a mappable
- *  region. It is the server's responsibility to create a file suitable for
- *  memory mapping by the client. Ignored if the region is not memory mappable.
- *
- * A note on memory-mappable regions: the client can memory map any part of the
+ * A mappable region can be split into mappable sub-areas according to the
+ * @mmap_areas array. Note that the client can memory map any part of the
  * file descriptor, even if not supposed to do so according to @mmap_areas.
  * There is no way in Linux to avoid this.
  *
@@ -240,6 +222,34 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * to create linear device-mapper targets, one for each area, and provide file
  * descriptors of these DM targets. This is something we can document and
  * demonstrate in a sample.
+ *
+ * Areas that are accessed via such a mapping by definition do not invoke any
+ * given callback.  However, any access via VFIO_USER_REGION_READ/WRITE will do
+ * so, even if it's to a mappable area.
+ *
+ * A VFU_PCI_DEV_CFG_REGION_IDX region, corresponding to PCI config space, has
+ * special handling:
+ *
+ *  - the @size argument is ignored: the region size is always the size defined
+ *    by the relevant PCI specification
+ *  - all accesses to the standard PCI header (i.e. the first 64 bytes of the
+ *    region) are handled by the library
+ *  - all accesses to known PCI capabilities are handled by the library
+ *  - if no callback is provided, reads to other areas are a simple memcpy(),
+ *    and writes are an error
+ *  - otherwise, the callback is expected to handle the access
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @region_idx: region index
+ * @size: size of the region
+ * @region_access: callback function to access region
+ * @flags: region flags (VFU_REGION_FLAG_)
+ * @mmap_areas: array of memory mappable areas.
+ * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
+ *  region is not memory mappable.
+ * @fd: file descriptor of the file backing the region if it's a mappable
+ *  region. It is the server's responsibility to create a file suitable for
+ *  memory mapping by the client. Ignored if the region is not memory mappable.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -489,20 +499,6 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 void
 vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
              struct iovec *iov, int cnt);
-
-//FIXME: Remove if we dont need this.
-/**
- * Returns the PCI region given the position and size of an address span in the
- * PCI configuration space.
- *
- * @pos: offset of the address span
- * @count: size of the address span
- * @off: output parameter that receives the relative offset within the region.
- *
- * Returns the PCI region (VFU_PCI_DEV_XXX_REGION_IDX), or -errno on error.
- */
-int
-vfu_get_region(loff_t pos, size_t count, loff_t *off);
 
 /**
  * Read from the dma region exposed by the client.

@@ -165,10 +165,11 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     return 0;
 }
 
-#ifdef VFU_VERBOSE_LOGGING
-void
-dump_buffer(const char *prefix, const char *buf, uint32_t count)
+inline void
+dump_buffer(const char *prefix UNUSED, const char *buf UNUSED,
+            uint32_t count UNUSED)
 {
+#ifdef VFU_VERBOSE_LOGGING
     int i;
     const size_t bytes_per_line = 0x8;
 
@@ -188,15 +189,161 @@ dump_buffer(const char *prefix, const char *buf, uint32_t count)
     if (i % bytes_per_line != 0) {
         fprintf(stderr, "\n");
     }
-}
-#else
-#define dump_buffer(prefix, buf, count)
 #endif
+}
 
 static bool
 is_migr_reg(vfu_ctx_t *vfu_ctx, int index)
 {
     return &vfu_ctx->reg_info[index] == vfu_ctx->migr_reg;
+}
+
+static ssize_t
+region_access(vfu_ctx_t *vfu_ctx, size_t region_index,
+              bool is_write, char *buf, uint64_t offset, size_t count)
+{
+    ssize_t ret;
+
+    assert(vfu_ctx != NULL);
+    assert(buf != NULL);
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "%s %zu %#lx-%#lx", is_write ? "W" : "R",
+            region_index, offset, offset + count);
+
+    if (is_write) {
+        dump_buffer("buffer write", buf, count);
+    }
+
+    if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
+        ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
+    } else if (is_migr_reg(vfu_ctx, region_index)) {
+        ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
+    } else {
+        vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].fn;
+
+        if (cb == NULL) {
+            vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d",
+                    region_index);
+            return -EINVAL;
+        }
+
+        ret = cb(vfu_ctx, buf, count, offset, is_write);
+    }
+
+    if (!is_write && (size_t)ret == count) {
+        dump_buffer("buffer read", buf, count);
+    }
+
+    return ret;
+}
+
+static bool
+valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
+                    struct vfio_user_region_access *ra)
+{
+    size_t index;
+
+    assert(ra != NULL);
+
+    if (size < sizeof (*ra)) {
+        vfu_log(vfu_ctx, LOG_ERR, "message size too small (%d)", size);
+        return false;
+    }
+
+    if (cmd == VFIO_USER_REGION_WRITE && size - sizeof (*ra) != ra->count) {
+        vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
+                "expected %lu, got %u", size - sizeof (*ra), ra->count);
+        return false;
+    }
+
+    if (ra->count == 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad region access count of 0");
+        return false;
+    }
+
+    index = ra->region;
+
+    if (index >= vfu_ctx->nr_regions) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad region index %u", index);
+        return false;
+    }
+
+    // FIXME: need to audit later for wraparound
+    if (ra->offset + ra->count > vfu_ctx->reg_info[index].size) {
+        vfu_log(vfu_ctx, LOG_ERR, "out of bounds region access %#lx-%#lx "
+                "(size %#lx)", ra->offset, ra->offset + ra->count,
+                vfu_ctx->reg_info[index].size);
+
+        return false;
+    }
+
+    if (device_is_stopped_and_copying(vfu_ctx->migration) &&
+        !is_migr_reg(vfu_ctx, index)) {
+        vfu_log(vfu_ctx, LOG_ERR,
+                "cannot access region %u while device in stop-and-copy state",
+                index);
+        return false;
+    }
+
+    return true;
+}
+
+static int
+handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
+                     void **data, size_t *len,
+                     struct vfio_user_region_access *ra)
+{
+    ssize_t ret;
+    char *buf;
+
+    assert(vfu_ctx != NULL);
+    assert(data != NULL);
+    assert(ra != NULL);
+
+    if (!valid_region_access(vfu_ctx, size, cmd, ra)) {
+        return -EINVAL;
+    }
+
+    *len = sizeof (*ra);
+    if (cmd == VFIO_USER_REGION_READ) {
+        *len += ra->count;
+    }
+    *data = calloc(1, *len);
+    if (*data == NULL) {
+        return -ENOMEM;
+    }
+    if (cmd == VFIO_USER_REGION_READ) {
+        buf = (char *)(((struct vfio_user_region_access*)(*data)) + 1);
+    } else {
+        buf = (char *)(ra + 1);
+    }
+
+    ret = region_access(vfu_ctx, ra->region, cmd == VFIO_USER_REGION_WRITE,
+                        buf, ra->offset, ra->count);
+
+    if (ret != ra->count) {
+        vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %d",
+                cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
+                ra->count, ra->offset + ra->count - 1, ret);
+        /* FIXME we should return whatever has been accessed, not an error */
+        if (ret >= 0) {
+            ret = -EINVAL;
+        }
+        return ret;
+    }
+
+    ra = *data;
+    ra->count = ret;
+
+    return 0;
+}
+
+#define VFU_REGION_SHIFT 40
+
+static inline uint64_t
+region_to_offset(uint32_t region)
+{
+    return (uint64_t)region << VFU_REGION_SHIFT;
 }
 
 long
@@ -254,183 +401,6 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
             (*vfio_reg)->size, (*vfio_reg)->argsz);
 
     return 0;
-}
-
-int
-vfu_get_region(loff_t pos, size_t count, loff_t *off)
-{
-    int r;
-
-    assert(off != NULL);
-
-    r = offset_to_region(pos);
-    if ((int)offset_to_region(pos + count) != r) {
-        return -ENOENT;
-    }
-    *off = pos - region_to_offset(r);
-
-    return r;
-}
-
-static ssize_t
-do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_write)
-{
-    int idx;
-    loff_t offset;
-
-    assert(vfu_ctx != NULL);
-    assert(buf != NULL);
-    assert(count == 1 || count == 2 || count == 4 || count == 8);
-
-    idx = vfu_get_region(pos, count, &offset);
-    if (idx < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid region %d", idx);
-        return idx;
-    }
-
-    if (idx < 0 || idx >= (int)vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad region %d", idx);
-        return -EINVAL;
-    }
-
-    if (idx == VFU_PCI_DEV_CFG_REGION_IDX) {
-        return pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
-    }
-
-    if (is_migr_reg(vfu_ctx, idx)) {
-        if (offset + count > vfu_ctx->reg_info[idx].size) {
-            vfu_log(vfu_ctx, LOG_ERR, "read %#lx-%#lx past end of migration region (%#x)",
-                    offset, offset + count - 1,
-                    vfu_ctx->reg_info[idx].size);
-            return -EINVAL;
-        }
-        return handle_migration_region_access(vfu_ctx, vfu_ctx->migration,
-                                              buf, count, offset, is_write);
-    }
-
-    /*
-     * Checking whether a callback exists might sound expensive however this
-     * code is not performance critical. This works well when we don't expect a
-     * region to be used, so the user of the library can simply leave the
-     * callback NULL in vfu_create_ctx.
-     */
-    if (vfu_ctx->reg_info[idx].fn != NULL) {
-        return vfu_ctx->reg_info[idx].fn(vfu_ctx, buf, count, offset, is_write);
-    }
-
-    vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d", idx);
-
-    return -EINVAL;
-}
-
-/*
- * Returns the number of bytes processed on success or a negative number on
- * error.
- *
- * TODO function naming, general cleanup of access path
- * FIXME we must be able to return values up to uint32_t bit, or negative on
- * error. Better to make return value an int and return the number of bytes
- * processed via an argument.
- */
-static ssize_t
-_vfu_access(vfu_ctx_t *vfu_ctx, char *buf, uint32_t count, uint64_t *ppos,
-          bool is_write)
-{
-    uint32_t done = 0;
-    int ret;
-
-    assert(vfu_ctx != NULL);
-    /* buf and ppos can be NULL if count is 0 */
-
-    while (count) {
-        size_t size;
-        /*
-         * Limit accesses to qword and enforce alignment. Figure out whether
-         * the PCI spec requires this
-         * FIXME while this makes sense for registers, we might be able to relax
-         * this requirement and make some transfers more efficient. Maybe make
-         * this a per-region option that can be set by the user?
-         */
-        if (count >= 8 && !(*ppos % 8)) {
-           size = 8;
-        } else if (count >= 4 && !(*ppos % 4)) {
-            size = 4;
-        } else if (count >= 2 && !(*ppos % 2)) {
-            size = 2;
-        } else {
-            size = 1;
-        }
-        ret = do_access(vfu_ctx, buf, size, *ppos, is_write);
-        if (ret <= 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %s",
-                    is_write ? "write to" : "read from", *ppos, *ppos + size - 1,
-                    strerror(-ret));
-            /*
-             * TODO if ret < 0 then it might contain a legitimate error code, why replace it with EFAULT?
-             */
-            return -EFAULT;
-        }
-        if (ret != (int)size) {
-            vfu_log(vfu_ctx, LOG_DEBUG, "bad read %d != %ld", ret, size);
-        }
-        count -= size;
-        done += size;
-        *ppos += size;
-        buf += size;
-    }
-    return done;
-}
-
-static inline int
-vfu_access(vfu_ctx_t *vfu_ctx, bool is_write, char *rwbuf, uint32_t count,
-             uint64_t *pos)
-{
-    uint32_t processed = 0, _count;
-    int ret;
-
-    assert(vfu_ctx != NULL);
-    assert(rwbuf != NULL);
-    assert(pos != NULL);
-
-    vfu_log(vfu_ctx, LOG_DEBUG, "%s %#lx-%#lx", is_write ? "W" : "R", *pos,
-            *pos + count - 1);
-
-#ifdef VFU_VERBOSE_LOGGING
-    if (is_write) {
-        dump_buffer("buffer write", rwbuf, count);
-    }
-#endif
-
-    _count = count;
-
-    if (pci_is_hdr_access(*pos)) {
-        ret = pci_hdr_access(vfu_ctx, &_count, pos, is_write, rwbuf);
-        if (ret != 0) {
-            /* FIXME shouldn't we fail here? */
-            vfu_log(vfu_ctx, LOG_ERR, "failed to access PCI header: %s",
-                    strerror(-ret));
-#ifdef VFU_VERBOSE_LOGGING
-            dump_buffer("buffer write", rwbuf, _count);
-#endif
-        }
-    }
-
-    /*
-     * count is how much has been processed by pci_hdr_access,
-     * _count is how much there's left to be processed by vfu_access
-     */
-    processed = count - _count;
-    ret = _vfu_access(vfu_ctx, rwbuf + processed, _count, pos, is_write);
-    if (ret >= 0) {
-        ret += processed;
-#ifdef VFU_VERBOSE_LOGGING
-        if (!is_write && err == ret) {
-            dump_buffer("buffer read", rwbuf, ret);
-        }
-#endif
-    }
-
-    return ret;
 }
 
 /* TODO merge with dev_get_reginfo */
@@ -591,96 +561,6 @@ handle_device_reset(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->reset != NULL) {
         return vfu_ctx->reset(vfu_ctx);
     }
-    return 0;
-}
-
-static int
-validate_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
-                       struct vfio_user_region_access *region_access)
-{
-    assert(region_access != NULL);
-
-    if (size < sizeof *region_access) {
-        vfu_log(vfu_ctx, LOG_ERR, "message size too small (%d)", size);
-        return -EINVAL;
-    }
-
-    if (region_access->region > vfu_ctx->nr_regions ||  region_access->count <= 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad region %d and/or count %d",
-                region_access->region, region_access->count);
-        return -EINVAL;
-    }
-
-    if (device_is_stopped_and_copying(vfu_ctx->migration) &&
-        !is_migr_reg(vfu_ctx, region_access->region)) {
-        vfu_log(vfu_ctx, LOG_ERR,
-                "cannot access region %d while device in stop-and-copy state",
-                region_access->region);
-        return -EINVAL;
-    }
-
-    if (cmd == VFIO_USER_REGION_WRITE &&
-        size - sizeof *region_access != region_access->count)
-    {
-        vfu_log(vfu_ctx, LOG_ERR, "bad region access, expected %lu, actual %d",
-                size - sizeof *region_access, region_access->count);
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-static int
-handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
-                     void **data, size_t *len,
-                     struct vfio_user_region_access *region_access)
-{
-    uint64_t count, offset;
-    int ret;
-    char *buf;
-
-    assert(vfu_ctx != NULL);
-    assert(data != NULL);
-    assert(region_access != NULL);
-
-    ret = validate_region_access(vfu_ctx, size, cmd, region_access);
-    if (ret < 0) {
-        return ret;
-    }
-
-    *len = sizeof *region_access;
-    if (cmd == VFIO_USER_REGION_READ) {
-        *len += region_access->count;
-    }
-    *data = calloc(1, *len);
-    if (*data == NULL) {
-        return -ENOMEM;
-    }
-    if (cmd == VFIO_USER_REGION_READ) {
-        buf = (char*)(((struct vfio_user_region_access*)(*data)) + 1);
-    } else {
-        buf = (char*)(region_access + 1);
-    }
-
-    count = region_access->count;
-    offset = region_to_offset(region_access->region) + region_access->offset;
-
-    ret = vfu_access(vfu_ctx, cmd == VFIO_USER_REGION_WRITE, buf, count, &offset);
-    if (ret != (int)region_access->count) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %d",
-                cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
-                region_access->count,
-                region_access->offset + region_access->count - 1, ret);
-        /* FIXME we should return whatever has been accessed, not an error */
-        if (ret >= 0) {
-            ret = -EINVAL;
-        }
-        return ret;
-    }
-
-    region_access = *data;
-    region_access->count = ret;
-
     return 0;
 }
 
