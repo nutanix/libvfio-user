@@ -1234,23 +1234,6 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     return err >= 0 ? 0 : err;
 }
 
-/* FIXME this is not enough anymore ? */
-void *
-vfu_mmap(vfu_ctx_t *vfu_ctx, off_t offset, size_t length)
-{
-    if ((vfu_ctx == NULL) || (length == 0) || !PAGE_ALIGNED(offset)) {
-        if (vfu_ctx != NULL) {
-            vfu_log(vfu_ctx, LOG_DEBUG, "bad device mmap region %#lx-%#lx\n",
-                   offset, offset + length);
-        }
-        errno = EINVAL;
-        return MAP_FAILED;
-    }
-
-    return mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED,
-                vfu_ctx->fd, offset);
-}
-
 static void
 free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
 {
