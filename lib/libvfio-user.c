@@ -73,7 +73,7 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    vfu_ctx->log(vfu_ctx->pvt, level, buf);
+    vfu_ctx->log(vfu_ctx, level, buf);
     errno = _errno;
 }
 
@@ -367,8 +367,7 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
                     vfu_ctx->reg_info[idx].size);
             return -EINVAL;
         }
-        return handle_migration_region_access(vfu_ctx, vfu_ctx->pvt,
-                                              vfu_ctx->migration,
+        return handle_migration_region_access(vfu_ctx, vfu_ctx->migration,
                                               buf, count, offset, is_write);
     }
 
@@ -379,8 +378,7 @@ do_access(vfu_ctx_t *vfu_ctx, char *buf, uint8_t count, uint64_t pos, bool is_wr
      * callback NULL in vfu_create_ctx.
      */
     if (vfu_ctx->reg_info[idx].fn != NULL) {
-        return vfu_ctx->reg_info[idx].fn(vfu_ctx->pvt, buf, count, offset,
-                                         is_write);
+        return vfu_ctx->reg_info[idx].fn(vfu_ctx, buf, count, offset, is_write);
     }
 
     vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d", idx);
@@ -622,7 +620,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                dma_regions[i].addr,
                                                dma_regions[i].size,
-                                               vfu_ctx->unmap_dma, vfu_ctx->pvt);
+                                               vfu_ctx->unmap_dma, vfu_ctx);
             if (ret < 0) {
                 vfu_log(vfu_ctx, LOG_INFO,
                         "failed to remove DMA region %#lx-%#lx: %s",
@@ -640,8 +638,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             return ret;
         }
         if (vfu_ctx->map_dma != NULL) {
-            vfu_ctx->map_dma(vfu_ctx->pvt, dma_regions[i].addr,
-                             dma_regions[i].size);
+            vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr, dma_regions[i].size);
         }
     }
     return ret;
@@ -652,7 +649,7 @@ handle_device_reset(vfu_ctx_t *vfu_ctx)
 {
     vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx->pvt);
+        return vfu_ctx->reset(vfu_ctx);
     }
     return 0;
 }
@@ -1286,6 +1283,12 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     free(vfu_ctx->irqs);
     free(vfu_ctx);
     // FIXME: Maybe close any open irq efds? Unmap stuff?
+}
+
+void *
+vfu_get_private(vfu_ctx_t *vfu_ctx)
+{
+    return vfu_ctx->pvt;
 }
 
 int
