@@ -43,7 +43,7 @@
 #include <unistd.h>
 #include <syslog.h>
 
-#include "pci.h"
+#include "pci_defs.h"
 #include "pci_caps/pm.h"
 #include "pci_caps/px.h"
 #include "pci_caps/msi.h"

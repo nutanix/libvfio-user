@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef LIBVFIO_USER_PCI_H
-#define LIBVFIO_USER_PCI_H
+#ifndef LIBVFIO_USER_PCI_DEFS_H
+#define LIBVFIO_USER_PCI_DEFS_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -42,6 +42,8 @@ extern "C" {
 #endif
 
 /*
+ * PCI standard header definitions.
+ *
  * TODO lots of the sizes of each member are defined in pci_regs.h, use those
  * instead?
  */
@@ -194,6 +196,6 @@ _Static_assert(sizeof(vfu_pci_config_space_t) == 0x100,
 }
 #endif
 
-#endif /* LIBVFIO_USER_PCI_H */
+#endif /* LIBVFIO_USER_PCI_DEFS_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

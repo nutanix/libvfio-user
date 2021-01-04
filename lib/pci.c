@@ -30,22 +30,20 @@
  *
  */
 
-#include <stdio.h>
 #include <assert.h>
+#include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/param.h>
-#include <errno.h>
 
-#include <linux/pci_regs.h>
-#include <linux/vfio.h>
-
+#include "cap.h"
 #include "common.h"
 #include "libvfio-user.h"
 #include "pci.h"
 #include "private.h"
 
 static inline void
-vfu_pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
+pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
     unsigned long mask;
@@ -219,7 +217,7 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 }
 
 static inline int
-vfu_pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
+pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
                   const char *buf, size_t count)
 {
     vfu_pci_config_space_t *pci;
@@ -255,7 +253,7 @@ vfu_pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
     case PCI_BASE_ADDRESS_3:
     case PCI_BASE_ADDRESS_4:
     case PCI_BASE_ADDRESS_5:
-        vfu_pci_hdr_write_bar(vfu_ctx, BAR_INDEX(offset), buf);
+        pci_hdr_write_bar(vfu_ctx, BAR_INDEX(offset), buf);
         break;
     case PCI_ROM_ADDRESS:
         ret = handle_erom_write(vfu_ctx, pci, buf, count);
@@ -280,10 +278,9 @@ vfu_pci_hdr_write(vfu_ctx_t *vfu_ctx, uint16_t offset,
  * @write: whether this is a PCI header write
  * @count: output parameter that receives the number of bytes read/written
  */
-static inline int
-vfu_do_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
-                      uint64_t *pos, bool is_write,
-                      char *buf)
+int
+pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
+               uint64_t *pos, bool is_write, char *buf)
 {
     uint32_t _count;
     loff_t _pos;
@@ -298,7 +295,7 @@ vfu_do_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
     _count = MIN(*count, PCI_STD_HEADER_SIZEOF - _pos);
 
     if (is_write) {
-        err = vfu_pci_hdr_write(vfu_ctx, _pos, buf, _count);
+        err = pci_hdr_write(vfu_ctx, _pos, buf, _count);
     } else {
         memcpy(buf, vfu_pci_get_config_space(vfu_ctx)->hdr.raw + _pos, _count);
     }
@@ -307,26 +304,122 @@ vfu_do_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
     return err;
 }
 
-static inline bool
-vfu_is_pci_hdr_access(uint64_t pos)
+static uint32_t
+pci_config_space_size(vfu_ctx_t *vfu_ctx)
 {
-    const uint64_t off = region_to_offset(VFU_PCI_DEV_CFG_REGION_IDX);
-    return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
+    return vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
 }
 
-/* FIXME this function is misleading, remove it */
+/*
+ * Accesses the non-standard part (offset >= 0x40) of the PCI configuration
+ * space.
+ */
+ssize_t
+pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
+                        loff_t pos, bool is_write)
+{
+    int ret;
+
+    count = MIN(pci_config_space_size(vfu_ctx), count);
+    if (is_write) {
+        ret = cap_maybe_access(vfu_ctx, vfu_ctx->pci.caps, buf, count, pos);
+        if (ret < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad access to capabilities %#lx-%#lx\n",
+                    pos, pos + count);
+            return ret;
+        }
+    } else {
+        /*
+         * It is legitimate to read the non-standard part of the PCI config
+         * space even if there are no capabilities.
+         */
+        memcpy(buf, vfu_ctx->pci.config_space->raw + pos, count);
+    }
+    return count;
+}
+
 int
-vfu_pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
-                   uint64_t *pos, bool is_write, char *buf)
+vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
+                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
+                         vfu_pci_type_t pci_type,
+                         int revision __attribute__((unused)))
+{
+    vfu_pci_config_space_t *config_space;
+    size_t size;
+
+    assert(vfu_ctx != NULL);
+
+    /*
+     * TODO there no real reason why we shouldn't allow this, we should just
+     * clean up and redo it.
+     */
+    if (vfu_ctx->pci.config_space != NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "PCI configuration space header already setup");
+        return ERROR(EEXIST);
+    }
+
+    vfu_ctx->pci.type = pci_type;
+    switch (vfu_ctx->pci.type) {
+    case VFU_PCI_TYPE_CONVENTIONAL:
+    case VFU_PCI_TYPE_PCI_X_1:
+        size = PCI_CFG_SPACE_SIZE;
+        break;
+    case VFU_PCI_TYPE_PCI_X_2:
+    case VFU_PCI_TYPE_EXPRESS:
+        size = PCI_CFG_SPACE_EXP_SIZE;
+        break;
+    default:
+        vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %d", pci_type);
+        return ERROR(EINVAL);
+    }
+
+    // Allocate a buffer for the config space.
+    config_space = calloc(1, size);
+    if (config_space == NULL) {
+        return ERROR(ENOMEM);
+    }
+
+    config_space->hdr.id = id;
+    config_space->hdr.ss = ss;
+    config_space->hdr.cc = cc;
+    vfu_ctx->pci.config_space = config_space;
+    vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
+
+    return 0;
+}
+
+int
+vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps)
+{
+    int ret;
+
+    assert(vfu_ctx != NULL);
+
+    if (vfu_ctx->pci.caps != NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "capabilities are already setup");
+        return ERROR(EEXIST);
+    }
+
+    if (caps == NULL || nr_caps == 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid args passed");
+        return ERROR(EINVAL);
+    }
+
+    vfu_ctx->pci.caps = caps_create(vfu_ctx, caps, nr_caps, &ret);
+    if (vfu_ctx->pci.caps == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "failed to create PCI capabilities: %s",
+               strerror(ret));
+        return ERROR(ret);
+    }
+
+    return 0;
+}
+
+inline vfu_pci_config_space_t *
+vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
-    assert(count != NULL);
-    assert(pos != NULL);
-
-    if (!vfu_is_pci_hdr_access(*pos)) {
-        return 0;
-    }
-    return vfu_do_pci_hdr_access(vfu_ctx, count, pos, is_write, buf);
+    return vfu_ctx->pci.config_space;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
