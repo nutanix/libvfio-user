@@ -75,9 +75,6 @@ main(int argc, char *argv[])
     char opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
-    vfu_pci_hdr_id_t id = { .vid = 0x494F, .did = 0x0DC8 };
-    vfu_pci_hdr_ss_t ss = { .vid = 0x0, .sid = 0x0 };
-    vfu_pci_hdr_cc_t cc = { { 0 } };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -114,12 +111,13 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc, 
-                                   VFU_PCI_TYPE_CONVENTIONAL, 0);
+    ret = vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+                       PCI_HEADER_TYPE_NORMAL, 0);
     if (ret < 0) {
-        fprintf(stderr, "failed to setup pci header\n");
-        goto out;
+        err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
+
+    vfu_pci_set_id(vfu_ctx, 0x494f, 0x0dc8, 0x0, 0x0);
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
                            &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1);

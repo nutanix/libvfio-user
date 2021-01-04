@@ -550,34 +550,50 @@ typedef enum {
 } vfu_pci_type_t;
 
 /**
- * Setup PCI configuration space header data. This function must be called only
+ * Initialize the context for a PCI device. This function must be called only
  * once per libvfio-user context.
  *
- * @vfu_ctx: the libvfio-user context
- * @id: Device and vendor ID
- * @ss: Subsystem vendor and device ID
- * @cc: Class code
- * @pci_type: PCI type (convention PCI, PCI-X mode 1, PCI-X mode2, PCI-Express)
- * @revision: PCI/PCI-X/PCIe revision
+ * This function initializes a buffer for the PCI config space, accessible via
+ * vfu_pci_get_config_space().
  *
- * @returns 0 on success, -1 on failure and sets errno.
- * TODO: Check other PCI header registers suitable to be filled by device.
- *       Or should we pass whole vfu_pci_hdr_t to be filled by user.
-
+ * Returns 0 on success, or -1 on error, setting errno.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @pci_type: PCI type (convention PCI, PCI-X mode 1, PCI-X mode2, PCI-Express)
+ * @hdr_type: PCI header type. Only PCI_HEADER_TYPE_NORMAL is supported.
+ * @revision: PCI/PCI-X/PCIe revision
  */
 int
-vfu_pci_setup_config_hdr(vfu_ctx_t *vfu_ctx, vfu_pci_hdr_id_t id,
-                         vfu_pci_hdr_ss_t ss, vfu_pci_hdr_cc_t cc,
-                         vfu_pci_type_t pci_type,
-                         int revision __attribute__((unused)));
+vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
+             int hdr_type, int revision __attribute__((unused)));
+
+/*
+ * Set the Vendor ID, Device ID, Subsystem Vendor ID, and Subsystem ID fields of
+ * the PCI config header (PCI3 6.2.1, 6.2.4).
+ *
+ * This must always be called for PCI devices, after vfu_pci_init().
+ */
+void
+vfu_pci_set_id(vfu_ctx_t *vfu_ctx, uint16_t vid, uint16_t did,
+               uint16_t ssvid, uint16_t ssid);
+
+/*
+ * Set the class code fields (base, sub-class, and programming interface) of the
+ * PCI config header (PCI3 6.2.1).
+ *
+ * If this function is not called, the fields are initialized to zero.
+ */
+void
+vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi);
+
 
 /*
  * Returns a pointer to the PCI configuration space.
  *
  * PCI config space consists of an initial 64-byte vfu_pci_hdr_t, plus
- * additional space, either containing capabilities, or device-specific
- * configuration.  Standard config space is 256 bytes; extended config space is
- * 4096 bytes.
+ * additional space, containing capabilities and/or device-specific
+ * configuration.  Standard config space is 256 bytes (PCI_CFG_SPACE_SIZE);
+ * extended config space is 4096 bytes (PCI_CFG_SPACE_EXP_SIZE).
  */
 vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);

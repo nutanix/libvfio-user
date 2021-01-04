@@ -375,9 +375,6 @@ int main(int argc, char *argv[])
         }
     };
     vfu_ctx_t *vfu_ctx;
-    vfu_pci_hdr_id_t id = {.raw = 0xdeadbeef};
-    vfu_pci_hdr_ss_t ss = {.raw = 0xcafebabe};
-    vfu_pci_hdr_cc_t cc = {.pi = 0xab, .scc = 0xcd, .bcc = 0xef};
     FILE *fp;
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
@@ -416,11 +413,13 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup log");
     }
 
-    ret = vfu_pci_setup_config_hdr(vfu_ctx, id, ss, cc,
-                                   VFU_PCI_TYPE_CONVENTIONAL, 0);
+    ret = vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+                       PCI_HEADER_TYPE_NORMAL, 0);
     if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup PCI header");
+        err(EXIT_FAILURE, "vfu_pci_init() failed") ;
     }
+
+    vfu_pci_set_id(vfu_ctx, 0xdead, 0xbeef, 0xcafe, 0xbabe);
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
                            &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
