@@ -208,8 +208,8 @@ vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
  * @returns the number of bytes read or written, or a negative integer on error
  */
 typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
-                                          size_t count, loff_t offset,
-                                          bool is_write);
+                                         size_t count, loff_t offset,
+                                         bool is_write);
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)

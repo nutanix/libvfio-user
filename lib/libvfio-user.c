@@ -1288,6 +1288,8 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 void *
 vfu_get_private(vfu_ctx_t *vfu_ctx)
 {
+    assert(vfu_ctx != NULL);
+
     return vfu_ctx->pvt;
 }
 
