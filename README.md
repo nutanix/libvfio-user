@@ -32,9 +32,7 @@ those regions are accessed.
 
 Currently there is one, single-threaded, application instance per device,
 however the application can employ any form of concurrency needed. In the future
-we plan to make libvfio-user multi-threaded. The application can be implemented
-in whatever way is convenient, e.g. as a Python script using the bindings, on
-the cloud, etc. There's also experimental support for polling.
+we plan to make libvfio-user multi-threaded.
 
 The library (and the protocol) are actively under development, and should not be
 considered a stable API or interface. Work is underway to integrate the protocol
@@ -84,8 +82,6 @@ By default a debug build is created. To create a release build do:
     make BUILD_TYPE=rel
 
 The kernel headers are necessary because VFIO structs and defines are reused.
-To enable Python bindings set the `PYTHON_BINDINGS` environment variable to a
-non-empty string.
 
 Finally build your program and link with `libvfio-user.so`.
 
