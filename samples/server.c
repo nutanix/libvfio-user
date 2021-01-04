@@ -56,7 +56,6 @@ struct dma_regions {
 #define NR_DMA_REGIONS  96
 
 struct server_data {
-    vfu_ctx_t *vfu_ctx;
     time_t bar0;
     uint8_t *bar1;
     struct dma_regions regions[NR_DMA_REGIONS];
@@ -70,32 +69,32 @@ struct server_data {
 };
 
 static void
-_log(UNUSED void *pvt, UNUSED int level, char const *msg)
+_log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
 {
     fprintf(stderr, "server: %s\n", msg);
 }
 
 static int
-arm_timer(struct server_data *server_data, time_t t)
+arm_timer(vfu_ctx_t *vfu_ctx, time_t t)
 {
     struct itimerval new = {.it_value.tv_sec = t - time(NULL) };
-    vfu_log(server_data->vfu_ctx, LOG_DEBUG,
-            "arming timer to trigger in %ld seconds", new.it_value.tv_sec);
+    vfu_log(vfu_ctx, LOG_DEBUG, "arming timer to trigger in %ld seconds",
+            new.it_value.tv_sec);
     if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
-        vfu_log(server_data->vfu_ctx, LOG_ERR, "failed to arm timer: %m");
+        vfu_log(vfu_ctx, LOG_ERR, "failed to arm timer: %m");
         return -errno;
     }
     return 0;
 }
 
 ssize_t
-bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
+bar0_access(vfu_ctx_t *vfu_ctx, char * const buf, size_t count, loff_t offset,
             const bool is_write)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     if (count != sizeof(time_t) || offset != 0) {
-        vfu_log(server_data->vfu_ctx, LOG_ERR, "bad BAR0 access %#lx-%#lx",
+        vfu_log(vfu_ctx, LOG_ERR, "bad BAR0 access %#lx-%#lx",
                 offset, offset + count - 1);
         errno = EINVAL;
         return -1;
@@ -103,7 +102,7 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
 
     if (is_write) {
         if (server_data->migration.state == VFU_MIGR_STATE_RUNNING) {
-            int ret = arm_timer(server_data, *(time_t*)buf);
+            int ret = arm_timer(vfu_ctx, *(time_t*)buf);
             if (ret < 0) {
                 return ret;
             }
@@ -118,8 +117,9 @@ bar0_access(void *pvt, char * const buf, size_t count, loff_t offset,
 }
 
 ssize_t
-bar1_access(UNUSED void *pvt, UNUSED char * const buf, UNUSED size_t count,
-            UNUSED loff_t offset, UNUSED const bool is_write)
+bar1_access(vfu_ctx_t *vfu_ctx UNUSED, UNUSED char * const buf,
+            UNUSED size_t count, UNUSED loff_t offset,
+            UNUSED const bool is_write)
 {
     assert(false);
 
@@ -138,9 +138,10 @@ static void _sa_handler(int signum)
     errno = _errno;
 }
 
-static void map_dma(void *pvt, uint64_t iova, uint64_t len)
+static void
+map_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
     int idx;
 
     for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
@@ -156,9 +157,10 @@ static void map_dma(void *pvt, uint64_t iova, uint64_t len)
     server_data->regions[idx].len = len;
 }
 
-static int unmap_dma(void *pvt, uint64_t iova, uint64_t len)
+static int
+unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
     int idx;
 
     for (idx = 0; idx < NR_DMA_REGIONS; idx++) {
@@ -232,7 +234,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 }
 
-static int device_reset(UNUSED void *pvt)
+static int device_reset(vfu_ctx_t *vfu_ctx UNUSED)
 {
     printf("device reset callback\n");
 
@@ -240,10 +242,10 @@ static int device_reset(UNUSED void *pvt)
 }
 
 static int
-migration_device_state_transition(void *pvt, vfu_migr_state_t state)
+migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 {
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
     int ret;
-    struct server_data *server_data = pvt;
 
     printf("migration: transition to device state %d\n", state);
 
@@ -258,7 +260,7 @@ migration_device_state_transition(void *pvt, vfu_migr_state_t state)
         case VFU_MIGR_STATE_RESUME:
             break;
         case VFU_MIGR_STATE_RUNNING:
-            ret = arm_timer(server_data, server_data->bar0);
+            ret = arm_timer(vfu_ctx, server_data->bar0);
             if (ret < 0) {
                 return ret;
             }
@@ -271,9 +273,9 @@ migration_device_state_transition(void *pvt, vfu_migr_state_t state)
 }
 
 static __u64
-migration_get_pending_bytes(void *pvt)
+migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
     if (server_data->migration.data_size > 0) {
         assert(server_data->migration.data_size <= server_data->migration.pending_bytes);
         server_data->migration.pending_bytes -= server_data->migration.data_size;
@@ -282,9 +284,9 @@ migration_get_pending_bytes(void *pvt)
 }
 
 static int
-migration_prepare_data(void *pvt, __u64 *offset, __u64 *size)
+migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     *offset = 0;
     *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
@@ -292,13 +294,12 @@ migration_prepare_data(void *pvt, __u64 *offset, __u64 *size)
 }
 
 static size_t
-migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
+migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     if (server_data->migration.data_size < size) {
-        vfu_log(server_data->vfu_ctx, LOG_ERR,
-                "invalid migration data read %#llx-%#llx",
+        vfu_log(vfu_ctx, LOG_ERR, "invalid migration data read %#llx-%#llx",
                 offset, offset + size - 1);
         return -EINVAL;
     }
@@ -314,16 +315,16 @@ migration_read_data(void *pvt, void *buf, __u64 size, __u64 offset)
 }
 
 static size_t
-migration_write_data(void *pvt, void *data, __u64 size, __u64 offset)
+migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
 {
-    struct server_data *server_data = pvt;
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     assert(server_data != NULL);
     assert(data != NULL);
 
     if (offset + size > server_data->migration.migr_data_len) {
-        vfu_log(server_data->vfu_ctx, LOG_ERR,
-                "invalid write %#llx-%#llx", offset, offset + size - 1);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid write %#llx-%#llx",
+                offset, offset + size - 1);
     }
 
     memcpy(server_data->migration.migr_data + offset, data, size);
@@ -333,16 +334,15 @@ migration_write_data(void *pvt, void *data, __u64 size, __u64 offset)
 
 
 static int
-migration_data_written(void *pvt, __u64 count, __u64 offset)
+migration_data_written(vfu_ctx_t *vfu_ctx, __u64 count, __u64 offset)
 {
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
     int ret;
-    struct server_data *server_data = pvt;
 
     assert(server_data != NULL);
 
     if (offset + count > server_data->migration.migr_data_len) {
-        vfu_log(server_data->vfu_ctx, LOG_ERR,
-                "bad migration data range %#llx-%#llx",
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration data range %#llx-%#llx",
                 offset, offset + count - 1);
         return -EINVAL;
     }
@@ -351,7 +351,7 @@ migration_data_written(void *pvt, __u64 count, __u64 offset)
 
         /* apply device state */
         /* FIXME must arm timer only after device is resumed!!! */
-        ret = bar0_access(pvt, server_data->migration.migr_data,
+        ret = bar0_access(vfu_ctx, server_data->migration.migr_data,
                           sizeof server_data->bar0, 0, true);
         if (ret < 0) {
             return ret;
@@ -405,9 +405,8 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    server_data.vfu_ctx = vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind],
-                                                   0, &server_data,
-                                                   VFU_DEV_TYPE_PCI);
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, &server_data,
+                             VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation\n");
     }
