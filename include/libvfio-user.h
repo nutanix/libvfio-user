@@ -183,19 +183,6 @@ int
 vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
 
 /**
- * Creates a mapping of a device region into the caller's virtual memory. It
- * must be called by vfu_map_region_cb_t.
- *
- * @vfu_ctx: the context to create mapping from
- * @offset: offset of the region being mapped
- * @length: size of the region being mapped
- *
- * @returns a pointer to the requested memory or MAP_FAILED on error. Sets errno.
- */
-void *
-vfu_mmap(vfu_ctx_t * vfu_ctx, off_t offset, size_t length);
-
-/**
  * Prototype for region access callback. When a region is accessed, libvfio-user
  * calls the previously registered callback with the following arguments:
  *
@@ -244,7 +231,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  *  memory mapping by the client. Ignored if the region is not memory mappable.
  *
  * A note on memory-mappable regions: the client can memory map any part of the
- * file descriptor, even if not supposed to do so acocrding to @mmap_areas.
+ * file descriptor, even if not supposed to do so according to @mmap_areas.
  * There is no way in Linux to avoid this.
  *
  * TODO maybe we should introduce per-sparse region file descriptors so that
