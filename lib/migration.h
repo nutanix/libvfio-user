@@ -47,8 +47,8 @@ struct migration *
 init_migration(const vfu_migration_t * const vfu_migr, int *err);
 
 ssize_t
-handle_migration_region_access(vfu_ctx_t *vfu_ctx, void *pvt,
-                               struct migration *migr, char *buf, size_t count,
+handle_migration_region_access(vfu_ctx_t *vfu_ctx, struct migration *migr,
+                               char *buf, size_t count,
                                loff_t pos, bool is_write);
 
 bool

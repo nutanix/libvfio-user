@@ -86,14 +86,3 @@ add_library_ut(tran_sock tran_sock.c)
 
 install(TARGETS vfio-user-shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
-if (DEFINED ENV{PYTHON_BINDINGS})
-    add_custom_target(python_bindings_build ALL
-        COMMAND python setup.py build -b ${CMAKE_BINARY_DIR}
-        DEPENDS python_bindings.c setup.py
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/lib
-        SOURCES python_bindings.c setup.py)
-    # execute_process seems to only execute a single command, e.g. it can't
-    # handle two commands joined by &&
-    install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/lib/python_bindings_install.sh ${CMAKE_SOURCE_DIR})")
-endif()

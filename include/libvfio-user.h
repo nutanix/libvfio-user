@@ -153,13 +153,19 @@ void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
+ * Return the private pointer given to vfu_create_ctx().
+ */
+void *
+vfu_get_private(vfu_ctx_t *vfu_ctx);
+
+/**
  * Callback function signature for log function
- * @pvt: private pointer
+ * @vfu_ctx: the libvfio-user context
  * @level: log level as defined in syslog(3)
  * @vfu_log_fn_t: typedef for log function.
  * @msg: message
  */
-typedef void (vfu_log_fn_t) (void *pvt, int level, const char *msg);
+typedef void (vfu_log_fn_t)(vfu_ctx_t *vfu_ctx, int level, const char *msg);
 
 /**
  * Log to the logging function configured for this context.
@@ -180,7 +186,7 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
  * Prototype for region access callback. When a region is accessed, libvfio-user
  * calls the previously registered callback with the following arguments:
  *
- * @pvt: private data originally passed by vfu_create_ctx()
+ * @vfu_ctx: the libvfio-user context
  * @buf: buffer containing the data to be written or data to be read into
  * @count: number of bytes being read or written
  * @offset: byte offset within the region
@@ -188,8 +194,9 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
  *
  * @returns the number of bytes read or written, or a negative integer on error
  */
-typedef ssize_t (vfu_region_access_cb_t) (void *pvt, char *buf, size_t count,
-                                          loff_t offset, bool is_write);
+typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
+                                         size_t count, loff_t offset,
+                                         bool is_write);
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
@@ -244,9 +251,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
 /*
  * Callback function that is called when the guest resets the device.
- * @pvt: private pointer
  */
-typedef int (vfu_reset_cb_t) (void *pvt);
+typedef int (vfu_reset_cb_t)(vfu_ctx_t *vfu_ctx);
 
 /**
  * Setup device reset callback.
@@ -258,21 +264,25 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
 
 /*
  * Function that is called when the guest maps a DMA region. Optional.
- * @pvt: private pointer
+ *
+ * @vfu_ctx: the libvfio-user context
  * @iova: iova address
  * @len: length
  */
-typedef void (vfu_map_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
+                                uint64_t iova, uint64_t len);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
  * must release all references to that region before the callback returns.
  * This is required if you want to be able to access guest memory.
- * @pvt: private pointer
+ *
+ * @vfu_ctx: the libvfio-user context
  * @iova: iova address
  * @len: length
  */
-typedef int (vfu_unmap_dma_cb_t) (void *pvt, uint64_t iova, uint64_t len);
+typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx,
+                                 uint64_t iova, uint64_t len);
 
 /**
  * Setup device DMA map/unmap callbacks. This will also enable bookkeeping of
@@ -312,9 +322,9 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
  */
 /**
  * Migration callback function.
- * @pvt: private pointer
+ * @vfu_ctx: the libvfio-user context
  */
-typedef int (vfu_migration_callback_t)(void *pvt);
+typedef int (vfu_migration_callback_t)(vfu_ctx_t *vfu_ctx);
 
 typedef enum {
     VFU_MIGR_STATE_STOP,
@@ -329,7 +339,7 @@ typedef struct {
     /* migration state transition callback */
     /* TODO rename to vfu_migration_state_transition_callback */
     /* FIXME maybe we should create a single callback and pass the state? */
-    int (*transition)(void *pvt, vfu_migr_state_t state);
+    int (*transition)(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state);
 
     /* Callbacks for saving device state */
 
@@ -340,14 +350,14 @@ typedef struct {
      * (e.g. migration data can be discarded). If the function returns 0 then
      * migration has finished and this function won't be called again.
      */
-    __u64 (*get_pending_bytes)(void *pvt);
+    __u64 (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
     /*
      * Function that is called to instruct the device to prepare migration data.
      * The function must return only after migration data are available at the
      * specified offset.
      */
-    int (*prepare_data)(void *pvt, __u64 *offset, __u64 *size);
+    int (*prepare_data)(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size);
 
     /*
      * Function that is called to read migration data. offset and size can
@@ -357,7 +367,8 @@ typedef struct {
      *
      * Does this mean that reading data_offset/data_size updates the values?
      */
-    size_t (*read_data)(void *pvt, void *buf, __u64 count, __u64 offset);
+    size_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
+                        __u64 count, __u64 offset);
 
     /* Callbacks for restoring device state */
 
@@ -365,10 +376,12 @@ typedef struct {
      * Function that is called when client has written some previously stored
      * device state.
      */
-    int (*data_written)(void *pvt, __u64 count, __u64 offset);
+    int (*data_written)(vfu_ctx_t *vfu_ctx,
+                        __u64 count, __u64 offset);
 
     /* Fuction that is called for writing previously stored device state. */
-    size_t (*write_data)(void *pvt, void *buf, __u64 count, __u64 offset);
+    size_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf,
+                         __u64 count, __u64 offset);
 
 } vfu_migration_callbacks_t;
 

@@ -1127,7 +1127,7 @@ int main(int argc, char *argv[])
      * Normally the client would now send the device state to the destination
      * client and then exit. We don't demonstrate how this works as this is a
      * client implementation detail. Instead, the client starts the destination
-     * server and then applies the mgiration data.
+     * server and then applies the migration data.
      */
     if (asprintf(&path_to_server, "%s/server", dirname(argv[0])) == -1) {
         err(EXIT_FAILURE, "failed to asprintf");
