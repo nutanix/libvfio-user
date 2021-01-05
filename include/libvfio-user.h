@@ -619,13 +619,34 @@ typedef union {
 int
 vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 
-/* FIXME this function is broken as the can be multiples capabilities with the
- * same ID, e.g. the vendor-specific capability.
+/**
+ * Find the offset within config space of a given capability (if there are
+ * multiple possible matches, use vfu_pci_find_next_capability()).
+ *
+ * Returns 0 if no such capability was found, with errno set.
+ *
  * @vfu_ctx: the libvfio-user context
- * @id: capability id
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_* or PCI_EXT_CAP_ID *)
  */
-uint8_t *
-vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id);
+size_t
+vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
+
+/**
+ * Find the offset within config space of the given capability, starting from
+ * @pos.  This can be used to iterate through multiple capabilities with the
+ * same ID.
+ *
+ * Returns 0 if no more matching capabilities were found, with errno set.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @pos: offset within config space to start looking
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_*)
+ */
+size_t
+vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
+                             size_t pos, int cap_id);
 
 #ifdef __cplusplus
 }

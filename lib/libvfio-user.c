@@ -1530,14 +1530,6 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
 
-uint8_t *
-vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id)
-{
-    assert(vfu_ctx != NULL);
-
-    return cap_find_by_id(vfu_ctx, id);
-}
-
 int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
