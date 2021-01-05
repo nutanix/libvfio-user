@@ -623,53 +623,30 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
  * Find the offset within config space of a given capability (if there are
  * multiple possible matches, use vfu_pci_find_next_capability()).
  *
- * Returns 0 if no such capability was found.
+ * Returns 0 if no such capability was found, with errno set.
  *
  * @vfu_ctx: the libvfio-user context
- * @id: capability id
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_* or PCI_EXT_CAP_ID *)
  */
 size_t
-vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, int cap_id);
+vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 
 /**
  * Find the offset within config space of the given capability, starting from
  * @pos.  This can be used to iterate through multiple capabilities with the
  * same ID.
  *
- * Returns 0 if no more matching capabilities were found.
+ * Returns 0 if no more matching capabilities were found, with errno set.
  *
  * @vfu_ctx: the libvfio-user context
  * @pos: offset within config space to start looking
- * @id: capability id
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_*)
  */
 size_t
-vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, size_t pos, int cap_id);
-
-/**
- * Find the offset within config space of a given extended capability (if there
- * are multiple possible matches, use vfu_pci_find_next_ext_capability()).
- *
- * Returns 0 if no such capability was found.
- *
- * @vfu_ctx: the libvfio-user context
- * @id: capability id (PCI_EXT_CAP_ID_*)
- */
-size_t
-vfu_pci_find_ext_capability(vfu_ctx_t *vfu_ctx, int cap_id);
-
-/**
- * Find the offset within config space of the given extended capability,
- * starting from @pos.  This can be used to iterate through multiple
- * extended capabilities with the same ID.
- *
- * Returns 0 if no more matching extended capabilities were found.
- *
- * @vfu_ctx: the libvfio-user context
- * @pos: offset within config space to start looking
- * @id: capability id (PCI_EXT_CAP_ID_*)
- */
-size_t
-vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx, size_t pos, int cap_id);
+vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
+                             size_t pos, int cap_id);
 
 #ifdef __cplusplus
 }

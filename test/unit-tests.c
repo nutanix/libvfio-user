@@ -534,7 +534,12 @@ static void
 test_pci_caps(void **state __attribute__((unused)))
 {
     vfu_pci_config_space_t config_space;
-    vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space };
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
+        [VFU_PCI_DEV_CFG_REGION_IDX] = { .size = PCI_CFG_SPACE_SIZE },
+    };
+    vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space,
+                          .reg_info = reg_info,
+    };
     vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM, .pmcs.raw = 0xabcd }};
     vfu_cap_t *vsc[2] = {
         alloca(sizeof(struct vsc) + 5),
@@ -560,36 +565,40 @@ test_pci_caps(void **state __attribute__((unused)))
 
     /* check that capability list is placed correctly */
 
-    offset = vfu_pci_find_capability(&vfu_ctx, PCI_CAP_ID_PM);
-    assert_int_equal(offset, PCI_STD_HEADER_SIZEOF);
+    offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_PM);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF, offset);
     assert_int_equal(PCI_CAP_ID_PM, config_space.raw[offset]);
     assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
                      config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, offset, PCI_CAP_ID_PM);
-    assert_int_equal(offset, 0);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
 
-    offset = vfu_pci_find_capability(&vfu_ctx, PCI_CAP_ID_VNDR);
-    assert_int_equal(offset, PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF);
+    offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, offset, PCI_CAP_ID_PM);
-    assert_int_equal(offset, 0);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, 0, PCI_CAP_ID_VNDR);
-    assert_int_equal(offset, PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 0, PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
     assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
                      config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, offset, PCI_CAP_ID_VNDR);
-    assert_int_equal(offset, PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF +
-                     vsc[0]->vsc.size);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
+                     offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
     assert_int_equal(0, config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, offset, PCI_CAP_ID_VNDR);
-    assert_int_equal(offset, 0);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(0, offset);
 
 
     /* check writing PMCS */

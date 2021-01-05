@@ -40,6 +40,7 @@
 #include "cap.h"
 #include "common.h"
 #include "libvfio-user.h"
+#include "private.h"
 
 #define VFU_MAX_CAPS \
     ((PCI_CFG_SPACE_SIZE - PCI_STD_HEADER_SIZEOF) / PCI_CAP_SIZEOF)
@@ -472,9 +473,21 @@ err_out:
 }
 
 size_t
-vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
+vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
+                             size_t offset, int cap_id)
 {
+    size_t space_size = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
     vfu_pci_config_space_t *config_space;
+
+    if (extended) {
+        errno = ENOTSUP;
+        return 0;
+    }
+
+    if (offset >= space_size) {
+        errno = EINVAL;
+        return 0;
+    }
 
     config_space = vfu_pci_get_config_space(vfu_ctx);
 
@@ -506,23 +519,9 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
 }
 
 size_t
-vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, int cap_id)
+vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id)
 {
-    return vfu_pci_find_next_capability(vfu_ctx, 0, cap_id);
-}
-
-size_t
-vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx UNUSED,
-                                 size_t pos UNUSED, int cap_id UNUSED)
-{
-    errno = ENOTSUP;
-    return 0;
-}
-
-size_t
-vfu_pci_find_ext_capability(vfu_ctx_t *vfu_ctx, int cap_id)
-{
-    return vfu_pci_find_next_ext_capability(vfu_ctx, 0, cap_id);
+    return vfu_pci_find_next_capability(vfu_ctx, extended, 0, cap_id);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
