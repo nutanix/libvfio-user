@@ -510,24 +510,16 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
         }
 
         if (config_space->raw[offset + PCI_CAP_LIST_ID] == cap_id) {
-            break;
+            return offset;
         }
 
         offset = config_space->raw[offset + PCI_CAP_LIST_NEXT];
 
         if (offset == 0) {
             errno = ENOENT;
-            break;
+            return 0;
         }
     }
-
-    /* Sanity check. */
-    if (offset + PCI_CAP_LIST_NEXT >= space_size) {
-        errno = EINVAL;
-        return 0;
-    }
-
-    return offset;
 }
 
 size_t

@@ -611,6 +611,13 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_int_equal(0, offset);
     assert_int_equal(EINVAL, errno);
 
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          PCI_STD_HEADER_SIZEOF +
+                                          PCI_PM_SIZEOF + 1,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(0, offset);
+    assert_int_equal(ENOENT, errno);
+
     /* check writing PMCS */
     assert_int_equal(0,
         cap_maybe_access(&vfu_ctx, caps, (char*)&pmcap.pmcs,
