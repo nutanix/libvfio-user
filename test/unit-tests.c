@@ -600,6 +600,16 @@ test_pci_caps(void **state __attribute__((unused)))
                                           PCI_CAP_ID_VNDR);
     assert_int_equal(0, offset);
 
+    /* check for invalid offsets */
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 8192, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 256, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 255, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
 
     /* check writing PMCS */
     assert_int_equal(0,

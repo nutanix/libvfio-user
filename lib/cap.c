@@ -484,7 +484,7 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
         return 0;
     }
 
-    if (offset >= space_size) {
+    if (offset + PCI_CAP_LIST_NEXT >= space_size) {
         errno = EINVAL;
         return 0;
     }
@@ -503,6 +503,12 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
     }
 
     for (;;) {
+        /* Sanity check. */
+        if (offset + PCI_CAP_LIST_NEXT >= space_size) {
+            errno = EINVAL;
+            return 0;
+        }
+
         if (config_space->raw[offset + PCI_CAP_LIST_ID] == cap_id) {
             break;
         }
@@ -513,6 +519,12 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
             errno = ENOENT;
             break;
         }
+    }
+
+    /* Sanity check. */
+    if (offset + PCI_CAP_LIST_NEXT >= space_size) {
+        errno = EINVAL;
+        return 0;
     }
 
     return offset;
