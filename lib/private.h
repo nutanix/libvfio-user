@@ -68,11 +68,6 @@ typedef struct {
 
 struct migration;
 
-struct vfu_sparse_mmap_areas {
-    int nr_mmap_areas;
-    struct iovec areas[];
-};
-
 typedef struct  {
     /* Region flags, see VFU_REGION_FLAG_READ and friends. */
     uint32_t            flags;
@@ -81,7 +76,8 @@ typedef struct  {
     /* Callback that is called when the region is read or written. */
     vfu_region_access_cb_t  *cb;
     /* Sparse mmap areas if set. */
-    struct vfu_sparse_mmap_areas *mmap_areas;
+    struct iovec *mmap_areas;
+    int nr_mmap_areas;
     /* fd for a mappable region, or -1. */
     int fd;
 } vfu_reg_info_t;
