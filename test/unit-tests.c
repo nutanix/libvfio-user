@@ -471,7 +471,8 @@ test_get_region_info(UNUSED void **state)
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
     assert_int_equal(sizeof(struct vfio_region_info), vfio_reg->argsz);
-    assert_int_equal(VFU_REGION_FLAG_RW, vfio_reg->flags);
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_MMAP, vfio_reg->flags);
     assert_int_equal(1, vfio_reg->index);
     assert_int_equal(0x10000000000, vfio_reg->offset);
     assert_int_equal(0xdeadbeef, vfio_reg->size);
@@ -488,7 +489,8 @@ test_get_region_info(UNUSED void **state)
                                      &fds, &nr_fds));
     assert_int_equal(argsz + sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area),
                      vfio_reg->argsz);
-    assert_int_equal(VFU_REGION_FLAG_RW | VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
                      vfio_reg->flags);
     assert_int_equal(0, nr_fds);
 
@@ -668,25 +670,36 @@ test_setup_sparse_region(void **state __attribute__((unused)))
             .iov_len = 0x1000
         }
     };
+    int ret;
 
-    /* bad fd */
-    assert_int_equal(-1,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, -1));
-    assert_int_equal(EBADF, errno);
+    /* invalid mappable settings */
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 2, -1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, NULL, 0, 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 0, 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
-    assert_int_equal(-1,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                            0x2000, NULL, 0, mmap_areas, 2, 0);
+    assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
     /* sparse region within region size */
     mmap_areas[1].iov_len = 0x1000;
-    assert_int_equal(0,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 2, 0);
+    assert_int_equal(0, ret);
 }
 
 static void

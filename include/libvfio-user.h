@@ -200,16 +200,15 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
-#define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
 #define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-#define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+#define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
 
 /**
  * Set up a device region.
  *
  * A region is an area of device memory that can be accessed by the client,
  * either via VFIO_USER_REGION_READ/WRITE, or directly by mapping the region
- * into the client's address space.
+ * into the client's address space if an fd is given.
  *
  * A mappable region can be split into mappable sub-areas according to the
  * @mmap_areas array. Note that the client can memory map any part of the
@@ -224,8 +223,8 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * demonstrate in a sample.
  *
  * Areas that are accessed via such a mapping by definition do not invoke any
- * given callback.  However, any access via VFIO_USER_REGION_READ/WRITE will do
- * so, even if it's to a mappable area.
+ * given callback.  However, the callback can still be invoked, even on a
+ * mappable area, if the client chooses to call VFIO_USER_REGION_READ/WRITE.
  *
  * A VFU_PCI_DEV_CFG_REGION_IDX region, corresponding to PCI config space, has
  * special handling:
@@ -244,12 +243,13 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * @size: size of the region
  * @region_access: callback function to access region
  * @flags: region flags (VFU_REGION_FLAG_)
- * @mmap_areas: array of memory mappable areas.
- * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
- *  region is not memory mappable.
- * @fd: file descriptor of the file backing the region if it's a mappable
- *  region. It is the server's responsibility to create a file suitable for
- *  memory mapping by the client. Ignored if the region is not memory mappable.
+ * @mmap_areas: array of memory mappable areas; must be provided if the region
+ *  is mappable.
+ * @nr_mmap_areas: number of sparse areas in @mmap_areas; must be provided if
+ *  the region is mappable.
+ * @fd: file descriptor of the file backing the region if the region is
+ *  mappable; it is the server's responsibility to create a file suitable for
+ *  memory mapping by the client.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */

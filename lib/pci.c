@@ -301,16 +301,21 @@ pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t *countp,
  * Outside of those areas, if a callback is specified for the region, we'll use
  * that; otherwise, writes are not allowed, and reads are satisfied with
  * memcpy().
+ *
+ * Returns the number of bytes handled, or -errno on error.
  */
 ssize_t
 pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t offset, bool is_write)
 {
-    vfu_region_access_cb_t *cb =
-        vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].fn;
+    vfu_region_access_cb_t *cb;
     loff_t start = offset;
     ssize_t ret;
     int rc;
+
+    assert(vfu_ctx != NULL);
+
+    cb = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb;
 
     if (offset < PCI_STD_HEADER_SIZEOF) {
         rc = pci_hdr_access(vfu_ctx, buf, &count, &offset, is_write);

@@ -199,8 +199,8 @@ is_migr_reg(vfu_ctx_t *vfu_ctx, int index)
 }
 
 static ssize_t
-region_access(vfu_ctx_t *vfu_ctx, size_t region_index,
-              bool is_write, char *buf, uint64_t offset, size_t count)
+region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
+              size_t count, uint64_t offset, bool is_write)
 {
     ssize_t ret;
 
@@ -219,7 +219,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index,
     } else if (is_migr_reg(vfu_ctx, region_index)) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {
-        vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].fn;
+        vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
 
         if (cb == NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d",
@@ -238,11 +238,12 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index,
 }
 
 static bool
-valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
-                    struct vfio_user_region_access *ra)
+is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
+                       struct vfio_user_region_access *ra)
 {
     size_t index;
 
+    assert(vfu_ctx != NULL);
     assert(ra != NULL);
 
     if (size < sizeof (*ra)) {
@@ -253,11 +254,6 @@ valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     if (cmd == VFIO_USER_REGION_WRITE && size - sizeof (*ra) != ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
                 "expected %lu, got %u", size - sizeof (*ra), ra->count);
-        return false;
-    }
-
-    if (ra->count == 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad region access count of 0");
         return false;
     }
 
@@ -300,8 +296,12 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     assert(data != NULL);
     assert(ra != NULL);
 
-    if (!valid_region_access(vfu_ctx, size, cmd, ra)) {
+    if (!is_valid_region_access(vfu_ctx, size, cmd, ra)) {
         return -EINVAL;
+    }
+
+    if (ra->count == 0) {
+        return 0;
     }
 
     *len = sizeof (*ra);
@@ -318,8 +318,8 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
         buf = (char *)(ra + 1);
     }
 
-    ret = region_access(vfu_ctx, ra->region, cmd == VFIO_USER_REGION_WRITE,
-                        buf, ra->offset, ra->count);
+    ret = region_access(vfu_ctx, ra->region, buf, ra->count, ra->offset,
+                        cmd == VFIO_USER_REGION_WRITE);
 
     if (ret != ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %d",
@@ -379,10 +379,22 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index),
                                    vfu_reg->mmap_areas);
     (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
-    (*vfio_reg)->flags = vfu_reg->flags;
     (*vfio_reg)->index = index;
     (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
     (*vfio_reg)->size = vfu_reg->size;
+
+    (*vfio_reg)->flags = 0;
+
+    if (vfu_reg->flags & VFU_REGION_FLAG_READ) {
+        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_READ;
+    }
+    if (vfu_reg->flags & VFU_REGION_FLAG_WRITE) {
+        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_WRITE;
+    }
+
+    if (vfu_reg->fd != -1) {
+        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP;
+    }
 
     *nr_fds = 0;
     if (caps_size > 0) {
@@ -1221,16 +1233,12 @@ copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
 
 static int
 setup_sparse_areas(vfu_reg_info_t *r, struct iovec *mmap_areas,
-                   uint32_t nr_mmap_areas, int fd)
+                   uint32_t nr_mmap_areas)
 {
     int ret, i;
 
     assert(r != NULL);
 
-    if (fd == -1) {
-        return -EBADF;
-    }
-    r->fd = fd;
     ret = copy_sparse_mmap_areas(r, mmap_areas, nr_mmap_areas);
     if (ret < 0) {
         return ret;
@@ -1247,37 +1255,46 @@ setup_sparse_areas(vfu_reg_info_t *r, struct iovec *mmap_areas,
 
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
-                 vfu_region_access_cb_t *region_access, int flags,
-                 struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 int fd)
+                 vfu_region_access_cb_t *cb, int flags,
+                 struct iovec *mmap_areas, uint32_t nr_mmap_areas, int fd)
 {
+    vfu_reg_info_t *reg;
     int ret;
 
     assert(vfu_ctx != NULL);
 
-    switch(region_idx) {
-    case VFU_PCI_DEV_BAR0_REGION_IDX ... VFU_PCI_DEV_VGA_REGION_IDX:
-        // Validate the config region provided.
-        if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
-            flags != VFU_REGION_FLAG_RW) {
-            return ERROR(EINVAL);
-        }
-
-        vfu_ctx->reg_info[region_idx].flags = flags;
-        vfu_ctx->reg_info[region_idx].size = size;
-        vfu_ctx->reg_info[region_idx].fn = region_access;
-
-        if (nr_mmap_areas > 0) {
-            ret = setup_sparse_areas(&vfu_ctx->reg_info[region_idx], mmap_areas,
-                                     nr_mmap_areas, fd);
-            if (ret < 0) {
-                return ERROR(-ret);
-            }
-        }
-        break;
-    default:
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid region index %d", region_idx);
+    if ((mmap_areas == NULL) != (nr_mmap_areas == 0) ||
+        (mmap_areas == NULL) != (fd == -1)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid mappable region arguments");
         return ERROR(EINVAL);
+    }
+
+    if (region_idx < VFU_PCI_DEV_BAR0_REGION_IDX ||
+        region_idx > VFU_PCI_DEV_VGA_REGION_IDX) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid region index %d", region_idx);
+        return ERROR(EINVAL);
+    }
+
+    /*
+     * PCI config space is never mappable or of type mem.
+     */
+    if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
+        flags != VFU_REGION_FLAG_RW) {
+        return ERROR(EINVAL);
+    }
+
+    reg = &vfu_ctx->reg_info[region_idx];
+
+    reg->flags = flags;
+    reg->size = size;
+    reg->cb = cb;
+    reg->fd = fd;
+
+    if (nr_mmap_areas > 0) {
+        ret = setup_sparse_areas(reg, mmap_areas, nr_mmap_areas);
+        if (ret < 0) {
+            return ERROR(-ret);
+        }
     }
 
     return 0;

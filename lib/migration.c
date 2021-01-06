@@ -387,6 +387,8 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     struct migration *migr = vfu_ctx->migration;
     int ret;
 
+    assert(migr != NULL);
+
     switch (pos) {
     case offsetof(struct vfio_device_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
@@ -435,6 +437,7 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     struct migration *migr = vfu_ctx->migration;
     ssize_t ret = -EINVAL;
 
+    assert(migr != NULL);
     assert(buf != NULL);
 
     if (pos + count <= sizeof(struct vfio_device_migration_info)) {

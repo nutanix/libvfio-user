@@ -89,7 +89,7 @@ typedef struct  {
      * Note that the memory of the region is owned by the user, except for the
      * standard header (first 64 bytes) of the PCI configuration space.
      */
-    vfu_region_access_cb_t  *fn;
+    vfu_region_access_cb_t  *cb;
 
     struct vfu_sparse_mmap_areas *mmap_areas; /* sparse mmap areas */
     int fd;
