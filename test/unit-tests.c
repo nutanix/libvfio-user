@@ -483,7 +483,6 @@ test_get_region_info(UNUSED void **state)
     mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
     mmap_areas->areas[0].iov_len = 0x0d15ea5e;
     vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
-    vfu_ctx.reg_info[1].flags |= VFIO_REGION_INFO_FLAG_MMAP;
     assert_int_equal(0,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
