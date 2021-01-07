@@ -45,11 +45,17 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t pos, bool is_write);
 
 
+static inline size_t
+pci_config_space_size(vfu_ctx_t *vfu_ctx)
+{
+    return vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
+}
+
 static inline uint8_t *
 pci_config_space_ptr(vfu_ctx_t *vfu_ctx, loff_t offset)
 {
-    assert(offset < vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size);
-    return &vfu_ctx->pci.config_space->raw[offset];
+    assert((size_t)offset < pci_config_space_size(vfu_ctx));
+    return (uint8_t *)vfu_ctx->pci.config_space + offset;
 }
 
 #endif /* LIB_VFIO_USER_PCI_H */

@@ -46,6 +46,11 @@
  * - if VFU_CAP_FLAG_CALLBACK is set, we call the config space region callback
  *   given by the user
  * - else we call the cap-specific callback to handle the write.
+ *
+ * Extended capabilities live in extended space (after the first 256 bytes), so
+ * can never clash with a standard capability. An empty capability list is
+ * signalled by a zeroed header at offset 256 (which the config space has by
+ * default).
  */
 
 #include <assert.h>
@@ -61,6 +66,9 @@
 #include "pci.h"
 #include "private.h"
 
+/* All capabilities must be dword-aligned. */
+#define CAP_ROUND (4)
+
 static void *
 cap_data(vfu_ctx_t *vfu_ctx, struct pci_cap *cap)
 {
@@ -68,19 +76,36 @@ cap_data(vfu_ctx_t *vfu_ctx, struct pci_cap *cap)
 }
 
 static size_t
-cap_size(uint8_t id, uint8_t *data)
+cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
 {
-    switch (id) {
-    case PCI_CAP_ID_PM:
-        return PCI_PM_SIZEOF;
-    case PCI_CAP_ID_EXP:
-        return PCI_CAP_EXP_ENDPOINT_SIZEOF_V2;
-    case PCI_CAP_ID_MSIX:
-        return PCI_CAP_MSIX_SIZEOF;
-    case PCI_CAP_ID_VNDR:
-        return ((struct vsc *)data)->size;
-    default:
-        return 0;
+    if (extended) {
+        uint16_t id = ((struct pcie_ext_cap_hdr *)data)->id;
+
+        switch (id) {
+        case PCI_EXT_CAP_ID_DSN:
+            return PCI_EXT_CAP_DSN_SIZEOF;
+        case PCI_EXT_CAP_ID_VNDR:
+            return ((struct pcie_ext_cap_vsc_hdr *)data)->len;
+        default:
+            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u\n", id);
+            abort();
+        }
+    } else {
+        uint8_t id = ((struct cap_hdr *)data)->id;
+
+        switch (id) {
+        case PCI_CAP_ID_PM:
+            return PCI_PM_SIZEOF;
+        case PCI_CAP_ID_EXP:
+            return PCI_CAP_EXP_ENDPOINT_SIZEOF_V2;
+        case PCI_CAP_ID_MSIX:
+            return PCI_CAP_MSIX_SIZEOF;
+        case PCI_CAP_ID_VNDR:
+            return ((struct vsc *)data)->size;
+        default:
+            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u\n", id);
+            abort();
+        }
     }
 }
 
@@ -88,20 +113,20 @@ static ssize_t
 handle_pmcs_write(vfu_ctx_t *vfu_ctx, struct pmcap *pm,
                   const struct pmcs *const pmcs)
 {
-	if (pm->pmcs.ps != pmcs->ps) {
-		vfu_log(vfu_ctx, LOG_DEBUG, "power state set to %#x\n", pmcs->ps);
-	}
-	if (pm->pmcs.pmee != pmcs->pmee) {
-		vfu_log(vfu_ctx, LOG_DEBUG, "PME enable set to %#x\n", pmcs->pmee);
-	}
-	if (pm->pmcs.dse != pmcs->dse) {
-		vfu_log(vfu_ctx, LOG_DEBUG, "data select set to %#x\n", pmcs->dse);
-	}
-	if (pm->pmcs.pmes != pmcs->pmes) {
-		vfu_log(vfu_ctx, LOG_DEBUG, "PME status set to %#x\n", pmcs->pmes);
-	}
-	pm->pmcs = *pmcs;
-	return 0;
+    if (pm->pmcs.ps != pmcs->ps) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "power state set to %#x\n", pmcs->ps);
+    }
+    if (pm->pmcs.pmee != pmcs->pmee) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "PME enable set to %#x\n", pmcs->pmee);
+    }
+    if (pm->pmcs.dse != pmcs->dse) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "data select set to %#x\n", pmcs->dse);
+    }
+    if (pm->pmcs.pmes != pmcs->pmes) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "PME status set to %#x\n", pmcs->pmes);
+    }
+    pm->pmcs = *pmcs;
+    return 0;
 }
 
 static ssize_t
@@ -110,47 +135,47 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
 {
     struct pmcap *pm = cap_data(vfu_ctx, cap);
 
-	switch (offset - cap->off) {
-	case offsetof(struct pmcap, pc):
-		if (count != sizeof (struct pc)) {
-			return -EINVAL;
-		}
+    switch (offset - cap->off) {
+    case offsetof(struct pmcap, pc):
+        if (count != sizeof (struct pc)) {
+            return -EINVAL;
+        }
         assert(false); /* FIXME implement */
         break;
-	case offsetof(struct pmcap, pmcs):
-		if (count != sizeof (struct pmcs)) {
-			return -EINVAL;
-		}
-		handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
+    case offsetof(struct pmcap, pmcs):
+        if (count != sizeof (struct pmcs)) {
+            return -EINVAL;
+        }
+        handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
         return sizeof (struct pmcs);
-	}
-	return -EINVAL;
+    }
+    return -EINVAL;
 }
 
 static ssize_t
 handle_mxc_write(vfu_ctx_t *vfu_ctx, struct msixcap *msix,
                  const struct mxc *const mxc)
 {
-	assert(msix != NULL);
-	assert(mxc != NULL);
+    assert(msix != NULL);
+    assert(mxc != NULL);
 
-	if (mxc->mxe != msix->mxc.mxe) {
-		vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X\n",
+    if (mxc->mxe != msix->mxc.mxe) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X\n",
                 mxc->mxe ? "enable" : "disable");
-		msix->mxc.mxe = mxc->mxe;
-	}
+        msix->mxc.mxe = mxc->mxe;
+    }
 
-	if (mxc->fm != msix->mxc.fm) {
-		if (mxc->fm) {
-			vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked\n");
-		} else {
-			vfu_log(vfu_ctx, LOG_DEBUG,
+    if (mxc->fm != msix->mxc.fm) {
+        if (mxc->fm) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked\n");
+        } else {
+            vfu_log(vfu_ctx, LOG_DEBUG,
                    "vector's mask bit determines whether vector is masked\n");
-		}
-		msix->mxc.fm = mxc->fm;
-	}
+        }
+        msix->mxc.fm = mxc->fm;
+    }
 
-	return sizeof(struct mxc);
+    return sizeof(struct mxc);
 }
 
 static ssize_t
@@ -159,101 +184,101 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
 {
     struct msixcap *msix = cap_data(vfu_ctx, cap);
 
-	if (count == sizeof(struct mxc)) {
-		switch (offset - cap->off) {
-		case offsetof(struct msixcap, mxc):
-			return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
-		default:
-			vfu_log(vfu_ctx, LOG_ERR,
+    if (count == sizeof(struct mxc)) {
+        switch (offset - cap->off) {
+        case offsetof(struct msixcap, mxc):
+            return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
+        default:
+            vfu_log(vfu_ctx, LOG_ERR,
                     "invalid MSI-X write offset %ld\n", offset);
-			return -EINVAL;
-		}
-	}
-	vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu\n", count);
-	return -EINVAL;
+            return -EINVAL;
+        }
+    }
+    vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu\n", count);
+    return -EINVAL;
 }
 
 static int
 handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
                      const union pxdc *const p)
 {
-	assert(px != NULL);
-	assert(p != NULL);
+    assert(px != NULL);
+    assert(p != NULL);
 
-	if (p->cere != px->pxdc.cere) {
-		px->pxdc.cere = p->cere;
-		vfu_log(vfu_ctx, LOG_DEBUG, "CERE %s\n", p->cere ? "enable" : "disable");
-	}
+    if (p->cere != px->pxdc.cere) {
+        px->pxdc.cere = p->cere;
+        vfu_log(vfu_ctx, LOG_DEBUG, "CERE %s\n", p->cere ? "enable" : "disable");
+    }
 
-	if (p->nfere != px->pxdc.nfere) {
-		px->pxdc.nfere = p->nfere;
-		vfu_log(vfu_ctx, LOG_DEBUG, "NFERE %s\n",
+    if (p->nfere != px->pxdc.nfere) {
+        px->pxdc.nfere = p->nfere;
+        vfu_log(vfu_ctx, LOG_DEBUG, "NFERE %s\n",
                 p->nfere ? "enable" : "disable");
-	}
+    }
 
-	if (p->fere != px->pxdc.fere) {
-		px->pxdc.fere = p->fere;
-		vfu_log(vfu_ctx, LOG_DEBUG, "FERE %s\n", p->fere ? "enable" : "disable");
-	}
+    if (p->fere != px->pxdc.fere) {
+        px->pxdc.fere = p->fere;
+        vfu_log(vfu_ctx, LOG_DEBUG, "FERE %s\n", p->fere ? "enable" : "disable");
+    }
 
-	if (p->urre != px->pxdc.urre) {
-		px->pxdc.urre = p->urre;
-		vfu_log(vfu_ctx, LOG_DEBUG, "URRE %s\n", p->urre ? "enable" : "disable");
-	}
+    if (p->urre != px->pxdc.urre) {
+        px->pxdc.urre = p->urre;
+        vfu_log(vfu_ctx, LOG_DEBUG, "URRE %s\n", p->urre ? "enable" : "disable");
+    }
 
-	if (p->ero != px->pxdc.ero) {
-		px->pxdc.ero = p->ero;
-		vfu_log(vfu_ctx, LOG_DEBUG, "ERO %s\n", p->ero ? "enable" : "disable");
-	}
+    if (p->ero != px->pxdc.ero) {
+        px->pxdc.ero = p->ero;
+        vfu_log(vfu_ctx, LOG_DEBUG, "ERO %s\n", p->ero ? "enable" : "disable");
+    }
 
-	if (p->mps != px->pxdc.mps) {
-		px->pxdc.mps = p->mps;
-		vfu_log(vfu_ctx, LOG_DEBUG, "MPS set to %d\n", p->mps);
-	}
+    if (p->mps != px->pxdc.mps) {
+        px->pxdc.mps = p->mps;
+        vfu_log(vfu_ctx, LOG_DEBUG, "MPS set to %d\n", p->mps);
+    }
 
-	if (p->ete != px->pxdc.ete) {
-		px->pxdc.ete = p->ete;
-		vfu_log(vfu_ctx, LOG_DEBUG, "ETE %s\n", p->ete ? "enable" : "disable");
-	}
+    if (p->ete != px->pxdc.ete) {
+        px->pxdc.ete = p->ete;
+        vfu_log(vfu_ctx, LOG_DEBUG, "ETE %s\n", p->ete ? "enable" : "disable");
+    }
 
-	if (p->pfe != px->pxdc.pfe) {
-		px->pxdc.pfe = p->pfe;
-		vfu_log(vfu_ctx, LOG_DEBUG, "PFE %s\n", p->pfe ? "enable" : "disable");
-	}
+    if (p->pfe != px->pxdc.pfe) {
+        px->pxdc.pfe = p->pfe;
+        vfu_log(vfu_ctx, LOG_DEBUG, "PFE %s\n", p->pfe ? "enable" : "disable");
+    }
 
-	if (p->appme != px->pxdc.appme) {
-		px->pxdc.appme = p->appme;
-		vfu_log(vfu_ctx, LOG_DEBUG, "APPME %s\n",
+    if (p->appme != px->pxdc.appme) {
+        px->pxdc.appme = p->appme;
+        vfu_log(vfu_ctx, LOG_DEBUG, "APPME %s\n",
                 p->appme ? "enable" : "disable");
-	}
+    }
 
-	if (p->ens != px->pxdc.ens) {
-		px->pxdc.ens = p->ens;
-		vfu_log(vfu_ctx, LOG_DEBUG, "ENS %s\n", p->ens ? "enable" : "disable");
-	}
+    if (p->ens != px->pxdc.ens) {
+        px->pxdc.ens = p->ens;
+        vfu_log(vfu_ctx, LOG_DEBUG, "ENS %s\n", p->ens ? "enable" : "disable");
+    }
 
-	if (p->mrrs != px->pxdc.mrrs) {
-		px->pxdc.mrrs = p->mrrs;
-		vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d\n", p->mrrs);
-	}
+    if (p->mrrs != px->pxdc.mrrs) {
+        px->pxdc.mrrs = p->mrrs;
+        vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d\n", p->mrrs);
+    }
 
-	if (p->iflr) {
-		vfu_log(vfu_ctx, LOG_DEBUG,
-			"initiate function level reset\n");
-	}
+    if (p->iflr) {
+        vfu_log(vfu_ctx, LOG_DEBUG,
+            "initiate function level reset\n");
+    }
 
-	return 0;
+    return 0;
 }
 
 static int
 handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
                         loff_t off)
 {
-	switch (off) {
-	case offsetof(struct pxcap, pxdc):
-		return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
-	}
-	return -EINVAL;
+    switch (off) {
+    case offsetof(struct pxcap, pxdc):
+        return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
+    }
+    return -EINVAL;
 }
 
 static ssize_t
@@ -262,21 +287,37 @@ cap_write_px(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
 {
     struct pxcap *px = cap_data(vfu_ctx, cap);
 
-	int err = -EINVAL;
-	switch (count) {
-	case 2:
-		err = handle_px_write_2_bytes(vfu_ctx, px, buf, offset - cap->off);
-		break;
-	}
-	if (err != 0) {
-		return err;
-	}
-	return count;
+    int err = -EINVAL;
+    switch (count) {
+    case 2:
+        err = handle_px_write_2_bytes(vfu_ctx, px, buf, offset - cap->off);
+        break;
+    }
+    if (err != 0) {
+        return err;
+    }
+    return count;
 }
 
 static ssize_t
 cap_write_vendor(vfu_ctx_t *vfu_ctx, struct pci_cap *cap UNUSED, char *buf,
                  size_t count, loff_t offset)
+{
+    memcpy(pci_config_space_ptr(vfu_ctx, offset), buf, count);
+    return count;
+}
+
+static ssize_t
+ext_cap_write_dsn(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf UNUSED,
+                  size_t count UNUSED, loff_t offset UNUSED)
+{
+    vfu_log(vfu_ctx, LOG_ERR, "%s capability is read-only\n", cap->name);
+    return -EINVAL;
+}
+
+static ssize_t
+ext_cap_write_vendor(vfu_ctx_t *vfu_ctx, struct pci_cap *cap UNUSED, char *buf,
+                     size_t count, loff_t offset)
 {
     memcpy(pci_config_space_ptr(vfu_ctx, offset), buf, count);
     return count;
@@ -300,6 +341,12 @@ cap_find_by_offset(vfu_ctx_t *vfu_ctx, loff_t offset, size_t count)
         }
     }
 
+    for (i = 0; i < vfu_ctx->pci.nr_ext_caps; i++) {
+        struct pci_cap *cap = &vfu_ctx->pci.ext_caps[i];
+        if (ranges_intersect(offset, count, cap->off, cap->size)) {
+            return cap;
+        }
+    }
     return NULL;
 }
 
@@ -350,7 +397,7 @@ static int
 cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 {
     vfu_pci_config_space_t *config_space;
-    uint8_t *prevp;
+    uint8_t *prevp = NULL;
     size_t offset;
 
     config_space = vfu_pci_get_config_space(vfu_ctx);
@@ -383,20 +430,18 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
     }
 
     for (offset = *prevp; offset != 0; offset = *prevp) {
-        uint8_t id = *pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_ID);
-
         prevp = pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_NEXT);
 
         if (*prevp == 0) {
-            size_t size = cap_size(id, pci_config_space_ptr(vfu_ctx, offset));
-            cap->off = ROUND_UP(offset + size, 4);
+            size_t size = cap_size(vfu_ctx, pci_config_space_ptr(vfu_ctx,
+                                   offset), false);
+            cap->off = ROUND_UP(offset + size, CAP_ROUND);
             goto out;
         }
     }
 
 out:
-    if (cap->off + cap->size >
-        vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size) {
+    if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
                 "%u (%s) of size %zu bytes at offset %#lx\n", cap->id,
                 cap->name, cap->size, cap->off);
@@ -411,10 +456,84 @@ out:
     return 0;
 }
 
+/*
+ * Place the new extended capability after the previous (or at the beginning of
+ * extended config space, replacing the initial zeroed capability).
+ *
+ * If cap->off is already provided, place it directly, but first check it
+ * doesn't overlap an existing extended capability, and that the first one
+ * replaces the initial zeroed capability. We also still need to link it into
+ * the list.
+ */
+static int
+ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
+{
+    struct pcie_ext_cap_hdr *hdr = NULL;
+
+    hdr = (void *)pci_config_space_ptr(vfu_ctx, PCI_CFG_SPACE_SIZE);
+
+    if (cap->off != 0) {
+        if (cap->off < PCI_CFG_SPACE_SIZE) {
+            vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
+                    "%u (%s)\n", cap->off, cap->id, cap->name);
+            return EINVAL;
+        }
+
+        if (cap_find_by_offset(vfu_ctx, cap->off, cap->size) != NULL) {
+            vfu_log(vfu_ctx, LOG_ERR, "overlap found for capability "
+                    "%u (%s)\n", cap->id, cap->name);
+            return EINVAL;
+        }
+
+        if (hdr->id == 0x0 && cap->off != PCI_CFG_SPACE_SIZE) {
+            vfu_log(vfu_ctx, LOG_ERR, "first extended capability must be at "
+                    "%#x\n", PCI_CFG_SPACE_SIZE);
+            return EINVAL;
+        }
+
+        while (hdr->next != 0) {
+            hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
+        }
+
+        goto out;
+    } else if (hdr->id == 0x0) {
+        hdr = NULL;
+        cap->off = PCI_CFG_SPACE_SIZE;
+        goto out;
+    }
+
+    while (hdr->next != 0) {
+        hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
+    }
+
+    cap->off = ROUND_UP((uint8_t *)hdr + cap_size(vfu_ctx, hdr, true) -
+                        pci_config_space_ptr(vfu_ctx, 0), CAP_ROUND);
+
+out:
+    if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
+        vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
+                "%u (%s) of size %zu bytes at offset %#lx\n", cap->id,
+                cap->name, cap->size, cap->off);
+        return ENOSPC;
+    }
+
+    memcpy(cap_data(vfu_ctx, cap), data, cap->size);
+
+    /* Make sure the previous cap's next points to us. */
+    if (hdr != NULL) {
+        assert((cap->off & 0x3) == 0);
+        hdr->next = cap->off;
+    }
+
+    hdr = (void *)pci_config_space_ptr(vfu_ctx, cap->off);
+    hdr->next = 0;
+    return 0;
+}
+
 ssize_t
 vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 {
-    size_t space_size = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
+    bool extended = (flags & VFU_CAP_FLAG_EXTENDED);
     struct pci_cap cap;
     int ret;
 
@@ -432,79 +551,154 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         return ERROR(EINVAL);
     }
 
-    if ((flags & VFU_CAP_FLAG_EXTENDED)) {
-        return ERROR(ENOTSUP);
-    }
-
-    if (vfu_ctx->pci.nr_caps == VFU_MAX_CAPS) {
-        return ERROR(ENOSPC);
-    }
-
-    cap.id = ((struct cap_hdr *)data)->id;
-    cap.hdr_size = sizeof (struct cap_hdr);
-    cap.size = cap_size(cap.id, data);
+    cap.size = cap_size(vfu_ctx, data, extended);
     cap.flags = flags;
     cap.off = pos;
 
-    if (cap.off + cap.size >= space_size) {
+    if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
         return ERROR(EINVAL);
     }
 
-    switch (cap.id) {
-    case PCI_CAP_ID_PM:
-        cap.name = "PM";
-        cap.cb = cap_write_pm;
-        break;
-    case PCI_CAP_ID_EXP:
-        cap.name = "PCI Express";
-        cap.cb = cap_write_px;
-        break;
-    case PCI_CAP_ID_MSIX:
-        cap.name = "MSI-X";
-        cap.cb = cap_write_msix;
-        break;
-    case PCI_CAP_ID_VNDR:
-        cap.name = "Vendor Specific";
-        cap.cb = cap_write_vendor;
-        cap.hdr_size = sizeof (struct vsc);
-        break;
-    default:
-		vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
-        return ERROR(ENOTSUP);
-    }
+    if (extended) {
+        switch (vfu_ctx->pci.type) {
+        case VFU_PCI_TYPE_PCI_X_2:
+        case VFU_PCI_TYPE_EXPRESS:
+            break;
+        default:
+            return ERROR(EINVAL);
+        }
 
-    ret = cap_place(vfu_ctx, &cap, data);
+        if (vfu_ctx->pci.nr_ext_caps == VFU_MAX_CAPS) {
+            return ERROR(ENOSPC);
+        }
+
+        cap.id = ((struct pcie_ext_cap_hdr *)data)->id;
+        cap.hdr_size = sizeof (struct pcie_ext_cap_hdr);
+
+        switch (cap.id) {
+        case PCI_EXT_CAP_ID_DSN:
+            cap.name = "Device Serial Number";
+            cap.cb = ext_cap_write_dsn;
+            break;
+        case PCI_EXT_CAP_ID_VNDR:
+            cap.name = "Vendor-Specific";
+            cap.cb = ext_cap_write_vendor;
+            cap.hdr_size = sizeof (struct pcie_ext_cap_vsc_hdr);
+            break;
+        default:
+            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
+            return ERROR(ENOTSUP);
+        }
+
+        ret = ext_cap_place(vfu_ctx, &cap, data);
+
+    } else {
+        if (vfu_ctx->pci.nr_caps == VFU_MAX_CAPS) {
+            return ERROR(ENOSPC);
+        }
+
+        cap.id = ((struct cap_hdr *)data)->id;
+        cap.hdr_size = sizeof (struct cap_hdr);
+
+        switch (cap.id) {
+        case PCI_CAP_ID_PM:
+            cap.name = "Power Management";
+            cap.cb = cap_write_pm;
+            break;
+        case PCI_CAP_ID_EXP:
+            cap.name = "PCI Express";
+            cap.cb = cap_write_px;
+            break;
+        case PCI_CAP_ID_MSIX:
+            cap.name = "MSI-X";
+            cap.cb = cap_write_msix;
+            break;
+        case PCI_CAP_ID_VNDR:
+            cap.name = "Vendor-Specific";
+            cap.cb = cap_write_vendor;
+            cap.hdr_size = sizeof (struct vsc);
+            break;
+        default:
+            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
+            return ERROR(ENOTSUP);
+        }
+
+        ret = cap_place(vfu_ctx, &cap, data);
+    }
 
     if (ret != 0) {
         return ERROR(ret);
     }
 
-    memcpy(&vfu_ctx->pci.caps[vfu_ctx->pci.nr_caps], &cap, sizeof (cap));
-    vfu_ctx->pci.nr_caps++;
+    if (extended) {
+        memcpy(&vfu_ctx->pci.ext_caps[vfu_ctx->pci.nr_ext_caps],
+               &cap, sizeof (cap));
+        vfu_ctx->pci.nr_ext_caps++;
+    } else {
+        memcpy(&vfu_ctx->pci.caps[vfu_ctx->pci.nr_caps], &cap, sizeof (cap));
+        vfu_ctx->pci.nr_caps++;
+    }
+
     return cap.off;
+}
+
+static size_t
+vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
+{
+    struct pcie_ext_cap_hdr *hdr = NULL;
+
+    if (offset + sizeof (*hdr) >= pci_config_space_size(vfu_ctx)) {
+        errno = EINVAL;
+        return 0;
+    }
+
+    if (offset == 0) {
+        offset = PCI_CFG_SPACE_SIZE;
+        hdr = (void *)pci_config_space_ptr(vfu_ctx, offset);
+    } else {
+        hdr = (void *)pci_config_space_ptr(vfu_ctx, offset);
+        hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
+    }
+
+    for (;;) {
+        offset = (uint8_t *)hdr - pci_config_space_ptr(vfu_ctx, 0);
+
+        if (offset + sizeof (*hdr) >= pci_config_space_size(vfu_ctx)) {
+            errno = EINVAL;
+            return 0;
+        }
+
+        if (hdr->id == cap_id) {
+            return offset;
+        }
+
+        if (hdr->next == 0) {
+            break;
+        }
+
+        hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
+    }
+
+    errno = ENOENT;
+    return 0;
 }
 
 size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t offset, int cap_id)
 {
-    size_t space_size = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
-    vfu_pci_config_space_t *config_space;
 
     if (extended) {
-        errno = ENOTSUP;
-        return 0;
+        return vfu_pci_find_next_ext_capability(vfu_ctx, offset, cap_id);
     }
 
-    if (offset + PCI_CAP_LIST_NEXT >= space_size) {
+    if (offset + PCI_CAP_LIST_NEXT >= pci_config_space_size(vfu_ctx)) {
         errno = EINVAL;
         return 0;
     }
 
-    config_space = vfu_pci_get_config_space(vfu_ctx);
-
     if (offset == 0) {
-        offset = config_space->hdr.cap;
+        offset = vfu_pci_get_config_space(vfu_ctx)->hdr.cap;
     } else {
         offset = *pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_NEXT);
     }
@@ -518,7 +712,7 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
         uint8_t id, next;
 
         /* Sanity check. */
-        if (offset + PCI_CAP_LIST_NEXT >= space_size) {
+        if (offset + PCI_CAP_LIST_NEXT >= pci_config_space_size(vfu_ctx)) {
             errno = EINVAL;
             return 0;
         }

@@ -1032,6 +1032,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         }
     }
 
+    // FIXME: verify we don't need this for ext caps
     if (vfu_ctx->pci.nr_caps != 0) {
         vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
     }

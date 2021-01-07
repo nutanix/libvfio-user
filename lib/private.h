@@ -87,6 +87,8 @@ struct pci_dev {
     vfu_pci_config_space_t  *config_space;
     struct pci_cap          caps[VFU_MAX_CAPS];
     size_t                  nr_caps;
+    struct pci_cap          ext_caps[VFU_MAX_CAPS];
+    size_t                  nr_ext_caps;
 };
 
 struct vfu_ctx {

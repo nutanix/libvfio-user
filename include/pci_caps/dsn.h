@@ -30,47 +30,31 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_PCI_CAPS_H
-#define LIB_VFIO_USER_PCI_CAPS_H
-
-#include "libvfio-user.h"
-
 /*
- * This is an arbitrary value.
+ * Device Serial Number (PCIE 7.12).
  */
-#define VFU_MAX_CAPS (128)
 
-struct pci_cap;
+#ifndef LIB_VFIO_USER_PCI_CAPS_DSN_H
+#define LIB_VFIO_USER_PCI_CAPS_DSN_H
 
-typedef ssize_t (cap_write_cb_t)(vfu_ctx_t *vfu_ctx, struct pci_cap *cap,
-                                 char *buf, size_t count, loff_t offset);
+#include "common.h"
 
-struct pci_cap {
-    const char *name;
-    bool extended;
-    uint16_t id;
-    size_t off;
-    size_t hdr_size;
-    size_t size;
-    unsigned int flags;
-    cap_write_cb_t *cb;
-};
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/*
- * Return the first cap (if any) that intersects with the [off, off+count)
- * interval.
- */
-struct pci_cap *
-cap_find_by_offset(vfu_ctx_t *ctx, loff_t off, size_t count);
+struct dsncap {
+    struct pcie_ext_cap_hdr hdr;
+    uint32_t sn_lo;
+    uint32_t sn_hi;
+} __attribute__((packed));
+_Static_assert(sizeof (struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
+               "bad DSN Capability size");
 
-/*
- * Handle an access to a capability.  The access is guaranteed to be entirely
- * within a capability.
- */
-ssize_t
-pci_cap_access(vfu_ctx_t *ctx, char *buf, size_t count, loff_t offset,
-               bool is_write);
+#ifdef __cplusplus
+}
+#endif
 
-#endif /* LIB_VFIO_USER_PCI_CAPS_H */
+#endif /* LIB_VFIO_USER_PCI_CAPS_DSN_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
