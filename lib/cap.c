@@ -83,9 +83,7 @@ cap_is_accessed(struct cap *caps, int nr_caps, size_t count, loff_t offset)
         }
 
         /*
-         * FIXME write starts before capabilities but extends into them. I don't
-         * think that the while loop in vfu_access will allow this in the first
-         * place.
+         * FIXME write starts before capabilities but extends into them.
          */
         assert(false);
     } else if (offset > caps[nr_caps - 1].end) {

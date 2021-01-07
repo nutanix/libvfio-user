@@ -36,17 +36,6 @@
 #include "libvfio-user.h"
 #include "private.h"
 
-static inline bool
-pci_is_hdr_access(uint64_t pos)
-{
-    const uint64_t off = region_to_offset(VFU_PCI_DEV_CFG_REGION_IDX);
-    return pos >= off && pos - off < PCI_STD_HEADER_SIZEOF;
-}
-
-int
-pci_hdr_access(vfu_ctx_t *vfu_ctx, uint32_t *count,
-               uint64_t *pos, bool is_write, char *buf);
-
 ssize_t
 pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t pos, bool is_write);
