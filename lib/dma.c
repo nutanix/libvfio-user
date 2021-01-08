@@ -215,7 +215,7 @@ dma_controller_destroy(dma_controller_t *dma)
 int
 dma_controller_add_region(dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
-                          int fd, off_t offset)
+                          int fd, off_t offset, uint32_t prot)
 {
     int idx;
     dma_memory_region_t *region;
@@ -243,7 +243,13 @@ dma_controller_add_region(dma_controller_t *dma,
                  */
                 vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
-                       fd, offset, offset + size, region->fd);
+                       fd, offset, offset + size - 1, region->fd);
+                goto err;
+            }
+            if (region->prot != prot) {
+                vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot=%#x "
+                        "for new DMA region %#lx-%#lx, existing prot=%#x\n",
+                        prot, offset, offset + size - 1, region->prot);
                 goto err;
             }
             return idx;
@@ -284,12 +290,13 @@ dma_controller_add_region(dma_controller_t *dma,
     region->size = size;
     region->page_size = page_size;
     region->offset = offset;
+    region->prot = prot;
     region->fd = fd;
     region->refcnt = 0;
 
     if (fd != -1) {
-        region->virt_addr = dma_map_region(region, PROT_READ | PROT_WRITE,
-                                           0, region->size);
+        region->virt_addr = dma_map_region(region, region->prot, 0,
+                                           region->size);
         if (region->virt_addr == MAP_FAILED) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %#lx-%#lx: %s\n",
