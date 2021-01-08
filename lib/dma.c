@@ -450,6 +450,7 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
         if (region->dirty_bitmap == NULL) {
             int j, ret = -errno;
             for (j = 0; j < i; j++) {
+                region = &dma->regions[j];
                 free(region->dirty_bitmap);
                 region->dirty_bitmap = NULL;
             }
