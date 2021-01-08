@@ -243,13 +243,13 @@ dma_controller_add_region(dma_controller_t *dma,
                  */
                 vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad fd=%d for new DMA region %#lx-%#lx, existing fd=%d\n",
-                       fd, offset, offset + size, region->fd);
+                       fd, offset, offset + size - 1, region->fd);
                 goto err;
             }
             if (region->prot != prot) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot=%#x "
                         "for new DMA region %#lx-%#lx, existing prot=%#x\n",
-                        prot, offset, offset + size, region->prot);
+                        prot, offset, offset + size - 1, region->prot);
                 goto err;
             }
             return idx;
