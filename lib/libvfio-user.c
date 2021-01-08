@@ -239,9 +239,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
 
     *nr_fds = 0;
     if (caps_size > 0) {
-        if (vfu_reg->mmap_areas != NULL) {
-            (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
-        }
+        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
         if (argsz >= (*vfio_reg)->argsz) {
             dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index),
                          *vfio_reg, fds, nr_fds);
@@ -1590,6 +1588,12 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     free(dma_send);
 
     return ret;
+}
+
+uint64_t
+vfu_region_to_offset(uint32_t region)
+{
+    return region_to_offset(region);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

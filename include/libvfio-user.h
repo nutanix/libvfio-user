@@ -627,6 +627,9 @@ vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 uint8_t *
 vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id);
 
+uint64_t
+vfu_region_to_offset(uint32_t region);
+
 #ifdef __cplusplus
 }
 #endif
