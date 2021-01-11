@@ -47,10 +47,12 @@ struct function
 
 int
 __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
-                                 size_t size, int fd, off_t offset)
+                                 size_t size, int fd, off_t offset,
+                                 uint32_t prot)
 {
     if (!is_patched(dma_controller_add_region)) {
-        return __real_dma_controller_add_region(dma, dma_addr, size, fd, offset);
+        return __real_dma_controller_add_region(dma, dma_addr, size, fd, offset,
+                                                prot);
     }
 
     check_expected_ptr(dma);
@@ -58,6 +60,7 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
     check_expected(size);
     check_expected(fd);
     check_expected(offset);
+    check_expected(prot);
     return mock();
 }
 
