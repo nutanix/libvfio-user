@@ -1480,4 +1480,10 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     return ret;
 }
 
+uint64_t
+vfu_region_to_offset(uint32_t region)
+{
+    return region_to_offset(region);
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
