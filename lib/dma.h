@@ -184,11 +184,18 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
     }
 }
 
-static inline void
+static inline int
 dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
             uint32_t len, int prot, int region_index)
 {
     const dma_memory_region_t *const region = &dma->regions[region_index];
+    uint32_t reg_prot = region->prot;
+
+    if ((reg_prot == PROT_NONE) ||
+        ((prot & PROT_WRITE) && !(region->prot & PROT_WRITE))) {
+        return -EACCES;
+    }
+
     sg->dma_addr = region->dma_addr;
     sg->region = region_index;
     sg->offset = dma_addr - region->dma_addr;
@@ -197,6 +204,8 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
         _dma_mark_dirty(dma, region, sg);
     }
     sg->mappable = region->virt_addr != NULL;
+
+    return 0;
 }
 
 /* Takes a linear dma address span and returns a sg list suitable for DMA.
@@ -216,7 +225,7 @@ dma_addr_to_sg(const dma_controller_t *dma,
                dma_sg_t *sg, int max_sg, int prot)
 {
     static __thread int region_hint;
-    int cnt;
+    int cnt, ret;
 
     const dma_memory_region_t *const region = &dma->regions[region_hint];
     const dma_addr_t region_end = region->dma_addr + region->size;
@@ -225,7 +234,11 @@ dma_addr_to_sg(const dma_controller_t *dma,
     if (likely(max_sg > 0 && len > 0 &&
                dma_addr >= region->dma_addr && dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
-        dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
+        ret = dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
+        if (ret < 0) {
+            return ret;
+        }
+
         return 1;
     }
     // Slow path: search through regions.

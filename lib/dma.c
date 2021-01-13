@@ -369,7 +369,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
-    int cnt = 0;
+    int cnt = 0, ret;
     bool found = true;          // Whether the current region is found.
 
     while (found && len > 0) {
@@ -382,7 +382,10 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
-                    dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
+                    ret = dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
+                    if (ret < 0) {
+                        return ret;
+                    }
                 }
 
                 cnt++;

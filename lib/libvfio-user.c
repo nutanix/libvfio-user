@@ -561,7 +561,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             return ret;
         }
         if (vfu_ctx->map_dma != NULL) {
-            vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr, dma_regions[i].size);
+            vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr, dma_regions[i].size,
+                             dma_regions[i].prot);
         }
     }
     return ret;
@@ -1399,13 +1400,18 @@ inline int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
                uint32_t len, dma_sg_t *sg, int max_sg, int prot)
 {
+    int ret;
+
     assert(vfu_ctx != NULL);
 
     if (unlikely(vfu_ctx->unmap_dma == NULL)) {
         errno = EINVAL;
         return -1;
     }
-    return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
+
+    ret = dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
+
+    return ret < 0 ? ERROR(-ret) : ret;
 }
 
 inline int

@@ -278,9 +278,10 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  * @vfu_ctx: the libvfio-user context
  * @iova: iova address
  * @len: length
+ * @prot: memory protection used to map region as define in <sys/mman.h>
  */
 typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
-                                uint64_t iova, uint64_t len);
+                                uint64_t iova, uint64_t len, uint32_t prot);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
