@@ -193,7 +193,8 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
 
     if ((reg_prot == PROT_NONE) ||
         ((prot & PROT_WRITE) && !(region->prot & PROT_WRITE))) {
-        return -EACCES;
+        errno = EACCES;
+        return -1;
     }
 
     sg->dma_addr = region->dma_addr;
@@ -215,7 +216,9 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
  * Returns:
  * - On success, number of scatter gather entries created.
  * - On failure:
- *     -1 if the dma address span is invalid
+ *     -1 if
+ *          - the dma address span is invalid
+ *          - prot violation (errno=EACCES)
  *     (-x - 1) if @max_sg is too small, where x is the number of sg entries
  *     necessary to complete this request.
  */

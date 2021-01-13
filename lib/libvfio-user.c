@@ -1400,8 +1400,6 @@ inline int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
                uint32_t len, dma_sg_t *sg, int max_sg, int prot)
 {
-    int ret;
-
     assert(vfu_ctx != NULL);
 
     if (unlikely(vfu_ctx->unmap_dma == NULL)) {
@@ -1409,9 +1407,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
         return -1;
     }
 
-    ret = dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
-
-    return ret < 0 ? ERROR(-ret) : ret;
+    return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
 
 inline int

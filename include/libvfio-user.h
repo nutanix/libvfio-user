@@ -278,7 +278,7 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  * @vfu_ctx: the libvfio-user context
  * @iova: iova address
  * @len: length
- * @prot: memory protection used to map region as define in <sys/mman.h>
+ * @prot: memory protection used to map region as defined in <sys/mman.h>
  */
 typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
                                 uint64_t iova, uint64_t len, uint32_t prot);
@@ -455,11 +455,12 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  * @len: size of memory to be mapped
  * @sg: array that receives the scatter/gather entries to be mapped
  * @max_sg: maximum number of elements in above array
- * @prot: protection as define in <sys/mman.h>
+ * @prot: protection as defined in <sys/mman.h>
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
- *  -1:         if the GPA address span is invalid, or
+ *  -1:         if the GPA address span is invalid or
+ *              prot violation (errno=EACCES)
  *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
  *              entries necessary to complete this request.
  */
