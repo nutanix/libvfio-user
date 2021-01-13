@@ -312,7 +312,7 @@ ext_cap_write_dsn(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf UNUSED,
                   size_t count UNUSED, loff_t offset UNUSED)
 {
     vfu_log(vfu_ctx, LOG_ERR, "%s capability is read-only\n", cap->name);
-    return -EINVAL;
+    return -EPERM;
 }
 
 static ssize_t

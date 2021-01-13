@@ -44,6 +44,10 @@ int main(void)
     char *buf;
     const int bytes_per_line = 0x10;
     struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
+    struct pcie_ext_cap_vsc_hdr *evsc = alloca(sizeof(*evsc) + 0xd);
+    struct dsncap dsn = { { 0, } };
+    /* Required for lspci to report extended caps. */
+    struct pxcap px = { { 0, } };
     struct pmcap pm = { { 0 } };
 
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
@@ -52,7 +56,7 @@ int main(void)
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
-    if (vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+    if (vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_EXPRESS,
                      PCI_HEADER_TYPE_NORMAL, 0) < 0) {
         err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
@@ -73,12 +77,44 @@ int main(void)
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
     }
 
+    px.hdr.id = PCI_CAP_ID_EXP;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, &px) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    dsn.hdr.id = PCI_EXT_CAP_ID_DSN;
+    dsn.sn_lo = 0xdeadbeef;
+    dsn.sn_hi = 0xcafebabe;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, &dsn) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    memset(evsc, 0, sizeof(*evsc) + 0xd);
+    evsc->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    evsc->id = 1;
+    evsc->rev = 1;
+    evsc->len = sizeof(*evsc) + 0xd;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, evsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    evsc->id = 2;
+    evsc->rev = 2;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0x400,
+        VFU_CAP_FLAG_EXTENDED, evsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
     if (vfu_realize_ctx(vfu_ctx) < 0) {
         err(EXIT_FAILURE, "failed to realize device");
     }
     buf = (char*)vfu_pci_get_config_space(vfu_ctx);
     printf("00:00.0 bogus PCI device\n");
-    for (i = 0; i < PCI_CFG_SPACE_SIZE / bytes_per_line; i++) {
+    for (i = 0; i < PCI_CFG_SPACE_EXP_SIZE / bytes_per_line; i++) {
         printf("%02x:", i * bytes_per_line);
         for (j = 0; j < bytes_per_line; j++) {
             printf(" %02x", buf[i * bytes_per_line + j] & 0xff);
