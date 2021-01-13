@@ -644,6 +644,16 @@ size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t pos, int cap_id);
 
+/**
+ * Returns the memory offset where the specific region starts in device memory.
+ *
+ * @region: the region to translate
+ *
+ * @returns the absolute offset
+ */
+uint64_t
+vfu_region_to_offset(uint32_t region);
+
 #ifdef __cplusplus
 }
 #endif
