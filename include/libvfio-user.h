@@ -200,37 +200,18 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 
 #define VFU_REGION_FLAG_READ    (1 << 0)
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
-#define VFU_REGION_FLAG_MMAP    (1 << 2)    // TODO: how this relates to IO bar?
 #define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-#define VFU_REGION_FLAG_MEM     (1 << 3)    // if unset, bar is IO
+#define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
 
 /**
- * Set up a region.
+ * Set up a device region.
  *
- * If this is the PCI configuration space, the @size argument is ignored. The
- * size of the region is determined by the PCI type (set when the libvfio-user
- * context is created). Accesses to the PCI configuration space header and the
- * PCI capabilities are handled internally; the user supplied callback is not
- * called.
+ * A region is an area of device memory that can be accessed by the client,
+ * either via VFIO_USER_REGION_READ/WRITE, or directly by mapping the region
+ * into the client's address space if an fd is given.
  *
- * @vfu_ctx: the libvfio-user context
- * @region_idx: region index
- * @size: size of the region
- * @region_access: callback function to access region. If the region is memory
- *  mappable and the client accesses the region or part of sparse area, then
- *  the callback is not called.
- * @flags: region flags (VFU_REGION_FLAG_)
- * @mmap_areas: array of memory mappable areas. This array provides to the
- *  server greater control of which specific areas should be memory mapped by
- *  the client. Each element in the @mmap_areas array describes one such area.
- *  Ignored if @nr_mmap_areas is 0 or if the region is not memory mappable.
- * @nr_mmap_areas: number of sparse areas in @mmap_areas. Must be 0 if the
- *  region is not memory mappable.
- * @fd: file descriptor of the file backing the region if it's a mappable
- *  region. It is the server's responsibility to create a file suitable for
- *  memory mapping by the client. Ignored if the region is not memory mappable.
- *
- * A note on memory-mappable regions: the client can memory map any part of the
+ * A mappable region can be split into mappable sub-areas according to the
+ * @mmap_areas array. Note that the client can memory map any part of the
  * file descriptor, even if not supposed to do so according to @mmap_areas.
  * There is no way in Linux to avoid this.
  *
@@ -240,6 +221,35 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * to create linear device-mapper targets, one for each area, and provide file
  * descriptors of these DM targets. This is something we can document and
  * demonstrate in a sample.
+ *
+ * Areas that are accessed via such a mapping by definition do not invoke any
+ * given callback.  However, the callback can still be invoked, even on a
+ * mappable area, if the client chooses to call VFIO_USER_REGION_READ/WRITE.
+ *
+ * A VFU_PCI_DEV_CFG_REGION_IDX region, corresponding to PCI config space, has
+ * special handling:
+ *
+ *  - the @size argument is ignored: the region size is always the size defined
+ *    by the relevant PCI specification
+ *  - all accesses to the standard PCI header (i.e. the first 64 bytes of the
+ *    region) are handled by the library
+ *  - all accesses to known PCI capabilities are handled by the library
+ *  - if no callback is provided, reads to other areas are a simple memcpy(),
+ *    and writes are an error
+ *  - otherwise, the callback is expected to handle the access
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @region_idx: region index
+ * @size: size of the region
+ * @region_access: callback function to access region
+ * @flags: region flags (VFU_REGION_FLAG_)
+ * @mmap_areas: array of memory mappable areas; must be provided if the region
+ *  is mappable.
+ * @nr_mmap_areas: number of sparse areas in @mmap_areas; must be provided if
+ *  the region is mappable.
+ * @fd: file descriptor of the file backing the region if the region is
+ *  mappable; it is the server's responsibility to create a file suitable for
+ *  memory mapping by the client.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -490,20 +500,6 @@ void
 vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
              struct iovec *iov, int cnt);
 
-//FIXME: Remove if we dont need this.
-/**
- * Returns the PCI region given the position and size of an address span in the
- * PCI configuration space.
- *
- * @pos: offset of the address span
- * @count: size of the address span
- * @off: output parameter that receives the relative offset within the region.
- *
- * Returns the PCI region (VFU_PCI_DEV_XXX_REGION_IDX), or -errno on error.
- */
-int
-vfu_get_region(loff_t pos, size_t count, loff_t *off);
-
 /**
  * Read from the dma region exposed by the client.
  *
@@ -619,13 +615,34 @@ typedef union {
 int
 vfu_pci_setup_caps(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps);
 
-/* FIXME this function is broken as the can be multiples capabilities with the
- * same ID, e.g. the vendor-specific capability.
+/**
+ * Find the offset within config space of a given capability (if there are
+ * multiple possible matches, use vfu_pci_find_next_capability()).
+ *
+ * Returns 0 if no such capability was found, with errno set.
+ *
  * @vfu_ctx: the libvfio-user context
- * @id: capability id
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_* or PCI_EXT_CAP_ID *)
  */
-uint8_t *
-vfu_ctx_get_cap(vfu_ctx_t *vfu_ctx, uint8_t id);
+size_t
+vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
+
+/**
+ * Find the offset within config space of the given capability, starting from
+ * @pos.  This can be used to iterate through multiple capabilities with the
+ * same ID.
+ *
+ * Returns 0 if no more matching capabilities were found, with errno set.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @pos: offset within config space to start looking
+ * @extended whether capability is an extended one or not
+ * @id: capability id (PCI_CAP_ID_*)
+ */
+size_t
+vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
+                             size_t pos, int cap_id);
 
 /**
  * Returns the memory offset where the specific region starts in device memory.

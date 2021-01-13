@@ -85,7 +85,8 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     struct vfio_user_dma_region r = {
         .addr = 0xdeadbeef,
         .size = 0xcafebabe,
-        .offset = 0x8badf00d
+        .offset = 0x8badf00d,
+        .prot = PROT_NONE
     };
     int fd;
 
@@ -96,6 +97,7 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r.prot);
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
@@ -113,13 +115,15 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
         [0] = {
             .addr = 0xdeadbeef,
             .size = 0x1000,
-            .offset = 0
+            .offset = 0,
+            .prot = PROT_NONE
         },
         [1] = {
             .addr = 0xcafebabe,
             .size = 0x1000,
             .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ|PROT_WRITE
         }
     };
     int fd = 0x0badf00d;
@@ -132,11 +136,13 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fd);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
 
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, 1, r));
 }
@@ -161,13 +167,15 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
             .addr = 0xcafebabe,
             .size = 0x1000,
             .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ
         },
         [2] = {
             .addr = 0xbabecafe,
             .size = 0x1000,
             .offset = 0x2000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ|PROT_WRITE
         }
     };
     int fds[] = {0xa, 0xb};
@@ -180,6 +188,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
     will_return(__wrap_dma_controller_add_region, 0);
 
     /* 2nd region */
@@ -188,6 +197,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fds[0]);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
     will_return(__wrap_dma_controller_add_region, 0);
 
     /* 3rd region */
@@ -196,6 +206,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[2].size);
     expect_value(__wrap_dma_controller_add_region, fd, fds[1]);
     expect_value(__wrap_dma_controller_add_region, offset, r[2].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[2].prot);
     will_return(__wrap_dma_controller_add_region, -0x1234);
 
     patch(close);
@@ -227,8 +238,9 @@ test_dma_map_return_value(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r.prot);
     will_return(__wrap_dma_controller_add_region, 2);
-    
+
     assert_int_equal(0,
         handle_dma_map_or_unmap(&vfu_ctx, sizeof(struct vfio_user_dma_region),
             true, &fd, 0, &r));
@@ -245,7 +257,8 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
     off_t offset = 0;
     dma_memory_region_t *r;
 
-    assert_int_equal(0, dma_controller_add_region(&dma, dma_addr, size, fd, offset));
+    assert_int_equal(0, dma_controller_add_region(&dma, dma_addr, size, fd,
+                     offset, PROT_NONE));
     assert_int_equal(1, dma.nregions);
     r = &dma.regions[0];
     assert_ptr_equal(NULL, r->virt_addr);
@@ -255,6 +268,7 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
     assert_int_equal(0, r->refcnt);
+    assert_int_equal(PROT_NONE, r->prot);
 }
 
 static void
@@ -471,24 +485,25 @@ test_get_region_info(UNUSED void **state)
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
     assert_int_equal(sizeof(struct vfio_region_info), vfio_reg->argsz);
-    assert_int_equal(VFU_REGION_FLAG_RW, vfio_reg->flags);
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_MMAP, vfio_reg->flags);
     assert_int_equal(1, vfio_reg->index);
-    assert_int_equal(0x10000000000, region_to_offset(vfio_reg->index));
+    assert_int_equal(0x10000000000, vfio_reg->offset);
     assert_int_equal(0xdeadbeef, vfio_reg->size);
     assert_int_equal(0, nr_fds);
 
     /* regions caps (sparse mmap) but argsz too small */
-    mmap_areas->nr_mmap_areas = 1; 
+    mmap_areas->nr_mmap_areas = 1;
     mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
     mmap_areas->areas[0].iov_len = 0x0d15ea5e;
     vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
-    vfu_ctx.reg_info[1].flags |= VFIO_REGION_INFO_FLAG_MMAP;
     assert_int_equal(0,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
     assert_int_equal(argsz + sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area),
                      vfio_reg->argsz);
-    assert_int_equal(VFU_REGION_FLAG_RW | VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
                      vfio_reg->flags);
     assert_int_equal(0, nr_fds);
 
@@ -534,7 +549,12 @@ static void
 test_pci_caps(void **state __attribute__((unused)))
 {
     vfu_pci_config_space_t config_space;
-    vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space };
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
+        [VFU_PCI_DEV_CFG_REGION_IDX] = { .size = PCI_CFG_SPACE_SIZE },
+    };
+    vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space,
+                          .reg_info = reg_info,
+    };
     vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM, .pmcs.raw = 0xabcd }};
     vfu_cap_t *vsc[2] = {
         alloca(sizeof(struct vsc) + 5),
@@ -544,6 +564,7 @@ test_pci_caps(void **state __attribute__((unused)))
     struct caps *caps;
     int err;
     struct pmcap pmcap = { .pmcs.raw = 0xef01 };
+    size_t offset;
     off_t off;
 
     vsc[0]->vsc.hdr.id = PCI_CAP_ID_VNDR;
@@ -558,24 +579,61 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_non_null(caps);
 
     /* check that capability list is placed correctly */
-    assert_int_equal(PCI_CAP_ID_PM,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_CAP_LIST_ID]);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_CAP_LIST_NEXT]);
-    assert_int_equal(PCI_CAP_ID_VNDR,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_ID]);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_NEXT]);
-    assert_int_equal(8,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_LIST_NEXT + 1]);
-    assert_int_equal(PCI_CAP_ID_VNDR,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size]);
-    assert_int_equal(0,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size + PCI_CAP_LIST_NEXT]);
-    assert_int_equal(vsc[1]->vsc.size,
-                     config_space.raw[PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size + PCI_CAP_LIST_NEXT + 1]);
 
-    /*  check writing PMCS */
+    offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_PM);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF, offset);
+    assert_int_equal(PCI_CAP_ID_PM, config_space.raw[offset]);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
+                     config_space.raw[offset + PCI_CAP_LIST_NEXT]);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+
+    offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
+    assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 0, PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
+    assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
+                     config_space.raw[offset + PCI_CAP_LIST_NEXT]);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
+                     offset);
+    assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
+    assert_int_equal(0, config_space.raw[offset + PCI_CAP_LIST_NEXT]);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(0, offset);
+
+    /* check for invalid offsets */
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 8192, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 256, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false, 255, PCI_CAP_ID_PM);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          PCI_STD_HEADER_SIZEOF +
+                                          PCI_PM_SIZEOF + 1,
+                                          PCI_CAP_ID_VNDR);
+    assert_int_equal(0, offset);
+    assert_int_equal(ENOENT, errno);
+
+    /* check writing PMCS */
     assert_int_equal(0,
         cap_maybe_access(&vfu_ctx, caps, (char*)&pmcap.pmcs,
                          sizeof(struct pmcs),
@@ -625,25 +683,36 @@ test_setup_sparse_region(void **state __attribute__((unused)))
             .iov_len = 0x1000
         }
     };
+    int ret;
 
-    /* bad fd */
-    assert_int_equal(-1,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, -1));
-    assert_int_equal(EBADF, errno);
+    /* invalid mappable settings */
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 2, -1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, NULL, 0, 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 0, 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
-    assert_int_equal(-1,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                            0x2000, NULL, 0, mmap_areas, 2, 0);
+    assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
     /* sparse region within region size */
     mmap_areas[1].iov_len = 0x1000;
-    assert_int_equal(0,
-                     vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                                      0x2000, NULL, 0, mmap_areas, 2, 0));
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, mmap_areas, 2, 0);
+    assert_int_equal(0, ret);
 }
 
 static void

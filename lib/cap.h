@@ -54,9 +54,6 @@ ssize_t
 cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
                  loff_t offset);
 
-uint8_t *
-cap_find_by_id(vfu_ctx_t *vfu_ctx, uint8_t id);
-
 #endif /* LIB_VFIO_USER_CAP_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
