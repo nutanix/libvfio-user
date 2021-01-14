@@ -153,7 +153,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
-            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
                     i, iov->iov_base, iov->iov_base + iov->iov_len);
 
             (*fds)[i] = vfu_reg->fd;
