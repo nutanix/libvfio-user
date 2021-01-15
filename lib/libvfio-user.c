@@ -436,7 +436,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(vfu_ctx != NULL);
     assert(dev_info != NULL);
 
-    if (size != sizeof *dev_info) {
+    if (size < sizeof *dev_info) {
         return -EINVAL;
     }
 

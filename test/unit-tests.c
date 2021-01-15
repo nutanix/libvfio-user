@@ -754,6 +754,28 @@ test_device_get_info(void **state __attribute__((unused)))
 }
 
 /*
+ * Checks that handle_device_get_info handles correctly struct vfio_device_info
+ * with more fields.
+ */
+static void
+test_device_get_info_compat(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef};
+    struct vfio_device_info d = { 0 };
+
+    /* more fields */
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, (sizeof d) + 1, &d));
+    assert_int_equal(sizeof d, d.argsz);
+    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET, d.flags);
+    assert_int_equal(vfu_ctx.nr_regions, d.num_regions);
+    assert_int_equal(VFU_DEV_NUM_IRQS, d.num_irqs);
+
+    /* fewer fields */
+    assert_int_equal(-EINVAL, handle_device_get_info(&vfu_ctx, (sizeof d) - 1, &d));
+}
+
+
+/*
  * Performs various checks when adding sparse memory regions.
  */
 static void
@@ -896,6 +918,7 @@ int main(void)
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
+        cmocka_unit_test_setup(test_device_get_info_compat, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
