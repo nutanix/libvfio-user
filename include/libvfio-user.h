@@ -244,7 +244,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * @region_idx: region index
  * @size: size of the region
  * @region_access: callback function to access region
- * @flags: region flags (VFU_REGION_FLAG_)
+ * @flags: region flags (VFU_REGION_FLAG_*)
  * @mmap_areas: array of memory mappable areas; if an fd is provided, but this
  * is NULL, then the entire region is mappable.
  * @nr_mmap_areas: number of sparse areas in @mmap_areas; must be provided if
@@ -674,6 +674,16 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t pos, int cap_id);
+
+/**
+ * Returns the memory offset where the specific region starts in device memory.
+ *
+ * @region: the region to translate
+ *
+ * @returns the absolute offset
+ */
+uint64_t
+vfu_region_to_offset(uint32_t region);
 
 #ifdef __cplusplus
 }

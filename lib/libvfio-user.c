@@ -153,7 +153,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
-            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
                     i, iov->iov_base, iov->iov_base + iov->iov_len);
 
             (*fds)[i] = vfu_reg->fd;
@@ -435,7 +435,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(vfu_ctx != NULL);
     assert(dev_info != NULL);
 
-    if (size != sizeof *dev_info) {
+    if (size < sizeof *dev_info) {
         return -EINVAL;
     }
 
@@ -517,7 +517,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                             dma_regions[i].addr,
                                             dma_regions[i].size,
                                             fd,
-                                            dma_regions[i].offset);
+                                            dma_regions[i].offset,
+                                            dma_regions[i].prot);
             if (ret < 0) {
                 if (fd != -1) {
                     close(fd);
@@ -532,10 +533,10 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             }
             ret = 0;
             vfu_log(vfu_ctx, LOG_DEBUG,
-                    "added DMA region %#lx-%#lx offset=%#lx fd=%d",
+                    "added DMA region %#lx-%#lx offset=%#lx fd=%d prot=%#x",
                     dma_regions[i].addr,
                     dma_regions[i].addr + dma_regions[i].size - 1,
-                    dma_regions[i].offset, fd);
+                    dma_regions[i].offset, fd, dma_regions[i].prot);
         } else {
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                dma_regions[i].addr,
@@ -1467,6 +1468,12 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     free(dma_send);
 
     return ret;
+}
+
+uint64_t
+vfu_region_to_offset(uint32_t region)
+{
+    return region_to_offset(region);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
