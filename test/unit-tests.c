@@ -85,7 +85,8 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     struct vfio_user_dma_region r = {
         .addr = 0xdeadbeef,
         .size = 0xcafebabe,
-        .offset = 0x8badf00d
+        .offset = 0x8badf00d,
+        .prot = PROT_NONE
     };
     int fd;
 
@@ -96,6 +97,7 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r.prot);
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
@@ -113,13 +115,15 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
         [0] = {
             .addr = 0xdeadbeef,
             .size = 0x1000,
-            .offset = 0
+            .offset = 0,
+            .prot = PROT_NONE
         },
         [1] = {
             .addr = 0xcafebabe,
             .size = 0x1000,
             .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ|PROT_WRITE
         }
     };
     int fd = 0x0badf00d;
@@ -132,11 +136,13 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fd);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
 
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, 1, r));
 }
@@ -161,13 +167,15 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
             .addr = 0xcafebabe,
             .size = 0x1000,
             .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ
         },
         [2] = {
             .addr = 0xbabecafe,
             .size = 0x1000,
             .offset = 0x2000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
+            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
+            .prot = PROT_READ|PROT_WRITE
         }
     };
     int fds[] = {0xa, 0xb};
@@ -180,6 +188,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[0].size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
     will_return(__wrap_dma_controller_add_region, 0);
 
     /* 2nd region */
@@ -188,6 +197,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fds[0]);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
     will_return(__wrap_dma_controller_add_region, 0);
 
     /* 3rd region */
@@ -196,6 +206,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r[2].size);
     expect_value(__wrap_dma_controller_add_region, fd, fds[1]);
     expect_value(__wrap_dma_controller_add_region, offset, r[2].offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r[2].prot);
     will_return(__wrap_dma_controller_add_region, -0x1234);
 
     patch(close);
@@ -227,8 +238,9 @@ test_dma_map_return_value(void **state __attribute__((unused)))
     expect_value(__wrap_dma_controller_add_region, size, r.size);
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r.offset);
+    expect_value(__wrap_dma_controller_add_region, prot, r.prot);
     will_return(__wrap_dma_controller_add_region, 2);
-    
+
     assert_int_equal(0,
         handle_dma_map_or_unmap(&vfu_ctx, sizeof(struct vfio_user_dma_region),
             true, &fd, 0, &r));
@@ -245,7 +257,8 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
     off_t offset = 0;
     dma_memory_region_t *r;
 
-    assert_int_equal(0, dma_controller_add_region(&dma, dma_addr, size, fd, offset));
+    assert_int_equal(0, dma_controller_add_region(&dma, dma_addr, size, fd,
+                     offset, PROT_NONE));
     assert_int_equal(1, dma.nregions);
     r = &dma.regions[0];
     assert_ptr_equal(NULL, r->virt_addr);
@@ -255,6 +268,7 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
     assert_int_equal(0, r->refcnt);
+    assert_int_equal(PROT_NONE, r->prot);
 }
 
 static void
@@ -739,6 +753,28 @@ test_device_get_info(void **state __attribute__((unused)))
 }
 
 /*
+ * Checks that handle_device_get_info handles correctly struct vfio_device_info
+ * with more fields.
+ */
+static void
+test_device_get_info_compat(void **state __attribute__((unused)))
+{
+    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef};
+    struct vfio_device_info d = { 0 };
+
+    /* more fields */
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, (sizeof d) + 1, &d));
+    assert_int_equal(sizeof d, d.argsz);
+    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET, d.flags);
+    assert_int_equal(vfu_ctx.nr_regions, d.num_regions);
+    assert_int_equal(VFU_DEV_NUM_IRQS, d.num_irqs);
+
+    /* fewer fields */
+    assert_int_equal(-EINVAL, handle_device_get_info(&vfu_ctx, (sizeof d) - 1, &d));
+}
+
+
+/*
  * Performs various checks when adding sparse memory regions.
  */
 static void
@@ -881,6 +917,7 @@ int main(void)
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
+        cmocka_unit_test_setup(test_device_get_info_compat, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),

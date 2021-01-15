@@ -83,6 +83,9 @@ struct vfu_ctx;
 
 typedef struct {
     dma_addr_t dma_addr;        // DMA address of this region
+    uint32_t prot;              // memory protection of the mapping
+                                // defined in sys/mman.h
+
     size_t size;                // Size of this region
     int fd;                     // File descriptor to mmap
     int page_size;              // Page size of this fd
@@ -116,7 +119,7 @@ dma_controller_destroy(dma_controller_t *dma);
 int
 dma_controller_add_region(dma_controller_t *dma,
                           dma_addr_t dma_addr, size_t size,
-                          int fd, off_t offset);
+                          int fd, off_t offset, uint32_t prot);
 
 int
 dma_controller_remove_region(dma_controller_t *dma,
