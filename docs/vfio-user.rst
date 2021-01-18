@@ -161,6 +161,17 @@ in the region info reply of a device-specific region. Such regions are reflected
 in ``struct vfio_device_info.num_regions``. Thus, for PCI devices this value can
 be equal to, or higher than, VFIO_PCI_NUM_REGIONS.
 
+Region I/O via file descriptors
+-------------------------------
+
+For unmapped regions, region I/O from the client is done via
+VFIO_USER_REGION_READ/WRITE.  As an optimization, ioeventfds or ioregionfds may
+be configured for sub-regions of some regions. A client may request information
+on these sub-regions via VFIO_USER_DEVICE_GET_REGION_IO_FDS; by configuring the
+returned file descriptors as ioeventfds or ioregionfds, the server can be
+directly notified of I/O (for example, by KVM) without taking a trip through the
+client.
+
 Interrupts
 ^^^^^^^^^^
 The client uses VFIO_USER_DEVICE_GET_IRQ_INFO messages to query the server for
@@ -305,6 +316,8 @@ message command is sent from the client or the server.
 | VFIO_USER_DEVICE_GET_INFO        | 4       | client -> server  |
 +----------------------------------+---------+-------------------+
 | VFIO_USER_DEVICE_GET_REGION_INFO | 5       | client -> server  |
++----------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_GET_REGION_IO_FDS | FIXME       | client -> server  |
 +----------------------------------+---------+-------------------+
 | VFIO_USER_DEVICE_GET_IRQ_INFO    | 6       | client -> server  |
 +----------------------------------+---------+-------------------+
@@ -1126,6 +1139,111 @@ client must write data on the same order and transction size as read.
 
 If an error occurs then the server must fail the read or write operation. It is
 an implementation detail of the client how to handle errors.
+
+VFIO_USER_DEVICE_GET_REGION_IO_FDS
+----------------------------------
+
+Message format
+^^^^^^^^^^^^^^
+
++--------------+------------------------+
+| Name         | Value                  |
++==============+========================+
+| Message ID   | <ID>                   |
++--------------+------------------------+
+| Command      | FIXME                      |
++--------------+------------------------+
+| Message size | FIXME          |
++--------------+------------------------+
+| Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
++--------------+------------------------+
+| Region IO info  | Region IO fd info       |
++--------------+------------------------+
+
+This command message is sent by the client to the server to query for
+sub-regions of the given region that should be accessed via file descriptors.
+
+A client should hook up the returned file descriptors as requested; when
+accesses are made to these sub-regions, the file descriptor is directly
+notified/written (for example, by KVM), avoiding a round-trip through the client
+and a VFIO_USER_REGION_READ/WRITE call.
+
+
+Region IOFD info format
+^^^^^^^^^^^^^^^^^^^^^^^
+
++------------+--------+------------------------------+
+| Name       | Offset | Size                         |
++============+========+==============================+
+| argsz      | 16     | 4                            |
++------------+--------+------------------------------+
+| flags      | 20     | 4                            |
++------------+--------+------------------------------+
+|            | +-----+-----------------------------+ |
+|            | | Bit | Definition                  | |
+|            | +=====+=============================+ |
+|            | | 0   | FIXME
+|            | +-----+-----------------------------+ |
++------------+--------+------------------------------+
+| index      | 24     | 4                            |
++------------+--------+------------------------------+
+| nr_subregions     | 28     | number of subregions in array |
++------------+--------+------------------------------+
+| subregions | 32     | array of subregions          |
++------------+--------+------------------------------+
+
+* *index* is the index of memory region being queried, it is the only field
+  that is required to be set in the command message.
+* *argsz* is the size of the VFIO region IOFD info structure plus the
+  size of the subregion array (such that each array entry is defined by this
+  size, minus the offset, divided by nr_subregions)
+* nr_subregions is the number of entries in the subregion array
+
+The reply message will additionally include at least one file descriptor in the
+ancillary data. Note that more than one subregion may share the same file
+descriptor.
+
+VFIO user subregion info
+------------------------
+
+https://www.spinics.net/lists/kvm/msg208139.html
+https://patchwork.kernel.org/project/kvm/patch/1251028605-31977-23-git-send-email-avi@redhat.com/
+
+FIXME rewrite in table format
+
+struct vfio_user_subregion_info {
+    // offset within region (not GPA)
+    u64 offset;
+    // size of sub-region (perhaps zero depending on flags below)
+    u64 size;
+    // index into ancillary data fd array
+    int fd_index;
+    // ioeventfd | ioregionfd
+    u32 subregion_type;
+
+    // FIXME: if ioregionfd subsumes ioeventfd, we could potentially just have
+    // the one struct; ioregionfd-less systems could fall back to ioeventfd
+    // interfaces
+    union {
+        struct ioeventfd {
+            // KVM_IOEVENTFD_FLAG_*
+            // FIXME: KVM_IOEVENTFD_FLAG_VIRTIO_CCW_NOTIFY - relevant/sufficient?
+            u32 flags;
+            u64 datamatch;
+        };
+        struct ioregionfd {
+            // KVM_IOREGIONFD_*
+            // FIXME
+            u32 flags;
+            // FIXME: is 32 bits enough? for vfio-user doesn't this need to be a
+            // full region offset + internal offset within region?
+            u32 region_id;
+            // FIXME: what about eBPF?
+        };
+    } data;
+};
 
 VFIO_USER_DEVICE_GET_IRQ_INFO
 -----------------------------
