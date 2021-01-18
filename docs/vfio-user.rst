@@ -589,7 +589,6 @@ implementation detail how to recover from the failure.
    exist.
 
 
-
 VFIO_USER_DMA_UNMAP
 -------------------
 
@@ -659,11 +658,18 @@ Table entry format
     a ``struct vfio_bitmap`` in the VFIO bitmaps field for each region, with
     the ``vfio_bitmap.pgsize`` and ``vfio_bitmap.size`` fields initialized.
 
-* *VFIO Bitmaps* contains one ``struct vfio_bitmap`` per region if
-  ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
+* *VFIO Bitmaps* contains one ``struct vfio_bitmap`` per region (explained
+  below) if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
+
+.. _VFIO bitmap format:
 
 VFIO bitmap format
 ^^^^^^^^^^^^^^^^^^
+
+If the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP bit is set in the request, the
+server must append to the header the ``struct vfio_bitmap`` received in the
+command followed by the bitmap, for each region. ``struct vfio_bitmap`` has the
+following format:
 
 +--------+--------+------+
 | Name   | Offset | Size |
@@ -682,21 +688,18 @@ VFIO bitmap format
 The VFIO bitmap structure is defined in ``<linux/vfio.h>``
 (``struct vfio_bitmap``).
 
+Each ``struct_vfio_bitmap`` entry is followed by the region's bitmap. Each bit
+in the bitmap represents one page of size ``struct vfio_bitmap.pgsize``.
+
 If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
 of the message is: 16 + (# of table entries * 32).
 If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags then the size of
-the message is: 16 + (# of table entries * 56).
+the message is: 16 + (# of table entries * 56) + size of all bitmaps.
 
 Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
 then the server must release all references to that DMA region before replying,
 which includes potentially in flight DMA transactions. Removing a portion of a
-DMA region is possible. If the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP bit is set
-in the request, the server must append to the header the ``struct vfio_bitmap``
-received in the command followed by the bitmap, for each region. Thus, the
-message size the client should expect is the size of the header plus the size
-of ``struct vfio_bitmap`` plus ``vfio_bitmap.size`` bytes for each region. Each
-bit in the bitmap represents one page of size ``vfio_bitmap.pgsize``.
-
+DMA region is possible.
 
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
@@ -1589,8 +1592,10 @@ VFIO Dirty Bitmap Format
     "VFIO dirty bitmap get" structure, which must immediatelly follow the
     "VFIO dirty bitmap" structure, explained next. This operation is only valid
     if logging of dirty pages has been previously started. The server must
-    respond the same way it does for VFIO_USER_DMA_UNMAP (the dirty pages
-    bitmap must follow the response header).
+    respond the same way it does for ``VFIO_USER_DMA_UNMAP`` if
+    ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in the flags field of the
+    table entry (``struct vfio_bitmap`` plus the bitmap must follow the
+    response header).
 
   These flags are mutually exclusive with each other.
 
@@ -1613,9 +1618,8 @@ VFIO Dirty Bitmap Get Format
 
 * *size* is the size of the IOVA region
 
-* *bitmap* is the VFIO bitmap (``struct vfio_bitmap``), with the same semantics
-  as VFIO_USER_DMA_UNMAP.
-
+* *bitmap* is the VFIO bitmap (``struct vfio_bitmap``). This field is explained
+  in `VFIO bitmap format`_.
 
 Appendices
 ==========
