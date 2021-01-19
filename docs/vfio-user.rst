@@ -1163,12 +1163,22 @@ Message format
 +--------------+------------------------+
 
 This command message is sent by the client to the server to query for
-sub-regions of the given region that should be accessed via file descriptors.
+sub-regions of the given region that should be accessed via file descriptors, as
+opposed to the client mmap()ing in the (sub-)region, or using the
+VFIO_USER_REGION_READ/WRITE round-trip.
 
-A client should hook up the returned file descriptors as requested; when
-accesses are made to these sub-regions, the file descriptor is directly
-notified/written (for example, by KVM), avoiding a round-trip through the client
-and a VFIO_USER_REGION_READ/WRITE call.
+This message is optional, as these mechanisms are performance features.
+
+In its reponse, the server specifies a set of sub-regions and the requested file
+descriptor notification mechanism to use for that sub-region.  Each sub-region
+in the reponse message may choose to use a different method, as defined below.
+The two mechanisms supported in this specification are ioeventfds and
+ioregionfds.
+
+A client should hook up the returned file descriptors with the notification
+method requested; when accesses are made to these sub-regions, the file
+descriptor is directly notified/written (for example, by KVM), potentially
+avoiding round-trips through the client.
 
 
 Region IOFD info format
@@ -1222,7 +1232,6 @@ for the meaning of the ioeventfd fields.
 
 See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for the meaning of
 the ioregionfd fields.
-
 
 FIXME rewrite in table format
 
