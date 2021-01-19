@@ -631,12 +631,12 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
  * VFU_CAP_FLAG_CALLBACK: all accesses to the capability are delegated to the
  * callback for the region VFU_PCI_DEV_CFG_REGION_IDX. The callback should copy
  * data into and out of the capability as needed (this could be directly on the
- * config space area from vfi_pci_get_config_space()). It is not supported to
+ * config space area from vfu_pci_get_config_space()). It is not supported to
  * allow writes to the initial capability header (ID/next fields).
  *
- * VFU_CAP_FLAG_READONLY: if VFU_CAP_FLAG_CALLBACK is not set, this prevents
- * clients from writing to the capability.  By default, clients are allowed to
- * write to any part of the capability, excluding the initial header.
+ * VFU_CAP_FLAG_READONLY: this prevents clients from writing to the capability.
+ * By default, clients are allowed to write to any part of the capability,
+ * excluding the initial header.
  *
  * Returns the offset of the capability in config space, or -1 on error, with
  * errno set.
@@ -670,8 +670,8 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
  * Returns 0 if no more matching capabilities were found, with errno set.
  *
  * @vfu_ctx: the libvfio-user context
- * @pos: offset within config space to start looking
  * @extended whether capability is an extended one or not
+ * @pos: offset within config space to start looking
  * @id: capability id (PCI_CAP_ID_*)
  */
 size_t

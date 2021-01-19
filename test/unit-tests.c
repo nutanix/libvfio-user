@@ -613,11 +613,6 @@ test_pci_caps(void **state __attribute__((unused)))
     vsc4->size = 16;
     memcpy(vsc4->data, "Hello world.", 12);
 
-    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_READONLY |
-                                    VFU_CAP_FLAG_CALLBACK, &pm);
-    assert_int_equal(-1, offset);
-    assert_int_equal(EINVAL, errno);
-
     offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_CALLBACK, &pm);
     assert_int_equal(-1, offset);
     assert_int_equal(EINVAL, errno);
@@ -727,7 +722,7 @@ test_pci_caps(void **state __attribute__((unused)))
     ret = pci_config_space_access(&vfu_ctx, "ced", 3,
                                   expoffsets[1] + offsetof(struct vsc, data),
                                   true);
-    assert_int_equal(ret, -EINVAL);
+    assert_int_equal(ret, -EPERM);
 
     /* check capability callback */
 
