@@ -542,7 +542,8 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
     assert_int_equal(0, vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
                         PCI_HEADER_TYPE_NORMAL, 0));
-    assert_int_equal(0x40, vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
+    assert_int_equal(PCI_STD_HEADER_SIZEOF,
+                     vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
 }
 
