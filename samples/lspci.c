@@ -44,7 +44,6 @@ int main(void)
     char *buf;
     const int bytes_per_line = 0x10;
     struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
-<<<<<<< HEAD
     struct pcie_ext_cap_vsc_hdr *evsc = alloca(sizeof(*evsc) + 0xd);
     struct dsncap dsn = { .hdr.id = PCI_EXT_CAP_ID_DSN,
                           .sn_lo = 0xdeadbeef,

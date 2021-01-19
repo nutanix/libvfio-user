@@ -424,18 +424,15 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         }
     } else if (*prevp == 0) {
         cap->off = PCI_STD_HEADER_SIZEOF;
-    }
     } else {
         for (offset = *prevp; offset != 0; offset = *prevp) {
-            uint8_t id;
             size_t size;
 
-            id = *pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_ID);
             prevp = pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_NEXT);
 
             if (*prevp == 0) {
-                size = cap_size(id, pci_config_space_ptr(vfu_ctx, offset,
-                                                         false));
+                size = cap_size(vfu_ctx, pci_config_space_ptr(vfu_ctx, offset),
+                                false);
                 cap->off = ROUND_UP(offset + size, 4);
                 break;
             }
