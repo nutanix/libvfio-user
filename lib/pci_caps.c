@@ -364,7 +364,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
     if (is_write && (cap->flags & VFU_CAP_FLAG_READONLY)) {
         vfu_log(vfu_ctx, LOG_ERR, "write of %zu bytes to read-only capability "
                 "%u (%s)\n", count, cap->id, cap->name);
-        return -EINVAL;
+        return -EPERM;
     }
 
     if (cap->flags & VFU_CAP_FLAG_CALLBACK) {
@@ -380,7 +380,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
         vfu_log(vfu_ctx, LOG_ERR,
                 "disallowed write to header for cap %d (%s)\n",
                 cap->id, cap->name);
-        return -EINVAL;
+        return -EPERM;
     }
 
     return cap->cb(vfu_ctx, cap, buf, count, offset);
@@ -532,7 +532,7 @@ ssize_t
 vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 {
     bool extended = (flags & VFU_CAP_FLAG_EXTENDED);
-    struct pci_cap cap;
+    struct pci_cap cap = { 0 };
     int ret;
 
     assert(vfu_ctx != NULL);
@@ -542,22 +542,14 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         return ERROR(EINVAL);
     }
 
-    if ((flags & VFU_CAP_FLAG_CALLBACK) && (flags & VFU_CAP_FLAG_READONLY)) {
-        return ERROR(EINVAL);
-    }
-
     if ((flags & VFU_CAP_FLAG_CALLBACK) &&
         vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb == NULL) {
         return ERROR(EINVAL);
     }
 
-    cap.size = cap_size(vfu_ctx, data, extended);
-    cap.flags = flags;
     cap.off = pos;
-
-    if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
-        return ERROR(EINVAL);
-    }
+    cap.flags = flags;
+    cap.extended = extended;
 
     if (extended) {
         switch (vfu_ctx->pci.type) {
@@ -588,6 +580,12 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
             return ERROR(ENOTSUP);
+        }
+
+        cap.size = cap_size(vfu_ctx, data, extended);
+
+        if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
+            return ERROR(EINVAL);
         }
 
         ret = ext_cap_place(vfu_ctx, &cap, data);
@@ -621,6 +619,12 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
             return ERROR(ENOTSUP);
+        }
+
+        cap.size = cap_size(vfu_ctx, data, extended);
+
+        if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
+            return ERROR(EINVAL);
         }
 
         ret = cap_place(vfu_ctx, &cap, data);
