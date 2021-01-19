@@ -1169,11 +1169,11 @@ VFIO_USER_REGION_READ/WRITE round-trip.
 
 This message is optional, as these mechanisms are performance features.
 
-In its reponse, the server specifies a set of sub-regions and the requested file
-descriptor notification mechanism to use for that sub-region.  Each sub-region
-in the reponse message may choose to use a different method, as defined below.
-The two mechanisms supported in this specification are ioeventfds and
-ioregionfds.
+In its response, the server specifies a set of sub-regions and the requested
+file descriptor notification mechanism to use for that sub-region.  Each
+sub-region in the response message may choose to use a different method, as
+defined below.  The two mechanisms supported in this specification are
+ioeventfds and ioregionfds.
 
 A client should hook up the returned file descriptors with the notification
 method requested; when accesses are made to these sub-regions, the file
