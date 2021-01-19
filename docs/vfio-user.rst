@@ -1194,12 +1194,13 @@ Region IOFD info format
 | subregions | 32     | array of subregions          |
 +------------+--------+------------------------------+
 
-* *index* is the index of memory region being queried, it is the only field
-  that is required to be set in the command message.
 * *argsz* is the size of the VFIO region IOFD info structure plus the
   size of the subregion array (such that each array entry is defined by this
   size, minus the offset, divided by nr_subregions)
+* *index* is the index of memory region being queried, it is the only field
+  that is required to be set in the command message.
 * nr_subregions is the number of entries in the subregion array
+* subregions - array of struct vfio_user_subregion_info
 
 The reply message will additionally include at least one file descriptor in the
 ancillary data. Note that more than one subregion may share the same file
