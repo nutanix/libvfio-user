@@ -492,22 +492,18 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         while (hdr->next != 0) {
             hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
         }
-
-        goto out;
     } else if (hdr->id == 0x0) {
         hdr = NULL;
         cap->off = PCI_CFG_SPACE_SIZE;
-        goto out;
+    } else {
+        while (hdr->next != 0) {
+            hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
+        }
+
+        cap->off = ROUND_UP((uint8_t *)hdr + cap_size(vfu_ctx, hdr, true) -
+                            pci_config_space_ptr(vfu_ctx, 0), CAP_ROUND);
     }
 
-    while (hdr->next != 0) {
-        hdr = (void *)pci_config_space_ptr(vfu_ctx, hdr->next);
-    }
-
-    cap->off = ROUND_UP((uint8_t *)hdr + cap_size(vfu_ctx, hdr, true) -
-                        pci_config_space_ptr(vfu_ctx, 0), CAP_ROUND);
-
-out:
     if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
                 "%u (%s) of size %zu bytes at offset %#lx\n", cap->id,
