@@ -617,8 +617,12 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
  *
  * If @pos is non-zero, the capability will be placed at the given offset within
  * configuration space. It must not overlap the PCI standard header, or any
- * existing capability. If @pos is zero, the capability will be placed at a
- * suitable offset automatically.
+ * existing capability. Note that if a capability is added "out of order" in
+ * terms of the offset, there is no re-ordering of the capability list written
+ * in configuration space.
+ *
+ * If @pos is zero, the capability will be placed at a suitable offset
+ * automatically.
  *
  * The @flags field can be set as follows:
  *
@@ -661,8 +665,8 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 
 /**
  * Find the offset within config space of the given capability, starting from
- * @pos.  This can be used to iterate through multiple capabilities with the
- * same ID.
+ * @pos, which must be the valid offset of an existing capability. This can be
+ * used to iterate through multiple capabilities with the same ID.
  *
  * Returns 0 if no more matching capabilities were found, with errno set.
  *

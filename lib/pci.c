@@ -325,9 +325,11 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 /*
- * Return the next segment and the callback used to handle the access. We may
- * need to split up an access that straddles capabilities and normal config
- * space.
+ * Returns the size of the next segment to access, which may be less than
+ * @count: we might need to split up an access that straddles capabilities and
+ * normal config space, for example.
+ *
+ * @cb is set to the callback to use for accessing the segment.
  */
 static size_t
 pci_config_space_next_segment(vfu_ctx_t *ctx, size_t count, loff_t offset,

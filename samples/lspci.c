@@ -44,11 +44,14 @@ int main(void)
     char *buf;
     const int bytes_per_line = 0x10;
     struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
+<<<<<<< HEAD
     struct pcie_ext_cap_vsc_hdr *evsc = alloca(sizeof(*evsc) + 0xd);
-    struct dsncap dsn = { { 0, } };
+    struct dsncap dsn = { .hdr.id = PCI_EXT_CAP_ID_DSN,
+                          .sn_lo = 0xdeadbeef,
+                          .sn_hi = 0xcafebabe };
+    struct pmcap pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 };
     /* Required for lspci to report extended caps. */
-    struct pxcap px = { { 0, } };
-    struct pmcap pm = { { 0 } };
+    struct pxcap px = { .hdr.id = PCI_CAP_ID_EXP };
 
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
                                         LIBVFIO_USER_FLAG_ATTACH_NB, NULL,
@@ -60,9 +63,6 @@ int main(void)
                      PCI_HEADER_TYPE_NORMAL, 0) < 0) {
         err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
-
-    pm.hdr.id = PCI_CAP_ID_PM;
-    pm.pmcs.nsfrst = 0x1;
 
     if (vfu_pci_add_capability(vfu_ctx, 0, 0, &pm) < 0) {
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
@@ -77,15 +77,9 @@ int main(void)
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
     }
 
-    px.hdr.id = PCI_CAP_ID_EXP;
-
     if (vfu_pci_add_capability(vfu_ctx, 0, 0, &px) < 0) {
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
     }
-
-    dsn.hdr.id = PCI_EXT_CAP_ID_DSN;
-    dsn.sn_lo = 0xdeadbeef;
-    dsn.sn_hi = 0xcafebabe;
 
     if (vfu_pci_add_capability(vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, &dsn) < 0) {
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");

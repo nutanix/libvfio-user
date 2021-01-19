@@ -36,9 +36,10 @@
 #include "libvfio-user.h"
 
 /*
- * This is an arbitrary value.
+ * This is an arbitrary value, but more than enough for max caps in extended
+ * config space.
  */
-#define VFU_MAX_CAPS (128)
+#define VFU_MAX_CAPS (1024)
 
 struct pci_cap;
 
