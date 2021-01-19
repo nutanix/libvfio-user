@@ -1206,11 +1206,23 @@ The reply message will additionally include at least one file descriptor in the
 ancillary data. Note that more than one subregion may share the same file
 descriptor.
 
+The client sets the ``argsz`` field to indicate the maximum size of the response
+that the server can send, which must be at least the size of the response header
+plus space for the subregion array. If the full response size exceeds ``argsz``,
+then the server must respond only with the response header, setting in ``argsz``
+the buffer size required to store the full response. In this case, no file
+descriptors are passed back.  The client then retries the operation with a
+larger receive buffer.
+
 VFIO user subregion info
 ------------------------
 
-https://www.spinics.net/lists/kvm/msg208139.html
-https://patchwork.kernel.org/project/kvm/patch/1251028605-31977-23-git-send-email-avi@redhat.com/
+See https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
+for the meaning of the ioeventfd fields.
+
+See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for the meaning of
+the ioregionfd fields.
+
 
 FIXME rewrite in table format
 
