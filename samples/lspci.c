@@ -44,7 +44,7 @@ int main(void)
     char *buf;
     const int bytes_per_line = 0x10;
     struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
-    struct pmcap pm = { { 0 } };
+    struct pmcap pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 };
 
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
                                         LIBVFIO_USER_FLAG_ATTACH_NB, NULL,
@@ -56,9 +56,6 @@ int main(void)
                      PCI_HEADER_TYPE_NORMAL, 0) < 0) {
         err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
-
-    pm.hdr.id = PCI_CAP_ID_PM;
-    pm.pmcs.nsfrst = 0x1;
 
     if (vfu_pci_add_capability(vfu_ctx, 0, 0, &pm) < 0) {
         err(EXIT_FAILURE, "vfu_pci_add_capability() failed");

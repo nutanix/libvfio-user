@@ -1,9 +1,10 @@
 /*
- * Copyright (c) 2019 Nutanix Inc. All rights reserved.
+ * Copyright (c) 2021 Nutanix Inc. All rights reserved.
  *
  * Authors: Thanos Makatos <thanos@nutanix.com>
  *          Swapnil Ingle <swapnil.ingle@nutanix.com>
  *          Felipe Franciosi <felipe@nutanix.com>
+ *          John Levon <john.levon@nutanix.com>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -344,7 +345,8 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
  *
  * If cap->off is already provided, place it directly, but first check it
  * doesn't overlap an existing capability, or the PCI header. We still also need
- * to link it into the list.
+ * to link it into the list. There's no guarantee that the list is ordered by
+ * offset after doing so.
  */
 static int
 cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
@@ -373,28 +375,24 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         while (*prevp != 0) {
             prevp = pci_config_space_ptr(vfu_ctx, *prevp + PCI_CAP_LIST_NEXT);
         }
-
-        goto out;
-    }
-
-    if (*prevp == 0) {
+    } else if (*prevp == 0) {
         cap->off = PCI_STD_HEADER_SIZEOF;
-        goto out;
-    }
+    } else {
+        for (offset = *prevp; offset != 0; offset = *prevp) {
+            uint8_t id;
+            size_t size;
 
-    for (offset = *prevp; offset != 0; offset = *prevp) {
-        uint8_t id = *pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_ID);
+            id = *pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_ID);
+            prevp = pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_NEXT);
 
-        prevp = pci_config_space_ptr(vfu_ctx, offset + PCI_CAP_LIST_NEXT);
-
-        if (*prevp == 0) {
-            size_t size = cap_size(id, pci_config_space_ptr(vfu_ctx, offset));
-            cap->off = ROUND_UP(offset + size, 4);
-            goto out;
+            if (*prevp == 0) {
+                size = cap_size(id, pci_config_space_ptr(vfu_ctx, offset));
+                cap->off = ROUND_UP(offset + size, 4);
+                break;
+            }
         }
     }
 
-out:
     if (cap->off + cap->size >
         vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
@@ -417,6 +415,8 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
     size_t space_size = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
     struct pci_cap cap;
     int ret;
+
+    assert(vfu_ctx != NULL);
 
     if (flags & ~(VFU_CAP_FLAG_EXTENDED | VFU_CAP_FLAG_CALLBACK |
         VFU_CAP_FLAG_READONLY)) {
@@ -490,6 +490,8 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
 {
     size_t space_size = vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
     vfu_pci_config_space_t *config_space;
+
+    assert(vfu_ctx != NULL);
 
     if (extended) {
         errno = ENOTSUP;
