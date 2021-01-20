@@ -304,39 +304,39 @@ Commands
 The following table lists the VFIO message command IDs, and whether the
 message command is sent from the client or the server.
 
-+----------------------------------+---------+-------------------+
-| Name                             | Command | Request Direction |
-+==================================+=========+===================+
-| VFIO_USER_VERSION                | 1       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_MAP                | 2       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_UNMAP              | 3       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_INFO        | 4       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_REGION_INFO | 5       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_REGION_IO_FDS | FIXME       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_IRQ_INFO    | 6       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_SET_IRQS        | 7       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_REGION_READ            | 8       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_REGION_WRITE           | 9       | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_READ               | 10      | server -> client  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_WRITE              | 11      | server -> client  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_VM_INTERRUPT           | 12      | server -> client  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_RESET           | 13      | client -> server  |
-+----------------------------------+---------+-------------------+
-| VFIO_USER_DIRTY_PAGES            | 14      | client -> server  |
-+----------------------------------+---------+-------------------+
++------------------------------------+---------+-------------------+
+| Name                               | Command | Request Direction |
++====================================+=========+===================+
+| VFIO_USER_VERSION                  | 1       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DMA_MAP                  | 2       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DMA_UNMAP                | 3       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_GET_INFO          | 4       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_GET_REGION_INFO   | 5       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_GET_REGION_IO_FDS | 6       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_GET_IRQ_INFO      | 7       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_SET_IRQS          | 8       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_REGION_READ              | 9       | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_REGION_WRITE             | 10      | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DMA_READ                 | 11      | server -> client  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DMA_WRITE                | 12      | server -> client  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_VM_INTERRUPT             | 13      | server -> client  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DEVICE_RESET             | 14      | client -> server  |
++------------------------------------+---------+-------------------+
+| VFIO_USER_DIRTY_PAGES              | 15      | client -> server  |
++------------------------------------+---------+-------------------+
 
 
 .. Note:: Some VFIO defines cannot be reused since their values are
@@ -1151,121 +1151,150 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | FIXME                      |
+| Command      | 6                      |
 +--------------+------------------------+
-| Message size | FIXME          |
+| Message size | 32 + subregion info    |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
 | Error        | 0/errno                |
 +--------------+------------------------+
-| Region IO info  | Region IO fd info       |
+| Region info  | Region IO FD info      |
 +--------------+------------------------+
 
-This command message is sent by the client to the server to query for
-sub-regions of the given region that should be accessed via file descriptors, as
-opposed to the client mmap()ing in the (sub-)region, or using the
-VFIO_USER_REGION_READ/WRITE round-trip.
+Clients can access regions via VFIO_USER_REGION_READ/WRITE or, if provided, by
+mmap()ing a file descriptor provided by the server.
 
-This message is optional, as these mechanisms are performance features.
+VFIO_USER_DEVICE_GET_REGION_IO_FDS provides an alternative access mechanism via
+file descriptors. This is an optional feature intended for performance
+improvements where an underlying sub-system (such as KVM) supports communication
+across such file descriptors to the vfio-user server, without needing to
+round-trip through the client.
 
-In its response, the server specifies a set of sub-regions and the requested
-file descriptor notification mechanism to use for that sub-region.  Each
-sub-region in the response message may choose to use a different method, as
-defined below.  The two mechanisms supported in this specification are
-ioeventfds and ioregionfds.
+The server returns an array describing sub-regions of the given region along
+with the server specifies a set of sub-regions and the requested file descriptor
+notification mechanism to use for that sub-region.  Each sub-region in the
+response message may choose to use a different method, as defined below.  The
+two mechanisms supported in this specification are ioeventfds and ioregionfds.
 
-A client should hook up the returned file descriptors with the notification
-method requested; when accesses are made to these sub-regions, the file
-descriptor is directly notified/written (for example, by KVM), potentially
-avoiding round-trips through the client.
+A client should then hook up the returned file descriptors with the notification
+method requested.
+
+Region IO FD info format
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-Region IOFD info format
-^^^^^^^^^^^^^^^^^^^^^^^
++------------+--------+------+
+| Name       | Offset | Size |
++============+========+======+
+| argsz      | 16     | 4    |
++------------+--------+------+
+| flags      | 20     | 4    |
++------------+--------+------+
+| index      | 24     | 4    |
++------------+--------+------+
+| count      | 28     | 4    |
++------------+--------+------+
+| subregions | 32     | ...  |
++------------+--------+------+
 
-+------------+--------+------------------------------+
-| Name       | Offset | Size                         |
-+============+========+==============================+
-| argsz      | 16     | 4                            |
-+------------+--------+------------------------------+
-| flags      | 20     | 4                            |
-+------------+--------+------------------------------+
-|            | +-----+-----------------------------+ |
-|            | | Bit | Definition                  | |
-|            | +=====+=============================+ |
-|            | | 0   | FIXME
-|            | +-----+-----------------------------+ |
-+------------+--------+------------------------------+
-| index      | 24     | 4                            |
-+------------+--------+------------------------------+
-| nr_subregions     | 28     | number of subregions in array |
-+------------+--------+------------------------------+
-| subregions | 32     | array of subregions          |
-+------------+--------+------------------------------+
+* *argsz* is the size of the region IO FD info structure plus the
+  total size of the subregion array. Thus, each array entry "i" is at offset
+    i * ((argsz - 32) / count)
+* *flags* must be zero
+* *index* is the index of memory region being queried
+* *count* is the number of sub-regions in the array
+* *subregions* is the array of Sub-Region IO FD info structures
 
-* *argsz* is the size of the VFIO region IOFD info structure plus the
-  size of the subregion array (such that each array entry is defined by this
-  size, minus the offset, divided by nr_subregions)
-* *index* is the index of memory region being queried, it is the only field
-  that is required to be set in the command message.
-* nr_subregions is the number of entries in the subregion array
-* subregions - array of struct vfio_user_subregion_info
+The client must set ``flags`` to zero and specify the region being queried in
+the ``index``.
+
+The client sets the ``argsz`` field to indicate the maximum size of the response
+that the server can send, which must be at least the size of the response header
+plus space for the subregion array. If the full response size exceeds ``argsz``,
+then the server must respond only with the response header and the Region IO FD
+info structure, setting in ``argsz`` the buffer size required to store the full
+response. In this case, no file descriptors are passed back.  The client then
+retries the operation with a larger receive buffer.
 
 The reply message will additionally include at least one file descriptor in the
 ancillary data. Note that more than one subregion may share the same file
 descriptor.
 
-The client sets the ``argsz`` field to indicate the maximum size of the response
-that the server can send, which must be at least the size of the response header
-plus space for the subregion array. If the full response size exceeds ``argsz``,
-then the server must respond only with the response header, setting in ``argsz``
-the buffer size required to store the full response. In this case, no file
-descriptors are passed back.  The client then retries the operation with a
-larger receive buffer.
+Each sub-region given in the response has one of two possible structures,
+depending whether *type* is `VFIO_USER_IO_FD_TYPE_IOEVENTFD` or
+`VFIO_USER_IO_FD_TYPE_IOREGIONFD`:
 
-VFIO user subregion info
-------------------------
+Sub-Region IO FD info format (ioeventfd)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-See https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt
-for the meaning of the ioeventfd fields.
++-----------+--------+------+
+| Name      | Offset | Size |
++===========+========+======+
+| offset    | 0      | 8    |
++-----------+--------+------+
+| size      | 8      | 8    |
++-----------+--------+------+
+| fd_index  | 16     | 4    |
++-----------+--------+------+
+| type      | 20     | 4    |
++-----------+--------+------+
+| flags     | 24     | 4    |
++-----------+--------+------+
+| padding   | 28     | 4    |
++-----------+--------+------+
+| datamatch | 32     | 8    |
++-----------+--------+------+
 
-See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for the meaning of
-the ioregionfd fields.
+* *offset* is the offset of the start of the sub-region within the region
+requested ("physical address offset" for the region)
+* *size* is the length of the sub-region. This may be zero, 
+* *fd_index* is the index in the ancillary data of the FD to use for ioeventfd
+notification; it may be shared.
+* *type* is `VFIO_USER_IO_FD_TYPE_IOEVENTFD`
+* *flags* is any of:
+  * `KVM_IOEVENTFD_FLAG_DATAMATCH`
+  * `KVM_IOEVENTFD_FLAG_PIO`
+  * `KVM_IOEVENTFD_FLAG_VIRTIO_CCW_NOTIFY` (FIXME: makes sense?)
+* *datamatch* is the datamatch value if needed
 
-FIXME rewrite in table format
+See https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt 4.59
+KVM_IOEVENTFD for further context on the ioeventfd-specific fields.
 
-struct vfio_user_subregion_info {
-    // offset within region (not GPA)
-    u64 offset;
-    // size of sub-region (perhaps zero depending on flags below)
-    u64 size;
-    // index into ancillary data fd array
-    int fd_index;
-    // ioeventfd | ioregionfd
-    u32 subregion_type;
+Sub-Region IO FD info format (ioregionfd)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    // FIXME: if ioregionfd subsumes ioeventfd, we could potentially just have
-    // the one struct; ioregionfd-less systems could fall back to ioeventfd
-    // interfaces
-    union {
-        struct ioeventfd {
-            // KVM_IOEVENTFD_FLAG_*
-            // FIXME: KVM_IOEVENTFD_FLAG_VIRTIO_CCW_NOTIFY - relevant/sufficient?
-            u32 flags;
-            u64 datamatch;
-        };
-        struct ioregionfd {
-            // KVM_IOREGIONFD_*
-            // FIXME
-            u32 flags;
-            // FIXME: is 32 bits enough? for vfio-user doesn't this need to be a
-            // full region offset + internal offset within region?
-            u32 region_id;
-            // FIXME: what about eBPF?
-        };
-    } data;
-};
+
++-----------+--------+------+
+| Name      | Offset | Size |
++===========+========+======+
+| offset    | 0      | 8    |
++-----------+--------+------+
+| size      | 8      | 8    |
++-----------+--------+------+
+| fd_index  | 16     | 4    |
++-----------+--------+------+
+| type      | 20     | 4    |
++-----------+--------+------+
+| flags     | 24     | 4    |
++-----------+--------+------+
+| region_id | 28     | 4    |
++-----------+--------+------+
+
+* *offset* is the offset of the start of the sub-region within the region
+requested ("physical address offset" for the region)
+* *size* is the length of the sub-region. This may be zero, 
+* *fd_index* is the index in the ancillary data of the FD to use for ioeventfd
+notification; it may be shared.
+* *type* is `VFIO_USER_IO_FD_TYPE_IOEVENTFD`
+* *flags* is any of:
+  * `KVM_IOEVENTFD_FLAG_DATAMATCH`
+  * `KVM_IOEVENTFD_FLAG_PIO`
+  * `KVM_IOEVENTFD_FLAG_VIRTIO_CCW_NOTIFY` (FIXME: makes sense?)
+* *region_id* is an opaque value passed back to
+
+See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for further context
+on the ioregionfd-specific fields.
 
 VFIO_USER_DEVICE_GET_IRQ_INFO
 -----------------------------
@@ -1278,7 +1307,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 6                      |
+| Command      | 7                      |
 +--------------+------------------------+
 | Message size | 32                     |
 +--------------+------------------------+
@@ -1349,7 +1378,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 7                      |
+| Command      | 8                      |
 +--------------+------------------------+
 | Message size | 36 + any data          |
 +--------------+------------------------+
@@ -1507,7 +1536,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 8                      |
+| Command      | 9                      |
 +--------------+------------------------+
 | Message size | 32 + data size         |
 +--------------+------------------------+
@@ -1534,7 +1563,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 9                      |
+| Command      | 10                     |
 +--------------+------------------------+
 | Message size | 32 + data size         |
 +--------------+------------------------+
@@ -1561,7 +1590,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 10                     |
+| Command      | 11                     |
 +--------------+------------------------+
 | Message size | 28 + data size         |
 +--------------+------------------------+
@@ -1588,7 +1617,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 11                     |
+| Command      | 12                     |
 +--------------+------------------------+
 | Message size | 28 + data size         |
 +--------------+------------------------+
@@ -1615,7 +1644,7 @@ Message format
 +================+========================+
 | Message ID     | <ID>                   |
 +----------------+------------------------+
-| Command        | 12                     |
+| Command        | 13                     |
 +----------------+------------------------+
 | Message size   | 20                     |
 +----------------+------------------------+
@@ -1652,7 +1681,7 @@ Message format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | 13                     |
+| Command      | 14                     |
 +--------------+------------------------+
 | Message size | 16                     |
 +--------------+------------------------+
@@ -1674,7 +1703,7 @@ Message format
 +====================+========================+
 | Message ID         | <ID>                   |
 +--------------------+------------------------+
-| Command            | 14                     |
+| Command            | 15                     |
 +--------------------+------------------------+
 | Message size       | 16                     |
 +--------------------+------------------------+
