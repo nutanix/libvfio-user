@@ -688,7 +688,7 @@ following format:
 The VFIO bitmap structure is defined in ``<linux/vfio.h>``
 (``struct vfio_bitmap``).
 
-Each ``struct_vfio_bitmap`` entry is followed by the region's bitmap. Each bit
+Each ``struct vfio_bitmap`` entry is followed by the region's bitmap. Each bit
 in the bitmap represents one page of size ``struct vfio_bitmap.pgsize``.
 
 If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
