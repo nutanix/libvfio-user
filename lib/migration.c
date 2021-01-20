@@ -64,24 +64,44 @@ struct migration {
     } iter;
 };
 
+struct migr_state_data {
+    __u32 state;
+    char *name;
+};
+
 /* valid migration state transitions */
-static const __u32 migr_states[VFIO_DEVICE_STATE_MASK] = {
-    [VFIO_DEVICE_STATE_STOP] = 1 << VFIO_DEVICE_STATE_STOP,
-    [VFIO_DEVICE_STATE_RUNNING] = /* running */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
-        (1 << VFIO_DEVICE_STATE_RESUMING),
-    [VFIO_DEVICE_STATE_SAVING] = /* stop-and-copy */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = /* pre-copy */
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RESUMING] = /* resuming */
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_RESUMING)
+static const struct migr_state_data migr_states[VFIO_DEVICE_STATE_MASK] = {
+    [VFIO_DEVICE_STATE_STOP] = {
+        .state = 1 << VFIO_DEVICE_STATE_STOP,
+        .name = "stopped"
+    },
+    [VFIO_DEVICE_STATE_RUNNING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
+            (1 << VFIO_DEVICE_STATE_RESUMING),
+        .name = "running"
+    },
+    [VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_SAVING),
+        .name = "stop-and-copy"
+    },
+    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
+        .name = "pre-copy"
+    },
+    [VFIO_DEVICE_STATE_RESUMING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_RESUMING),
+        .name = "resuming"
+    }
 };
 
 struct migration *
@@ -128,7 +148,7 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
 static bool
 _migr_state_transition_is_valid(__u32 from, __u32 to)
 {
-    return migr_states[from] & (1 << to);
+    return migr_states[from].state & (1 << to);
 }
 
 static ssize_t
@@ -153,8 +173,9 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
     if (!_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
         /* TODO print descriptive device state names instead of raw value */
-        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %d to state %d",
-               migr->info.device_state, *device_state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %s to state %s",
+               migr_states[migr->info.device_state].name,
+               migr_states[*device_state].name);
         return -EINVAL;
     }
 
