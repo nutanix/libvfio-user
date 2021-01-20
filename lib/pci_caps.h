@@ -30,30 +30,47 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_CAP_H
-#define LIB_VFIO_USER_CAP_H
+#ifndef LIB_VFIO_USER_PCI_CAPS_H
+#define LIB_VFIO_USER_PCI_CAPS_H
 
 #include "libvfio-user.h"
 
-struct caps;
-
-/**
- * Initializes PCI capabilities.
+/*
+ * This is an arbitrary value, but more than enough for max caps in extended
+ * config space.
  */
-struct caps *
-caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps, int *err);
+#define VFU_MAX_CAPS (1024)
+
+struct pci_cap;
+
+typedef ssize_t (cap_write_cb_t)(vfu_ctx_t *vfu_ctx, struct pci_cap *cap,
+                                 char *buf, size_t count, loff_t offset);
+
+struct pci_cap {
+    const char *name;
+    uint8_t id;
+    size_t off;
+    size_t hdr_size;
+    size_t size;
+    unsigned int flags;
+    cap_write_cb_t *cb;
+};
 
 /*
- * Conditionally accesses the PCI capabilities. Returns:
- *  0: if no PCI capabilities are accessed,
- * >0: if a PCI capability was accessed, with the return value indicating the
-       number of bytes accessed, and
- * <0: negative error code on error.
+ * Return the first cap (if any) that intersects with the [off, off+count)
+ * interval.
+ */
+struct pci_cap *
+cap_find_by_offset(vfu_ctx_t *ctx, loff_t off, size_t count);
+
+/*
+ * Handle an access to a capability.  The access is guaranteed to be entirely
+ * within a capability.
  */
 ssize_t
-cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
-                 loff_t offset);
+pci_cap_access(vfu_ctx_t *ctx, char *buf, size_t count, loff_t offset,
+               bool is_write);
 
-#endif /* LIB_VFIO_USER_CAP_H */
+#endif /* LIB_VFIO_USER_PCI_CAPS_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
