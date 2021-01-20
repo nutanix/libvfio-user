@@ -716,20 +716,29 @@ usage(char *path) {
             basename(path));
 }
 
-static void
-migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
+/*
+ * Normally each time the source client (QEMU) would read migration data from
+ * the device it would send them to the destination cliet. However, since in
+ * our sample both the source and the destination client are the same process,
+ * we simply accumulate the migration data of each iteration and apply it to
+ * the destination server at the end.
+ *
+ * Performs as many migration loops as @nr_iters or until the device has no
+ * more migration data (pending_bytes is zero), which ever comes first. The
+ * result of each migration iteration is stored in @migr_iter.  @migr_iter must
+ * be at least of @nr_iters.
+ *
+ * @returns the number of iterations performed
+ */
+static size_t
+do_migrate(int sock, int migr_reg_index, size_t nr_iters,
+           struct iovec *migr_iter)
 {
-    __u32 device_state = VFIO_DEVICE_STATE_SAVING;
+    int ret;
     __u64 pending_bytes, data_offset, data_size;
+    size_t i = 0;
 
-    /* XXX set device state to stop-and-copy */
-    int ret = access_region(sock, migr_reg_index, true,
-                            offsetof(struct vfio_device_migration_info, device_state),
-                            &device_state, sizeof(device_state));
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to write to device state: %s",
-             strerror(-ret));
-    }
+    assert(nr_iters > 0);
 
     /* XXX read pending_bytes */
     ret = access_region(sock, migr_reg_index, false,
@@ -743,19 +752,7 @@ migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
     /* We do expect some migration data. */
     assert(pending_bytes > 0);
 
-    /*
-     * The only expectation about pending_bytes is whether it's zero or
-     * non-zero, therefore it must be considered volatile, even acrosss
-     * iterantions. In the sample server we know it's static so it's fairly
-     * straightforward.
-     */
-    *len = pending_bytes;
-    *data = malloc(*len);
-    if (*data == NULL) {
-        err(EXIT_FAILURE, "failed to allocate migration buffer");
-    }
-
-    while (pending_bytes > 0) {
+    for (i = 0; i < nr_iters && pending_bytes > 0; i++) {
 
         /* XXX read data_offset and data_size */
         ret = access_region(sock, migr_reg_index, false,
@@ -774,11 +771,17 @@ migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
                  strerror(-ret));
         }
 
-        assert(data_offset - sizeof(struct vfio_device_migration_info) + data_size <= *len);
+        assert(data_offset - sizeof(struct vfio_device_migration_info) + data_size <= pending_bytes);
+
+        migr_iter[i].iov_len = data_size;
+        migr_iter[i].iov_base = malloc(data_size);
+        if (migr_iter[i].iov_base == NULL) {
+            err(EXIT_FAILURE, "failed to allocate migration buffer");
+        }
 
         /* XXX read migration data */
         ret = access_region(sock, migr_reg_index, false, data_offset,
-                            (char*)*data + data_offset - sizeof(struct vfio_device_migration_info),
+                            (char*)migr_iter[i].iov_base + data_offset - sizeof(struct vfio_device_migration_info),
                             data_size);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to read migration data: %s",
@@ -799,9 +802,43 @@ migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
                  strerror(-ret));
         }
     }
+    return i;
+}
 
-    /* XXX read device state, migration must have finished now */
-    device_state = VFIO_DEVICE_STATE_STOP;
+static size_t
+migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr_iters)
+{
+    __u32 device_state;
+    int ret;
+    size_t _nr_iters;
+
+    /*
+     * FIXME to fully demonstrate live migration we'll need a way to change
+     * device state while the client is running the migration iteration. One
+     * way to do that is to have the client randomly modify a big-ish device
+     * region while running the live migration iterations, and at some point
+     * stopping to do the stop-and-copy phase. It can store in a buffer the
+     * modifications it makes and then after the device has been migrated it
+     * should compare the buffer with the migrated device region.
+     */
+
+    /*
+     * TODO The server generates migration data while it's in pre-copy state.
+     *
+     * FIXME the server generates 4 rounds of migration data while in pre-copy
+     * state and 1 while in stop-and-copy state. Don't assume this.
+     */
+    *nr_iters = 5;
+    *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
+    if (*migr_iters == NULL) {
+        err(EXIT_FAILURE, NULL);
+    }
+
+    /*
+     * XXX set device state to pre-copy. This is technically optional but any
+     * VMM that cares about performance needs this.
+     */
+    device_state = VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RUNNING;
     ret = access_region(sock, migr_reg_index, true,
                         offsetof(struct vfio_device_migration_info, device_state),
                         &device_state, sizeof(device_state));
@@ -809,18 +846,52 @@ migrate_from(int sock, int migr_reg_index, void **data, __u64 *len)
         errx(EXIT_FAILURE, "failed to write to device state: %s",
              strerror(-ret));
     }
+
+    _nr_iters = do_migrate(sock, migr_reg_index, 4, *migr_iters);
+
+    if (_nr_iters != 4) {
+        errx(EXIT_FAILURE,
+             "expected 4 iterations instead of %ld while in pre-copy state\n",
+             _nr_iters);
+    }
+
+    printf("setting device state to stop-and-copy\n");
+
+    device_state = VFIO_DEVICE_STATE_SAVING;
+    ret = access_region(sock, migr_reg_index, true,
+                        offsetof(struct vfio_device_migration_info, device_state),
+                        &device_state, sizeof(device_state));
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to write to device state: %s",
+             strerror(-ret));
+    }
+
+    _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
+
+    /* XXX read device state, migration must have finished now */
+    device_state = VFIO_DEVICE_STATE_STOP;
+    ret = access_region(sock, migr_reg_index, true,
+                              offsetof(struct vfio_device_migration_info, device_state),
+                              &device_state, sizeof(device_state));
+    if (ret < 0) {
+        errx(EXIT_FAILURE, "failed to write to device state: %s",
+             strerror(-ret));
+    }
+
+    return _nr_iters;
 }
 
 static int
 migrate_to(char *old_sock_path, int *server_max_fds,
-           size_t *pgsize, void *migr_data, __u64 migr_data_len,
+           size_t *pgsize, size_t nr_iters, struct iovec *migr_iters,
            char *path_to_server, int migr_reg_index)
 {
     int ret, sock;
     char *sock_path;
     struct stat sb;
     __u32 device_state = VFIO_DEVICE_STATE_RESUMING;
-    __u64 data_offset;
+    __u64 data_offset, data_len;
+    size_t i;
 
     assert(old_sock_path != NULL);
 
@@ -873,33 +944,42 @@ migrate_to(char *old_sock_path, int *server_max_fds,
              strerror(-ret));
     }
 
-    /* XXX read data offset */
-    ret = access_region(sock, migr_reg_index, false,
-                        offsetof(struct vfio_device_migration_info, data_offset),
-                        &data_offset, sizeof(data_offset));
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to read data offset: %s", strerror(-ret));
-    }
+    for (i = 0; i < nr_iters; i++) {
 
-    /* XXX write migration data */
+        /* XXX read data offset */
+        ret = access_region(sock, migr_reg_index, false,
+                            offsetof(struct vfio_device_migration_info, data_offset),
+                            &data_offset, sizeof(data_offset));
+        if (ret < 0) {
+            errx(EXIT_FAILURE, "failed to read migration data offset: %s",
+                 strerror(-ret));
+        }
 
-    /*
-     * TODO write half of migration data via regular write and other half via
-     * memopy map.
-     */
-    ret = access_region(sock, migr_reg_index, true,
-                        data_offset, migr_data, migr_data_len);
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to write migration data: %s",
-             strerror(-ret));
-    }
+        /* XXX write migration data */
 
-    /* XXX write data_size */
-    ret = access_region(sock, migr_reg_index, true,
-                        offsetof(struct vfio_device_migration_info, data_size),
-                        &migr_data_len, sizeof migr_data_len);
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to write data size: %s", strerror(-ret));
+        /*
+         * TODO write half of migration data via regular write and other half via
+         * memopy map.
+         */
+        printf("writing migration device data %#llx-%#llx\n", data_offset,
+               data_offset + migr_iters[i].iov_len - 1);
+        ret = access_region(sock, migr_reg_index, true,
+                            data_offset, migr_iters[i].iov_base,
+                            migr_iters[i].iov_len);
+        if (ret < 0) {
+            errx(EXIT_FAILURE, "failed to write device migration data: %s",
+                 strerror(-ret));
+        }
+
+        /* XXX write data_size */
+        data_len = migr_iters[i].iov_len;
+        ret = access_region(sock, migr_reg_index, true,
+                            offsetof(struct vfio_device_migration_info, data_size),
+                            &data_len, sizeof data_len);
+        if (ret < 0) {
+            errx(EXIT_FAILURE, "failed to write migration data size: %s",
+                 strerror(-ret));
+        }
     }
 
     /* XXX set device state to running */
@@ -952,11 +1032,11 @@ int main(int argc, char *argv[])
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
     int opt;
     time_t t;
-    void *migr_data;
-    __u64 migr_data_len;
     char *path_to_server = NULL;
     vfu_pci_hdr_t config_space;
     int migr_reg_index;
+    struct iovec *migr_iters;
+    size_t nr_iters;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1116,13 +1196,13 @@ int main(int argc, char *argv[])
 
     /*
      * By sleeping here for 1s after migration finishes on the source server
-     * (but not yet started on the destination server), the timer should be be
+     * (but not yet started on the destination server), the timer should be
      * armed on the destination server for 2-1=1 seconds. If we don't sleep
      * then it will be armed for 2 seconds, which isn't as interesting.
      */
     sleep(1);
 
-    migrate_from(sock, migr_reg_index, &migr_data, &migr_data_len);
+    migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters);
 
     /*
      * Normally the client would now send the device state to the destination
@@ -1135,7 +1215,7 @@ int main(int argc, char *argv[])
     }
 
     sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
-                      migr_data, migr_data_len, path_to_server, migr_reg_index);
+                      nr_iters, migr_iters, path_to_server, migr_reg_index);
 
     /*
      * Now we must reconfigure the destination server.
