@@ -30,30 +30,31 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_CAP_H
-#define LIB_VFIO_USER_CAP_H
-
-#include "libvfio-user.h"
-
-struct caps;
-
-/**
- * Initializes PCI capabilities.
- */
-struct caps *
-caps_create(vfu_ctx_t *vfu_ctx, vfu_cap_t **caps, int nr_caps, int *err);
-
 /*
- * Conditionally accesses the PCI capabilities. Returns:
- *  0: if no PCI capabilities are accessed,
- * >0: if a PCI capability was accessed, with the return value indicating the
-       number of bytes accessed, and
- * <0: negative error code on error.
+ * Device Serial Number (PCIE 7.12).
  */
-ssize_t
-cap_maybe_access(vfu_ctx_t *vfu_ctx, struct caps *caps, char *buf, size_t count,
-                 loff_t offset);
 
-#endif /* LIB_VFIO_USER_CAP_H */
+#ifndef LIB_VFIO_USER_PCI_CAPS_DSN_H
+#define LIB_VFIO_USER_PCI_CAPS_DSN_H
+
+#include "common.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct dsncap {
+    struct pcie_ext_cap_hdr hdr;
+    uint32_t sn_lo;
+    uint32_t sn_hi;
+} __attribute__((packed));
+_Static_assert(sizeof (struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
+               "bad DSN Capability size");
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* LIB_VFIO_USER_PCI_CAPS_DSN_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
