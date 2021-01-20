@@ -124,18 +124,28 @@ client/server model where basic tasks are performed.
 
 The server implements a device that can be programmed to trigger interrupts
 (INTx) to the client. This is done by writing the desired time in seconds since
-Epoch.  The server then trigger an eventfd-based IRQ and then a message-based
+Epoch to BAR0. The server then triggers an eventfd-based IRQ and then a message-based
 one (in order to demonstrate how it's done when passing of file descriptors
-isn't possible/desirable).
+isn't possible/desirable). The device also works as memory storage: BAR1 can
+be freely written to/read from by the host.
+
+Since this is a completely made up device, there's no kernel driver (yet).
+[Client](./samples/client.c) implements a client that knows how to drive this
+particular device (that would normally be QEMU + guest VM + kernel driver).
 
 The client excercises all commands in the vfio-user protocol, and then proceeds
 to perform live migration. The client spawns the destination server (this would
-be normally done by `libvirt`) and then migrates the device state, before
+be normally done by libvirt) and then migrates the device state, before
 switching entirely to the destination server. We re-use the source client
 instead of spawning a destination one as this is something libvirt/QEMU would
-normally do. To spice things up, the client programmes the source server to
-trigger an interrupt and then quickly migrates to the destination server; the
-programmed interrupt is delivered by the destination server.
+normally do.
+
+To spice things up, the client programs the source server to trigger an
+interrupt and then migrates to the destination server; the programmed interrupt
+is delivered by the destination server. Also, while the device is being live
+migrated, the client spawns a thread that constantly writes to BAR1 in a tight
+loop. This thread emulates the guest VM accessing the device while the main
+thread (what would normally be QEMU) is driving the migration.
 
 Start the source server as follows (pick whatever you like for
 `/tmp/vfio-user.sock`):

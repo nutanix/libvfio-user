@@ -58,7 +58,8 @@ struct dma_regions {
 
 struct server_data {
     time_t bar0;
-    uint8_t *bar1;
+    void *bar1;
+    size_t bar1_size;
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
         __u64 pending_bytes;
@@ -118,15 +119,26 @@ bar0_access(vfu_ctx_t *vfu_ctx, char * const buf, size_t count, loff_t offset,
 }
 
 ssize_t
-bar1_access(vfu_ctx_t *vfu_ctx UNUSED, UNUSED char * const buf,
-            UNUSED size_t count, UNUSED loff_t offset,
-            UNUSED const bool is_write)
+bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
+            size_t count, loff_t offset,
+            const bool is_write)
 {
-    assert(false);
+    struct server_data *server_data = vfu_get_private(vfu_ctx);
 
-    /* FIXME assert that only the 2nd page is accessed */
+    if (offset + count > server_data->bar1_size) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad BAR1 access %#lx-%#lx",
+                offset, offset + count - 1);
+        errno = EINVAL;
+        return -1;
+    }
 
-    return -ENOTSUP;
+    if (is_write) {
+        memcpy(server_data->bar1 + offset, buf, count);
+    } else {
+        memcpy(buf, server_data->bar1, count);
+    }
+
+    return count;
 }
 
 bool irq_triggered = false;
@@ -253,8 +265,12 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 
     switch (state) {
         case VFU_MIGR_STATE_STOP_AND_COPY:
+            server_data->migration.pending_bytes = sizeof(time_t); /* FIXME BAR0 region size */
+            server_data->migration.data_size = 0;
+            break;
+        case VFU_MIGR_STATE_PRE_COPY:
             /* TODO must be less than size of data region in migration region */
-            server_data->migration.pending_bytes = sysconf(_SC_PAGESIZE);
+            server_data->migration.pending_bytes = server_data->bar1_size;
             break;
         case VFU_MIGR_STATE_STOP:
             assert(server_data->migration.pending_bytes == 0);
@@ -291,6 +307,10 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     *offset = 0;
+    /*
+     * Don't provide all migration data in one go in order to make it a bit
+     * more interesting.
+     */
     *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
     return 0;
 }
@@ -299,6 +319,8 @@ static size_t
 migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
+    uint8_t *p;
+    size_t bar_size;
 
     if (server_data->migration.data_size < size) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid migration data read %#llx-%#llx",
@@ -306,13 +328,38 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
         return -EINVAL;
     }
 
-    /* FIXME implement, client should be able to write any byte range */
-    assert((offset == 0 && size >= sizeof server_data->bar0)
-           || offset >= sizeof server_data->bar0);
+    /*
+     * If in pre-copy state we copy BAR1, if in stop-and-copy state we copy
+     * BAR0. This behavior is purely an artifact of this server implementation
+     * simply to make it as simple as possible. Note that the client might go
+     * from state running to stop-and-copy, completely skipping the pre-copy
+     * state. This is legitimate but we don't support it for now.
+     *
+     * FIXME implement transitioning from the running state straight to the
+     * stop-and-copy state.
+     */
 
-    if (offset == 0 && size >= sizeof server_data->bar0) {
-        memcpy(buf, &server_data->bar0, sizeof server_data->bar0);
+    if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
+        p = server_data->bar1;
+        bar_size = server_data->bar1_size;
+    } else if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
+        p = (uint8_t*)&server_data->bar0;
+        bar_size = sizeof server_data->bar0;
+    } else {
+        /*
+         * Reading from the migration region in any other state is undefined
+         * (I think).
+         */
+        return 0;
     }
+    if (offset > bar_size) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (offset + size > bar_size) {
+        size = bar_size - offset;
+    }
+    memcpy(buf, p + offset, size);
     return size;
 }
 
@@ -324,41 +371,44 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
     assert(server_data != NULL);
     assert(data != NULL);
 
-    if (offset + size > server_data->migration.migr_data_len) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid write %#llx-%#llx",
-                offset, offset + size - 1);
-    }
+    /*
+     * During pre-copy state we save BAR1 and during stop-and-copy state we
+     * save BAR0.
+     */
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "apply device migration data to BAR%d %#llx-%#llx",
+            offset < server_data->bar1_size ? 1 : 0,
+            offset, offset + size - 1);
 
-    memcpy(server_data->migration.migr_data + offset, data, size);
+    if (offset < server_data->bar1_size) {
+        assert(offset + size <= server_data->bar1_size); /* FIXME */
+        memcpy(server_data->bar1 + offset, data, size);
+    } else {
+        int ret;
+
+        /* FIXME should be able to write any valid subrange */
+        assert(offset - server_data->bar1_size == 0);
+        assert(size == sizeof server_data->bar0);
+
+        ret = bar0_access(vfu_ctx, data, sizeof server_data->bar0, 0, true);
+
+        assert(ret == (int)size); /* FIXME */
+    }
 
     return 0;
 }
 
 
 static int
-migration_data_written(vfu_ctx_t *vfu_ctx, __u64 count, __u64 offset)
+migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count,
+                       UNUSED __u64 offset)
 {
-    struct server_data *server_data = vfu_get_private(vfu_ctx);
-    int ret;
-
-    assert(server_data != NULL);
-
-    if (offset + count > server_data->migration.migr_data_len) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad migration data range %#llx-%#llx",
-                offset, offset + count - 1);
-        return -EINVAL;
-    }
-
-    if (offset == 0 && count >= sizeof server_data->bar0) {
-
-        /* apply device state */
-        /* FIXME must arm timer only after device is resumed!!! */
-        ret = bar0_access(vfu_ctx, server_data->migration.migr_data,
-                          sizeof server_data->bar0, 0, true);
-        if (ret < 0) {
-            return ret;
-        }
-    }
+    /*
+     * We apply migration state directly in the migration_write_data callback,
+     * we don't need to do anything here. We would have to apply migration
+     * state in this callback if the migration region was memory mappable, in
+     * which we wouldn't know when the client wrote migration data.
+     */
 
     return 0;
 }
@@ -369,10 +419,11 @@ int main(int argc, char *argv[])
     bool verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
+    size_t bar1_size = 0x3000;
     struct server_data server_data = {
         .migration = {
             /* one page so that we can memory map it */
-            .migr_data_len = sysconf(_SC_PAGESIZE),
+            .migr_data_len = bar1_size + sizeof(time_t),
             .state = VFU_MIGR_STATE_RUNNING
         }
     };
@@ -391,12 +442,6 @@ int main(int argc, char *argv[])
 
     if (optind >= argc) {
         errx(EXIT_FAILURE, "missing vfio-user socket path");
-    }
-
-    /* coverity[NEGATIVE_RETURNS] */
-    server_data.bar1 = malloc(sysconf(_SC_PAGESIZE));
-    if (server_data.bar1 == NULL) {
-        err(EXIT_FAILURE, "BAR1");
     }
 
     sigemptyset(&act.sa_mask);
@@ -431,21 +476,29 @@ int main(int argc, char *argv[])
 
     /*
      * Setup BAR1 to be 3 pages in size where only the first and the last pages
-     * are mappable.
+     * are mappable. The client can still mmap the 2nd page, we can't prohibit
+     * this under Linux. If we really want to probihit it we have to use
+     * separate files for the same region.
      */
     if ((fp = tmpfile()) == NULL) {
         err(EXIT_FAILURE, "failed to create BAR1 file");
     }
-    if (ftruncate(fileno(fp), 0x3000) == -1) {
+    server_data.bar1_size = 0x3000;
+    if (ftruncate(fileno(fp), server_data.bar1_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate BAR1 file");
+    }
+    server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
+                            MAP_SHARED, fileno(fp), 0);
+    if (server_data.bar1 == MAP_FAILED) {
+        err(EXIT_FAILURE, "failed to mmap BAR1");
     }
     struct iovec mmap_areas[] = {
         { .iov_base  = (void*)0, .iov_len = 0x1000 },
         { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
-                           0x3000, &bar1_access, VFU_REGION_FLAG_RW,
-                           mmap_areas, 2, fileno(fp));
+                           server_data.bar1_size, &bar1_access,
+                           VFU_REGION_FLAG_RW, mmap_areas, 2, fileno(fp));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
@@ -525,7 +578,6 @@ int main(int argc, char *argv[])
 
     vfu_destroy_ctx(vfu_ctx);
     free(server_data.migration.migr_data);
-    free(server_data.bar1);
     return EXIT_SUCCESS;
 }
 
