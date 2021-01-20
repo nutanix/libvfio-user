@@ -344,6 +344,8 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
     mmap_round(&mmap_offset, &mmap_size, region->page_size);
 
     // Do the mmap.
+    // Note: As per mmap(2) manpage, on some hardware architectures
+    //       (e.g., i386), PROT_WRITE implies PROT_READ
     mmap_base = mmap(NULL, mmap_size, prot, MAP_SHARED,
                      region->fd, mmap_offset);
     if (mmap_base == MAP_FAILED) {

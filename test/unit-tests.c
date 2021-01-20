@@ -105,12 +105,12 @@ static void dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
                 uint32_t prot)
 {
     if (iova == 0xcafebabe) {
-        assert_int_equal(len, 0x1000);
-        assert_int_equal(prot, PROT_READ | PROT_WRITE);
+        assert_int_equal(0x1000, len);
+        assert_int_equal(PROT_READ | PROT_WRITE, prot);
     } else {
-        assert_int_equal(iova, 0xdeadbeef);
-        assert_int_equal(len, 0x1000);
-        assert_int_equal(prot, PROT_NONE);
+        assert_int_equal(0xdeadbeef, iova);
+        assert_int_equal(0x1000, len);
+        assert_int_equal(PROT_NONE, prot);
     }
 
     return;
@@ -805,15 +805,16 @@ test_dma_addr_to_sg(void **state __attribute__((unused)))
     assert_int_equal(0x400, sg.length);
     assert_true(sg.mappable);
 
-    r->prot = PROT_NONE;
+    errno = 0;
+    r->prot = PROT_WRITE;
     assert_int_equal(-1,
-        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
-    assert_int_equal(errno, EACCES);
+        dma_addr_to_sg(dma, 0x6000, 0x400, &sg, 1, PROT_READ));
+    assert_int_equal(0, errno);
 
     r->prot = PROT_READ;
     assert_int_equal(-1,
         dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_WRITE));
-    assert_int_equal(errno, EACCES);
+    assert_int_equal(EACCES, errno);
 
     r->prot = PROT_READ|PROT_WRITE;
     assert_int_equal(1,
