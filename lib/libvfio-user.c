@@ -78,7 +78,7 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 }
 
 static size_t
-get_vfio_caps_size(bool is_migr_reg, struct vfu_sparse_mmap_areas *m)
+get_vfio_caps_size(bool is_migr_reg, vfu_reg_info_t *reg)
 {
     size_t type_size = 0;
     size_t sparse_size = 0;
@@ -87,9 +87,9 @@ get_vfio_caps_size(bool is_migr_reg, struct vfu_sparse_mmap_areas *m)
         type_size = sizeof(struct vfio_region_info_cap_type);
     }
 
-    if (m != NULL) {
+    if (reg->nr_mmap_areas != 0) {
         sparse_size = sizeof(struct vfio_region_info_cap_sparse_mmap)
-                      + (m->nr_mmap_areas * sizeof(struct vfio_region_sparse_mmap_area));
+                      + (reg->nr_mmap_areas * sizeof(struct vfio_region_sparse_mmap_area));
     }
 
     return type_size + sparse_size;
@@ -107,7 +107,6 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     struct vfio_info_cap_header *header;
     struct vfio_region_info_cap_type *type = NULL;
     struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
-    struct vfu_sparse_mmap_areas *mmap_areas;
 
     assert(vfu_ctx != NULL);
     assert(vfio_reg != NULL);
@@ -127,7 +126,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     }
 
     if (vfu_reg->mmap_areas != NULL) {
-        int i, nr_mmap_areas = vfu_reg->mmap_areas->nr_mmap_areas;
+        int i, nr_mmap_areas = vfu_reg->nr_mmap_areas;
         if (type != NULL) {
             type->header.next = vfio_reg->cap_offset + sizeof(struct vfio_region_info_cap_type);
             sparse = (struct vfio_region_info_cap_sparse_mmap*)(type + 1);
@@ -151,14 +150,15 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         sparse->header.next = 0;
         sparse->nr_areas = *nr_fds = nr_mmap_areas;
 
-        mmap_areas = vfu_reg->mmap_areas;
         for (i = 0; i < nr_mmap_areas; i++) {
+            struct iovec *iov = &vfu_reg->mmap_areas[i];
+
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
+                    i, iov->iov_base, iov->iov_base + iov->iov_len);
+
             (*fds)[i] = vfu_reg->fd;
-            sparse->areas[i].offset = (__u64)mmap_areas->areas[i].iov_base;
-            sparse->areas[i].size = mmap_areas->areas[i].iov_len;
-            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d %#llx-%#llx", __func__,
-                    i, sparse->areas[i].offset,
-                    sparse->areas[i].offset + sparse->areas[i].size);
+            sparse->areas[i].offset = (uintptr_t)iov->iov_base;
+            sparse->areas[i].size = iov->iov_len;
         }
     }
     return 0;
@@ -375,8 +375,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     if (!*vfio_reg) {
         return -ENOMEM;
     }
-    caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index),
-                                   vfu_reg->mmap_areas);
+    caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index), vfu_reg);
     (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
     (*vfio_reg)->index = index;
     (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
@@ -1206,49 +1205,24 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 }
 
 static int
-copy_sparse_mmap_areas(vfu_reg_info_t *reg_info,
-                       struct iovec *mmap_areas, uint32_t nr_mmap_areas)
+copyin_mmap_areas(vfu_reg_info_t *reg_info,
+                  struct iovec *mmap_areas, uint32_t nr_mmap_areas)
 {
-    struct vfu_sparse_mmap_areas *smmap_areas;
-    size_t areas_sz;
+    size_t size = nr_mmap_areas * sizeof (*mmap_areas);
 
     if (mmap_areas == NULL || nr_mmap_areas ==  0) {
         return 0;
     }
 
-    areas_sz  = nr_mmap_areas * sizeof(struct iovec);
+    reg_info->mmap_areas = malloc(size);
 
-    smmap_areas = calloc(1, sizeof(struct vfu_sparse_mmap_areas) + areas_sz);
-    if (smmap_areas == NULL) {
+    if (reg_info->mmap_areas == NULL) {
         return -ENOMEM;
     }
 
-    smmap_areas->nr_mmap_areas = nr_mmap_areas;
-    memcpy(smmap_areas->areas, mmap_areas, areas_sz);
-    reg_info->mmap_areas  = smmap_areas;
+    memcpy(reg_info->mmap_areas, mmap_areas, size);
+    reg_info->nr_mmap_areas = nr_mmap_areas;
 
-    return 0;
-}
-
-static int
-setup_sparse_areas(vfu_reg_info_t *r, struct iovec *mmap_areas,
-                   uint32_t nr_mmap_areas)
-{
-    int ret, i;
-
-    assert(r != NULL);
-
-    ret = copy_sparse_mmap_areas(r, mmap_areas, nr_mmap_areas);
-    if (ret < 0) {
-        return ret;
-    }
-    for (i = 0; i < r->mmap_areas->nr_mmap_areas; i++) {
-        struct iovec *a = &r->mmap_areas->areas[i];
-        if ((unsigned long long)a->iov_base + a->iov_len > r->size) {
-            free(r->mmap_areas);
-            return -EINVAL;
-        }
-    }
     return 0;
 }
 
@@ -1257,13 +1231,15 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas, int fd)
 {
+    struct iovec whole_region = { .iov_base = 0, .iov_len = size };
     vfu_reg_info_t *reg;
+    size_t i;
     int ret;
 
     assert(vfu_ctx != NULL);
 
     if ((mmap_areas == NULL) != (nr_mmap_areas == 0) ||
-        (mmap_areas == NULL) != (fd == -1)) {
+        (mmap_areas != NULL && fd == -1)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid mappable region arguments");
         return ERROR(EINVAL);
     }
@@ -1282,6 +1258,13 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         return ERROR(EINVAL);
     }
 
+    for (i = 0; i < nr_mmap_areas; i++) {
+        struct iovec *iov = &mmap_areas[i];
+        if ((size_t)iov->iov_base + iov->iov_len > size) {
+            return ERROR(EINVAL);
+        }
+    }
+
     reg = &vfu_ctx->reg_info[region_idx];
 
     reg->flags = flags;
@@ -1289,9 +1272,15 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->cb = cb;
     reg->fd = fd;
 
+    if (mmap_areas == NULL && reg->fd != -1) {
+        mmap_areas = &whole_region;
+        nr_mmap_areas = 1;
+    }
+
     if (nr_mmap_areas > 0) {
-        ret = setup_sparse_areas(reg, mmap_areas, nr_mmap_areas);
+        ret = copyin_mmap_areas(reg, mmap_areas, nr_mmap_areas);
         if (ret < 0) {
+            memset(reg, 0, sizeof (*reg));
             return ERROR(-ret);
         }
     }
@@ -1366,8 +1355,8 @@ vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
     migr_reg = &vfu_ctx->reg_info[(vfu_ctx->nr_regions - 1)];
 
     /* FIXME: Are there sparse areas need to be setup flags accordingly */
-    ret = copy_sparse_mmap_areas(migr_reg, migration->mmap_areas,
-                                 migration->nr_mmap_areas);
+    ret = copyin_mmap_areas(migr_reg, migration->mmap_areas,
+                            migration->nr_mmap_areas);
     if (ret < 0) {
         return ERROR(-ret);
     }

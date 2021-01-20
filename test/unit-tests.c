@@ -445,6 +445,7 @@ test_run_ctx(UNUSED void **state)
 static void
 test_get_region_info(UNUSED void **state)
 {
+    struct iovec iov = { .iov_base = (void*)0x8badf00, .iov_len = 0x0d15ea5e };
     vfu_reg_info_t reg_info[] = {
         {
             .size = 0xcadebabe
@@ -463,7 +464,6 @@ test_get_region_info(UNUSED void **state)
     uint32_t index = 0;
     uint32_t argsz = 0;
     struct vfio_region_info *vfio_reg;
-    struct vfu_sparse_mmap_areas *mmap_areas = alloca(sizeof(struct vfu_sparse_mmap_areas) + sizeof(struct iovec));
     int *fds = NULL;
     size_t nr_fds;
 
@@ -493,10 +493,9 @@ test_get_region_info(UNUSED void **state)
     assert_int_equal(0, nr_fds);
 
     /* regions caps (sparse mmap) but argsz too small */
-    mmap_areas->nr_mmap_areas = 1;
-    mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
-    mmap_areas->areas[0].iov_len = 0x0d15ea5e;
-    vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
+    vfu_ctx.reg_info[1].mmap_areas = &iov;
+    vfu_ctx.reg_info[1].nr_mmap_areas = 1;
+
     assert_int_equal(0,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
@@ -798,14 +797,14 @@ test_setup_sparse_region(void **state __attribute__((unused)))
     assert_int_equal(EINVAL, errno);
 
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, NULL, 0, 1);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
                            0x2000, NULL, 0, mmap_areas, 0, 1);
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
+
+    /* default mmap area if not given */
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, NULL, 0, 1);
+    assert_int_equal(0, ret);
 
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
