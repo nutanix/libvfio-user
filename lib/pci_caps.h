@@ -30,34 +30,48 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_PCI_H
-#define LIB_VFIO_USER_PCI_H
+#ifndef LIB_VFIO_USER_PCI_CAPS_H
+#define LIB_VFIO_USER_PCI_CAPS_H
 
 #include "libvfio-user.h"
-#include "private.h"
 
+/*
+ * This is an arbitrary value, but more than enough for max caps in extended
+ * config space.
+ */
+#define VFU_MAX_CAPS (1024)
+
+struct pci_cap;
+
+typedef ssize_t (cap_write_cb_t)(vfu_ctx_t *vfu_ctx, struct pci_cap *cap,
+                                 char *buf, size_t count, loff_t offset);
+
+struct pci_cap {
+    const char *name;
+    bool extended;
+    uint16_t id;
+    size_t off;
+    size_t hdr_size;
+    size_t size;
+    unsigned int flags;
+    cap_write_cb_t *cb;
+};
+
+/*
+ * Return the first cap (if any) that intersects with the [off, off+count)
+ * interval.
+ */
+struct pci_cap *
+cap_find_by_offset(vfu_ctx_t *ctx, loff_t off, size_t count);
+
+/*
+ * Handle an access to a capability.  The access is guaranteed to be entirely
+ * within a capability.
+ */
 ssize_t
-pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                  loff_t offset, bool is_write);
+pci_cap_access(vfu_ctx_t *ctx, char *buf, size_t count, loff_t offset,
+               bool is_write);
 
-ssize_t
-pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                        loff_t pos, bool is_write);
-
-
-static inline size_t
-pci_config_space_size(vfu_ctx_t *vfu_ctx)
-{
-    return vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
-}
-
-static inline uint8_t *
-pci_config_space_ptr(vfu_ctx_t *vfu_ctx, loff_t offset)
-{
-    assert((size_t)offset < pci_config_space_size(vfu_ctx));
-    return (uint8_t *)vfu_ctx->pci.config_space + offset;
-}
-
-#endif /* LIB_VFIO_USER_PCI_H */
+#endif /* LIB_VFIO_USER_PCI_CAPS_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

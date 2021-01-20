@@ -38,7 +38,7 @@ set(LIBMINOR 0)
 set(LIBPATCH 1)
 
 set(LIBOBJS
-    $<TARGET_OBJECTS:cap>
+    $<TARGET_OBJECTS:pci_caps>
     $<TARGET_OBJECTS:dma>
     $<TARGET_OBJECTS:irq>
     $<TARGET_OBJECTS:libvfio-user>
@@ -76,7 +76,7 @@ function(add_library_ut lib)
     set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
 endfunction(add_library_ut)
 
-add_library_ut(cap cap.c)
+add_library_ut(pci_caps pci_caps.c)
 add_library_ut(dma dma.c)
 add_library_ut(irq irq.c)
 add_library_ut(libvfio-user libvfio-user.c)
