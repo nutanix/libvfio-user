@@ -48,7 +48,8 @@ typedef ssize_t (cap_write_cb_t)(vfu_ctx_t *vfu_ctx, struct pci_cap *cap,
 
 struct pci_cap {
     const char *name;
-    uint8_t id;
+    bool extended;
+    uint16_t id;
     size_t off;
     size_t hdr_size;
     size_t size;

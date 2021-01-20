@@ -43,11 +43,12 @@
 #include <unistd.h>
 #include <syslog.h>
 
-#include "pci_defs.h"
-#include "pci_caps/pm.h"
-#include "pci_caps/px.h"
+#include "pci_caps/dsn.h"
 #include "pci_caps/msi.h"
 #include "pci_caps/msix.h"
+#include "pci_caps/pm.h"
+#include "pci_caps/px.h"
+#include "pci_defs.h"
 #include "vfio-user.h"
 
 #ifdef __cplusplus

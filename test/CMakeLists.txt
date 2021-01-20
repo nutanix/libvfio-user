@@ -56,3 +56,4 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=process_request")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)
+add_test(NAME lspci COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-lspci.sh)

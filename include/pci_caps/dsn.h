@@ -30,34 +30,31 @@
  *
  */
 
-#ifndef LIB_VFIO_USER_PCI_H
-#define LIB_VFIO_USER_PCI_H
+/*
+ * Device Serial Number (PCIE 7.12).
+ */
 
-#include "libvfio-user.h"
-#include "private.h"
+#ifndef LIB_VFIO_USER_PCI_CAPS_DSN_H
+#define LIB_VFIO_USER_PCI_CAPS_DSN_H
 
-ssize_t
-pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                  loff_t offset, bool is_write);
+#include "common.h"
 
-ssize_t
-pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                        loff_t pos, bool is_write);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+struct dsncap {
+    struct pcie_ext_cap_hdr hdr;
+    uint32_t sn_lo;
+    uint32_t sn_hi;
+} __attribute__((packed));
+_Static_assert(sizeof (struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
+               "bad DSN Capability size");
 
-static inline size_t
-pci_config_space_size(vfu_ctx_t *vfu_ctx)
-{
-    return vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size;
+#ifdef __cplusplus
 }
+#endif
 
-static inline uint8_t *
-pci_config_space_ptr(vfu_ctx_t *vfu_ctx, loff_t offset)
-{
-    assert((size_t)offset < pci_config_space_size(vfu_ctx));
-    return (uint8_t *)vfu_ctx->pci.config_space + offset;
-}
-
-#endif /* LIB_VFIO_USER_PCI_H */
+#endif /* LIB_VFIO_USER_PCI_CAPS_DSN_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
