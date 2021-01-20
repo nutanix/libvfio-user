@@ -343,28 +343,24 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
-        break;
+        if (ret == 0 && !is_write) {
+            *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
+        }
+        return ret;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
             vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
-            ret = -EINVAL;
+            return -EINVAL;
         } else {
-            ret = 0;
+            *offset = migr->info.data_offset + sizeof(struct vfio_device_migration_info);
+            return 0;
         }
-        break;
-    default:
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR,
-                "bad access to migration data_offset in state %d",
-                migr->info.device_state);
-        ret = -EINVAL;
     }
-
-    if (ret == 0 && !is_write) {
-        *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
-    }
-
-    return ret;
+    /* TODO improve error message */
+    vfu_log(vfu_ctx, LOG_ERR,
+            "bad access to migration data_offset in state %s",
+            migr_states[migr->info.device_state].name);
+    return -EINVAL;
 }
 
 static ssize_t
