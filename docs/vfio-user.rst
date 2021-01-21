@@ -1186,7 +1186,6 @@ method requested.
 Region IO FD info format
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-
 +------------+--------+------+
 | Name       | Offset | Size |
 +============+========+======+
@@ -1250,10 +1249,11 @@ Sub-Region IO FD info format (ioeventfd)
 +-----------+--------+------+
 
 * *offset* is the offset of the start of the sub-region within the region
-requested ("physical address offset" for the region)
-* *size* is the length of the sub-region. This may be zero, 
+  requested ("physical address offset" for the region)
+* *size* is the length of the sub-region. This may be zero if the access size is
+  not relevant, which may allow for optimizations
 * *fd_index* is the index in the ancillary data of the FD to use for ioeventfd
-notification; it may be shared.
+  notification; it may be shared.
 * *type* is `VFIO_USER_IO_FD_TYPE_IOEVENTFD`
 * *flags* is any of:
   * `KVM_IOEVENTFD_FLAG_DATAMATCH`
@@ -1266,7 +1266,6 @@ KVM_IOEVENTFD for further context on the ioeventfd-specific fields.
 
 Sub-Region IO FD info format (ioregionfd)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 
 +-----------+--------+------+
 | Name      | Offset | Size |
@@ -1286,15 +1285,15 @@ Sub-Region IO FD info format (ioregionfd)
 
 * *offset* is the offset of the start of the sub-region within the region
 requested ("physical address offset" for the region)
-* *size* is the length of the sub-region. This may be zero, 
-* *fd_index* is the index in the ancillary data of the FD to use for ioeventfd
-notification; it may be shared.
-* *type* is `VFIO_USER_IO_FD_TYPE_IOEVENTFD`
+* *size* is the length of the sub-region. FIXME: may allow zero?
+* *fd_index* is the index in the ancillary data of the FD to use for ioregionfd
+messages; it may be shared
+* *type* is `VFIO_USER_IO_FD_TYPE_IOREGIONFD`
 * *flags* is any of:
-  * `KVM_IOEVENTFD_FLAG_DATAMATCH`
-  * `KVM_IOEVENTFD_FLAG_PIO`
-  * `KVM_IOEVENTFD_FLAG_VIRTIO_CCW_NOTIFY` (FIXME: makes sense?)
-* *region_id* is an opaque value passed back to
+  * `KVM_IOREGIONFD_FLAG_PIO`
+  * `KVM_IOREGIONFD_FLAG_POSTED_WRITES`
+* *region_id* is an opaque value passed back to the server via a message on the
+  file descriptor
 
 See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for further context
 on the ioregionfd-specific fields.
