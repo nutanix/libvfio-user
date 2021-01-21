@@ -101,6 +101,21 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
+static void dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
+                uint32_t prot)
+{
+    if (iova == 0xcafebabe) {
+        assert_int_equal(0x1000, len);
+        assert_int_equal(PROT_READ | PROT_WRITE, prot);
+    } else {
+        assert_int_equal(0xdeadbeef, iova);
+        assert_int_equal(0x1000, len);
+        assert_int_equal(PROT_NONE, prot);
+    }
+
+    return;
+}
+
 /*
  * Tests that adding multiple DMA regions that not all of them are mappable
  * results in only the mappable one being memory mapped.
@@ -109,7 +124,7 @@ static void
 test_dma_add_regions_mixed(void **state __attribute__((unused)))
 {
     dma_controller_t dma = { 0 };
-    vfu_ctx_t vfu_ctx = { .dma = &dma };
+    vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb};
     dma.vfu_ctx = &vfu_ctx;
     struct vfio_user_dma_region r[2] = {
         [0] = {
@@ -1046,13 +1061,29 @@ test_dma_addr_to_sg(void **state __attribute__((unused)))
     r->virt_addr = (void*)0xdeadbeef;
 
     /* fast path, region hint hit */
+    r->prot = PROT_WRITE;
     assert_int_equal(1,
-        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_NONE));
+        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
     assert_int_equal(r->dma_addr, sg.dma_addr);
     assert_int_equal(0, sg.region);
     assert_int_equal(0x2000 - r->dma_addr, sg.offset);
     assert_int_equal(0x400, sg.length);
     assert_true(sg.mappable);
+
+    errno = 0;
+    r->prot = PROT_WRITE;
+    assert_int_equal(-1,
+        dma_addr_to_sg(dma, 0x6000, 0x400, &sg, 1, PROT_READ));
+    assert_int_equal(0, errno);
+
+    r->prot = PROT_READ;
+    assert_int_equal(-1,
+        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_WRITE));
+    assert_int_equal(EACCES, errno);
+
+    r->prot = PROT_READ|PROT_WRITE;
+    assert_int_equal(1,
+        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
 
     /* TODO test more scenarios */
 }
