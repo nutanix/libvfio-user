@@ -51,6 +51,7 @@
 struct dma_regions {
     uint64_t addr;
     uint64_t len;
+    uint32_t prot;
 };
 
 #define NR_DMA_REGIONS  96
@@ -139,7 +140,7 @@ static void _sa_handler(int signum)
 }
 
 static void
-map_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
+map_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len, uint32_t prot)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
     int idx;
@@ -155,6 +156,7 @@ map_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
 
     server_data->regions[idx].addr = iova;
     server_data->regions[idx].len = len;
+    server_data->regions[idx].prot = prot;
 }
 
 static int
