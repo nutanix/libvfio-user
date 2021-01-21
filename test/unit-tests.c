@@ -42,10 +42,10 @@
 
 #include "dma.h"
 #include "libvfio-user.h"
+#include "pci.h"
 #include "private.h"
 #include "migration.h"
 #include "tran_sock.h"
-#include "cap.h"
 
 static void
 test_dma_map_without_dma(void **state __attribute__((unused)))
@@ -404,7 +404,8 @@ test_realize_ctx(void **state __attribute__((unused)))
     assert_int_equal(PCI_CFG_SPACE_SIZE, cfg_reg->size);
     assert_non_null(vfu_ctx.pci.config_space);
     assert_non_null(vfu_ctx.irqs);
-    assert_null(vfu_ctx.pci.caps);
+    assert_int_equal(0, vfu_ctx.pci.nr_caps);
+    assert_int_equal(0, vfu_ctx.pci.nr_ext_caps);
 }
 
 static int
@@ -460,6 +461,7 @@ test_run_ctx(UNUSED void **state)
 static void
 test_get_region_info(UNUSED void **state)
 {
+    struct iovec iov = { .iov_base = (void*)0x8badf00, .iov_len = 0x0d15ea5e };
     vfu_reg_info_t reg_info[] = {
         {
             .size = 0xcadebabe
@@ -478,7 +480,6 @@ test_get_region_info(UNUSED void **state)
     uint32_t index = 0;
     uint32_t argsz = 0;
     struct vfio_region_info *vfio_reg;
-    struct vfu_sparse_mmap_areas *mmap_areas = alloca(sizeof(struct vfu_sparse_mmap_areas) + sizeof(struct iovec));
     int *fds = NULL;
     size_t nr_fds;
 
@@ -508,10 +509,9 @@ test_get_region_info(UNUSED void **state)
     assert_int_equal(0, nr_fds);
 
     /* regions caps (sparse mmap) but argsz too small */
-    mmap_areas->nr_mmap_areas = 1;
-    mmap_areas->areas[0].iov_base = (void*)0x8badf00d;
-    mmap_areas->areas[0].iov_len = 0x0d15ea5e;
-    vfu_ctx.reg_info[1].mmap_areas = mmap_areas;
+    vfu_ctx.reg_info[1].mmap_areas = &iov;
+    vfu_ctx.reg_info[1].nr_mmap_areas = 1;
+
     assert_int_equal(0,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
@@ -546,8 +546,10 @@ static void
 test_vfu_ctx_create(void **state __attribute__((unused)))
 {
     vfu_ctx_t *vfu_ctx = NULL;
-    vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM}};
-    vfu_cap_t *caps[] = { &pm };
+    struct pmcap pm = { { 0 } };
+
+    pm.hdr.id = PCI_CAP_ID_PM;
+    pm.pmcs.nsfrst = 0x1;
 
     vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
                              NULL, VFU_DEV_TYPE_PCI);
@@ -556,8 +558,24 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
     assert_int_equal(0, vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
                         PCI_HEADER_TYPE_NORMAL, 0));
-    assert_int_equal(0, vfu_pci_setup_caps(vfu_ctx, caps, 1));
+    assert_int_equal(PCI_STD_HEADER_SIZEOF,
+                     vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
+}
+
+static ssize_t
+test_pci_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
+                        loff_t offset, bool is_write)
+{
+    uint8_t *ptr = pci_config_space_ptr(vfu_ctx, offset);
+
+    assert_int_equal(is_write, true);
+    assert_int_equal(offset, PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + 8 +
+                             offsetof(struct vsc, data));
+    assert_int_equal(count, 10);
+    assert_memory_equal(ptr, "Hello world.", 10);
+    memcpy(ptr, buf, count);
+    return count;
 }
 
 static void
@@ -570,35 +588,72 @@ test_pci_caps(void **state __attribute__((unused)))
     vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space,
                           .reg_info = reg_info,
     };
-    vfu_cap_t pm = {.pm = {.hdr.id = PCI_CAP_ID_PM, .pmcs.raw = 0xabcd }};
-    vfu_cap_t *vsc[2] = {
-        alloca(sizeof(struct vsc) + 5),
-        alloca(sizeof(struct vsc) + 13)
+    struct vsc *vsc1 = alloca(sizeof (*vsc1) + 3);
+    struct vsc *vsc2 = alloca(sizeof (*vsc2) + 13);
+    struct vsc *vsc3 = alloca(sizeof (*vsc3) + 13);
+    struct vsc *vsc4 = alloca(sizeof (*vsc4) + 13);
+    struct pmcap pm = { { 0 } };
+    size_t expoffsets[] = {
+        PCI_STD_HEADER_SIZEOF,
+        PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
+        /* NB: note 4-byte alignment of vsc2. */
+        PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + 8,
+        0x80,
+        0x90
     };
-    vfu_cap_t *vfu_caps[] = { &pm, vsc[0], vsc[1] };
-    struct caps *caps;
-    int err;
-    struct pmcap pmcap = { .pmcs.raw = 0xef01 };
     size_t offset;
-    off_t off;
+    ssize_t ret;
 
-    vsc[0]->vsc.hdr.id = PCI_CAP_ID_VNDR;
-    vsc[0]->vsc.size = 8;
-    memcpy(vsc[0]->vsc.data, "abcde", 5);
+    memset(&config_space, 0, sizeof (config_space));
 
-    vsc[1]->vsc.hdr.id = PCI_CAP_ID_VNDR;
-    vsc[1]->vsc.size = 16;
-    memcpy(vsc[1]->vsc.data, "Hello world.", 12);
+    vfu_ctx.reg_info = calloc(VFU_PCI_DEV_NUM_REGIONS,
+                              sizeof (*vfu_ctx.reg_info));
 
-    caps = caps_create(&vfu_ctx, vfu_caps, 3, &err);
-    assert_non_null(caps);
+    pm.hdr.id = PCI_CAP_ID_PM;
+    pm.pmcs.raw = 0xef01;
 
-    /* check that capability list is placed correctly */
+    vsc1->hdr.id = PCI_CAP_ID_VNDR;
+    vsc1->size = 6;
+    memcpy(vsc1->data, "abc", 3);
+
+    vsc2->hdr.id = PCI_CAP_ID_VNDR;
+    vsc2->size = 16;
+    memcpy(vsc2->data, "Hello world.", 12);
+
+    vsc3->hdr.id = PCI_CAP_ID_VNDR;
+    vsc3->size = 16;
+    memcpy(vsc3->data, "Hello world.", 12);
+
+    vsc4->hdr.id = PCI_CAP_ID_VNDR;
+    vsc4->size = 16;
+    memcpy(vsc4->data, "Hello world.", 12);
+
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_CALLBACK, &pm);
+    assert_int_equal(-1, offset);
+    assert_int_equal(EINVAL, errno);
+
+    offset = vfu_pci_add_capability(&vfu_ctx, 256, 0, &pm);
+    assert_int_equal(-1, offset);
+    assert_int_equal(EINVAL, errno);
+
+    vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb = test_pci_caps_region_cb;
+    vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = PCI_CFG_SPACE_SIZE;
+
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, 0, &pm);
+    assert_int_equal(expoffsets[0], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_READONLY, vsc1);
+    assert_int_equal(expoffsets[1], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_CALLBACK, vsc2);
+    assert_int_equal(expoffsets[2], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, expoffsets[3], 0, vsc3);
+    assert_int_equal(expoffsets[3], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, expoffsets[4], 0, vsc4);
+    assert_int_equal(expoffsets[4], offset);
 
     offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_PM);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF, offset);
+    assert_int_equal(expoffsets[0], offset);
     assert_int_equal(PCI_CAP_ID_PM, config_space.raw[offset]);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF,
+    assert_int_equal(expoffsets[1],
                      config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
     offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
@@ -606,31 +661,40 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_int_equal(0, offset);
 
     offset = vfu_pci_find_capability(&vfu_ctx, false, PCI_CAP_ID_VNDR);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
+    assert_int_equal(expoffsets[1], offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
+    assert_int_equal(expoffsets[2],
+                     config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
     offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
                                           PCI_CAP_ID_PM);
     assert_int_equal(0, offset);
 
     offset = vfu_pci_find_next_capability(&vfu_ctx, false, 0, PCI_CAP_ID_VNDR);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF, offset);
+    assert_int_equal(expoffsets[1], offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
+    assert_int_equal(expoffsets[2],
                      config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
-                                          PCI_CAP_ID_VNDR);
-    assert_int_equal(PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + vsc[0]->vsc.size,
-                     offset);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          offset, PCI_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[2], offset);
     assert_int_equal(PCI_CAP_ID_VNDR, config_space.raw[offset]);
-    assert_int_equal(0, config_space.raw[offset + PCI_CAP_LIST_NEXT]);
+    assert_int_equal(expoffsets[3],
+                     config_space.raw[offset + PCI_CAP_LIST_NEXT]);
 
-    offset = vfu_pci_find_next_capability(&vfu_ctx, false, offset,
-                                          PCI_CAP_ID_VNDR);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          offset, PCI_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[3], offset);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          offset, PCI_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[4], offset);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, false,
+                                          offset, PCI_CAP_ID_VNDR);
     assert_int_equal(0, offset);
 
     /* check for invalid offsets */
+
     offset = vfu_pci_find_next_capability(&vfu_ctx, false, 8192, PCI_CAP_ID_PM);
     assert_int_equal(0, offset);
     assert_int_equal(EINVAL, errno);
@@ -649,22 +713,223 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_int_equal(ENOENT, errno);
 
     /* check writing PMCS */
-    assert_int_equal(0,
-        cap_maybe_access(&vfu_ctx, caps, (char*)&pmcap.pmcs,
-                         sizeof(struct pmcs),
-                         PCI_STD_HEADER_SIZEOF + offsetof(struct pmcap, pmcs)));
-    assert_memory_equal(
-        &config_space.raw[PCI_STD_HEADER_SIZEOF + offsetof(struct pmcap, pmcs)],
-        &pmcap.pmcs.raw, sizeof(struct pmcs));
 
-    /*
-     * Check that pci_cap_access returns 0 when reading a non-vendor-specific
-     * capability which doesn't have a callback.
-     */
-    off = PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + PCI_CAP_FLAGS + 1;
-    assert_int_equal(5,
-        cap_maybe_access(&vfu_ctx, caps, (char*)vsc[0]->vsc.data, 5, off));
-    assert_memory_equal(&config_space.raw[off], vsc[0]->vsc.data, 5);
+    pm.pmcs.raw = 0xffff;
+
+    ret = pci_config_space_access(&vfu_ctx, (char *)&pm.pmcs,
+                                  sizeof (struct pmcs), expoffsets[0] +
+                                  offsetof(struct pmcap, pmcs), true);
+
+    assert_int_equal(sizeof (struct pmcs), ret);
+
+    assert_memory_equal(pci_config_space_ptr(&vfu_ctx, expoffsets[0] +
+                                             offsetof(struct pmcap, pmcs)),
+                        &pm.pmcs, sizeof (struct pmcs));
+
+    /* check read only capability */
+
+    ret = pci_config_space_access(&vfu_ctx, (char *)vsc1->data, 3,
+                                  expoffsets[1] + offsetof(struct vsc, data),
+                                  false);
+    assert_int_equal(ret, 3);
+    assert_memory_equal(vsc1->data, "abc", 3);
+
+    ret = pci_config_space_access(&vfu_ctx, "ced", 3,
+                                  expoffsets[1] + offsetof(struct vsc, data),
+                                  true);
+    assert_int_equal(ret, -EPERM);
+
+    /* check capability callback */
+
+    ret = pci_config_space_access(&vfu_ctx, "Bye world.", 10,
+                                  expoffsets[2] + offsetof(struct vsc, data),
+                                  true);
+
+    assert_int_equal(ret, 10);
+    assert_memory_equal(pci_config_space_ptr(&vfu_ctx,
+                        expoffsets[2] + offsetof(struct vsc, data)),
+                        "Bye world.", 10);
+}
+
+static ssize_t
+test_pci_ext_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
+                            loff_t offset, bool is_write)
+{
+    uint8_t *ptr = pci_config_space_ptr(vfu_ctx, offset);
+
+    assert_int_equal(is_write, true);
+    assert_int_equal(offset, PCI_CFG_SPACE_SIZE + sizeof (struct dsncap) +
+                     sizeof (struct pcie_ext_cap_vsc_hdr) + 8 +
+                     sizeof (struct pcie_ext_cap_vsc_hdr));
+    assert_int_equal(count, 10);
+    assert_memory_equal(ptr, "Hello world.", 10);
+    memcpy(ptr, buf, count);
+    return count;
+}
+
+static void
+test_pci_ext_caps(void **state __attribute__((unused)))
+{
+    uint8_t config_space[PCI_CFG_SPACE_EXP_SIZE] = { 0, };
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
+        [VFU_PCI_DEV_CFG_REGION_IDX] = { .size = PCI_CFG_SPACE_EXP_SIZE },
+    };
+    vfu_ctx_t vfu_ctx = { .pci.config_space = (void *)&config_space,
+                          .reg_info = reg_info,
+    };
+
+    struct pcie_ext_cap_vsc_hdr *vsc1 = alloca(sizeof (*vsc1) + 5);
+    struct pcie_ext_cap_vsc_hdr *vsc2 = alloca(sizeof (*vsc2) + 13);
+    struct pcie_ext_cap_vsc_hdr *vsc3 = alloca(sizeof (*vsc3) + 13);
+    struct pcie_ext_cap_vsc_hdr *vsc4 = alloca(sizeof (*vsc4) + 13);
+    struct pcie_ext_cap_hdr *hdr;
+    size_t expoffsets[] = {
+        PCI_CFG_SPACE_SIZE,
+        PCI_CFG_SPACE_SIZE + sizeof (struct dsncap),
+        PCI_CFG_SPACE_SIZE + sizeof (struct dsncap) + sizeof (*vsc1) + 8,
+        512,
+        600
+    };
+    struct dsncap dsn;
+    size_t offset;
+    ssize_t ret;
+
+    vfu_ctx.pci.type = VFU_PCI_TYPE_EXPRESS;
+
+    vfu_ctx.reg_info = calloc(VFU_PCI_DEV_NUM_REGIONS,
+                              sizeof (*vfu_ctx.reg_info));
+
+    vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb = test_pci_ext_caps_region_cb;
+    vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = PCI_CFG_SPACE_EXP_SIZE;
+
+    dsn.hdr.id = PCI_EXT_CAP_ID_DSN;
+    dsn.sn_lo = 0x4;
+    dsn.sn_hi = 0x8;
+
+    vsc1->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    vsc1->len = sizeof (*vsc1) + 5;
+    memcpy(vsc1->data, "abcde", 5);
+    vsc2->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    vsc2->len = sizeof (*vsc2) + 13;
+    memcpy(vsc2->data, "Hello world.", 12);
+    vsc3->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    vsc3->len = sizeof (*vsc3) + 13;
+    memcpy(vsc3->data, "Hello world.", 12);
+    vsc4->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    vsc4->len = sizeof (*vsc4) + 13;
+    memcpy(vsc4->data, "Hello world.", 12);
+
+    offset = vfu_pci_add_capability(&vfu_ctx, 4096, VFU_CAP_FLAG_EXTENDED, &dsn);
+    assert_int_equal(-1, offset);
+    assert_int_equal(EINVAL, errno);
+
+    /* First cap must be at 256 */
+    offset = vfu_pci_add_capability(&vfu_ctx, 512, VFU_CAP_FLAG_EXTENDED, &dsn);
+    assert_int_equal(-1, offset);
+    assert_int_equal(EINVAL, errno);
+
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, &dsn);
+    assert_int_equal(expoffsets[0], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED |
+                                    VFU_CAP_FLAG_READONLY, vsc1);
+    assert_int_equal(expoffsets[1], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED |
+                                    VFU_CAP_FLAG_CALLBACK, vsc2);
+    assert_int_equal(expoffsets[2], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, expoffsets[3],
+                                    VFU_CAP_FLAG_EXTENDED, vsc3);
+    assert_int_equal(expoffsets[3], offset);
+    offset = vfu_pci_add_capability(&vfu_ctx, expoffsets[4],
+                                    VFU_CAP_FLAG_EXTENDED, vsc4);
+    assert_int_equal(expoffsets[4], offset);
+
+    offset = vfu_pci_find_capability(&vfu_ctx, true, PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(expoffsets[0], offset);
+    hdr = (struct pcie_ext_cap_hdr *)&config_space[offset];
+    assert_int_equal(PCI_EXT_CAP_ID_DSN, hdr->id);
+    assert_int_equal(expoffsets[1], hdr->next);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, offset,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+
+    offset = vfu_pci_find_capability(&vfu_ctx, true, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[1], offset);
+    hdr = (struct pcie_ext_cap_hdr *)&config_space[offset];
+    assert_int_equal(PCI_EXT_CAP_ID_VNDR, hdr->id);
+    assert_int_equal(expoffsets[2], hdr->next);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, offset,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, 0, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[1], offset);
+    hdr = (struct pcie_ext_cap_hdr *)&config_space[offset];
+    assert_int_equal(PCI_EXT_CAP_ID_VNDR, hdr->id);
+    assert_int_equal(expoffsets[2], hdr->next);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true,
+                                          offset, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[2], offset);
+    hdr = (struct pcie_ext_cap_hdr *)&config_space[offset];
+    assert_int_equal(PCI_EXT_CAP_ID_VNDR, hdr->id);
+    assert_int_equal(expoffsets[3], hdr->next);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true,
+                                          offset, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[3], offset);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true,
+                                          offset, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(expoffsets[4], offset);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true,
+                                          offset, PCI_EXT_CAP_ID_VNDR);
+    assert_int_equal(0, offset);
+
+    /* check for invalid offsets */
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, 8192,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, 4096,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true, 4095,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+    assert_int_equal(EINVAL, errno);
+
+    offset = vfu_pci_find_next_capability(&vfu_ctx, true,
+                                          expoffsets[1] + 1,
+                                          PCI_EXT_CAP_ID_DSN);
+    assert_int_equal(0, offset);
+    assert_int_equal(ENOENT, errno);
+
+    /* check read only capability */
+
+    ret = pci_config_space_access(&vfu_ctx, (char *)vsc1->data, 5,
+                                  expoffsets[1] + offsetof(struct pcie_ext_cap_vsc_hdr, data),
+                                  false);
+    assert_int_equal(ret, 5);
+    assert_memory_equal(vsc1->data, "abcde", 5);
+
+    ret = pci_config_space_access(&vfu_ctx, "ced", 3,
+                                  expoffsets[1] + offsetof(struct pcie_ext_cap_vsc_hdr, data),
+                                  true);
+    assert_int_equal(ret, -EPERM);
+
+    /* check capability callback */
+
+    ret = pci_config_space_access(&vfu_ctx, "Bye world.", 10,
+                                  expoffsets[2] + offsetof(struct pcie_ext_cap_vsc_hdr, data),
+                                  true);
+
+    assert_int_equal(ret, 10);
+    assert_memory_equal(pci_config_space_ptr(&vfu_ctx,
+                        expoffsets[2] + offsetof(struct pcie_ext_cap_vsc_hdr, data)),
+                        "Bye world.", 10);
 }
 
 static void
@@ -729,14 +994,14 @@ test_setup_sparse_region(void **state __attribute__((unused)))
     assert_int_equal(EINVAL, errno);
 
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, NULL, 0, 1);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
                            0x2000, NULL, 0, mmap_areas, 0, 1);
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
+
+    /* default mmap area if not given */
+    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
+                           0x2000, NULL, 0, NULL, 0, 1);
+    assert_int_equal(0, ret);
 
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
@@ -860,6 +1125,7 @@ int main(void)
         cmocka_unit_test_setup(test_run_ctx, setup),
         cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
+        cmocka_unit_test_setup(test_pci_ext_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
         cmocka_unit_test_setup(test_device_get_info_compat, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),

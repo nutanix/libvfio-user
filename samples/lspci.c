@@ -30,10 +30,11 @@
  *
  */
 
-#include <stdio.h>
 #include <err.h>
-#include <stdlib.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "libvfio-user.h"
 
@@ -42,30 +43,71 @@ int main(void)
     int i, j;
     char *buf;
     const int bytes_per_line = 0x10;
-    vfu_cap_t pm = { .pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 } };
-    vfu_cap_t *vsc = alloca(sizeof(*vsc) + 0xd);
-    vfu_cap_t *caps[2] = { &pm, vsc };
+    struct vsc *vsc = alloca(sizeof(*vsc) + 0xd);
+    struct pcie_ext_cap_vsc_hdr *evsc = alloca(sizeof(*evsc) + 0xd);
+    struct dsncap dsn = { .hdr.id = PCI_EXT_CAP_ID_DSN,
+                          .sn_lo = 0xdeadbeef,
+                          .sn_hi = 0xcafebabe };
+    struct pmcap pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 };
+    /* Required for lspci to report extended caps. */
+    struct pxcap px = { .hdr.id = PCI_CAP_ID_EXP };
+
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
                                         LIBVFIO_USER_FLAG_ATTACH_NB, NULL,
                                         VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to create libvfio-user context");
     }
-    if (vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
+    if (vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_EXPRESS,
                      PCI_HEADER_TYPE_NORMAL, 0) < 0) {
         err(EXIT_FAILURE, "vfu_pci_init() failed");
     }
-    vsc->vsc.hdr.id = PCI_CAP_ID_VNDR;
-    vsc->vsc.size = 0x10;
-    if (vfu_pci_setup_caps(vfu_ctx, caps, 2) < 0) {
-        err(EXIT_FAILURE, "failed to setup PCI capabilities");
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, &pm) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
     }
+
+    memset(vsc, 0, 0x10);
+    vsc->hdr.id = PCI_CAP_ID_VNDR;
+    vsc->size = 0x10;
+    memcpy(vsc->data, "abcdefgh", 8);
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, vsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, 0, &px) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, &dsn) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    memset(evsc, 0, sizeof(*evsc) + 0xd);
+    evsc->hdr.id = PCI_EXT_CAP_ID_VNDR;
+    evsc->id = 1;
+    evsc->rev = 1;
+    evsc->len = sizeof(*evsc) + 0xd;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0, VFU_CAP_FLAG_EXTENDED, evsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
+    evsc->id = 2;
+    evsc->rev = 2;
+
+    if (vfu_pci_add_capability(vfu_ctx, 0x400,
+        VFU_CAP_FLAG_EXTENDED, evsc) < 0) {
+        err(EXIT_FAILURE, "vfu_pci_add_capability() failed");
+    }
+
     if (vfu_realize_ctx(vfu_ctx) < 0) {
         err(EXIT_FAILURE, "failed to realize device");
     }
     buf = (char*)vfu_pci_get_config_space(vfu_ctx);
     printf("00:00.0 bogus PCI device\n");
-    for (i = 0; i < PCI_CFG_SPACE_SIZE / bytes_per_line; i++) {
+    for (i = 0; i < PCI_CFG_SPACE_EXP_SIZE / bytes_per_line; i++) {
         printf("%02x:", i * bytes_per_line);
         for (j = 0; j < bytes_per_line; j++) {
             printf(" %02x", buf[i * bytes_per_line + j] & 0xff);
