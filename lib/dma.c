@@ -413,6 +413,7 @@ out:
     } else if (cnt > max_sg) {
         cnt = -cnt - 1;
     }
+    errno = 0;
     return cnt;
 }
 

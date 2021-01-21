@@ -459,10 +459,10 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
- *  -1:         if the GPA address span is invalid or
- *              prot violation (errno=EACCES)
+ *  -1:         if the GPA address span is invalid (errno=0) or
+ *              protection violation (errno=EACCES)
  *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
- *              entries necessary to complete this request.
+ *              entries necessary to complete this request (errno=0).
  */
 int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr, uint32_t len,
