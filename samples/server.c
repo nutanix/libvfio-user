@@ -306,7 +306,15 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
-    *offset = 0;
+    if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
+        assert(server_data->bar1_size >= server_data->migration.pending_bytes);
+        *offset = server_data->bar1_size - server_data->migration.pending_bytes;
+    } else if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
+        *offset = 0;
+    } else {
+        assert(false); /* FIXME fail gracefully */
+    }
+
     /*
      * Don't provide all migration data in one go in order to make it a bit
      * more interesting.
@@ -376,14 +384,17 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
      * save BAR0.
      */
     vfu_log(vfu_ctx, LOG_DEBUG,
-            "apply device migration data to BAR%d %#llx-%#llx",
-            offset < server_data->bar1_size ? 1 : 0,
+            "apply device migration data %#llx-%#llx",
             offset, offset + size - 1);
 
     if (offset < server_data->bar1_size) {
-        assert(offset + size <= server_data->bar1_size); /* FIXME */
-        memcpy(server_data->bar1 + offset, data, size);
-    } else {
+        __u64 _size = MIN(size, server_data->bar1_size - offset);
+        memcpy(server_data->bar1 + offset, data, _size);
+        offset += _size;
+        size -= _size;
+    }
+
+    if (offset >= server_data->bar1_size && size > 0) {
         int ret;
 
         /* FIXME should be able to write any valid subrange */
