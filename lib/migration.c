@@ -296,6 +296,14 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
         if (ret < 0) {
             return ret;
         }
+        /*
+         * FIXME must first read data_offset and then data_size. They way we've
+         * implemented it now, if data_size is read before data_offset we
+         * transition to state VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED without
+         * calling callbacks.prepare_data, which is wrong. Maybe we need
+         * separate states for data_offset and data_size.
+         */
+        migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED);
         break;
     case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
         /*
