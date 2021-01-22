@@ -195,6 +195,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (ret == 0) {
         migr->info.device_state = *device_state;
+        migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_INITIAL);
     } else if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to transition to state %d: %s",
                 *device_state, strerror(-ret));
