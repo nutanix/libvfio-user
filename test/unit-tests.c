@@ -235,7 +235,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
 }
 
 /*
- * Checks that handle_dma_map_or_unmap returns 0 when dma_controller_add_region 
+ * Checks that handle_dma_map_or_unmap returns 0 when dma_controller_add_region
  * succeeds.
  */
 static void
@@ -271,6 +271,8 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
     int fd = -1;
     off_t offset = 0;
     dma_memory_region_t *r;
+
+    memset(dma, 0, sizeof (*dma) + sizeof(dma_memory_region_t));
 
     dma->vfu_ctx = &vfu_ctx;
     dma->max_regions = 1;
