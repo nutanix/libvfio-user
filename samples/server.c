@@ -63,9 +63,13 @@ struct server_data {
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
         __u64 pending_bytes;
-        __u64 data_size;
-        void *migr_data;
+
+        /*
+         * TODO must be maximum size of migration data read, we'll use that to
+         * create the migration region.
+         */
         size_t migr_data_len;
+
         vfu_migr_state_t state;
     } migration;
 };
@@ -266,7 +270,6 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     switch (state) {
         case VFU_MIGR_STATE_STOP_AND_COPY:
             server_data->migration.pending_bytes = sizeof(time_t); /* FIXME BAR0 region size */
-            server_data->migration.data_size = 0;
             break;
         case VFU_MIGR_STATE_PRE_COPY:
             /* TODO must be less than size of data region in migration region */
@@ -294,10 +297,6 @@ static __u64
 migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
-    if (server_data->migration.data_size > 0) {
-        assert(server_data->migration.data_size <= server_data->migration.pending_bytes);
-        server_data->migration.pending_bytes -= server_data->migration.data_size;
-    }
     return server_data->migration.pending_bytes;
 }
 
@@ -311,7 +310,7 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
      * Don't provide all migration data in one go in order to make it a bit
      * more interesting.
      */
-    *size = server_data->migration.data_size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
+    *size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
     return 0;
 }
 
@@ -322,11 +321,11 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
     uint8_t *p;
     size_t bar_size;
 
-    if (server_data->migration.data_size < size) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid migration data read %#llx-%#llx",
-                offset, offset + size - 1);
-        return -EINVAL;
-    }
+    /* FIXME need to validate data range */
+    vfu_log(vfu_ctx, LOG_DEBUG, "read migration data %#llx-%#llx, %#llx remaining",
+                offset, offset + size - 1, server_data->migration.pending_bytes);
+
+    assert(size <= server_data->migration.pending_bytes);
 
     /*
      * If in pre-copy state we copy BAR1, if in stop-and-copy state we copy
@@ -360,6 +359,8 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
         size = bar_size - offset;
     }
     memcpy(buf, p + offset, size);
+    server_data->migration.pending_bytes -= size;
+
     return size;
 }
 
@@ -537,12 +538,6 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup device migration");
     }
 
-    server_data.migration.migr_data = aligned_alloc(server_data.migration.migr_data_len,
-                                                    server_data.migration.migr_data_len);
-    if (server_data.migration.migr_data == NULL) {
-        err(EXIT_FAILURE, "failed to allocate migration data");
-    }
-
     ret = vfu_realize_ctx(vfu_ctx);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to realize device");
@@ -577,7 +572,6 @@ int main(int argc, char *argv[])
     }
 
     vfu_destroy_ctx(vfu_ctx);
-    free(server_data.migration.migr_data);
     return EXIT_SUCCESS;
 }
 
