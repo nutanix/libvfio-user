@@ -137,6 +137,22 @@ bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
     }
 
     if (is_write) {
+        /*
+         * FIXME this doesn't work for the following reason:
+         * The amount of migration data the server generates during the pre-copy
+         * and stop-and-copy phases is larger than the size of BAR1, however
+         * during the resuming state, the server blindly appends to BAR1,
+         * since it cannot know that a particular piece of migration data has
+         * to be written to a specific offset. To fix this we have to include
+         * offset and length, along with the actual data, when reading migration
+         * data.
+         */
+#if 0
+        if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
+            /* dirty the whole thing */
+            server_data->migration.pending_bytes = server_data->bar1_size;
+        }
+#endif
         memcpy(server_data->bar1 + offset, buf, count);
     } else {
         memcpy(buf, server_data->bar1, count);

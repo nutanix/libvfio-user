@@ -30,7 +30,7 @@
 
 add_executable(client client.c
                ../lib/tran_sock.c ../lib/migration.c)
-target_link_libraries(client json-c)
+target_link_libraries(client json-c pthread ssl crypto)
 
 add_executable(server server.c)
 target_link_libraries(server vfio-user-static ssl crypto)
