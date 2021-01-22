@@ -265,17 +265,20 @@ static void
 test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
 {
     vfu_ctx_t vfu_ctx = { 0 };
-    dma_controller_t dma = { .vfu_ctx = &vfu_ctx, .max_regions = 1 };
+    dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(dma_memory_region_t));
     dma_addr_t dma_addr = 0xdeadbeef;
     size_t size = 0;
     int fd = -1;
     off_t offset = 0;
     dma_memory_region_t *r;
 
-    assert_int_equal(0, dma_controller_add_region(&dma, dma_addr, size, fd,
+    dma->vfu_ctx = &vfu_ctx;
+    dma->max_regions = 1;
+
+    assert_int_equal(0, dma_controller_add_region(dma, dma_addr, size, fd,
                      offset, PROT_NONE));
-    assert_int_equal(1, dma.nregions);
-    r = &dma.regions[0];
+    assert_int_equal(1, dma->nregions);
+    r = &dma->regions[0];
     assert_ptr_equal(NULL, r->virt_addr);
     assert_ptr_equal(dma_addr, r->dma_addr);
     assert_int_equal(size, r->size);
