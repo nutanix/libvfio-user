@@ -61,6 +61,7 @@ struct migration {
      */
     struct {
         enum migr_iter_state state;
+        __u64 pending_bytes;
         __u64 offset;
         __u64 size;
     } iter;
@@ -251,8 +252,6 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return 0;
     }
 
-    *pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
-
     switch (migr->iter.state) {
         case VFIO_USER_MIGR_ITER_STATE_INITIAL:
         case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
@@ -260,6 +259,8 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
              * FIXME what happens if data haven't been consumed in the previous
              * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
+            *pending_bytes = migr->iter.pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
+
             if (*pending_bytes == 0) {
                 migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
             } else {
@@ -268,11 +269,11 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
             break;
         case VFIO_USER_MIGR_ITER_STATE_STARTED:
             /*
-             * Repeated reads of pending_bytes should not have any side effects.
-             * FIXME does it have to be the same as the previous value? Can it
-             * increase or even decrease? I suppose it can't be lower than
-             * data_size? Ask on LKML.
+             * FIXME We might be wrong returning a cached value, check
+             * https://www.spinics.net/lists/kvm/msg228608.html
+             *
              */
+            *pending_bytes = migr->iter.pending_bytes;
             break;
         default:
             return -EINVAL;
