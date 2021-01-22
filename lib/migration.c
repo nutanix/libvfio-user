@@ -146,7 +146,7 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
 }
 
 static bool
-_migr_state_transition_is_valid(__u32 from, __u32 to)
+vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
 {
     return migr_states[from].state & (1 << to);
 }
@@ -170,7 +170,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return -EINVAL;
     }
 
-    if (!_migr_state_transition_is_valid(migr->info.device_state,
+    if (!vfio_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
         /* TODO print descriptive device state names instead of raw value */
         vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %s to state %s",
