@@ -1284,10 +1284,10 @@ Sub-Region IO FD info format (ioregionfd)
 +-----------+--------+------+
 
 * *offset* is the offset of the start of the sub-region within the region
-requested ("physical address offset" for the region)
+  requested ("physical address offset" for the region)
 * *size* is the length of the sub-region. FIXME: may allow zero?
 * *fd_index* is the index in the ancillary data of the FD to use for ioregionfd
-messages; it may be shared
+  messages; it may be shared
 * *type* is `VFIO_USER_IO_FD_TYPE_IOREGIONFD`
 * *flags* is any of:
   * `KVM_IOREGIONFD_FLAG_PIO`
