@@ -32,6 +32,7 @@ set(VFIO_USER_HEADERS_DIR ${CMAKE_INSTALL_INCLUDEDIR}/vfio-user)
 
 install(FILES "libvfio-user.h" DESTINATION ${VFIO_USER_HEADERS_DIR})
 install(FILES "pci_caps/common.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
+install(FILES "pci_caps/dsn.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
 install(FILES "pci_caps/msi.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
 install(FILES "pci_caps/msix.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
 install(FILES "pci_caps/pm.h" DESTINATION ${VFIO_USER_HEADERS_DIR}/pci_caps)
