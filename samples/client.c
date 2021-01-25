@@ -754,9 +754,6 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
              strerror(-ret));
     }
 
-    /* We do expect some migration data. */
-    assert(pending_bytes > 0);
-
     for (i = 0; i < nr_iters && pending_bytes > 0; i++) {
 
         /* XXX read data_offset and data_size */
@@ -827,17 +824,18 @@ fake_guest(void *arg)
         err(EXIT_FAILURE, "failed to open /dev/unrandom");
     }
 
-    MD5_Init(&md5_ctx);
 
     do {
         ret = fread(buf, fake_guest_data->bar1_size, 1, fp);
         if (ret != 1) {
             errx(EXIT_FAILURE, "short read %d", ret);
         }
-        ret = access_region(fake_guest_data->sock, 1, true, 0, buf, sizeof buf);
+        ret = access_region(fake_guest_data->sock, 1, true, 0, buf,
+                            fake_guest_data->bar1_size);
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
+        MD5_Init(&md5_ctx);
         MD5_Update(&md5_ctx, buf, fake_guest_data->bar1_size);
         __sync_synchronize();
     } while (!fake_guest_data->done);
@@ -897,12 +895,6 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     }
 
     _nr_iters = do_migrate(sock, migr_reg_index, 3, *migr_iters);
-    if (_nr_iters != 3) {
-        errx(EXIT_FAILURE,
-             "expected 3 iterations instead of %ld while in pre-copy state\n",
-             _nr_iters);
-    }
-
     printf("stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
@@ -913,11 +905,6 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     }
 
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 4) {
-        errx(EXIT_FAILURE,
-             "expected 4 iterations instead of %ld while in pre-copy state\n",
-             _nr_iters);
-    }
 
     printf("setting device state to stop-and-copy\n");
 
@@ -931,9 +918,9 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     }
 
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 5) {
+    if (_nr_iters != 2) {
         errx(EXIT_FAILURE,
-             "expected 5 iterations instead of %ld while in stop-and-copy state\n",
+             "expected 2 iterations instead of %ld while in stop-and-copy state\n",
              _nr_iters);
     }
 
@@ -1074,9 +1061,9 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     MD5_Update(&md5_ctx, buf, bar1_size);
     MD5_Final(dst_md5sum, &md5_ctx);
 
-    if (strcmp((char*)src_md5sum, (char*)dst_md5sum) != 0) {
+    if (strncmp((char*)src_md5sum, (char*)dst_md5sum, MD5_DIGEST_LENGTH) != 0) {
         int i;
-        fprintf(stderr, "md5 sum mismatch: ");
+        fprintf(stderr, "md5sum mismatch: ");
         for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
             fprintf(stderr, "%02x", src_md5sum[i]);
         }
@@ -1085,6 +1072,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
             fprintf(stderr, "%02x", dst_md5sum[i]);
         }
         fprintf(stderr, "\n");
+        abort();
     }
 
     return sock;
@@ -1299,8 +1287,8 @@ int main(int argc, char *argv[])
      */
     sleep(1);
 
-    migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters, md5sum,
-                 bar1_size);
+    nr_iters = migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters,
+                            md5sum, bar1_size);
 
     /*
      * Normally the client would now send the device state to the destination
