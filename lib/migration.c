@@ -38,6 +38,9 @@
 #include "migration.h"
 #include "private.h"
 
+/*
+ * FSM to simplify saving device state.
+ */
 enum migr_iter_state {
     VFIO_USER_MIGR_ITER_STATE_INITIAL,
     VFIO_USER_MIGR_ITER_STATE_STARTED,
@@ -49,6 +52,11 @@ struct migration {
     struct vfio_device_migration_info info;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
+
+    /*
+     * This is only for the saving state. The resuming state is simpler so we
+     * don't need it.
+     */
     struct {
         enum migr_iter_state state;
         __u64 offset;
@@ -264,7 +272,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
         break;
     case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
         /*
-         * data_offset is invariant during an iteration.
+         * data_offset is invariant during a save iteration.
          */
         break;
     default:
