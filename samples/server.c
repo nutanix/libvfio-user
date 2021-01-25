@@ -63,13 +63,6 @@ struct server_data {
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
         __u64 pending_bytes;
-
-        /*
-         * TODO must be maximum size of migration data read, we'll use that to
-         * create the migration region.
-         */
-        size_t migr_data_len;
-
         vfu_migr_state_t state;
     } migration;
 };
@@ -137,22 +130,10 @@ bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
     }
 
     if (is_write) {
-        /*
-         * FIXME this doesn't work for the following reason:
-         * The amount of migration data the server generates during the pre-copy
-         * and stop-and-copy phases is larger than the size of BAR1, however
-         * during the resuming state, the server blindly appends to BAR1,
-         * since it cannot know that a particular piece of migration data has
-         * to be written to a specific offset. To fix this we have to include
-         * offset and length, along with the actual data, when reading migration
-         * data.
-         */
-#if 0
         if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
             /* dirty the whole thing */
             server_data->migration.pending_bytes = server_data->bar1_size;
         }
-#endif
         memcpy(server_data->bar1 + offset, buf, count);
     } else {
         memcpy(buf, server_data->bar1, count);
@@ -285,7 +266,7 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 
     switch (state) {
         case VFU_MIGR_STATE_STOP_AND_COPY:
-            server_data->migration.pending_bytes = sizeof(time_t); /* FIXME BAR0 region size */
+            server_data->migration.pending_bytes = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
             break;
         case VFU_MIGR_STATE_PRE_COPY:
             /* TODO must be less than size of data region in migration region */
@@ -322,15 +303,10 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
-    if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
-        assert(server_data->bar1_size >= server_data->migration.pending_bytes);
-        *offset = server_data->bar1_size - server_data->migration.pending_bytes;
-    } else if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
-        *offset = 0;
-    } else {
-        assert(false); /* FIXME fail gracefully */
+    *offset = 0;
+    if (size != NULL) {
+       *size = server_data->migration.pending_bytes;
     }
-    *size = server_data->migration.pending_bytes;
     return 0;
 }
 
@@ -338,49 +314,35 @@ static ssize_t
 migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
-    uint8_t *p;
-    size_t bar_size;
 
-    /* FIXME need to validate data range */
-    vfu_log(vfu_ctx, LOG_DEBUG, "read migration data %#llx-%#llx, %#llx remaining",
-                offset, offset + size - 1, server_data->migration.pending_bytes);
-
-    assert(size <= server_data->migration.pending_bytes);
+    if (server_data->migration.state != VFU_MIGR_STATE_PRE_COPY &&
+        server_data->migration.state != VFU_MIGR_STATE_STOP_AND_COPY)
+    {
+        return size;
+    }
 
     /*
-     * If in pre-copy state we copy BAR1, if in stop-and-copy state we copy
-     * BAR0. This behavior is purely an artifact of this server implementation
-     * simply to make it as simple as possible. Note that the client might go
-     * from state running to stop-and-copy, completely skipping the pre-copy
-     * state. This is legitimate but we don't support it for now.
+     * For ease of implementation we expect the client to read all migration
+     * data in one go; partial reads are not supported. This is allowed by VFIO
+     * however we don't yet support it. Similarly, when resuming, partial
+     * writes are supported by VFIO, however we don't in this sample.
      *
-     * FIXME implement transitioning from the running state straight to the
-     * stop-and-copy state.
+     * If in pre-copy state we copy BAR1, if in stop-and-copy state we copy
+     * both BAR1 and BAR0. Since we always copy BAR1 in the stop-and-copy state,
+     * copying BAR1 in the pre-copy state is pointless. Fixing this requires
+     * more complex state tracking which exceeds the scope of this sample.
      */
 
-    if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
-        p = server_data->bar1;
-        bar_size = server_data->bar1_size;
-    } else if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
-        p = (uint8_t*)&server_data->bar0;
-        bar_size = sizeof server_data->bar0;
-    } else {
-        /*
-         * Reading from the migration region in any other state is undefined
-         * (I think).
-         */
-        assert(false);
-        return 0;
+    if (offset != 0 || size != server_data->migration.pending_bytes) {
+        return -EINVAL;
     }
-    if (offset > bar_size) {
-        errno = EINVAL;
-        return -1;
+
+    memcpy(buf, server_data->bar1, server_data->bar1_size);
+    if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
+        memcpy(buf + server_data->bar1_size, &server_data->bar0,
+               sizeof server_data->bar0);
     }
-    if (offset + size > bar_size) {
-        size = bar_size - offset;
-    }
-    memcpy(buf, p + offset, size);
-    server_data->migration.pending_bytes -= size;
+    server_data->migration.pending_bytes = 0;
 
     return size;
 }
@@ -389,36 +351,30 @@ static ssize_t
 migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
+    char *buf = data;
+    int ret;
 
     assert(server_data != NULL);
     assert(data != NULL);
 
-    /*
-     * During pre-copy state we save BAR1 and during stop-and-copy state we
-     * save BAR0.
-     */
-    vfu_log(vfu_ctx, LOG_DEBUG,
-            "apply device migration data %#llx-%#llx",
-            offset, offset + size - 1);
-
-    if (offset < server_data->bar1_size) {
-        __u64 _size = MIN(size, server_data->bar1_size - offset);
-        memcpy(server_data->bar1 + offset, data, _size);
-        offset += _size;
-        size -= _size;
+    if (offset != 0 || size < server_data->bar1_size) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
+                offset, offset + size - 1);
+        return -EINVAL;
     }
 
-    if (offset >= server_data->bar1_size && size > 0) {
-        int ret;
-
-        /* FIXME should be able to write any valid subrange */
-        assert(offset - server_data->bar1_size == 0);
-        assert(size == sizeof server_data->bar0);
-
-        ret = bar0_access(vfu_ctx, data, sizeof server_data->bar0, 0, true);
-
-        assert(ret == (int)size); /* FIXME */
+    memcpy(server_data->bar1, buf, server_data->bar1_size);
+    buf += server_data->bar1_size;
+    size -= server_data->bar1_size;
+    if (size == 0) {
+        return 0;
     }
+    if (size != sizeof server_data->bar0) {
+        return -EINVAL;
+    }
+    memcpy(&server_data->bar0, buf, sizeof server_data->bar0);
+    ret = bar0_access(vfu_ctx, buf, sizeof server_data->bar0, 0, true);
+    assert(ret == (int)size); /* FIXME */
 
     return 0;
 }
@@ -446,7 +402,6 @@ int main(int argc, char *argv[])
     size_t bar1_size = 0x3000;
     struct server_data server_data = {
         .migration = {
-            .migr_data_len = bar1_size + sizeof(time_t),
             .state = VFU_MIGR_STATE_RUNNING
         }
     };
@@ -542,7 +497,7 @@ int main(int argc, char *argv[])
     }
 
     vfu_migration_t migration = {
-        .size = server_data.migration.migr_data_len,
+        .size = bar1_size + sizeof(time_t),
         .mmap_areas = mmap_areas,
         .nr_mmap_areas = 2,
         .callbacks = {
