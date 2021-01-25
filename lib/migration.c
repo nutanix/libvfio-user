@@ -38,6 +38,9 @@
 #include "migration.h"
 #include "private.h"
 
+/*
+ * FSM to simplify saving device state.
+ */
 enum migr_iter_state {
     VFIO_USER_MIGR_ITER_STATE_INITIAL,
     VFIO_USER_MIGR_ITER_STATE_STARTED,
@@ -49,6 +52,11 @@ struct migration {
     struct vfio_device_migration_info info;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
+
+    /*
+     * This is only for the saving state. The resuming state is simpler so we
+     * don't need it.
+     */
     struct {
         enum migr_iter_state state;
         __u64 offset;
@@ -118,7 +126,7 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
 }
 
 static bool
-_migr_state_transition_is_valid(__u32 from, __u32 to)
+vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
 {
     return migr_states[from] & (1 << to);
 }
@@ -142,7 +150,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return -EINVAL;
     }
 
-    if (!_migr_state_transition_is_valid(migr->info.device_state,
+    if (!vfio_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
         /* TODO print descriptive device state names instead of raw value */
         vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %d to state %d",
@@ -212,7 +220,7 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
         case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
             /*
              * FIXME what happens if data haven't been consumed in the previous
-             * iteration? Ask on LKML.
+             * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
             if (*pending_bytes == 0) {
                 migr->iter.state = VFIO_USER_MIGR_ITER_STATE_FINISHED;
@@ -264,7 +272,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
         break;
     case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
         /*
-         * data_offset is invariant during an iteration.
+         * data_offset is invariant during a save iteration.
          */
         break;
     default:
@@ -344,8 +352,10 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (is_write) {
         ret = migr->callbacks.data_written(vfu_ctx, size, migr->info.data_offset);
-        migr->info.data_size = size;
-        migr->info.data_offset += size;
+        if (ret >= 0) {
+            migr->info.data_size = size;
+            migr->info.data_offset += size;
+        }
     }
     return ret;
 }
@@ -377,7 +387,7 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
         *size = migr->iter.size;
     }
 
-    return 0;
+    return ret;
 }
 
 static ssize_t
@@ -448,6 +458,14 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
         if (is_write) {
             ret = migr->callbacks.write_data(vfu_ctx, buf, count, pos);
         } else {
+            /*
+             * FIXME <linux/vfio.h> says:
+             *
+             *  d. Read data_size bytes of data from (region + data_offset) from the
+             *     migration region.
+             *
+             * Does this mean that partial reads are not allowed?
+             */
             ret = migr->callbacks.read_data(vfu_ctx, buf, count, pos);
         }
     }
