@@ -381,35 +381,44 @@ typedef struct {
     __u64 (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
     /*
-     * Function that is called to instruct the device to prepare migration data.
-     * The function must return only after migration data are available at the
-     * specified offset.
+     * Function that is called to instruct the device to prepare migration data
+     * to be read when in pre-copy or stop-and-copy state, and to prepare for
+     * receiving migration data when in resuming state.
+     *
+     * When in pre-copy and stop-and-copy state, the function must return only
+     * after migration data are available at the specified offset.
+     *
+     * When in resuming state, @offset must be set to where migration data must
+     * written. @size points to NULL.
      */
     int (*prepare_data)(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size);
 
     /*
-     * Function that is called to read migration data. offset and size can
-     * be any subrange on the offset and size previously returned by
-     * prepare_data. The function must return the amount of data read. This
-     * function can be called even if the migration data can be memory mapped.
+     * Function that is called to read migration data. offset and size can be
+     * any subrange on the offset and size previously returned by prepare_data.
+     * The function must return the amount of data read or -errno on error.
+     * This function can be called even if the migration data can be memory
+     * mapped.
      *
      * Does this mean that reading data_offset/data_size updates the values?
      */
-    size_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
-                        __u64 count, __u64 offset);
+    ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
+                         __u64 count, __u64 offset);
 
     /* Callbacks for restoring device state */
+
+    /*
+     * Fuction that is called for writing previously stored device state. The
+     * function must return the amount of data written or -errno on error.
+     */
+    ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, __u64 count,
+                          __u64 offset);
 
     /*
      * Function that is called when client has written some previously stored
      * device state.
      */
-    int (*data_written)(vfu_ctx_t *vfu_ctx,
-                        __u64 count, __u64 offset);
-
-    /* Fuction that is called for writing previously stored device state. */
-    size_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf,
-                         __u64 count, __u64 offset);
+    int (*data_written)(vfu_ctx_t *vfu_ctx, __u64 count);
 
 } vfu_migration_callbacks_t;
 
