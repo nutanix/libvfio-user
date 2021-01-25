@@ -265,10 +265,12 @@ get_device_region_info(int sock, uint32_t index)
     struct vfio_region_info *region_info;
     size_t cap_sz;
     size_t size = sizeof(struct vfio_region_info);
-    size_t nr_fds = CLIENT_MAX_FDS;
-    int fds[nr_fds];
+    int fds[CLIENT_MAX_FDS] = { 0 };
+    size_t nr_fds = ARRAY_SIZE(fds);
+
 
     region_info = alloca(size);
+    memset(region_info, 0, size);
     region_info->argsz = size;
     region_info->index = index;
 
@@ -276,6 +278,7 @@ get_device_region_info(int sock, uint32_t index)
     if (region_info->argsz > size) {
         size = region_info->size;
         region_info = alloca(size);
+        memset(region_info, 0, size);
         region_info->argsz = size;
         region_info->index = index;
         do_get_device_region_info(sock, region_info, fds, &nr_fds);
@@ -658,8 +661,8 @@ static void
 get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
                   UNUSED int nr_dma_regions)
 {
-    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
-    struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2];
+    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = { 0 };
+    struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2] = { { 0 }, };
     int ret;
     size_t i;
     struct iovec iovecs[4] = {
