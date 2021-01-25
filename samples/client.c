@@ -718,7 +718,7 @@ usage(char *path) {
 
 /*
  * Normally each time the source client (QEMU) would read migration data from
- * the device it would send them to the destination cliet. However, since in
+ * the device it would send them to the destination client. However, since in
  * our sample both the source and the destination client are the same process,
  * we simply accumulate the migration data of each iteration and apply it to
  * the destination server at the end.
@@ -726,7 +726,7 @@ usage(char *path) {
  * Performs as many migration loops as @nr_iters or until the device has no
  * more migration data (pending_bytes is zero), which ever comes first. The
  * result of each migration iteration is stored in @migr_iter.  @migr_iter must
- * be at least of @nr_iters.
+ * be at least @nr_iters.
  *
  * @returns the number of iterations performed
  */
@@ -867,6 +867,11 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr
     }
 
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
+    if (_nr_iters != 5) {
+        errx(EXIT_FAILURE,
+             "expected 5 iterations instead of %ld while in stop-and-copy state\n",
+             _nr_iters);
+    }
 
     /* XXX read device state, migration must have finished now */
     device_state = VFIO_DEVICE_STATE_STOP;

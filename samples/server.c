@@ -407,7 +407,7 @@ migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count,
      * We apply migration state directly in the migration_write_data callback,
      * we don't need to do anything here. We would have to apply migration
      * state in this callback if the migration region was memory mappable, in
-     * which we wouldn't know when the client wrote migration data.
+     * which case we wouldn't know when the client wrote migration data.
      */
 
     return 0;
@@ -422,7 +422,6 @@ int main(int argc, char *argv[])
     size_t bar1_size = 0x3000;
     struct server_data server_data = {
         .migration = {
-            /* one page so that we can memory map it */
             .migr_data_len = bar1_size + sizeof(time_t),
             .state = VFU_MIGR_STATE_RUNNING
         }
@@ -477,13 +476,13 @@ int main(int argc, char *argv[])
     /*
      * Setup BAR1 to be 3 pages in size where only the first and the last pages
      * are mappable. The client can still mmap the 2nd page, we can't prohibit
-     * this under Linux. If we really want to probihit it we have to use
+     * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
      */
     if ((fp = tmpfile()) == NULL) {
         err(EXIT_FAILURE, "failed to create BAR1 file");
     }
-    server_data.bar1_size = 0x3000;
+    server_data.bar1_size = bar1_size;
     if (ftruncate(fileno(fp), server_data.bar1_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate BAR1 file");
     }

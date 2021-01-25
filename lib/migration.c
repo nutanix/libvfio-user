@@ -440,6 +440,12 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     assert(migr != NULL);
     assert(buf != NULL);
 
+    /*
+     * FIXME don't call the device callback if the migration state is in not in
+     * pre-copy/stop-and-copy/resuming state, since the behavior is undefined
+     * in that case.
+     */
+
     if (pos + count <= sizeof(struct vfio_device_migration_info)) {
         ret = migration_region_access_registers(vfu_ctx, buf, count,
                                                 pos, is_write);
