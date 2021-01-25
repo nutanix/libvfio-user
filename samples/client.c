@@ -130,12 +130,10 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
 {
     struct vfio_user_version *sversion = NULL;
     struct vfio_user_header hdr;
-    uint16_t msg_id = 0;
     size_t vlen;
     int ret;
 
-    ret = vfu_recv_alloc(sock, &hdr, true, &msg_id,
-                         (void **)&sversion, &vlen);
+    ret = vfu_recv_alloc(sock, &hdr, true, NULL, (void **)&sversion, &vlen);
 
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to receive version: %s", strerror(-ret));
@@ -150,8 +148,7 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
 #endif
 
     if (vlen < sizeof (*sversion)) {
-        errx(EXIT_FAILURE, "msg%hx (VFIO_USER_VERSION): invalid size %lu",
-               msg_id, vlen);
+        errx(EXIT_FAILURE, "VFIO_USER_VERSION: invalid size %lu", vlen);
     }
 
     if (sversion->major != LIB_VFIO_USER_MAJOR) {
