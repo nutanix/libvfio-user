@@ -344,8 +344,10 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (is_write) {
         ret = migr->callbacks.data_written(vfu_ctx, size, migr->info.data_offset);
-        migr->info.data_size = size;
-        migr->info.data_offset += size;
+        if (ret >= 0) {
+            migr->info.data_size = size;
+            migr->info.data_offset += size;
+        }
     }
     return ret;
 }
@@ -377,7 +379,7 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
         *size = migr->iter.size;
     }
 
-    return 0;
+    return ret;
 }
 
 static ssize_t
