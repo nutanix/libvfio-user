@@ -371,11 +371,12 @@ typedef struct {
     /* Callbacks for saving device state */
 
     /*
-     * Function that is called to retrieve pending migration data. If migration
-     * data were previously made available (function prepare_data has been
-     * called) then calling this function signifies that they have been read
-     * (e.g. migration data can be discarded). If the function returns 0 then
-     * migration has finished and this function won't be called again.
+     * Function that is called to retrieve the amount of pending migration
+     * data. If migration data were previously made available (function
+     * prepare_data has been called) then calling this function signifies that
+     * they have been read (e.g. migration data can be discarded). If the
+     * function returns 0 then migration has finished and this function won't
+     * be called again.
      */
     __u64 (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
