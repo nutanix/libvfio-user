@@ -212,7 +212,7 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
         case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
             /*
              * FIXME what happens if data haven't been consumed in the previous
-             * iteration? Ask on LKML.
+             * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
             if (*pending_bytes == 0) {
                 migr->iter.state = VFIO_USER_MIGR_ITER_STATE_FINISHED;
@@ -450,6 +450,14 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
         if (is_write) {
             ret = migr->callbacks.write_data(vfu_ctx, buf, count, pos);
         } else {
+            /*
+             * FIXME <linux/vfio.h> says:
+             *
+             *  d. Read data_size bytes of data from (region + data_offset) from the
+             *     migration region.
+             *
+             * Does this mean that partial reads are not allowed?
+             */
             ret = migr->callbacks.read_data(vfu_ctx, buf, count, pos);
         }
     }
