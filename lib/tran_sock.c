@@ -137,6 +137,8 @@ vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     struct vfio_user_header hdr = {.msg_id = msg_id};
     struct msghdr msg;
     size_t i;
+    size_t size = count * sizeof *fds;
+    char *buf;
 
     if (nr_iovecs == 0) {
         iovecs = alloca(sizeof(*iovecs));
@@ -168,8 +170,10 @@ vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     msg.msg_iov = iovecs;
 
     if (fds != NULL) {
-        size_t size = count * sizeof *fds;
-        char *buf = alloca(CMSG_SPACE(size));
+        size_t cmsg_space_aligned = MAX(CMSG_SPACE(size), sizeof(struct cmsghdr));
+
+        buf = alloca(cmsg_space_aligned);
+        memset(buf, 0, cmsg_space_aligned);
 
         msg.msg_control = buf;
         msg.msg_controllen = CMSG_SPACE(size);
