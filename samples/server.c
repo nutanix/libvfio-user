@@ -330,16 +330,11 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
     } else {
         assert(false); /* FIXME fail gracefully */
     }
-
-    /*
-     * Don't provide all migration data in one go in order to make it a bit
-     * more interesting.
-     */
-    *size = MIN(server_data->migration.pending_bytes, server_data->migration.migr_data_len / 4);
+    *size = server_data->migration.pending_bytes;
     return 0;
 }
 
-static size_t
+static ssize_t
 migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
@@ -390,7 +385,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
     return size;
 }
 
-static size_t
+static ssize_t
 migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
@@ -430,8 +425,7 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
 
 
 static int
-migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count,
-                       UNUSED __u64 offset)
+migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count)
 {
     /*
      * We apply migration state directly in the migration_write_data callback,
