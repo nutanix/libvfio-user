@@ -93,7 +93,7 @@ send_version(int sock)
     struct vfio_user_version cversion;
     struct iovec iovecs[3] = { { 0 } };
     char client_caps[1024];
-    int msg_id = 0;
+    int msg_id = 0xbada55;
     int slen;
     int ret;
 
@@ -250,12 +250,12 @@ static void
 do_get_device_region_info(int sock, struct vfio_region_info *region_info,
                           int *fds, size_t *nr_fds)
 {
-    int ret = vfu_msg_fds(sock, 0, VFIO_USER_DEVICE_GET_REGION_INFO,
+    int ret = vfu_msg_fds(sock, 0xabcd, VFIO_USER_DEVICE_GET_REGION_INFO,
                           region_info, region_info->argsz, NULL,
                           region_info, region_info->argsz, fds, nr_fds);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to get device region info: %s",
-                strerror(-ret));
+             strerror(-ret));
     }
 }
 
@@ -339,7 +339,7 @@ get_device_regions_info(int sock, struct vfio_device_info *client_dev_info)
 static void
 get_device_info(int sock, struct vfio_device_info *dev_info)
 {
-    uint16_t msg_id = 2;
+    uint16_t msg_id = 0xb10c;
     int ret;
 
     dev_info->argsz = sizeof(*dev_info);
@@ -368,7 +368,7 @@ configure_irqs(int sock)
 {
     struct iovec iovecs[2] = { { 0, } };
     struct vfio_irq_set irq_set;
-    uint16_t msg_id = 3;
+    uint16_t msg_id = 0x1bad;
     int irq_fd;
     int i, ret;
 
@@ -425,6 +425,7 @@ static int
 access_region(int sock, int region, bool is_write, uint64_t offset,
             void *data, size_t data_len)
 {
+    static int msg_id = -1;
     struct vfio_user_region_access send_region_access = {
         .offset = offset,
         .region = region,
@@ -461,7 +462,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         err(EXIT_FAILURE, "failed to alloc recv_data");
     }
 
-    ret = vfu_msg_iovec(sock, 0, op,
+    ret = vfu_msg_iovec(sock, msg_id--, op,
                         send_iovecs, nr_send_iovecs,
                         NULL, 0, NULL,
                         recv_data, recv_data_len, NULL, 0);
@@ -499,7 +500,7 @@ wait_for_irqs(int sock, int irq_fd)
     size_t size;
     struct vfio_user_irq_info vfio_user_irq_info;
     struct vfio_user_header hdr;
-    uint16_t msg_id = 4;
+    uint16_t msg_id = 0xbabe;
 
     if (read(irq_fd, &val, sizeof val) == -1) {
         err(EXIT_FAILURE, "failed to read from irqfd");
@@ -562,7 +563,7 @@ handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
     struct vfio_user_header hdr;
     int ret, i;
     size_t size = sizeof(dma_access);
-    uint16_t msg_id = 5;
+    uint16_t msg_id = 0xcafe;
     void *data;
 
     ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
@@ -612,7 +613,7 @@ handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
     struct vfio_user_header hdr;
     int ret, i, response_sz;
     size_t size = sizeof(dma_access);
-    uint16_t msg_id = 6;
+    uint16_t msg_id = 0xcafe;
     void *data;
 
     ret = vfu_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
@@ -931,7 +932,7 @@ map_dma_regions(int sock, int max_fds, struct vfio_user_dma_region *dma_regions,
         iovecs[1].iov_base = dma_regions + (i * max_fds);
         iovecs[1].iov_len = sizeof (*dma_regions) * max_fds;
 
-        ret = vfu_msg_iovec(sock, i, VFIO_USER_DMA_MAP,
+        ret = vfu_msg_iovec(sock, 0x1234 + i, VFIO_USER_DMA_MAP,
                             iovecs, ARRAY_SIZE(iovecs),
                             dma_region_fds + (i * max_fds), max_fds,
                             NULL, NULL, 0, NULL, 0);
