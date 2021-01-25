@@ -137,6 +137,8 @@ vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     struct vfio_user_header hdr = {.msg_id = msg_id};
     struct msghdr msg;
     size_t i;
+    size_t size = count * sizeof *fds;
+    char *buf;
 
     if (nr_iovecs == 0) {
         iovecs = alloca(sizeof(*iovecs));
@@ -168,8 +170,10 @@ vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     msg.msg_iov = iovecs;
 
     if (fds != NULL) {
-        size_t size = count * sizeof *fds;
-        char *buf = alloca(CMSG_SPACE(size));
+        size_t cmsg_space_aligned = MAX(CMSG_SPACE(size), sizeof(struct cmsghdr));
+
+        buf = alloca(cmsg_space_aligned);
+        memset(buf, 0, cmsg_space_aligned);
 
         msg.msg_control = buf;
         msg.msg_controllen = CMSG_SPACE(size);
@@ -287,7 +291,7 @@ vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     if (is_reply) {
-        if (hdr->msg_id != *msg_id) {
+        if (msg_id != NULL && hdr->msg_id != *msg_id) {
             return -EINVAL;
         }
 
@@ -305,7 +309,9 @@ vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
         if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
             return -EINVAL;
         }
-        *msg_id = hdr->msg_id;
+        if (msg_id != NULL) {
+            *msg_id = hdr->msg_id;
+        }
     }
 
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
@@ -660,7 +666,7 @@ static int
 negotiate(vfu_ctx_t *vfu_ctx, int sock)
 {
     struct vfio_user_version *client_version = NULL;
-    uint16_t msg_id = 1;
+    uint16_t msg_id = 0x0bad;
     int ret;
 
     ret = recv_version(vfu_ctx, sock, &msg_id, &client_version);

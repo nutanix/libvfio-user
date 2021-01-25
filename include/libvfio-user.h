@@ -347,6 +347,20 @@ typedef enum {
     VFU_MIGR_STATE_RESUME
 } vfu_migr_state_t;
 
+
+/*
+ * Callbacks during the pre-copy and stop-and-copy phases.
+ *
+ * The client executes the following steps to copy migration data:
+ *
+ * 1. get_pending_bytes: device must return amount of migration data
+ * 2. prepare_data: device must prepare migration data
+ * 3. read_data: device must provide migration data
+ *
+ * The client repeats the above steps until there is no more migration data to
+ * return (the device must return 0 from get_pending_bytes to indicate that
+ * there are no more migration data to be consumed in this iteration).
+ */
 typedef struct {
 
     /* migration state transition callback */
@@ -357,11 +371,12 @@ typedef struct {
     /* Callbacks for saving device state */
 
     /*
-     * Function that is called to retrieve pending migration data. If migration
-     * data were previously made available (function prepare_data has been
-     * called) then calling this function signifies that they have been read
-     * (e.g. migration data can be discarded). If the function returns 0 then
-     * migration has finished and this function won't be called again.
+     * Function that is called to retrieve the amount of pending migration
+     * data. If migration data were previously made available (function
+     * prepare_data has been called) then calling this function signifies that
+     * they have been read (e.g. migration data can be discarded). If the
+     * function returns 0 then migration has finished and this function won't
+     * be called again.
      */
     __u64 (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
