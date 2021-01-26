@@ -38,6 +38,8 @@
 #include "migration.h"
 #include "private.h"
 
+/* FIXME no need to use __u32 etc., use uint32_t etc */
+
 enum migr_iter_state {
     VFIO_USER_MIGR_ITER_STATE_INITIAL,
     VFIO_USER_MIGR_ITER_STATE_STARTED,
@@ -58,7 +60,7 @@ struct migration {
 
 struct migr_state_data {
     __u32 state;
-    char *name;
+    const char *name;
 };
 
 /* valid migration state transitions */
@@ -164,7 +166,6 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (!_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
-        /* TODO print descriptive device state names instead of raw value */
         vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %s to state %s",
                migr_states[migr->info.device_state].name,
                migr_states[*device_state].name);
