@@ -61,6 +61,7 @@ struct migration {
      */
     struct {
         enum migr_iter_state state;
+        __u64 pending_bytes;
         __u64 offset;
         __u64 size;
     } iter;
@@ -251,8 +252,6 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return 0;
     }
 
-    *pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
-
     switch (migr->iter.state) {
         case VFIO_USER_MIGR_ITER_STATE_INITIAL:
         case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
@@ -260,6 +259,8 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
              * FIXME what happens if data haven't been consumed in the previous
              * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
+            *pending_bytes = migr->iter.pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
+
             if (*pending_bytes == 0) {
                 migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
             } else {
@@ -268,11 +269,11 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
             break;
         case VFIO_USER_MIGR_ITER_STATE_STARTED:
             /*
-             * Repeated reads of pending_bytes should not have any side effects.
-             * FIXME does it have to be the same as the previous value? Can it
-             * increase or even decrease? I suppose it can't be lower than
-             * data_size? Ask on LKML.
+             * FIXME We might be wrong returning a cached value, check
+             * https://www.spinics.net/lists/kvm/msg228608.html
+             *
              */
+            *pending_bytes = migr->iter.pending_bytes;
             break;
         default:
             return -EINVAL;
@@ -343,28 +344,24 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
-        break;
+        if (ret == 0 && !is_write) {
+            *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
+        }
+        return ret;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
             vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
-            ret = -EINVAL;
+            return -EINVAL;
         } else {
-            ret = 0;
+            *offset = migr->info.data_offset + sizeof(struct vfio_device_migration_info);
+            return 0;
         }
-        break;
-    default:
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR,
-                "bad access to migration data_offset in state %d",
-                migr->info.device_state);
-        ret = -EINVAL;
     }
-
-    if (ret == 0 && !is_write) {
-        *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
-    }
-
-    return ret;
+    /* TODO improve error message */
+    vfu_log(vfu_ctx, LOG_ERR,
+            "bad access to migration data_offset in state %s",
+            migr_states[migr->info.device_state].name);
+    return -EINVAL;
 }
 
 static ssize_t
