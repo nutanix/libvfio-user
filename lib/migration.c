@@ -230,8 +230,11 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
              * FIXME what happens if data haven't been consumed in the previous
              * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
-            migr_state_transition(migr,
-                                  *pending_bytes == 0 ? VFIO_USER_MIGR_ITER_STATE_FINISHED : VFIO_USER_MIGR_ITER_STATE_STARTED);
+            if (*pending_bytes == 0) {
+                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
+            } else {
+                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_STARTED);
+            }
             break;
         case VFIO_USER_MIGR_ITER_STATE_STARTED:
             /*
