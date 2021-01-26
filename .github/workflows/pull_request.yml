@@ -27,3 +27,13 @@ jobs:
           yum -y install make gcc-4.8.5 epel-release pciutils
           yum -y install clang cmake json-c-devel libcmocka-devel openssl-devel
           make pre-push VERBOSE=1
+  fedora-rawhide:
+    runs-on: ubuntu-latest
+    container: fedora:rawhide
+    steps:
+      - uses: actions/checkout@v2
+      - name: pre-push
+        run: |
+          yum -y install gcc make clang cmake json-c-devel libcmocka-devel \
+              openssl-devel pciutils diffutils
+          make pre-push VERBOSE=1
