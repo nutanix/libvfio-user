@@ -131,6 +131,14 @@ vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
     return migr_states[from] & (1 << to);
 }
 
+static void
+migr_state_transition(struct migration *migr, enum migr_iter_state state)
+{
+    assert(migr != NULL);
+    /* FIXME validate that state transition */
+    migr->iter.state = state;
+}
+
 static ssize_t
 handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
                     __u32 *device_state, bool is_write) {
@@ -223,9 +231,9 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
              * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
             if (*pending_bytes == 0) {
-                migr->iter.state = VFIO_USER_MIGR_ITER_STATE_FINISHED;
+                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
             } else {
-                migr->iter.state = VFIO_USER_MIGR_ITER_STATE_STARTED;
+                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_STARTED);
             }
             break;
         case VFIO_USER_MIGR_ITER_STATE_STARTED:
