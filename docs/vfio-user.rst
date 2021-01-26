@@ -1202,7 +1202,8 @@ Region IO FD info format
 
 * *argsz* is the size of the region IO FD info structure plus the
   total size of the subregion array. Thus, each array entry "i" is at offset
-    i * ((argsz - 32) / count)
+  i * ((argsz - 32) / count). Note that currently this is 40 bytes for both IO
+  FD types, but this is not to be relied on.
 * *flags* must be zero
 * *index* is the index of memory region being queried
 * *count* is the number of sub-regions in the array
@@ -1280,7 +1281,9 @@ Sub-Region IO FD info format (ioregionfd)
 +-----------+--------+------+
 | flags     | 24     | 4    |
 +-----------+--------+------+
-| region_id | 28     | 4    |
+| padding   | 28     | 4    |
++-----------+--------+------+
+| user_data | 32     | 8    |
 +-----------+--------+------+
 
 * *offset* is the offset of the start of the sub-region within the region
@@ -1292,7 +1295,7 @@ Sub-Region IO FD info format (ioregionfd)
 * *flags* is any of:
   * `KVM_IOREGIONFD_FLAG_PIO`
   * `KVM_IOREGIONFD_FLAG_POSTED_WRITES`
-* *region_id* is an opaque value passed back to the server via a message on the
+* *user_data* is an opaque value passed back to the server via a message on the
   file descriptor
 
 See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for further context
