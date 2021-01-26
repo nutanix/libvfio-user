@@ -1158,7 +1158,7 @@ test_migration_state_transitions(void **state __attribute__ ((unused)))
      * Transitioning to any other state from the remaining 3 states
      * (101b - invalid, 110b - error, 111b - invalid)  is invalid.
      * Transitioning from the error state to the stopped state is possible but
-     * that requires a devices reset, so we don't consider it a valid state
+     * that requires a device reset, so we don't consider it a valid state
      * transition.
      */
     for (i = 5; i < 8; i++) {
