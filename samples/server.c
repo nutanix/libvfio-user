@@ -276,6 +276,7 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
             server_data->migration.pending_bytes = server_data->bar1_size;
             break;
         case VFU_MIGR_STATE_STOP:
+            /* FIXME should gracefully fail */
             assert(server_data->migration.pending_bytes == 0);
             break;
         case VFU_MIGR_STATE_RESUME:
@@ -349,6 +350,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
          * Reading from the migration region in any other state is undefined
          * (I think).
          */
+        assert(false);
         return 0;
     }
     if (offset > bar_size) {
@@ -406,7 +408,7 @@ migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count,
 {
     /*
      * We apply migration state directly in the migration_write_data callback,
-     * we don't need to do anything here. We would have to apply migration
+     * so we don't need to do anything here. We would have to apply migration
      * state in this callback if the migration region was memory mappable, in
      * which case we wouldn't know when the client wrote migration data.
      */
