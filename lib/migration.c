@@ -38,6 +38,8 @@
 #include "migration.h"
 #include "private.h"
 
+/* FIXME no need to use __u32 etc., use uint32_t etc */
+
 /*
  * FSM to simplify saving device state.
  */
@@ -64,25 +66,58 @@ struct migration {
     } iter;
 };
 
-/* valid migration state transitions */
-static const __u32 migr_states[VFIO_DEVICE_STATE_MASK] = {
-    [VFIO_DEVICE_STATE_STOP] = 1 << VFIO_DEVICE_STATE_STOP,
-    [VFIO_DEVICE_STATE_RUNNING] = /* running */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
-        (1 << VFIO_DEVICE_STATE_RESUMING),
-    [VFIO_DEVICE_STATE_SAVING] = /* stop-and-copy */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = /* pre-copy */
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RESUMING] = /* resuming */
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_RESUMING)
+struct migr_state_data {
+    __u32 state;
+    const char *name;
 };
+
+#define VFIO_DEVICE_STATE_ERROR (VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RESUMING)
+
+/* valid migration state transitions */
+static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
+    [VFIO_DEVICE_STATE_STOP] = {
+        .state = 1 << VFIO_DEVICE_STATE_STOP,
+        .name = "stopped"
+    },
+    [VFIO_DEVICE_STATE_RUNNING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "running"
+    },
+    [VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "stop-and-copy"
+    },
+    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "pre-copy"
+    },
+    [VFIO_DEVICE_STATE_RESUMING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "resuming"
+    }
+};
+
+bool
+vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
+{
+    return migr_states[from].state & (1 << to);
+}
 
 struct migration *
 init_migration(const vfu_migration_t * const vfu_migr, int *err)
@@ -125,12 +160,6 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
     return migr;
 }
 
-static bool
-vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
-{
-    return migr_states[from] & (1 << to);
-}
-
 static void
 migr_state_transition(struct migration *migr, enum migr_iter_state state)
 {
@@ -160,9 +189,9 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (!vfio_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
-        /* TODO print descriptive device state names instead of raw value */
-        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %d to state %d",
-               migr->info.device_state, *device_state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %s to state %s",
+               migr_states[migr->info.device_state].name,
+               migr_states[*device_state].name);
         return -EINVAL;
     }
 

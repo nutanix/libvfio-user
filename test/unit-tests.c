@@ -1102,6 +1102,72 @@ test_vfu_setup_device_dma_cb(void **state __attribute__((unused)))
     assert_non_null(vfu_ctx.dma);
 }
 
+static void
+test_migration_state_transitions(void **state __attribute__ ((unused)))
+{
+    bool (*f)(__u32, __u32) = vfio_migr_state_transition_is_valid;
+    __u32 i, j;
+
+    /* from stopped (000b): all transitions are invalid */
+    assert_true(f(0, 0));
+    for (i = 1; i < 8; i++) {
+        assert_false(f(0, i));
+    }
+
+    /* from running (001b) */
+    assert_true(f(1, 0));
+    assert_true(f(1, 1));
+    assert_true(f(1, 2));
+    assert_true(f(1, 3));
+    assert_true(f(1, 4));
+    assert_false(f(1, 5));
+    assert_true(f(1, 6));
+    assert_false(f(1, 5));
+
+    /* from stop-and-copy (010b) */
+    assert_true(f(2, 0));
+    assert_false(f(2, 1));
+    assert_true(f(2, 2));
+    assert_false(f(2, 3));
+    assert_false(f(2, 4));
+    assert_false(f(2, 5));
+    assert_true(f(2, 6));
+    assert_false(f(2, 7));
+
+    /* from pre-copy (011b) */
+    assert_true(f(3, 0));
+    assert_true(f(3, 1));
+    assert_true(f(3, 2));
+    assert_false(f(3, 3));
+    assert_false(f(3, 4));
+    assert_false(f(3, 5));
+    assert_true(f(3, 6));
+    assert_false(f(3, 7));
+
+    /* from resuming (100b) */
+    assert_false(f(4, 0));
+    assert_true(f(4, 1));
+    assert_false(f(4, 2));
+    assert_false(f(4, 3));
+    assert_true(f(4, 4));
+    assert_false(f(4, 5));
+    assert_true(f(4, 6));
+    assert_false(f(4, 7));
+
+    /*
+     * Transitioning to any other state from the remaining 3 states
+     * (101b - invalid, 110b - error, 111b - invalid)  is invalid.
+     * Transitioning from the error state to the stopped state is possible but
+     * that requires a device reset, so we don't consider it a valid state
+     * transition.
+     */
+    for (i = 5; i < 8; i++) {
+        for (j = 0; j < 8; j++) {
+            assert_false(f(i, j));
+        }
+    }
+}
+
 /*
  * FIXME we shouldn't have to specify a setup function explicitly for each unit
  * test, cmocka should provide that. E.g. cmocka_run_group_tests enables us to
@@ -1138,7 +1204,8 @@ int main(void)
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
-        cmocka_unit_test_setup(test_vfu_setup_device_dma_cb, setup)
+        cmocka_unit_test_setup(test_vfu_setup_device_dma_cb, setup),
+        cmocka_unit_test_setup(test_migration_state_transitions, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
