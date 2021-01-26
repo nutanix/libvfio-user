@@ -86,3 +86,6 @@ add_library_ut(tran_sock tran_sock.c)
 
 install(TARGETS vfio-user-shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(TARGETS vfio-user-static
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
