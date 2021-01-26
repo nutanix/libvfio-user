@@ -98,6 +98,12 @@ static const struct migr_state_data migr_states[VFIO_DEVICE_STATE_MASK] = {
     }
 };
 
+static bool
+_migr_state_transition_is_valid(__u32 from, __u32 to)
+{
+    return migr_states[from].state & (1 << to);
+}
+
 struct migration *
 init_migration(const vfu_migration_t * const vfu_migr, int *err)
 {
@@ -137,12 +143,6 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
     }
 
     return migr;
-}
-
-static bool
-_migr_state_transition_is_valid(__u32 from, __u32 to)
-{
-    return migr_states[from].state & (1 << to);
 }
 
 static ssize_t
