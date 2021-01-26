@@ -64,7 +64,7 @@ struct migr_state_data {
 };
 
 /* valid migration state transitions */
-static const struct migr_state_data migr_states[VFIO_DEVICE_STATE_MASK] = {
+static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
     [VFIO_DEVICE_STATE_STOP] = {
         .state = 1 << VFIO_DEVICE_STATE_STOP,
         .name = "stopped"
