@@ -63,6 +63,8 @@ struct migr_state_data {
     const char *name;
 };
 
+#define VFIO_DEVICE_STATE_ERROR (VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RESUMING)
+
 /* valid migration state transitions */
 static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
     [VFIO_DEVICE_STATE_STOP] = {
@@ -75,30 +77,35 @@ static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = 
             (1 << VFIO_DEVICE_STATE_RUNNING) |
             (1 << VFIO_DEVICE_STATE_SAVING) |
             (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
-            (1 << VFIO_DEVICE_STATE_RESUMING),
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
         .name = "running"
     },
     [VFIO_DEVICE_STATE_SAVING] = {
         .state =
             (1 << VFIO_DEVICE_STATE_STOP) |
-            (1 << VFIO_DEVICE_STATE_SAVING),
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
         .name = "stop-and-copy"
     },
     [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = {
         .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
             (1 << VFIO_DEVICE_STATE_SAVING) |
-            (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
+            (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
         .name = "pre-copy"
     },
     [VFIO_DEVICE_STATE_RESUMING] = {
         .state =
             (1 << VFIO_DEVICE_STATE_RUNNING) |
-            (1 << VFIO_DEVICE_STATE_RESUMING),
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
         .name = "resuming"
     }
 };
 
-static bool
+bool
 _migr_state_transition_is_valid(__u32 from, __u32 to)
 {
     return migr_states[from].state & (1 << to);

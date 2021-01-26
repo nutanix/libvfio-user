@@ -65,6 +65,9 @@ migration_get_pgsize(struct migration *migr);
 int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
 
+bool
+_migr_state_transition_is_valid(__u32 from, __u32 to);
+
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
