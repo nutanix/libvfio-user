@@ -814,7 +814,7 @@ struct fake_guest_data {
     unsigned char *md5sum;
 };
 
-static void*
+static void *
 fake_guest(void *arg)
 {
     struct fake_guest_data *fake_guest_data = arg;
@@ -824,7 +824,7 @@ fake_guest(void *arg)
     FILE *fp = fopen("/dev/urandom", "r");
 
     if (fp == NULL) {
-        err(EXIT_FAILURE, "failed to open /dev/unrandom");
+        err(EXIT_FAILURE, "failed to open /dev/urandom");
     }
 
     MD5_Init(&md5_ctx);
