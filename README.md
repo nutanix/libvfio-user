@@ -62,8 +62,8 @@ triggering interrupts from the kernel, however this performance penalty is
 perfectly acceptable when prototyping the functional aspect of a device driver.
 
 
-Building muser
-==============
+Building libvfio-user
+=====================
 
 Build requirements:
 
