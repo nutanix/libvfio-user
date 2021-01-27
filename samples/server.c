@@ -261,11 +261,16 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
     int ret;
+    struct itimerval new = { { 0 }, };
 
     printf("migration: transition to device state %d\n", state);
 
     switch (state) {
         case VFU_MIGR_STATE_STOP_AND_COPY:
+            vfu_log(vfu_ctx, LOG_DEBUG, "disable timer");
+            if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
+                err(EXIT_FAILURE, "failed to disable timer");
+            }
             server_data->migration.pending_bytes = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
             break;
         case VFU_MIGR_STATE_PRE_COPY:
