@@ -350,12 +350,16 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return ret;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
+            /* TODO writing to read-only registers should be simply ignored */
             vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
             return -EINVAL;
-        } else {
-            *offset = migr->info.data_offset + sizeof(struct vfio_device_migration_info);
-            return 0;
         }
+        ret = migr->callbacks.prepare_data(vfu_ctx, offset, NULL);
+        if (ret < 0) {
+            return ret;
+        }
+        *offset += sizeof(struct vfio_device_migration_info);
+        return 0;
     }
     /* TODO improve error message */
     vfu_log(vfu_ctx, LOG_ERR,
@@ -389,18 +393,12 @@ static ssize_t
 handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                __u64 size, bool is_write)
 {
-    int ret = 0;
-
     assert(migr != NULL);
 
     if (is_write) {
-        ret = migr->callbacks.data_written(vfu_ctx, size, migr->info.data_offset);
-        if (ret >= 0) {
-            migr->info.data_size = size;
-            migr->info.data_offset += size;
-        }
+        return  migr->callbacks.data_written(vfu_ctx, size);
     }
-    return ret;
+    return 0;
 }
 
 static ssize_t
@@ -416,21 +414,16 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_size_when_saving(vfu_ctx, migr, is_write);
-        break;
+        if (ret == 0 && !is_write) {
+            *size = migr->iter.size;
+        }
+        return ret;
     case VFIO_DEVICE_STATE_RESUMING:
-        ret = handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
-        break;
-    default:
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
-        ret = -EINVAL;
+        return handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
     }
-
-    if (ret == 0 && !is_write) {
-        *size = migr->iter.size;
-    }
-
-    return ret;
+    /* TODO improve error message */
+    vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
+    return -EINVAL;
 }
 
 static ssize_t
