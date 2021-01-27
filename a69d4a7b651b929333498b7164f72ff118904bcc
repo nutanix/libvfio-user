@@ -1,0 +1,8 @@
+Code-Review+1: John Levon <levon@movementarian.org>
+Code-Review+2: Thanos <thanos.makatos@nutanix.com>
+Verified+1: Thanos <thanos.makatos@nutanix.com>
+Submitted-by: Thanos <thanos.makatos@nutanix.com>
+Submitted-at: Wed, 27 Jan 2021 11:27:09 +0000
+Reviewed-on: https://review.gerrithub.io/c/nutanix/libvfio-user/+/509764
+Project: nutanix/libvfio-user
+Branch: refs/heads/master
