@@ -866,13 +866,7 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    /*
-     * TODO The server generates migration data while it's in pre-copy state.
-     *
-     * FIXME the server generates 4 rounds of migration data while in pre-copy
-     * state and 1 while in stop-and-copy state. Don't assume this.
-     */
-    *nr_iters = 5;
+    *nr_iters = 2;
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -891,7 +885,8 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
              strerror(-ret));
     }
 
-    _nr_iters = do_migrate(sock, migr_reg_index, 3, *migr_iters);
+    _nr_iters = do_migrate(sock, migr_reg_index, 1, *migr_iters);
+    assert(_nr_iters == 1);
     printf("stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
@@ -900,8 +895,6 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
         errno = ret;
         err(EXIT_FAILURE, "failed to join fake guest pthread");
     }
-
-    _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
 
     printf("setting device state to stop-and-copy\n");
 
