@@ -1270,14 +1270,6 @@ int main(int argc, char *argv[])
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
-    /*
-     * By sleeping here for 1s after migration finishes on the source server
-     * (but not yet started on the destination server), the timer should be
-     * armed on the destination server for 2-1=1 seconds. If we don't sleep
-     * then it will be armed for 2 seconds, which isn't as interesting.
-     */
-    sleep(1);
-
     nr_iters = migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters,
                             md5sum, bar1_size);
 
