@@ -982,6 +982,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     /* connect to the destination server */
     sock = init_sock(sock_path);
+    free(sock_path);
 
     negotiate(sock, server_max_fds, pgsize);
 
@@ -1258,24 +1259,16 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * Schedule an interrupt in 2 seconds from now in the old server and then
+     * Schedule an interrupt in 3 seconds from now in the old server and then
      * immediatelly migrate the device. The new server should deliver the
-     * interrupt. Hopefully 2 seconds should be enough for migration to finish.
+     * interrupt. Hopefully 3 seconds should be enough for migration to finish.
      * TODO make this value a command line option.
      */
-    t = time(NULL) + 2;
+    t = time(NULL) + 3;
     ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t, sizeof t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
-
-    /*
-     * By sleeping here for 1s after migration finishes on the source server
-     * (but not yet started on the destination server), the timer should be
-     * armed on the destination server for 2-1=1 seconds. If we don't sleep
-     * then it will be armed for 2 seconds, which isn't as interesting.
-     */
-    sleep(1);
 
     nr_iters = migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters,
                             md5sum, bar1_size);
@@ -1293,6 +1286,11 @@ int main(int argc, char *argv[])
     sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
                       nr_iters, migr_iters, path_to_server, migr_reg_index,
                       md5sum, bar1_size);
+    free(path_to_server);
+    for (i = 0; i < (int)nr_iters; i++) {
+        free(migr_iters[i].iov_base);
+    }
+    free(migr_iters);
 
     /*
      * Now we must reconfigure the destination server.
