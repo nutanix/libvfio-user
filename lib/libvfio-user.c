@@ -956,7 +956,7 @@ process_request(vfu_ctx_t *vfu_ctx)
             free(iovecs);
         }
     }
-
+    free(fds_out);
     return ret;
 }
 UNIT_TEST_SYMBOL(process_request);
