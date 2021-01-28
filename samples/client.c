@@ -982,6 +982,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     /* connect to the destination server */
     sock = init_sock(sock_path);
+    free(sock_path);
 
     negotiate(sock, server_max_fds, pgsize);
 
@@ -1293,6 +1294,11 @@ int main(int argc, char *argv[])
     sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
                       nr_iters, migr_iters, path_to_server, migr_reg_index,
                       md5sum, bar1_size);
+    free(path_to_server);
+    for (i = 0; i < (int)nr_iters; i++) {
+        free(migr_iters[i].iov_base);
+    }
+    free(migr_iters);
 
     /*
      * Now we must reconfigure the destination server.
