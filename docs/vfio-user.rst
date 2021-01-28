@@ -1298,8 +1298,10 @@ Sub-Region IO FD info format (ioregionfd)
 * *user_data* is an opaque value passed back to the server via a message on the
   file descriptor
 
-See https://www.spinics.net/lists/kvm/msg208139.html (FIXME) for further context
-on the ioregionfd-specific fields.
+For further information on the ioregionfd-specific fields, see:
+https://lore.kernel.org/kvm/cover.1609231373.git.eafanasova@gmail.com/
+
+(FIXME: update with final API.)
 
 VFIO_USER_DEVICE_GET_IRQ_INFO
 -----------------------------
