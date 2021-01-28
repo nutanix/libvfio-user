@@ -38,6 +38,8 @@
 #include "migration.h"
 #include "private.h"
 
+/* FIXME no need to use __u32 etc., use uint32_t etc */
+
 /*
  * FSM to simplify saving device state.
  */
@@ -59,30 +61,64 @@ struct migration {
      */
     struct {
         enum migr_iter_state state;
+        __u64 pending_bytes;
         __u64 offset;
         __u64 size;
     } iter;
 };
 
-/* valid migration state transitions */
-static const __u32 migr_states[VFIO_DEVICE_STATE_MASK] = {
-    [VFIO_DEVICE_STATE_STOP] = 1 << VFIO_DEVICE_STATE_STOP,
-    [VFIO_DEVICE_STATE_RUNNING] = /* running */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
-        (1 << VFIO_DEVICE_STATE_RESUMING),
-    [VFIO_DEVICE_STATE_SAVING] = /* stop-and-copy */
-        (1 << VFIO_DEVICE_STATE_STOP) |
-        (1 << VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = /* pre-copy */
-        (1 << VFIO_DEVICE_STATE_SAVING) |
-        (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING),
-    [VFIO_DEVICE_STATE_RESUMING] = /* resuming */
-        (1 << VFIO_DEVICE_STATE_RUNNING) |
-        (1 << VFIO_DEVICE_STATE_RESUMING)
+struct migr_state_data {
+    __u32 state;
+    const char *name;
 };
+
+#define VFIO_DEVICE_STATE_ERROR (VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RESUMING)
+
+/* valid migration state transitions */
+static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
+    [VFIO_DEVICE_STATE_STOP] = {
+        .state = 1 << VFIO_DEVICE_STATE_STOP,
+        .name = "stopped"
+    },
+    [VFIO_DEVICE_STATE_RUNNING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << (VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING)) |
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "running"
+    },
+    [VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "stop-and-copy"
+    },
+    [VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "pre-copy"
+    },
+    [VFIO_DEVICE_STATE_RESUMING] = {
+        .state =
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
+            (1 << VFIO_DEVICE_STATE_RESUMING) |
+            (1 << VFIO_DEVICE_STATE_ERROR),
+        .name = "resuming"
+    }
+};
+
+bool
+vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
+{
+    return migr_states[from].state & (1 << to);
+}
 
 struct migration *
 init_migration(const vfu_migration_t * const vfu_migr, int *err)
@@ -125,12 +161,6 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
     return migr;
 }
 
-static bool
-vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
-{
-    return migr_states[from] & (1 << to);
-}
-
 static void
 migr_state_transition(struct migration *migr, enum migr_iter_state state)
 {
@@ -160,9 +190,9 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (!vfio_migr_state_transition_is_valid(migr->info.device_state,
                                               *device_state)) {
-        /* TODO print descriptive device state names instead of raw value */
-        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %d to state %d",
-               migr->info.device_state, *device_state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad transition from state %s to state %s",
+               migr_states[migr->info.device_state].name,
+               migr_states[*device_state].name);
         return -EINVAL;
     }
 
@@ -195,6 +225,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
     if (ret == 0) {
         migr->info.device_state = *device_state;
+        migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_INITIAL);
     } else if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to transition to state %d: %s",
                 *device_state, strerror(-ret));
@@ -221,8 +252,6 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return 0;
     }
 
-    *pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
-
     switch (migr->iter.state) {
         case VFIO_USER_MIGR_ITER_STATE_INITIAL:
         case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
@@ -230,6 +259,8 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
              * FIXME what happens if data haven't been consumed in the previous
              * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
              */
+            *pending_bytes = migr->iter.pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
+
             if (*pending_bytes == 0) {
                 migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
             } else {
@@ -238,11 +269,11 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
             break;
         case VFIO_USER_MIGR_ITER_STATE_STARTED:
             /*
-             * Repeated reads of pending_bytes should not have any side effects.
-             * FIXME does it have to be the same as the previous value? Can it
-             * increase or even decrease? I suppose it can't be lower than
-             * data_size? Ask on LKML.
+             * FIXME We might be wrong returning a cached value, check
+             * https://www.spinics.net/lists/kvm/msg228608.html
+             *
              */
+            *pending_bytes = migr->iter.pending_bytes;
             break;
         default:
             return -EINVAL;
@@ -277,6 +308,14 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
         if (ret < 0) {
             return ret;
         }
+        /*
+         * FIXME must first read data_offset and then data_size. They way we've
+         * implemented it now, if data_size is read before data_offset we
+         * transition to state VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED without
+         * calling callbacks.prepare_data, which is wrong. Maybe we need
+         * separate states for data_offset and data_size.
+         */
+        migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED);
         break;
     case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
         /*
@@ -305,28 +344,28 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
-        break;
+        if (ret == 0 && !is_write) {
+            *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
+        }
+        return ret;
     case VFIO_DEVICE_STATE_RESUMING:
         if (is_write) {
+            /* TODO writing to read-only registers should be simply ignored */
             vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
-            ret = -EINVAL;
-        } else {
-            ret = 0;
+            return -EINVAL;
         }
-        break;
-    default:
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR,
-                "bad access to migration data_offset in state %d",
-                migr->info.device_state);
-        ret = -EINVAL;
+        ret = migr->callbacks.prepare_data(vfu_ctx, offset, NULL);
+        if (ret < 0) {
+            return ret;
+        }
+        *offset += sizeof(struct vfio_device_migration_info);
+        return 0;
     }
-
-    if (ret == 0 && !is_write) {
-        *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
-    }
-
-    return ret;
+    /* TODO improve error message */
+    vfu_log(vfu_ctx, LOG_ERR,
+            "bad access to migration data_offset in state %s",
+            migr_states[migr->info.device_state].name);
+    return -EINVAL;
 }
 
 static ssize_t
@@ -354,18 +393,12 @@ static ssize_t
 handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                __u64 size, bool is_write)
 {
-    int ret = 0;
-
     assert(migr != NULL);
 
     if (is_write) {
-        ret = migr->callbacks.data_written(vfu_ctx, size, migr->info.data_offset);
-        if (ret >= 0) {
-            migr->info.data_size = size;
-            migr->info.data_offset += size;
-        }
+        return  migr->callbacks.data_written(vfu_ctx, size);
     }
-    return ret;
+    return 0;
 }
 
 static ssize_t
@@ -381,21 +414,16 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_SAVING:
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_size_when_saving(vfu_ctx, migr, is_write);
-        break;
+        if (ret == 0 && !is_write) {
+            *size = migr->iter.size;
+        }
+        return ret;
     case VFIO_DEVICE_STATE_RESUMING:
-        ret = handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
-        break;
-    default:
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
-        ret = -EINVAL;
+        return handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
     }
-
-    if (ret == 0 && !is_write) {
-        *size = migr->iter.size;
-    }
-
-    return ret;
+    /* TODO improve error message */
+    vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
+    return -EINVAL;
 }
 
 static ssize_t

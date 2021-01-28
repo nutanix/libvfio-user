@@ -42,6 +42,8 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <pthread.h>
+#include <openssl/md5.h>
 
 #include "common.h"
 #include "libvfio-user.h"
@@ -438,7 +440,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
             .iov_len = data_len
         }
     };
-
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     struct vfio_user_region_access *recv_data;
     size_t nr_send_iovecs, recv_data_len;
     int op, ret;
@@ -459,10 +461,12 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         err(EXIT_FAILURE, "failed to alloc recv_data");
     }
 
+    pthread_mutex_lock(&mutex);
     ret = vfu_msg_iovec(sock, msg_id--, op,
                         send_iovecs, nr_send_iovecs,
                         NULL, 0, NULL,
                         recv_data, recv_data_len, NULL, 0);
+    pthread_mutex_unlock(&mutex);
     if (ret != 0) {
         warnx("failed to %s region %d %#lx-%#lx: %s",
              is_write ? "write to" : "read from", region, offset,
@@ -750,9 +754,6 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
              strerror(-ret));
     }
 
-    /* We do expect some migration data. */
-    assert(pending_bytes > 0);
-
     for (i = 0; i < nr_iters && pending_bytes > 0; i++) {
 
         /* XXX read data_offset and data_size */
@@ -772,8 +773,6 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
                  strerror(-ret));
         }
 
-        assert(data_offset - sizeof(struct vfio_device_migration_info) + data_size <= pending_bytes);
-
         migr_iter[i].iov_len = data_size;
         migr_iter[i].iov_base = malloc(data_size);
         if (migr_iter[i].iov_base == NULL) {
@@ -782,8 +781,7 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
 
         /* XXX read migration data */
         ret = access_region(sock, migr_reg_index, false, data_offset,
-                            (char*)migr_iter[i].iov_base + data_offset - sizeof(struct vfio_device_migration_info),
-                            data_size);
+                            (char*)migr_iter[i].iov_base, data_size);
         if (ret < 0) {
             errx(EXIT_FAILURE, "failed to read migration data: %s",
                  strerror(-ret));
@@ -792,7 +790,7 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
         /* FIXME send migration data to the destination client process */
 
         /*
-         * XXX read pending_bytes again to indicate to the sever that the
+         * XXX read pending_bytes again to indicate to the server that the
          * migration data have been consumed.
          */
         ret = access_region(sock, migr_reg_index, false,
@@ -806,30 +804,69 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
     return i;
 }
 
+struct fake_guest_data {
+    int sock;
+    size_t bar1_size;
+    bool done;
+    unsigned char *md5sum;
+};
+
+static void *
+fake_guest(void *arg)
+{
+    struct fake_guest_data *fake_guest_data = arg;
+    int ret;
+    char buf[fake_guest_data->bar1_size];
+	MD5_CTX md5_ctx;
+    FILE *fp = fopen("/dev/urandom", "r");
+
+    if (fp == NULL) {
+        err(EXIT_FAILURE, "failed to open /dev/urandom");
+    }
+
+
+    do {
+        ret = fread(buf, fake_guest_data->bar1_size, 1, fp);
+        if (ret != 1) {
+            errx(EXIT_FAILURE, "short read %d", ret);
+        }
+        ret = access_region(fake_guest_data->sock, 1, true, 0, buf,
+                            fake_guest_data->bar1_size);
+        if (ret != 0) {
+            err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
+        }
+        MD5_Init(&md5_ctx);
+        MD5_Update(&md5_ctx, buf, fake_guest_data->bar1_size);
+        __sync_synchronize();
+    } while (!fake_guest_data->done);
+
+    MD5_Final(fake_guest_data->md5sum, &md5_ctx);
+
+    return NULL;
+}
+
 static size_t
-migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr_iters)
+migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
+             struct iovec **migr_iters, unsigned char *md5sum, size_t bar1_size)
 {
     __u32 device_state;
     int ret;
     size_t _nr_iters;
+    pthread_t thread;
+    struct fake_guest_data fake_guest_data = {
+        .sock = sock,
+        .bar1_size = bar1_size,
+        .done = false,
+        .md5sum = md5sum
+    };
 
-    /*
-     * FIXME to fully demonstrate live migration we'll need a way to change
-     * device state while the client is running the migration iteration. One
-     * way to do that is to have the client randomly modify a big-ish device
-     * region while running the live migration iterations, and at some point
-     * stopping to do the stop-and-copy phase. It can store in a buffer the
-     * modifications it makes and then after the device has been migrated it
-     * should compare the buffer with the migrated device region.
-     */
+    ret = pthread_create(&thread, NULL, fake_guest, &fake_guest_data);
+    if (ret != 0) {
+        errno = ret;
+        err(EXIT_FAILURE, "failed to create pthread");
+    }
 
-    /*
-     * TODO The server generates migration data while it's in pre-copy state.
-     *
-     * FIXME the server generates 4 rounds of migration data while in pre-copy
-     * state and 1 while in stop-and-copy state. Don't assume this.
-     */
-    *nr_iters = 5;
+    *nr_iters = 2;
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -848,12 +885,15 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr
              strerror(-ret));
     }
 
-    _nr_iters = do_migrate(sock, migr_reg_index, 4, *migr_iters);
-
-    if (_nr_iters != 4) {
-        errx(EXIT_FAILURE,
-             "expected 4 iterations instead of %ld while in pre-copy state\n",
-             _nr_iters);
+    _nr_iters = do_migrate(sock, migr_reg_index, 1, *migr_iters);
+    assert(_nr_iters == 1);
+    printf("stopping fake guest thread\n");
+    fake_guest_data.done = true;
+    __sync_synchronize();
+    ret = pthread_join(thread, NULL);
+    if (ret != 0) {
+        errno = ret;
+        err(EXIT_FAILURE, "failed to join fake guest pthread");
     }
 
     printf("setting device state to stop-and-copy\n");
@@ -868,9 +908,9 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr
     }
 
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 5) {
+    if (_nr_iters != 2) {
         errx(EXIT_FAILURE,
-             "expected 5 iterations instead of %ld while in stop-and-copy state\n",
+             "expected 2 iterations instead of %ld while in stop-and-copy state\n",
              _nr_iters);
     }
 
@@ -890,7 +930,8 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters, struct iovec **migr
 static int
 migrate_to(char *old_sock_path, int *server_max_fds,
            size_t *pgsize, size_t nr_iters, struct iovec *migr_iters,
-           char *path_to_server, int migr_reg_index)
+           char *path_to_server, int migr_reg_index, unsigned char *src_md5sum,
+           size_t bar1_size)
 {
     int ret, sock;
     char *sock_path;
@@ -898,6 +939,9 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     __u32 device_state = VFIO_DEVICE_STATE_RESUMING;
     __u64 data_offset, data_len;
     size_t i;
+	MD5_CTX md5_ctx;
+    char buf[bar1_size];
+    unsigned char dst_md5sum[MD5_DIGEST_LENGTH];
 
     assert(old_sock_path != NULL);
 
@@ -938,6 +982,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     /* connect to the destination server */
     sock = init_sock(sock_path);
+    free(sock_path);
 
     negotiate(sock, server_max_fds, pgsize);
 
@@ -998,6 +1043,29 @@ migrate_to(char *old_sock_path, int *server_max_fds,
              strerror(-ret));
     }
 
+    /* validate contents of BAR1 */
+    MD5_Init(&md5_ctx);
+
+    if (access_region(sock, 1, false, 0, buf, bar1_size) != 0) {
+        err(EXIT_FAILURE, "failed to read BAR1");
+    }
+    MD5_Update(&md5_ctx, buf, bar1_size);
+    MD5_Final(dst_md5sum, &md5_ctx);
+
+    if (strncmp((char*)src_md5sum, (char*)dst_md5sum, MD5_DIGEST_LENGTH) != 0) {
+        int i;
+        fprintf(stderr, "md5sum mismatch: ");
+        for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
+            fprintf(stderr, "%02x", src_md5sum[i]);
+        }
+        fprintf(stderr, " != ");
+        for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
+            fprintf(stderr, "%02x", dst_md5sum[i]);
+        }
+        fprintf(stderr, "\n");
+        abort();
+    }
+
     return sock;
 }
 
@@ -1043,6 +1111,8 @@ int main(int argc, char *argv[])
     int migr_reg_index;
     struct iovec *migr_iters;
     size_t nr_iters;
+    unsigned char md5sum[MD5_DIGEST_LENGTH];
+    size_t bar1_size = 0x3000; /* FIXME get this value from region info */
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1189,26 +1259,19 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * Schedule an interrupt in 2 seconds from now in the old server and then
+     * Schedule an interrupt in 3 seconds from now in the old server and then
      * immediatelly migrate the device. The new server should deliver the
-     * interrupt. Hopefully 2 seconds should be enough for migration to finish.
+     * interrupt. Hopefully 3 seconds should be enough for migration to finish.
      * TODO make this value a command line option.
      */
-    t = time(NULL) + 2;
+    t = time(NULL) + 3;
     ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t, sizeof t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
-    /*
-     * By sleeping here for 1s after migration finishes on the source server
-     * (but not yet started on the destination server), the timer should be
-     * armed on the destination server for 2-1=1 seconds. If we don't sleep
-     * then it will be armed for 2 seconds, which isn't as interesting.
-     */
-    sleep(1);
-
-    migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters);
+    nr_iters = migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters,
+                            md5sum, bar1_size);
 
     /*
      * Normally the client would now send the device state to the destination
@@ -1221,7 +1284,13 @@ int main(int argc, char *argv[])
     }
 
     sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
-                      nr_iters, migr_iters, path_to_server, migr_reg_index);
+                      nr_iters, migr_iters, path_to_server, migr_reg_index,
+                      md5sum, bar1_size);
+    free(path_to_server);
+    for (i = 0; i < (int)nr_iters; i++) {
+        free(migr_iters[i].iov_base);
+    }
+    free(migr_iters);
 
     /*
      * Now we must reconfigure the destination server.
