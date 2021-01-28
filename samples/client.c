@@ -866,9 +866,6 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    /* give fake guest a chance to write something */
-    usleep(1000);
-
     /*
      * TODO The server generates migration data while it's in pre-copy state.
      *
