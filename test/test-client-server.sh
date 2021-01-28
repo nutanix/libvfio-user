@@ -9,6 +9,5 @@ server_pid=$!
 while [ ! -S ${sock} ]; do
 	sleep 0.1
 done
-../samples/client ${sock} &
-wait $!
-wait ${server_pid}
+../samples/client ${sock}
+wait
