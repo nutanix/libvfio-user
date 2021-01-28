@@ -292,7 +292,7 @@ vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
 
     if (is_reply) {
         if (msg_id != NULL && hdr->msg_id != *msg_id) {
-            return -EINVAL;
+            return -EPROTO;
         }
 
         if (hdr->flags.type != VFIO_USER_F_TYPE_REPLY) {
