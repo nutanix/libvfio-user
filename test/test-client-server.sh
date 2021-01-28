@@ -2,7 +2,7 @@
 
 set -e
 
-valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --exit-on-first-error=yes --leak-check=full"
+valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full"
 
 sock="/tmp/vfio-user.sock"
 rm -f ${sock}*
