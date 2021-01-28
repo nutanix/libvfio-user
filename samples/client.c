@@ -754,9 +754,6 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
              strerror(-ret));
     }
 
-    /* We do expect some migration data. */
-    assert(pending_bytes > 0);
-
     for (i = 0; i < nr_iters && pending_bytes > 0; i++) {
 
         /* XXX read data_offset and data_size */
@@ -827,17 +824,18 @@ fake_guest(void *arg)
         err(EXIT_FAILURE, "failed to open /dev/urandom");
     }
 
-    MD5_Init(&md5_ctx);
 
     do {
         ret = fread(buf, fake_guest_data->bar1_size, 1, fp);
         if (ret != 1) {
             errx(EXIT_FAILURE, "short read %d", ret);
         }
-        ret = access_region(fake_guest_data->sock, 1, true, 0, buf, sizeof buf);
+        ret = access_region(fake_guest_data->sock, 1, true, 0, buf,
+                            fake_guest_data->bar1_size);
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
+        MD5_Init(&md5_ctx);
         MD5_Update(&md5_ctx, buf, fake_guest_data->bar1_size);
         __sync_synchronize();
     } while (!fake_guest_data->done);
@@ -868,16 +866,7 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    /* give fake guest a chance to write something */
-    usleep(1000);
-
-    /*
-     * TODO The server generates migration data while it's in pre-copy state.
-     *
-     * FIXME the server generates 4 rounds of migration data while in pre-copy
-     * state and 1 while in stop-and-copy state. Don't assume this.
-     */
-    *nr_iters = 5;
+    *nr_iters = 2;
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -896,13 +885,8 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
              strerror(-ret));
     }
 
-    _nr_iters = do_migrate(sock, migr_reg_index, 3, *migr_iters);
-    if (_nr_iters != 3) {
-        errx(EXIT_FAILURE,
-             "expected 3 iterations instead of %ld while in pre-copy state\n",
-             _nr_iters);
-    }
-
+    _nr_iters = do_migrate(sock, migr_reg_index, 1, *migr_iters);
+    assert(_nr_iters == 1);
     printf("stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
@@ -910,13 +894,6 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     if (ret != 0) {
         errno = ret;
         err(EXIT_FAILURE, "failed to join fake guest pthread");
-    }
-
-    _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 4) {
-        errx(EXIT_FAILURE,
-             "expected 4 iterations instead of %ld while in pre-copy state\n",
-             _nr_iters);
     }
 
     printf("setting device state to stop-and-copy\n");
@@ -931,9 +908,9 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     }
 
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 5) {
+    if (_nr_iters != 2) {
         errx(EXIT_FAILURE,
-             "expected 5 iterations instead of %ld while in stop-and-copy state\n",
+             "expected 2 iterations instead of %ld while in stop-and-copy state\n",
              _nr_iters);
     }
 
@@ -1005,6 +982,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     /* connect to the destination server */
     sock = init_sock(sock_path);
+    free(sock_path);
 
     negotiate(sock, server_max_fds, pgsize);
 
@@ -1074,9 +1052,9 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     MD5_Update(&md5_ctx, buf, bar1_size);
     MD5_Final(dst_md5sum, &md5_ctx);
 
-    if (strcmp((char*)src_md5sum, (char*)dst_md5sum) != 0) {
+    if (strncmp((char*)src_md5sum, (char*)dst_md5sum, MD5_DIGEST_LENGTH) != 0) {
         int i;
-        fprintf(stderr, "md5 sum mismatch: ");
+        fprintf(stderr, "md5sum mismatch: ");
         for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
             fprintf(stderr, "%02x", src_md5sum[i]);
         }
@@ -1085,6 +1063,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
             fprintf(stderr, "%02x", dst_md5sum[i]);
         }
         fprintf(stderr, "\n");
+        abort();
     }
 
     return sock;
@@ -1280,12 +1259,12 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * Schedule an interrupt in 2 seconds from now in the old server and then
+     * Schedule an interrupt in 3 seconds from now in the old server and then
      * immediatelly migrate the device. The new server should deliver the
-     * interrupt. Hopefully 2 seconds should be enough for migration to finish.
+     * interrupt. Hopefully 3 seconds should be enough for migration to finish.
      * TODO make this value a command line option.
      */
-    t = time(NULL) + 2;
+    t = time(NULL) + 3;
     ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t, sizeof t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
@@ -1299,8 +1278,8 @@ int main(int argc, char *argv[])
      */
     sleep(1);
 
-    migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters, md5sum,
-                 bar1_size);
+    nr_iters = migrate_from(sock, migr_reg_index, &nr_iters, &migr_iters,
+                            md5sum, bar1_size);
 
     /*
      * Normally the client would now send the device state to the destination
@@ -1315,6 +1294,11 @@ int main(int argc, char *argv[])
     sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
                       nr_iters, migr_iters, path_to_server, migr_reg_index,
                       md5sum, bar1_size);
+    free(path_to_server);
+    for (i = 0; i < (int)nr_iters; i++) {
+        free(migr_iters[i].iov_base);
+    }
+    free(migr_iters);
 
     /*
      * Now we must reconfigure the destination server.
