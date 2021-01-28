@@ -1258,12 +1258,12 @@ int main(int argc, char *argv[])
     }
 
     /*
-     * Schedule an interrupt in 2 seconds from now in the old server and then
+     * Schedule an interrupt in 3 seconds from now in the old server and then
      * immediatelly migrate the device. The new server should deliver the
-     * interrupt. Hopefully 2 seconds should be enough for migration to finish.
+     * interrupt. Hopefully 3 seconds should be enough for migration to finish.
      * TODO make this value a command line option.
      */
-    t = time(NULL) + 2;
+    t = time(NULL) + 3;
     ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t, sizeof t);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
