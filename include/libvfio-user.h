@@ -227,7 +227,12 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * given callback.  However, the callback can still be invoked, even on a
  * mappable area, if the client chooses to call VFIO_USER_REGION_READ/WRITE.
  *
- * A VFU_PCI_DEV_CFG_REGION_IDX region, corresponding to PCI config space, has
+ * The following regions are special and are explained below:
+ *  - VFU_PCI_DEV_CFG_REGION_IDX,
+ *  - VFU_PCI_DEV_MIGR_REGION_IDX, and
+ *  - VFU_GENERIC_DEV_MIGR_REG_IDX.
+ *
+ * Region VFU_PCI_DEV_CFG_REGION_IDX, corresponding to PCI config space, has
  * special handling:
  *
  *  - the @size argument is ignored: the region size is always the size defined
@@ -239,6 +244,26 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  *  - if no callback is provided, reads to other areas are a simple memcpy(),
  *    and writes are an error
  *  - otherwise, the callback is expected to handle the access
+ *
+ * Regions VFU_PCI_DEV_MIGR_REGION_IDX and VFU_GENERIC_DEV_MIGR_REG_IDX,
+ * corresponding to the migration region, enable live migration support for
+ * the device. The migration region must contain at the beginning the migration
+ * registers (struct vfio_device_migration_info defined in <linux/vfio.h>) and
+ * the remaining part of the region can be arbitrarily used by the device
+ * implementation. Therefore, the size of the migration region must be at least
+ * sizeof(struct vfio_device_migration_info). libvfio-user offers two ways for
+ * the migration region to be used:
+ *  1. natively: the device implementation must handle accesses to the
+ *      migration registers and migration data via the region callbacks. The
+ *      semantics of these registers are explained in <linux/vfio.h>.
+ *  2. via the vfu_migration_t callbacks: the device implementation registers
+ *      a set of callbacks by calling vfu_setup_device_migration. The device
+ *      does not have access to the migration registers, however the migration
+ *      region provided must still reserve space for them (see function
+ *      vfu_get_migr_regs_size). The region's read/write callbacks are never
+ *      called.
+ * The migration region can be partially memory mapped, except the migration
+ * registers.
  *
  * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
@@ -260,6 +285,13 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
                  int fd);
+
+/*
+ * Returns the size of the migration registers, which is guaranteed to be page
+ * aligned.
+ */
+size_t
+vfu_get_migr_regs_size(void);
 
 /*
  * Callback function that is called when the guest resets the device.
@@ -348,6 +380,8 @@ typedef enum {
 } vfu_migr_state_t;
 
 
+#define VFU_MIGR_CALLBACKS_VERS 1
+
 /*
  * Callbacks during the pre-copy and stop-and-copy phases.
  *
@@ -362,6 +396,11 @@ typedef enum {
  * there are no more migration data to be consumed in this iteration).
  */
 typedef struct {
+
+    /*
+     * Set it to VFU_MIGR_CALLBACKS_VERS.
+     */
+    int version;
 
     /* migration state transition callback */
     /* TODO rename to vfu_migration_state_transition_callback */
@@ -422,21 +461,22 @@ typedef struct {
 
 } vfu_migration_callbacks_t;
 
-typedef struct {
-    size_t                      size;
-    vfu_migration_callbacks_t   callbacks;
-    struct iovec                *mmap_areas;
-    uint32_t                    nr_mmap_areas;
-} vfu_migration_t;
-
-//TODO: Re-visit once migration support is done.
 /**
- * Enable support for device migration.
+ * vfu_setup_device_migration provides an abstraction over the migration
+ * protocol: the user specifies a set of callbacks which are called in respone
+ * to client accesses of the migration region; the migration read/write
+ * callbacks are not called. Offsets in callbacks are relative to @data_offset.
+ * 
  * @vfu_ctx: the libvfio-user context
- * @migration: information required to migrate device
+ * @callbacks: migration callbacks
+ * @data_offset: offset in the migration region where data begins.
+ *
+ * @returns 0 on success, -1 on error, Sets errno.
  */
 int
-vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration);
+vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
+                                     const vfu_migration_callbacks_t * callbacks,
+                                     uint64_t data_offset);
 
 /**
  * Triggers an interrupt.
@@ -561,6 +601,7 @@ enum {
     VFU_PCI_DEV_ROM_REGION_IDX,
     VFU_PCI_DEV_CFG_REGION_IDX,
     VFU_PCI_DEV_VGA_REGION_IDX,
+    VFU_PCI_DEV_MIGR_REGION_IDX,
     VFU_PCI_DEV_NUM_REGIONS,
 };
 
@@ -570,6 +611,11 @@ typedef enum {
     VFU_PCI_TYPE_PCI_X_2,
     VFU_PCI_TYPE_EXPRESS
 } vfu_pci_type_t;
+
+enum {
+    VFU_GENERIC_DEV_MIGR_REGION_IDX,
+    VFU_GENERIC_DEV_NUM_REGIONS
+};
 
 /**
  * Initialize the context for a PCI device. This function must be called only

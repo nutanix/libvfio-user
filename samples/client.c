@@ -261,13 +261,9 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
 }
 
 static void
-mmap_sparse_areas(int *fds, size_t nr_fds,
-                  struct vfio_region_info_cap_sparse_mmap *sparse)
+mmap_sparse_areas(int *fds, struct vfio_region_info_cap_sparse_mmap *sparse)
 {
     size_t i;
-
-    assert(nr_fds == 2);
-    assert(sparse->nr_areas == 2);
 
     for (i = 0; i < sparse->nr_areas; i++) {
 
@@ -318,9 +314,6 @@ get_device_region_info(int sock, uint32_t index)
         region_info->index = index;
         do_get_device_region_info(sock, region_info, fds, &nr_fds);
         assert(region_info->size == size);
-        assert(nr_fds == 2);
-        assert(fds[0] >= 0);
-        assert(fds[1] >= 0);
     } else {
         nr_fds = 0;
     }
@@ -334,7 +327,10 @@ get_device_region_info(int sock, uint32_t index)
         if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
                                  &sparse)) {
             if (sparse != NULL) {
-                mmap_sparse_areas(fds, nr_fds, sparse);
+                assert((index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 2) ||
+                       (index == VFU_PCI_DEV_MIGR_REGION_IDX && nr_fds == 1));
+                assert(nr_fds == sparse->nr_areas);
+                mmap_sparse_areas(fds, sparse);
             }
             return true;
         }
