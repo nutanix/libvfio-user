@@ -207,7 +207,7 @@ send_device_reset(int sock)
 /* returns whether a VFIO migration capability is found */
 static bool
 get_region_vfio_caps(struct vfio_info_cap_header *header,
-                     struct vfio_region_info_cap_sparse_mmap *sparse)
+                     struct vfio_region_info_cap_sparse_mmap **sparse)
 {
     struct vfio_region_info_cap_type *type;
     unsigned int i;
@@ -216,12 +216,13 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
     while (true) {
         switch (header->id) {
             case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
-                sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
+                *sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
                 printf("%s: Sparse cap nr_mmap_areas %d\n", __func__,
-                       sparse->nr_areas);
-                for (i = 0; i < sparse->nr_areas; i++) {
+                       (*sparse)->nr_areas);
+                for (i = 0; i < (*sparse)->nr_areas; i++) {
                     printf("%s: area %d offset %#llx size %llu\n", __func__,
-                           i, sparse->areas[i].offset, sparse->areas[i].size);
+                           i, (*sparse)->areas[i].offset,
+                           (*sparse)->areas[i].size);
                 }
                 break;
             case VFIO_REGION_INFO_CAP_TYPE:
@@ -294,7 +295,7 @@ get_device_region_info(int sock, uint32_t index)
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
         if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
-                                 sparse)) {
+                                 &sparse)) {
             if (sparse != NULL) {
                 size_t i;
                 assert(nr_fds == 2);
