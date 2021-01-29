@@ -285,12 +285,14 @@ get_device_region_info(int sock, uint32_t index)
         assert(nr_fds == 2);
         assert(fds[0] >= 0);
         assert(fds[1] >= 0);
+    } else {
+        nr_fds = 0;
     }
 
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
     printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
-           "cap_sz %lu\n", __func__, index, region_info->offset,
-           region_info->flags, region_info->size, cap_sz);
+           "cap_sz %lu #FDs %lu\n", __func__, index, region_info->offset,
+           region_info->flags, region_info->size, cap_sz, nr_fds);
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
         if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
