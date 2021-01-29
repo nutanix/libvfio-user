@@ -51,9 +51,14 @@ enum migr_iter_state {
 };
 
 struct migration {
+    /*
+     * TODO if the user provides an FD then should mmap it an use the migration
+     * registers in the file
+     */
     struct vfio_device_migration_info info;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
+    uint64_t data_offset;
 
     /*
      * This is only for the saving state. The resuming state is simpler so we
@@ -120,13 +125,17 @@ vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
     return migr_states[from].state & (1 << to);
 }
 
+/*
+ * TODO no need to dynamically allocate memory, we can keep struct migration
+ * in vfu_ctx_t.
+ */
 struct migration *
-init_migration(const vfu_migration_t * const vfu_migr, int *err)
+init_migration(const vfu_migration_callbacks_t * callbacks,
+               uint64_t data_offset, int *err)
 {
     struct migration *migr;
 
-    *err = 0;
-    if (vfu_migr->size < sizeof(struct vfio_device_migration_info)) {
+    if (data_offset < sizeof(struct vfio_device_migration_info)) {
         *err = EINVAL;
         return NULL;
     }
@@ -140,14 +149,15 @@ init_migration(const vfu_migration_t * const vfu_migr, int *err)
     /*
      * FIXME: incorrect, if the client doesn't give a pgsize value, it means "no
      * migration support", handle this
+     * FIXME must be available even if migration callbacks aren't used
      */
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
-
-    /* FIXME this should be done in vfu_ctx_run or poll */
+    /* FIXME this should be done in vfu_ctx_realize */
     migr->info.device_state = VFIO_DEVICE_STATE_RUNNING;
+    migr->data_offset = data_offset;
 
-    migr->callbacks = vfu_migr->callbacks;
+    migr->callbacks = *callbacks;
     if (migr->callbacks.transition == NULL ||
         migr->callbacks.get_pending_bytes == NULL ||
         migr->callbacks.prepare_data == NULL ||
@@ -345,7 +355,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
         ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
         if (ret == 0 && !is_write) {
-            *offset = migr->iter.offset + sizeof(struct vfio_device_migration_info);
+            *offset = migr->iter.offset + migr->data_offset;
         }
         return ret;
     case VFIO_DEVICE_STATE_RESUMING:
@@ -358,7 +368,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
         if (ret < 0) {
             return ret;
         }
-        *offset += sizeof(struct vfio_device_migration_info);
+        *offset += migr->data_offset;
         return 0;
     }
     /* TODO improve error message */
@@ -496,7 +506,19 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
         ret = migration_region_access_registers(vfu_ctx, buf, count,
                                                 pos, is_write);
     } else {
-        pos -= sizeof(struct vfio_device_migration_info);
+
+        if (pos < (loff_t)migr->data_offset) {
+            /*
+             * TODO we can simply ignore the access to that part and handle
+             * any access to the data region properly.
+             */
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "bad access to dead space %#lx-%#lx in migration region",
+                    pos, pos + count - 1);
+            return -EINVAL;
+        }
+
+        pos -= migr->data_offset;
         if (is_write) {
             ret = migr->callbacks.write_data(vfu_ctx, buf, count, pos);
         } else {

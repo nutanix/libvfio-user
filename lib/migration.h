@@ -44,7 +44,8 @@
 #include "libvfio-user.h"
 
 struct migration *
-init_migration(const vfu_migration_t * const vfu_migr, int *err);
+init_migration(const vfu_migration_callbacks_t * callbacks,
+               uint64_t data_offset, int *err);
 
 ssize_t
 migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
