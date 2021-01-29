@@ -1122,6 +1122,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
+    size_t i;
 
     if (trans != VFU_TRANS_SOCK) {
         errno = ENOTSUP;
@@ -1180,6 +1181,10 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
             goto err_out;
         }
         vfu_ctx->fd = err;
+    }
+
+    for (i = 0; i < vfu_ctx->nr_regions; i++) {
+        vfu_ctx->reg_info[i].fd = -1;
     }
 
     return vfu_ctx;

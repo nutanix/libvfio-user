@@ -553,6 +553,7 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
 {
     vfu_ctx_t *vfu_ctx = NULL;
     struct pmcap pm = { { 0 } };
+    size_t i;
 
     pm.hdr.id = PCI_CAP_ID_PM;
     pm.pmcs.nsfrst = 0x1;
@@ -566,6 +567,9 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
                         PCI_HEADER_TYPE_NORMAL, 0));
     assert_int_equal(PCI_STD_HEADER_SIZEOF,
                      vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
+    for (i = 0; i < vfu_ctx->nr_regions; i++) {
+        assert_int_equal(-1, vfu_ctx->reg_info[i].fd);
+    }
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
 }
 
