@@ -2,12 +2,13 @@
 
 set -e
 
+valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full"
+
 sock="/tmp/vfio-user.sock"
 rm -f ${sock}*
-../samples/server -v ${sock} &
-server_pid=$!
+${valgrind} ../samples/server ${sock} &
 while [ ! -S ${sock} ]; do
 	sleep 0.1
 done
-../samples/client ${sock}
+${valgrind} ../samples/client ${sock}
 wait
