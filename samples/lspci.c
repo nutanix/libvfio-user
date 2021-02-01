@@ -115,6 +115,8 @@ int main(void)
         printf("\n");
     }
 
+    vfu_destroy_ctx(vfu_ctx);
+
     return 0;
 }
 
