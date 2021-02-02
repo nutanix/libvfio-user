@@ -98,7 +98,7 @@ cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
         case PCI_CAP_ID_PM:
             return PCI_PM_SIZEOF;
         case PCI_CAP_ID_EXP:
-            return PCI_CAP_EXP_ENDPOINT_SIZEOF_V2;
+            return VFIO_USER_PCI_CAP_EXP_SIZEOF;
         case PCI_CAP_ID_MSIX:
             return PCI_CAP_MSIX_SIZEOF;
         case PCI_CAP_ID_VNDR:

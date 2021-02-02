@@ -107,6 +107,36 @@ struct pxls {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxls) == 0x2, "bad PXLS size");
 
+struct pxscap {
+    unsigned int stuff:32;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxscap) == 0x4, "bad PXSCAP size");
+
+struct pxsc {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxsc) == 0x2, "bad PXSC size");
+
+struct pxss {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxss) == 0x2, "bad PXSS size");
+
+struct pxrc {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxrc) == 0x2, "bad PXRC size");
+
+struct pxrcap {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxrcap) == 0x2, "bad PXRCAP size");
+
+struct pxrs {
+    unsigned int stuff:32;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxrs) == 0x4, "bad PXRS size");
+
 struct pxdcap2 {
     unsigned int ctrs:4;
     unsigned int ctds:1;
@@ -131,25 +161,106 @@ struct pxdc2 {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
 
+struct pxds2 {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxds2) == 0x2, "bad PXDS2 size");
+
+struct pxlcap2 {
+    unsigned int stuff:32;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxlcap2) == 0x4, "bad PXLCAP2 size");
+
+struct pxlc2 {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxlc2) == 0x2, "bad PXLC2 size");
+
+struct pxls2 {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxls2) == 0x2, "bad PXLS2 size");
+
+struct pxscap2 {
+    unsigned int stuff:32;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxscap2) == 0x4, "bad PXSCAP2 size");
+
+struct pxsc2 {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxsc2) == 0x2, "bad PXSC2 size");
+
+struct pxss2 {
+    unsigned int stuff:16;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pxss2) == 0x2, "bad PXSS2 size");
+
 /*
- * TODO the definition of this struct varies, check PCI Express 2.1
- * specification. Maybe we should only define the idividual registers but not
- * the whole struct.
+ * PCI_CAP_EXP_ENDPOINT_SIZEOF_V2 from pci_regs.h is a false friend: earlier
+ * kernel versions defined the size as if the device was a Root Complex
+ * Integrated Endpoint (size 0x2c).
+ *
+ * Regardless, we define the full structure anyway.
+ */
+#define VFIO_USER_PCI_CAP_EXP_SIZEOF (0x3c)
+
+/*
+ * PCI Express capability, defined in PCI Express 7.8.
+ *
+ * The relevant fields and size of this capability varies depending upon the
+ * type. While we can expect, at least for now, all users to implement a PCI
+ * Express Endpoint, we'll define the entire struct, on the presumption that
+ * there is no issue with having additional space in the capability.
  */
 struct pxcap {
     struct cap_hdr hdr;
+    /* PCI Express Capabilities Register */
     struct pxcaps pxcaps;
+    /* Device Capabilities */
     struct pxdcap pxdcap;
+    /* Device Control */
     union pxdc pxdc;
+    /* Device Status */
     struct pxds pxds;
+    /* Link Capabilities */
     struct pxlcap pxlcap;
+    /* Link Control */
     struct pxlc pxlc;
+    /* Link Status */
     struct pxls pxls;
-    uint8_t pad[0x10];
+    /* Slot Capabilities */
+    struct pxscap pxscap;
+    /* Slot Control */
+    struct pxsc pxsc;
+    /* Slot Status */
+    struct pxss pxss;
+    /* Root Control */
+    struct pxrc pxrc;
+    /* Root Capabilities */
+    struct pxrcap pxrcap;
+    /* Root Status */
+    struct pxrs pxrs;
+    /* Device Capabilities 2 */
     struct pxdcap2 pxdcap2;
+    /* Device Control 2 */
     struct pxdc2 pxdc2;
+    /* Device Status 2 */
+    struct pxds2 pxds2;
+    /* Link Capabilities 2 */
+    struct pxlcap2 pxlcap2;
+    /* Link Control 2 */
+    struct pxlc2 pxlc2;
+    /* Link Status 2 */
+    struct pxls2 pxls2;
+    /* Slot Capabilities 2 */
+    struct pxscap2 pxscap2;
+    /* Slot Control 2 */
+    struct pxsc2 pxsc2;
+    /* Slot Status 2 */
+    struct pxss2 pxss2;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxcap) == 0x2a,
+_Static_assert(sizeof(struct pxcap) == VFIO_USER_PCI_CAP_EXP_SIZEOF,
 		"bad PCI Express Capability size");
 _Static_assert(offsetof(struct pxcap, hdr) == 0, "bad offset");
 
