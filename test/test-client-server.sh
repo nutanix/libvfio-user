@@ -2,7 +2,14 @@
 
 set -e
 
-valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full"
+#
+# ASAN and valgrind, understandably, don't get along.
+#
+if [ "$WITH_ASAN" = 1 ]; then
+    valgrind=""
+else
+    valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full"
+fi
 
 sock="/tmp/vfio-user.sock"
 rm -f ${sock}*
