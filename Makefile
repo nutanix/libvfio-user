@@ -37,6 +37,12 @@ else
 	CMAKE_BUILD_TYPE = Release
 endif
 
+ifdef WITH_ASAN
+	CC = clang
+	CFLAGS += -fsanitize=address
+	LDFLAGS += -fsanitize=address
+endif
+
 ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
@@ -63,6 +69,8 @@ pre-push: realclean
 	make realclean
 	make test CC=clang
 	make test CC=clang BUILD_TYPE=rel
+	make realclean
+	make test WITH_ASAN=1
 
 realclean:
 	rm -rf $(BUILD_DIR_BASE)
@@ -75,6 +83,7 @@ force_cmake: $(BUILD_DIR)/Makefile
 $(BUILD_DIR)/Makefile:
 	mkdir -p $(BUILD_DIR)
 	cd $(BUILD_DIR); $(CMAKE) \
+		-D "CMAKE_C_COMPILER:STRING=$(CC)" \
 		-D "CMAKE_C_FLAGS:STRING=$(CFLAGS)" \
 		-D "CMAKE_BUILD_TYPE:STRING=$(CMAKE_BUILD_TYPE)" \
 		-D "CMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)" \
