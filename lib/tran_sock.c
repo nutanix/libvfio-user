@@ -715,12 +715,6 @@ open_sock(vfu_ctx_t *vfu_ctx)
 }
 
 static int
-close_sock(vfu_ctx_t *vfu_ctx)
-{
-    return close(vfu_ctx->conn_fd);
-}
-
-static int
 get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                  int *fds, size_t *nr_fds)
 {
@@ -737,11 +731,30 @@ get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     return get_msg(hdr, sizeof *hdr, fds, nr_fds, vfu_ctx->conn_fd, sock_flags);
 }
 
+static void
+detach_sock(vfu_ctx_t *vfu_ctx)
+{
+    if (vfu_ctx->conn_fd != -1) {
+        (void) close(vfu_ctx->conn_fd);
+        vfu_ctx->conn_fd = -1;
+    }
+}
+
+static void
+fini_sock(vfu_ctx_t *vfu_ctx)
+{
+    if (vfu_ctx->fd != -1) {
+        (void) close(vfu_ctx->fd);
+        vfu_ctx->fd = -1;
+    }
+}
+
 struct transport_ops sock_transport_ops = {
     .init = init_sock,
     .attach = open_sock,
-    .detach = close_sock,
     .get_request = get_request_sock,
+    .detach = detach_sock,
+    .fini = fini_sock,
 };
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -1088,6 +1088,11 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->trans->detach != NULL) {
         vfu_ctx->trans->detach(vfu_ctx);
     }
+
+    if (vfu_ctx->trans->fini != NULL) {
+        vfu_ctx->trans->fini(vfu_ctx);
+    }
+
     if (vfu_ctx->dma != NULL) {
         dma_controller_destroy(vfu_ctx->dma);
     }
@@ -1124,6 +1129,8 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     int err = 0;
     size_t i;
 
+    //FIXME: Validate arguments.
+
     if (trans != VFU_TRANS_SOCK) {
         errno = ENOTSUP;
         return NULL;
@@ -1139,11 +1146,11 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         errno = ENOMEM;
         return NULL;
     }
+
+    vfu_ctx->fd = -1;
+    vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
     vfu_ctx->trans = &sock_transport_ops;
-
-    //FIXME: Validate arguments.
-    // Set other context data.
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
