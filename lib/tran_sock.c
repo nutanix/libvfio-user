@@ -575,7 +575,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         }
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
-                                     &pgsize);
+                                      &pgsize);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
