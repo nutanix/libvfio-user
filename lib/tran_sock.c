@@ -687,10 +687,6 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
     return ret;
 }
 
-/**
- * vfu_ctx: libvfio-user context
- * FIXME: this shouldn't be happening as part of vfu_ctx_create().
- */
 static int
 open_sock(vfu_ctx_t *vfu_ctx)
 {
