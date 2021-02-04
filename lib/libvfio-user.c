@@ -1304,6 +1304,12 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         return ERROR(EINVAL);
     }
 
+    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
+        size < sizeof(struct vfio_device_migration_info)) {
+        vfu_log(vfu_ctx, LOG_ERR, "ivalid migration region size %d", size);
+        return ERROR(EINVAL);
+    }
+
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
         if ((size_t)iov->iov_base + iov->iov_len > size) {
