@@ -44,11 +44,14 @@ ERROR(int err)
 }
 
 struct transport_ops {
-    int (*init)(vfu_ctx_t*);
-    int (*attach)(vfu_ctx_t*);
-    int(*detach)(vfu_ctx_t*);
-    int (*get_request)(vfu_ctx_t*, struct vfio_user_header*,
+    int (*init)(vfu_ctx_t *vfu_ctx);
+    int (*attach)(vfu_ctx_t *vfu_ctx);
+
+    int (*get_request)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                        int *fds, size_t *nr_fds);
+
+    void (*detach)(vfu_ctx_t *vfu_ctx);
+    void (*fini)(vfu_ctx_t *vfu_ctx);
 };
 
 typedef enum {
