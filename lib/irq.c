@@ -40,16 +40,17 @@
 #define LM2VFIO_IRQT(type) (type - 1)
 
 static const char *
-vfio_irq_idx_to_str(int index) {
-    static const char *s[] = {
-        [VFIO_PCI_INTX_IRQ_INDEX] = "INTx",
-        [VFIO_PCI_MSI_IRQ_INDEX]  = "MSI",
-        [VFIO_PCI_MSIX_IRQ_INDEX] = "MSI-X",
-    };
-
-    assert(index < VFU_DEV_NUM_IRQS);
-
-    return s[index];
+vfio_irq_idx_to_str(int index)
+{
+    switch (index) {
+    case VFIO_PCI_INTX_IRQ_INDEX: return "INTx";
+    case VFIO_PCI_MSI_IRQ_INDEX: return "MSI";
+    case VFIO_PCI_MSIX_IRQ_INDEX: return "MSI-X";
+    case VFIO_PCI_ERR_IRQ_INDEX: return "ERR";
+    case VFIO_PCI_REQ_IRQ_INDEX: return "REQ";
+    default:
+        abort();
+    }
 }
 
 static long
