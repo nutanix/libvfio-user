@@ -580,7 +580,7 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
 
     patch(close);
-    expect_value(__wrap_close, fd, 0x0);
+    expect_value(__wrap_close, fd, vfu_ctx->fd);
     will_return(__wrap_close, 0);
 
     vfu_destroy_ctx(vfu_ctx);
