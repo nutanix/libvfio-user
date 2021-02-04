@@ -551,7 +551,7 @@ int main(int argc, char *argv[])
                  * again to show how DMA is done. This is used if the client's
                  * RAM isn't mappable or the server implementation prefers it
                  * this way.  Again, the client expects the server to send DMA
-                 * messages right after is has triggerd the IRQs.
+                 * messages right after is has triggered the IRQs.
                  */
                 do_dma_io(vfu_ctx, &server_data);
                 ret = 0;
