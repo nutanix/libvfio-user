@@ -44,6 +44,7 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <openssl/md5.h>
+#include <linux/limits.h>
 
 #include "common.h"
 #include "libvfio-user.h"
@@ -258,6 +259,40 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
     }
 }
 
+static void
+mmap_sparse_areas(int *fds, size_t nr_fds,
+                  struct vfio_region_info_cap_sparse_mmap *sparse)
+{
+    size_t i;
+
+    assert(nr_fds == 2);
+    assert(sparse->nr_areas == 2);
+
+    for (i = 0; i < sparse->nr_areas; i++) {
+
+        ssize_t ret;
+        void *addr;
+        char pathname[BUFSIZ];
+        char buf[PATH_MAX];
+
+        ret = snprintf(pathname, sizeof pathname, "/proc/self/fd/%d", fds[i]);
+        assert(ret != -1 && (size_t)ret < sizeof(pathname));
+        ret = readlink(pathname, buf, sizeof(buf) - 1);
+        if (ret == -1) {
+            err(EXIT_FAILURE, "failed to resolve file descriptor %d", fds[i]);
+        }
+        buf[ret + 1] = '\0';
+        addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
+                    MAP_SHARED, fds[i], sparse->areas[i].offset);
+        if (addr == MAP_FAILED) {
+            err(EXIT_FAILURE,
+                "failed to mmap sparse region #%lu in %s (%#llx-%#llx)",
+                i, buf, sparse->areas[i].offset,
+                sparse->areas[i].offset + sparse->areas[i].size - 1);
+        }
+    }
+}
+
 static bool
 get_device_region_info(int sock, uint32_t index)
 {
@@ -298,20 +333,7 @@ get_device_region_info(int sock, uint32_t index)
         if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
                                  sparse)) {
             if (sparse != NULL) {
-                size_t i;
-                assert(nr_fds == 2);
-                assert(sparse->nr_areas == 2);
-                for (i = 0; i < sparse->nr_areas; i++) {
-                    void *addr = mmap(NULL, sparse->areas[i].size,
-                                      PROT_READ | PROT_WRITE, MAP_SHARED,
-                                      fds[i], sparse->areas[i].offset);
-                    if (addr == MAP_FAILED) {
-                        err(EXIT_FAILURE,
-                            "failed to mmap sparse region %lu (%#llx-%#llx)",
-                            i, sparse->areas[i].offset,
-                            sparse->areas[i].offset + sparse->areas[i].size - 1);
-                    }
-                }
+                mmap_sparse_areas(fds, nr_fds, sparse);
             }
             return true;
         }
