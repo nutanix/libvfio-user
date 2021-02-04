@@ -536,12 +536,23 @@ int main(int argc, char *argv[])
             if (irq_triggered) {
                 irq_triggered = false;
                 vfu_irq_trigger(vfu_ctx, 0);
-
+                /*
+                 * Apart from triggering an IRQ via the eventfd, we also
+                 * trigger an IRQ via a message, simply for demonstrating how
+                 * it's done. The client expects this behavior from the server.
+                 */
                 ret = vfu_irq_message(vfu_ctx, 0);
                 if (ret < 0) {
                     err(EXIT_FAILURE, "vfu_irq_message() failed");
                 }
 
+                /*
+                 * We also initiate some dummy DMA via an explicit message,
+                 * again to show how DMA is done. This is used if the client's
+                 * RAM isn't mappable or the server implementation prefers it
+                 * this way.  Again, the client expects the server to send DMA
+                 * messages right after it has triggered the IRQs.
+                 */
                 do_dma_io(vfu_ctx, &server_data);
                 ret = 0;
             }
