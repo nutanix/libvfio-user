@@ -590,6 +590,18 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /*
  * Supported PCI regions.
+ *
+ * Note to developers: in VFIO, each region starts at a terabyte offset
+ * (VFIO_PCI_INDEX_TO_OFFSET) and because Linux supports up to 128 TB of
+ * virtual memory, there can be up to 128 device regions. PCI regions are fixed
+ * and in retrospect this choice has proven to be problematic because devices
+ * might contain potentially unused regions. New regions can now be positioned
+ * anywhere by using the VFIO_REGION_INFO_CAP_TYPE capability.
+ * In vfio-user we don't have this problem because the region index is just an
+ * identifier: the VMM memory maps a file descriptor that is passed to it and
+ * the offset that it memory maps is relative to the beginning of the region,
+ * therefore it is something reasonably small. Thus, additional regions can
+ * have static indexes in vfio-user.
  */
 enum {
     VFU_PCI_DEV_BAR0_REGION_IDX,
