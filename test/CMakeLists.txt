@@ -53,6 +53,8 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=close")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=vfu_send_iovec")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=free")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=process_request")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=bind")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=listen")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)
