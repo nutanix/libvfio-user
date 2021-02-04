@@ -412,6 +412,9 @@ test_realize_ctx(void **state __attribute__((unused)))
     assert_non_null(vfu_ctx.irqs);
     assert_int_equal(0, vfu_ctx.pci.nr_caps);
     assert_int_equal(0, vfu_ctx.pci.nr_ext_caps);
+
+    free(vfu_ctx.irqs);
+    free(vfu_ctx.pci.config_space);
 }
 
 static int
@@ -514,6 +517,8 @@ test_get_region_info(UNUSED void **state)
     assert_int_equal(0xdeadbeef, vfio_reg->size);
     assert_int_equal(0, nr_fds);
 
+    free(vfio_reg);
+
     /* regions caps (sparse mmap) but argsz too small */
     vfu_ctx.reg_info[1].mmap_areas = &iov;
     vfu_ctx.reg_info[1].nr_mmap_areas = 1;
@@ -528,6 +533,8 @@ test_get_region_info(UNUSED void **state)
                      vfio_reg->flags);
     assert_int_equal(0, nr_fds);
 
+    free(vfio_reg);
+
     /* region caps and argsz large enough */
     argsz += sizeof(struct vfio_region_info_cap_sparse_mmap) + sizeof(struct vfio_region_sparse_mmap_area);
     assert_int_equal(0,
@@ -541,6 +548,9 @@ test_get_region_info(UNUSED void **state)
     assert_non_null(fds);
     assert_int_equal(1, nr_fds);
     assert_int_equal(0x12345, fds[0]);
+
+    free(vfio_reg);
+    free(fds);
 
     /* FIXME add check for migration region and for multiple sparse areas */
 }
@@ -560,6 +570,7 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
                              NULL, VFU_DEV_TYPE_PCI);
     assert_non_null(vfu_ctx);
+
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_ERR_IRQ]);
     assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
     assert_int_equal(0, vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
@@ -567,6 +578,12 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_int_equal(PCI_STD_HEADER_SIZEOF,
                      vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
+
+    patch(close);
+    expect_value(__wrap_close, fd, 0x0);
+    will_return(__wrap_close, 0);
+
+    vfu_destroy_ctx(vfu_ctx);
 }
 
 static ssize_t
@@ -755,6 +772,8 @@ test_pci_caps(void **state __attribute__((unused)))
     assert_memory_equal(pci_config_space_ptr(&vfu_ctx,
                         expoffsets[2] + offsetof(struct vsc, data)),
                         "Bye world.", 10);
+
+    free(vfu_ctx.reg_info);
 }
 
 static ssize_t
@@ -936,6 +955,8 @@ test_pci_ext_caps(void **state __attribute__((unused)))
     assert_memory_equal(pci_config_space_ptr(&vfu_ctx,
                         expoffsets[2] + offsetof(struct pcie_ext_cap_vsc_hdr, data)),
                         "Bye world.", 10);
+
+    free(vfu_ctx.reg_info);
 }
 
 static void
@@ -1009,6 +1030,8 @@ test_setup_sparse_region(void **state __attribute__((unused)))
                            0x2000, NULL, 0, NULL, 0, 1);
     assert_int_equal(0, ret);
 
+    free(reg_info.mmap_areas);
+
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
@@ -1021,6 +1044,8 @@ test_setup_sparse_region(void **state __attribute__((unused)))
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
                            0x2000, NULL, 0, mmap_areas, 2, 0);
     assert_int_equal(0, ret);
+
+    free(reg_info.mmap_areas);
 }
 
 static void
@@ -1101,6 +1126,7 @@ test_vfu_setup_device_dma_cb(void **state __attribute__((unused)))
 
     assert_int_equal(0, vfu_setup_device_dma_cb(&vfu_ctx, NULL, NULL));
     assert_non_null(vfu_ctx.dma);
+    free(vfu_ctx.dma);
 }
 
 static void
