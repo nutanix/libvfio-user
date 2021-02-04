@@ -71,7 +71,7 @@ recv_blocking(int sock, void *buf, size_t len, int flags)
 }
 
 static int
-init_sock(vfu_ctx_t *vfu_ctx)
+tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int ret, unix_sock;
@@ -128,10 +128,10 @@ out:
 }
 
 int
-vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-               enum vfio_user_command cmd,
-               struct iovec *iovecs, size_t nr_iovecs,
-               int *fds, int count, int err)
+tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                     enum vfio_user_command cmd,
+                     struct iovec *iovecs, size_t nr_iovecs,
+                     int *fds, int count, int err)
 {
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
@@ -195,9 +195,9 @@ vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 }
 
 int
-vfu_send(int sock, uint16_t msg_id, bool is_reply,
-         enum vfio_user_command cmd,
-         void *data, size_t data_len)
+tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
+               enum vfio_user_command cmd,
+               void *data, size_t data_len)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -206,16 +206,17 @@ vfu_send(int sock, uint16_t msg_id, bool is_reply,
             .iov_len = data_len
         }
     };
-    return vfu_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
-                          ARRAY_SIZE(iovecs), NULL, 0, 0);
+    return tran_sock_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
+                                ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 int
-vfu_send_error(int sock, uint16_t msg_id,
+tran_sock_send_error(int sock, uint16_t msg_id,
                      enum vfio_user_command cmd,
                      int error)
 {
-    return vfu_send_iovec(sock, msg_id, true, cmd, NULL, 0, NULL, 0, error);
+    return tran_sock_send_iovec(sock, msg_id, true, cmd,
+                                NULL, 0, NULL, 0, error);
 }
 
 static int
@@ -274,9 +275,9 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
  * better.
  */
 int
-vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
-             uint16_t *msg_id, void *data, size_t *len, int *fds,
-             size_t *nr_fds)
+tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id, void *data, size_t *len, int *fds,
+                   size_t *nr_fds)
 {
     int ret;
 
@@ -329,26 +330,27 @@ vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
 }
 
 int
-vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+tran_sock_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
          uint16_t *msg_id, void *data, size_t *len)
 {
-    return vfu_recv_fds(sock, hdr, is_reply, msg_id, data, len, NULL, NULL);
+    return tran_sock_recv_fds(sock, hdr, is_reply, msg_id,
+                              data, len, NULL, NULL);
 }
 
 /*
- * Like vfu_recv(), but will automatically allocate reply data.
+ * Like tran_sock_recv(), but will automatically allocate reply data.
  *
  * FIXME: this does an unconstrained alloc of client-supplied data.
  */
 int
-vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
-              uint16_t *msg_id, void **datap, size_t *lenp)
+tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+                     uint16_t *msg_id, void **datap, size_t *lenp)
 {
     void *data;
     size_t len;
     int ret;
 
-    ret = vfu_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
+    ret = tran_sock_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
 
     if (ret != 0) {
         return ret;
@@ -391,31 +393,31 @@ vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
  * messages.
  */
 int
-vfu_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-              struct iovec *iovecs, size_t nr_iovecs,
-              int *send_fds, size_t send_fd_count,
-              struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len,
-              int *recv_fds, size_t *recv_fd_count)
+tran_sock_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                    struct iovec *iovecs, size_t nr_iovecs,
+                    int *send_fds, size_t send_fd_count,
+                    struct vfio_user_header *hdr,
+                    void *recv_data, size_t recv_len,
+                    int *recv_fds, size_t *recv_fd_count)
 {
-    int ret = vfu_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                             send_fds, send_fd_count, 0);
+    int ret = tran_sock_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
+                                   send_fds, send_fd_count, 0);
     if (ret < 0) {
         return ret;
     }
     if (hdr == NULL) {
         hdr = alloca(sizeof *hdr);
     }
-    return vfu_recv_fds(sock, hdr, true, &msg_id, recv_data, &recv_len,
-                        recv_fds, recv_fd_count);
+    return tran_sock_recv_fds(sock, hdr, true, &msg_id, recv_data, &recv_len,
+                              recv_fds, recv_fd_count);
 }
 
 int
-vfu_msg_fds(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-            void *send_data, size_t send_len,
-            struct vfio_user_header *hdr,
-            void *recv_data, size_t recv_len, int *recv_fds,
-            size_t *recv_fd_count)
+tran_sock_msg_fds(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+                  void *send_data, size_t send_len,
+                  struct vfio_user_header *hdr,
+                  void *recv_data, size_t recv_len, int *recv_fds,
+                  size_t *recv_fd_count)
 {
     /* [0] is for the header. */
     struct iovec iovecs[2] = {
@@ -424,19 +426,19 @@ vfu_msg_fds(int sock, uint16_t msg_id, enum vfio_user_command cmd,
             .iov_len = send_len
         }
     };
-    return vfu_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
-                         NULL, 0, hdr, recv_data, recv_len, recv_fds,
-                         recv_fd_count);
+    return tran_sock_msg_iovec(sock, msg_id, cmd, iovecs, ARRAY_SIZE(iovecs),
+                               NULL, 0, hdr, recv_data, recv_len, recv_fds,
+                               recv_fd_count);
 }
 
 int
-vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
-        void *send_data, size_t send_len,
-        struct vfio_user_header *hdr,
-        void *recv_data, size_t recv_len)
+tran_sock_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
+              void *send_data, size_t send_len,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len)
 {
-    return vfu_msg_fds(sock, msg_id, cmd, send_data, send_len, hdr, recv_data,
-                       recv_len, NULL, NULL);
+    return tran_sock_msg_fds(sock, msg_id, cmd, send_data, send_len, hdr,
+                             recv_data, recv_len, NULL, NULL);
 }
 
 /*
@@ -455,8 +457,8 @@ vfu_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
  * available in newer library versions, so we don't use it.
  */
 int
-vfu_parse_version_json(const char *json_str,
-                       int *client_max_fdsp, size_t *pgsizep)
+tran_parse_version_json(const char *json_str,
+                        int *client_max_fdsp, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -529,8 +531,8 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 
     *versionp = NULL;
 
-    ret = vfu_recv_alloc(sock, &hdr, false, msg_idp,
-                         (void **)&cversion, &vlen);
+    ret = tran_sock_recv_alloc(sock, &hdr, false, msg_idp,
+                               (void **)&cversion, &vlen);
 
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to receive version: %s",
@@ -572,7 +574,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
             goto out;
         }
 
-        ret = vfu_parse_version_json(json_str, &vfu_ctx->client_max_fds,
+        ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
                                      &pgsize);
 
         if (ret < 0) {
@@ -609,7 +611,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 out:
     if (ret != 0) {
         // FIXME: spec, is it OK to just have the header?
-        (void) vfu_send_error(sock, *msg_idp, hdr.cmd, ret);
+        (void) tran_sock_send_error(sock, *msg_idp, hdr.cmd, ret);
         free(cversion);
         cversion = NULL;
     }
@@ -658,8 +660,8 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
     /* Include the NUL. */
     iovecs[2].iov_len = slen + 1;
 
-    return vfu_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
-                          iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
+    return tran_sock_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
+                                iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
 static int
@@ -688,7 +690,7 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
 }
 
 static int
-open_sock(vfu_ctx_t *vfu_ctx)
+tran_sock_attach(vfu_ctx_t *vfu_ctx)
 {
     int ret;
     int conn_fd;
@@ -711,8 +713,8 @@ open_sock(vfu_ctx_t *vfu_ctx)
 }
 
 static int
-get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                 int *fds, size_t *nr_fds)
+tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                      int *fds, size_t *nr_fds)
 {
     int sock_flags = 0;
 
@@ -728,7 +730,7 @@ get_request_sock(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 static void
-detach_sock(vfu_ctx_t *vfu_ctx)
+tran_sock_detach(vfu_ctx_t *vfu_ctx)
 {
     if (vfu_ctx->conn_fd != -1) {
         (void) close(vfu_ctx->conn_fd);
@@ -737,7 +739,7 @@ detach_sock(vfu_ctx_t *vfu_ctx)
 }
 
 static void
-fini_sock(vfu_ctx_t *vfu_ctx)
+tran_sock_fini(vfu_ctx_t *vfu_ctx)
 {
     if (vfu_ctx->fd != -1) {
         (void) close(vfu_ctx->fd);
@@ -745,12 +747,12 @@ fini_sock(vfu_ctx_t *vfu_ctx)
     }
 }
 
-struct transport_ops sock_transport_ops = {
-    .init = init_sock,
-    .attach = open_sock,
-    .get_request = get_request_sock,
-    .detach = detach_sock,
-    .fini = fini_sock,
+struct transport_ops tran_sock_ops = {
+    .init = tran_sock_init,
+    .attach = tran_sock_attach,
+    .get_request = tran_sock_get_request,
+    .detach = tran_sock_detach,
+    .fini = tran_sock_fini
 };
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
