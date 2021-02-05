@@ -932,8 +932,9 @@ process_request(vfu_ctx_t *vfu_ctx)
 
     if (!(hdr.flags.no_reply)) {
         // FIXME: SPEC: should the reply include the command? I'd say yes?
-        ret = vfu_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true,
-                             0, iovecs, nr_iovecs, fds_out, nr_fds_out, -ret);
+        ret = tran_sock_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true, 0,
+                                   iovecs, nr_iovecs, fds_out, nr_fds_out,
+                                   -ret);
         if (unlikely(ret < 0)) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to complete command: %s",
                     strerror(-ret));
@@ -1149,7 +1150,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->fd = -1;
     vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
-    vfu_ctx->trans = &sock_transport_ops;
+    vfu_ctx->trans = &tran_sock_ops;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
@@ -1444,9 +1445,9 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
-    ret = vfu_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
-                  &dma_send, sizeof dma_send, NULL,
-                  dma_recv, recv_size);
+    ret = tran_sock_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
+                        &dma_send, sizeof dma_send, NULL,
+                        dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
@@ -1470,9 +1471,9 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
-    ret = vfu_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
-                  dma_send, send_size, NULL,
-                  &dma_recv, sizeof(dma_recv));
+    ret = tran_sock_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
+                        dma_send, send_size, NULL,
+                        &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
     return ret;
