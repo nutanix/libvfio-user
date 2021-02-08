@@ -250,20 +250,18 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * the device. The migration region must contain at the beginning the migration
  * registers (struct vfio_device_migration_info defined in <linux/vfio.h>) and
  * the remaining part of the region can be arbitrarily used by the device
- * implementation. Therefore, the size of the migration region must be at least
- * sizeof(struct vfio_device_migration_info). libvfio-user offers two ways for
- * the migration region to be used:
+ * implementation. The region provided must have at least
+ * vfu_get_migr_register_area_size() bytes available at the start of the region
+ * (this size is guaranteed to be page-aligned). If mmap_areas is given, it
+ * must _not_ include this part of the region.
+ *
+ * libvfio-user offers two ways for the migration region to be used:
  *  1. natively: the device implementation must handle accesses to the
  *      migration registers and migration data via the region callbacks. The
  *      semantics of these registers are explained in <linux/vfio.h>.
  *  2. via the vfu_migration_t callbacks: the device implementation registers
- *      a set of callbacks by calling vfu_setup_device_migration. The device
- *      does not have access to the migration registers, however the migration
- *      region provided must still reserve space for them (see function
- *      vfu_get_migr_regs_size). The region's read/write callbacks are never
- *      called.
- * The migration region can be partially memory mapped, except the migration
- * registers.
+ *      a set of callbacks by calling vfu_setup_device_migration. The region's
+ *      read/write callbacks are never called.
  *
  * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
@@ -287,11 +285,11 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  int fd);
 
 /*
- * Returns the size of the migration registers, which is guaranteed to be page
- * aligned.
+ * Returns the size of the area needed to hold the migration registers at the
+ * beginning of the migration region; guaranteed to be page aligned.
  */
 size_t
-vfu_get_migr_regs_size(void);
+vfu_get_migr_register_area_size(void);
 
 /*
  * Callback function that is called when the guest resets the device.

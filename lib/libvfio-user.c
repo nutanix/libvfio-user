@@ -1408,7 +1408,7 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 }
 
 size_t
-vfu_get_migr_regs_size(void)
+vfu_get_migr_register_area_size(void)
 {
     return ROUND_UP(sizeof(struct vfio_device_migration_info),
                     sysconf(_SC_PAGE_SIZE));
