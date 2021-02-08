@@ -40,6 +40,7 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "common.h"
 #include "libvfio-user.h"
@@ -51,20 +52,76 @@ _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
     fprintf(stderr, "gpio: %s\n", msg);
 }
 
+static int pin;
+bool dirty = true;
+
 ssize_t
 bar2_access(vfu_ctx_t *vfu_ctx UNUSED, char * const buf,
             size_t count, loff_t offset, const bool is_write)
 {
-    static char n;
-
     if (offset == 0 && !is_write)
-        buf[0] = n++ / 3;
+        buf[0] = pin++ / 3;
+
+    dirty = true;
 
     return count;
 }
 
 static void _sa_handler(UNUSED int signum)
 {
+}
+
+static int
+migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
+{
+    vfu_log(vfu_ctx, LOG_DEBUG, "migration: transition to state %d", state);
+    return 0;
+}
+
+static __u64
+migration_get_pending_bytes(vfu_ctx_t *vfu_ctx __attribute__((unused)))
+{
+    if (dirty) {
+        return sizeof(pin);
+    }
+    return 0;
+}
+
+static int
+migration_prepare_data(vfu_ctx_t *vfu_ctx __attribute__((unused)),
+                       __u64 *offset, __u64 *size)
+{
+    *offset = 0;
+    if (size != NULL) { /* null means resuming */
+        *size = sizeof(pin);
+    }
+    return 0;
+}
+
+static ssize_t
+migration_read_data(vfu_ctx_t *vfu_ctx __attribute__((unused)), void *buf,
+                    __u64 size,  __u64 offset)
+{
+    assert (offset == 0 && size == sizeof(pin));
+    memcpy(buf, &pin, sizeof(pin));
+    dirty = false;
+    return 0;
+}
+
+static int
+migration_data_written(vfu_ctx_t *vfu_ctx __attribute__((unused)), __u64 count)
+{
+    assert(count == sizeof(pin));
+    return 0;
+}
+
+static ssize_t
+migration_write_data(vfu_ctx_t *vfu_ctx __attribute__((unused)),
+                     void *buf, __u64 size, __u64 offset)
+{
+    assert(offset == 0 && size == sizeof(pin));
+    memcpy(&pin, buf, sizeof(pin));
+    return 0;
 }
 
 int
@@ -75,6 +132,18 @@ main(int argc, char *argv[])
     char opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
+    size_t migr_regs_size = vfu_get_migr_register_area_size();
+    size_t migr_data_size = sysconf(_SC_PAGE_SIZE);
+    size_t migr_size = migr_regs_size + migr_data_size;
+    const vfu_migration_callbacks_t migr_callbacks = {
+        .version = VFU_MIGR_CALLBACKS_VERS,
+        .transition = &migration_device_state_transition,
+        .get_pending_bytes = &migration_get_pending_bytes,
+        .prepare_data = &migration_prepare_data,
+        .read_data = &migration_read_data,
+        .data_written = &migration_data_written,
+        .write_data = &migration_write_data
+    };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -123,6 +192,17 @@ main(int argc, char *argv[])
                            &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup region");
+    }
+
+    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
+                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup migration region");
+    }
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
+                                               migr_regs_size);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device migration");
     }
 
     ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
