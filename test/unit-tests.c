@@ -1228,7 +1228,8 @@ static struct test_setup_migr_reg_dat {
 };
 
 static int
-setup_test_setup_migration_region(void **state) {
+setup_test_setup_migration_region(void **state)
+{
     struct test_setup_migr_reg_dat *p = &migr_reg_data;
     p->v = vfu_create_ctx(VFU_TRANS_SOCK, "test", 0, NULL,
         VFU_DEV_TYPE_PCI);
@@ -1245,7 +1246,7 @@ setup_test_setup_migration_region(void **state) {
 static vfu_ctx_t *
 get_vfu_ctx(void **state)
 {
-    return (*((struct test_setup_migr_reg_dat**)(state)))->v;
+    return (*((struct test_setup_migr_reg_dat **)(state)))->v;
 }
 
 static int
@@ -1310,7 +1311,7 @@ test_setup_migration_region_sparsely_mappable_valid(void **state)
     struct test_setup_migr_reg_dat *p = *state;
     struct iovec mmap_areas[] = {
         [0] = {
-            .iov_base = (void*)p->rs,
+            .iov_base = (void *)p->rs,
             .iov_len = p->ds
         }
     };

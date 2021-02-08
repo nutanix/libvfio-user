@@ -333,6 +333,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(irq_info_out != NULL);
 
     if (size != sizeof *irq_info_in || size != irq_info_in->argsz) {
+        vfu_log(vfu_ctx, LOG_WARNING, "IRQ info size %d", size);
         return -EINVAL;
     }
 

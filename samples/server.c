@@ -530,7 +530,7 @@ int main(int argc, char *argv[])
      * rest of the migration region memory mappable we must effectively reserve
      * an entire page.
      */
-    migr_regs_size = vfu_get_migr_regs_size();
+    migr_regs_size = vfu_get_migr_register_area_size();
     migr_data_size = page_align(bar1_size + sizeof(time_t));
     migr_size = migr_regs_size + migr_data_size;
     if ((migr_fp = tmpfile()) == NULL) {
