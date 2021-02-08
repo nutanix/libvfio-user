@@ -135,10 +135,10 @@ __wrap_close(int fd)
 }
 
 int
-__wrap_vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                      enum vfio_user_command cmd,
-                      struct iovec *iovecs, size_t nr_iovecs,
-                      int *fds, int count, int err)
+__wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                            enum vfio_user_command cmd,
+                            struct iovec *iovecs, size_t nr_iovecs,
+                            int *fds, int count, int err)
 {
     check_expected(sock);
     check_expected(msg_id);
@@ -196,7 +196,7 @@ static struct function funcs[] = {
     {.addr = &__wrap_get_next_command},
     {.addr = &__wrap_exec_command},
     {.addr = &__wrap_close},
-    {.addr = &__wrap_vfu_send_iovec},
+    {.addr = &__wrap_tran_sock_send_iovec},
     {.addr = &__wrap_free},
     {.addr = &__wrap_process_request},
     {.addr = &__wrap_bind},

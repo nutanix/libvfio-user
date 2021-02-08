@@ -46,41 +46,40 @@
 // FIXME: value?
 #define VFIO_USER_CLIENT_MAX_FDS_LIMIT (1024)
 
-extern struct transport_ops sock_transport_ops;
+extern struct transport_ops tran_sock_ops;
 
 /*
  * Parse JSON supplied from the other side into the known parameters. Note: they
  * will not be set if not found in the JSON.
  */
 int
-vfu_parse_version_json(const char *json_str, int *client_max_fdsp,
-                       size_t *pgsizep);
+tran_parse_version_json(const char *json_str, int *client_max_fdsp,
+                        size_t *pgsizep);
 
 /*
  * Send a message to the other end.  The iovecs array should leave the first
  * entry empty, as it will be used for the header.
  */
 int
-vfu_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-               enum vfio_user_command cmd,
-               struct iovec *iovecs, size_t nr_iovecs,
-               int *fds, int count,
-               int err);
+tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                     enum vfio_user_command cmd,
+                     struct iovec *iovecs, size_t nr_iovecs,
+                     int *fds, int count,
+                     int err);
 
 /*
  * Send a message to the other end with the given data.
  */
 int
-vfu_send(int sock, uint16_t msg_id, bool is_reply, enum vfio_user_command cmd,
-         void *data, size_t data_len);
+tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
+               enum vfio_user_command cmd, void *data, size_t data_len);
 
 /*
  * Send an empty reply back to the other end with the given errno.
  */
 int
-vfu_send_error(int sock, uint16_t msg_id,
-               enum vfio_user_command cmd,
-               int error);
+tran_sock_send_error(int sock, uint16_t msg_id,
+                     enum vfio_user_command cmd, int error);
 
 /*
  * Receive a message from the other end, and place the data into the given
@@ -88,17 +87,17 @@ vfu_send_error(int sock, uint16_t msg_id,
  * size.
  */
 int
-vfu_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
-         uint16_t *msg_id, void *data, size_t *len);
+tran_sock_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
+               uint16_t *msg_id, void *data, size_t *len);
 
 /*
- * Same as vfu_recv except it receives passed file descriptors. See vfu_msg on
- * the semantics of @fds and @nr_fds.
+ * Same as tran_sock_recv except it receives passed file descriptors. See
+ * tran_sock_msg on the semantics of @fds and @nr_fds.
  */
 int
-vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
-             uint16_t *msg_id, void *data, size_t *len, int *fds,
-             size_t *nr_fds);
+tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
+                   uint16_t *msg_id, void *data, size_t *len, int *fds,
+                   size_t *nr_fds);
 
 /*
  * Receive a message from the other end, but automatically allocate a buffer for
@@ -106,8 +105,8 @@ vfu_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
  * NULL.
  */
 int
-vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
-               uint16_t *msg_id, void **datap, size_t *lenp);
+tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
+                     uint16_t *msg_id, void **datap, size_t *lenp);
 
 /*
  * Send and receive a message to the other end, using iovecs for the send. The
@@ -126,36 +125,36 @@ vfu_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
  * original value of @recv_fd_count.
  */
 int
-vfu_msg_iovec(int sock, uint16_t msg_id,
-              enum vfio_user_command cmd,
-              struct iovec *iovecs, size_t nr_iovecs,
-              int *send_fds, size_t send_fd_count,
-              struct vfio_user_header *hdr,
-              void *recv_data, size_t recv_len,
-              int *recv_fds, size_t *recv_fd_count);
+tran_sock_msg_iovec(int sock, uint16_t msg_id,
+                    enum vfio_user_command cmd,
+                    struct iovec *iovecs, size_t nr_iovecs,
+                    int *send_fds, size_t send_fd_count,
+                    struct vfio_user_header *hdr,
+                    void *recv_data, size_t recv_len,
+                    int *recv_fds, size_t *recv_fd_count);
 
 /*
  * Send and receive a message to the other end.  @hdr is filled with the reply
  * header if non-NULL.
  */
 int
-vfu_msg(int sock, uint16_t msg_id,
-        enum vfio_user_command cmd,
-        void *send_data, size_t send_len,
-        struct vfio_user_header *hdr,
-        void *recv_data, size_t recv_len);
+tran_sock_msg(int sock, uint16_t msg_id,
+              enum vfio_user_command cmd,
+              void *send_data, size_t send_len,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len);
 
 /*
- * Same as vfu_msg excecpt that file descriptors can be received, see
- * vfu_msg_iovec for the semantics of @recv_fds and @recv_fd_count.
+ * Same as tran_sock_msg excecpt that file descriptors can be received, see
+ * tran_sock_msg_iovec for the semantics of @recv_fds and @recv_fd_count.
  */
 int
-vfu_msg_fds(int sock, uint16_t msg_id,
-            enum vfio_user_command cmd,
-            void *send_data, size_t send_len,
-            struct vfio_user_header *hdr,
-            void *recv_data, size_t recv_len,
-            int *recv_fds, size_t *recv_fd_count);
+tran_sock_msg_fds(int sock, uint16_t msg_id,
+                  enum vfio_user_command cmd,
+                  void *send_data, size_t send_len,
+                  struct vfio_user_header *hdr,
+                  void *recv_data, size_t recv_len,
+                  int *recv_fds, size_t *recv_fd_count);
 
 
 #endif /* LIB_VFIO_USER_TRAN_SOCK_H */

@@ -379,17 +379,17 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     expect_value(__wrap_close, fd, 0xcd);
     will_return(__wrap_close, 0);
 
-    patch(vfu_send_iovec);
-    expect_value(__wrap_vfu_send_iovec, sock, vfu_ctx.conn_fd);
-    expect_any(__wrap_vfu_send_iovec, msg_id);
-    expect_value(__wrap_vfu_send_iovec, is_reply, true);
-    expect_any(__wrap_vfu_send_iovec, cmd);
-    expect_any(__wrap_vfu_send_iovec, iovecs);
-    expect_any(__wrap_vfu_send_iovec, nr_iovecs);
-    expect_any(__wrap_vfu_send_iovec, fds);
-    expect_any(__wrap_vfu_send_iovec, count);
-    expect_any(__wrap_vfu_send_iovec, err);
-    will_return(__wrap_vfu_send_iovec, 0);
+    patch(tran_sock_send_iovec);
+    expect_value(__wrap_tran_sock_send_iovec, sock, vfu_ctx.conn_fd);
+    expect_any(__wrap_tran_sock_send_iovec, msg_id);
+    expect_value(__wrap_tran_sock_send_iovec, is_reply, true);
+    expect_any(__wrap_tran_sock_send_iovec, cmd);
+    expect_any(__wrap_tran_sock_send_iovec, iovecs);
+    expect_any(__wrap_tran_sock_send_iovec, nr_iovecs);
+    expect_any(__wrap_tran_sock_send_iovec, fds);
+    expect_any(__wrap_tran_sock_send_iovec, count);
+    expect_any(__wrap_tran_sock_send_iovec, err);
+    will_return(__wrap_tran_sock_send_iovec, 0);
 
     assert_int_equal(0, process_request(&vfu_ctx));
 }
