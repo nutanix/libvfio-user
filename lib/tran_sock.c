@@ -51,6 +51,8 @@
 // FIXME: is this the value we want?
 #define SERVER_MAX_FDS 8
 
+#define SERVER_MAX_MSG_SIZE 65536
+
 typedef struct {
     int listen_fd;
     int conn_fd;
@@ -648,19 +650,22 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
         slen = snprintf(server_caps, sizeof (server_caps),
             "{"
                 "\"capabilities\":{"
-                    "\"max_fds\":%u"
+                    "\"max_fds\":%u,"
+                    "\"max_msg_size\":%u"
                 "}"
-             "}", SERVER_MAX_FDS);
+             "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE);
     } else {
         slen = snprintf(server_caps, sizeof (server_caps),
             "{"
                 "\"capabilities\":{"
                     "\"max_fds\":%u,"
+                    "\"max_msg_size\":%u,"
                     "\"migration\":{"
                         "\"pgsize\":%zu"
                     "}"
                 "}"
-             "}", SERVER_MAX_FDS, migration_get_pgsize(vfu_ctx->migration));
+             "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE,
+                  migration_get_pgsize(vfu_ctx->migration));
     }
 
     // FIXME: we should save the client minor here, and check that before trying
@@ -754,7 +759,12 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
     void *data;
     int ret;
 
-    // FIXME: should check max-msg-size
+    if (hdr->msg_size > SERVER_MAX_MSG_SIZE) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
+                hdr->msg_id, hdr->msg_size);
+        return -EINVAL;
+    }
+
     data = malloc(body_size);
 
     if (data == NULL) {
