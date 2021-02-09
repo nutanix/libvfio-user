@@ -311,13 +311,13 @@ get_device_region_info(int sock, uint32_t index)
 
     do_get_device_region_info(sock, region_info, NULL, 0);
     if (region_info->argsz > size) {
-        size = region_info->size;
+        size = region_info->argsz;
         region_info = alloca(size);
         memset(region_info, 0, size);
         region_info->argsz = size;
         region_info->index = index;
         do_get_device_region_info(sock, region_info, fds, &nr_fds);
-        assert(region_info->size == size);
+        assert(region_info->argsz == size);
         assert(nr_fds == 2);
         assert(fds[0] >= 0);
         assert(fds[1] >= 0);
