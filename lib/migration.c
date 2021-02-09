@@ -125,6 +125,13 @@ vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
     return migr_states[from].state & (1 << to);
 }
 
+size_t
+vfu_get_migr_register_area_size(void)
+{
+    return ROUND_UP(sizeof(struct vfio_device_migration_info),
+                    sysconf(_SC_PAGE_SIZE));
+}
+
 /*
  * TODO no need to dynamically allocate memory, we can keep struct migration
  * in vfu_ctx_t.
@@ -135,7 +142,7 @@ init_migration(const vfu_migration_callbacks_t * callbacks,
 {
     struct migration *migr;
 
-    if (data_offset < sizeof(struct vfio_device_migration_info)) {
+    if (data_offset < vfu_get_migr_register_area_size()) {
         *err = EINVAL;
         return NULL;
     }

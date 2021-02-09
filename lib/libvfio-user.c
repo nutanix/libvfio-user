@@ -1255,7 +1255,7 @@ ranges_intersect(size_t off1, size_t size1, size_t off2, size_t size2)
 static bool
 maps_over_migr_regs(struct iovec *iov)
 {
-    return ranges_intersect(0, sizeof(struct vfio_device_migration_info),
+    return ranges_intersect(0, vfu_get_migr_register_area_size(),
                             (size_t)iov->iov_base, (size_t)iov->iov_len);
 }
 
@@ -1305,7 +1305,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     }
 
     if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
-        size < sizeof(struct vfio_device_migration_info)) {
+        size < vfu_get_migr_register_area_size()) {
         vfu_log(vfu_ctx, LOG_ERR, "ivalid migration region size %d", size);
         return ERROR(EINVAL);
     }
@@ -1405,13 +1405,6 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
     vfu_ctx->irq_count[type] = count;
 
     return 0;
-}
-
-size_t
-vfu_get_migr_register_area_size(void)
-{
-    return ROUND_UP(sizeof(struct vfio_device_migration_info),
-                    sysconf(_SC_PAGE_SIZE));
 }
 
 int

@@ -1262,7 +1262,7 @@ test_setup_migration_region_too_small(void **state)
 {
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
-        sizeof(struct vfio_device_migration_info) - 1, NULL,
+        vfu_get_migr_register_area_size() - 1, NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
     assert_int_equal(-1, r);
     assert_int_equal(EINVAL, errno);
@@ -1273,7 +1273,7 @@ test_setup_migration_region_size_ok(void **state)
 {
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
-        sizeof(struct vfio_device_migration_info), NULL,
+        vfu_get_migr_register_area_size(), NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
     assert_int_equal(0, r);
 }
@@ -1337,7 +1337,7 @@ test_setup_migration_callbacks_bad_data_offset(void **state)
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
-        sizeof(struct vfio_device_migration_info) - 1);
+        vfu_get_migr_register_area_size() - 1);
     assert_int_equal(-1, r);
 }
 
@@ -1349,7 +1349,7 @@ test_setup_migration_callbacks(void **state)
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
-        sizeof(struct vfio_device_migration_info));
+        vfu_get_migr_register_area_size());
     assert_int_equal(0, r);
     assert_non_null(p->v->migration);
     /* FIXME can't validate p->v->migration because it's a private strcut, need to move it out of lib/migration.c */
