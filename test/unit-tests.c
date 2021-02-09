@@ -1250,7 +1250,7 @@ get_vfu_ctx(void **state)
 }
 
 static int
-teardown_test_setup_migration_retion(void **state)
+teardown_test_setup_migration_region(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     vfu_destroy_ctx(p->v);
@@ -1383,28 +1383,28 @@ int main(void)
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_too_small,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_fully_mappable,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_over_migration_registers,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_valid,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks_without_migration_region,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks_bad_data_offset,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
             setup_test_setup_migration_region,
-            teardown_test_setup_migration_retion),
+            teardown_test_setup_migration_region),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
