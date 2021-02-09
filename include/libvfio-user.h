@@ -116,12 +116,13 @@ int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx);
 
 /*
- * Attempts to attach to the transport. Attach is mandatory before
- * vfu_run_ctx() and is non blocking if context is created
- * with LIBVFIO_USER_FLAG_ATTACH_NB flag.
- * Returns client's file descriptor on success and -1 on error. If errno is
- * set to EAGAIN or EWOULDBLOCK then the transport is not ready to attach to and
- * the operation must be retried.
+ * Attempts to attach to the transport. Attach is mandatory before vfu_run_ctx()
+ * and is non blocking if context is created with LIBVFIO_USER_FLAG_ATTACH_NB
+ * flag.
+ *
+ * @returns: 0 on success, -1 on error. Sets errno.  If errno is set to EAGAIN
+ * or EWOULDBLOCK then the transport is not ready to attach to and the operation
+ * must be retried.
  *
  * @vfu_ctx: the libvfio-user context
  */

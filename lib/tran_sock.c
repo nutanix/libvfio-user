@@ -51,26 +51,42 @@
 // FIXME: is this the value we want?
 #define SERVER_MAX_FDS 8
 
+typedef struct {
+    int listen_fd;
+    int conn_fd;
+} tran_sock_t;
+
 static int
 tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
-    int ret, unix_sock;
+    tran_sock_t *ts = NULL;
     mode_t mode;
+    int ret;
 
     assert(vfu_ctx != NULL);
 
     /* FIXME SPDK can't easily run as non-root */
-    mode =  umask(0000);
+    mode = umask(0000);
 
-    if ((unix_sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+    ts = calloc(1, sizeof(tran_sock_t));
+
+    if (ts == NULL) {
+        ret = -errno;
+        goto out;
+    }
+
+    ts->listen_fd = -1;
+    ts->conn_fd = -1;
+
+    if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 	    ret = -errno;
         goto out;
     }
 
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        ret = fcntl(unix_sock, F_SETFL,
-                    fcntl(unix_sock, F_GETFL, 0) | O_NONBLOCK);
+        ret = fcntl(ts->listen_fd, F_SETFL,
+                    fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
         if (ret < 0) {
             ret = -errno;
             goto out;
@@ -78,7 +94,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     }
 
     ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
-    if (ret >= (int)sizeof addr.sun_path) {
+    if (ret >= (int)sizeof(addr.sun_path)) {
         ret = -ENAMETOOLONG;
     }
     if (ret < 0) {
@@ -86,26 +102,30 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     }
 
     /* start listening business */
-    ret = bind(unix_sock, (struct sockaddr*)&addr, sizeof(addr));
+    ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
     if (ret < 0) {
 	    ret = -errno;
         goto out;
     }
 
-    ret = listen(unix_sock, 0);
+    ret = listen(ts->listen_fd, 0);
     if (ret < 0) {
         ret = -errno;
     }
 
 out:
     umask(mode);
+
     if (ret != 0) {
-        if (unix_sock >= 0) {
-            close(unix_sock);
+        if (ts->listen_fd != -1) {
+            close(ts->listen_fd);
         }
+        free(ts);
         return ret;
     }
-    return unix_sock;
+
+    vfu_ctx->tran_data = ts;
+    return 0;
 }
 
 int
@@ -675,30 +695,31 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
 static int
 tran_sock_attach(vfu_ctx_t *vfu_ctx)
 {
+    tran_sock_t *ts = vfu_ctx->tran_data;
     int ret;
-    int conn_fd;
 
     assert(vfu_ctx != NULL);
 
-    conn_fd = accept(vfu_ctx->fd, NULL, NULL);
-    if (conn_fd == -1) {
-        return conn_fd;
+    ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
+    if (ts->conn_fd == -1) {
+        return -errno;
     }
 
-    ret = negotiate(vfu_ctx, conn_fd);
+    ret = negotiate(vfu_ctx, ts->conn_fd);
     if (ret < 0) {
-        close(conn_fd);
+        close(ts->conn_fd);
+        ts->conn_fd = -1;
         return ret;
     }
 
-    vfu_ctx->conn_fd = conn_fd;
-    return conn_fd;
+    return 0;
 }
 
 static int
 tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                       int *fds, size_t *nr_fds)
 {
+    tran_sock_t *ts = vfu_ctx->tran_data;
     int sock_flags = 0;
 
     /*
@@ -709,7 +730,7 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
         sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     }
-    return get_msg(hdr, sizeof *hdr, fds, nr_fds, vfu_ctx->conn_fd, sock_flags);
+    return get_msg(hdr, sizeof *hdr, fds, nr_fds, ts->conn_fd, sock_flags);
 }
 
 static int
@@ -717,6 +738,7 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
                     void **datap)
 {
     size_t body_size = hdr->msg_size - sizeof (*hdr);
+    tran_sock_t *ts = vfu_ctx->tran_data;
     void *data;
     int ret;
 
@@ -727,7 +749,8 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
         return -errno;
     }
 
-    ret = recv(vfu_ctx->conn_fd, data, body_size, 0);
+    ret = recv(ts->conn_fd, data, body_size, 0);
+
     if (ret < 0) {
         ret = -errno;
         free(data);
@@ -750,8 +773,10 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                 struct iovec *iovecs, size_t nr_iovecs,
                 int *fds, int count, int err)
 {
+    tran_sock_t *ts = vfu_ctx->tran_data;
+
     // FIXME: SPEC: should the reply include the command? I'd say yes?
-    return tran_sock_send_iovec(vfu_ctx->conn_fd, msg_id, true, 0,
+    return tran_sock_send_iovec(ts->conn_fd, msg_id, true, 0,
                                 iovecs, nr_iovecs, fds, count, err);
 }
 
@@ -762,26 +787,35 @@ tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
               struct vfio_user_header *hdr,
               void *recv_data, size_t recv_len)
 {
-    return tran_sock_msg(vfu_ctx->conn_fd, msg_id, cmd, send_data, send_len,
+    tran_sock_t *ts = vfu_ctx->tran_data;
+
+    return tran_sock_msg(ts->conn_fd, msg_id, cmd, send_data, send_len,
                          hdr, recv_data, recv_len);
 }
 
 static void
 tran_sock_detach(vfu_ctx_t *vfu_ctx)
 {
-    if (vfu_ctx->conn_fd != -1) {
-        (void) close(vfu_ctx->conn_fd);
-        vfu_ctx->conn_fd = -1;
+    tran_sock_t *ts = vfu_ctx->tran_data;
+
+    if (ts->conn_fd != -1) {
+        (void) close(ts->conn_fd);
+        ts->conn_fd = -1;
     }
 }
 
 static void
 tran_sock_fini(vfu_ctx_t *vfu_ctx)
 {
-    if (vfu_ctx->fd != -1) {
-        (void) close(vfu_ctx->fd);
-        vfu_ctx->fd = -1;
+    tran_sock_t *ts = vfu_ctx->tran_data;
+
+    if (ts->listen_fd != -1) {
+        (void) close(ts->listen_fd);
+        ts->listen_fd = -1;
     }
+
+    free(vfu_ctx->tran_data);
+    vfu_ctx->tran_data = NULL;
 }
 
 struct transport_ops tran_sock_ops = {
