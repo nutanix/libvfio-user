@@ -51,25 +51,6 @@
 // FIXME: is this the value we want?
 #define SERVER_MAX_FDS 8
 
-static inline int
-recv_blocking(int sock, void *buf, size_t len, int flags)
-{
-    int f = fcntl(sock, F_GETFL, 0);
-    int ret, fret;
-
-    fret = fcntl(sock, F_SETFL, f & ~O_NONBLOCK);
-    assert(fret != -1);
-
-    // FIXME: be more explicit about EOF
-
-    ret = recv(sock, buf, len, flags);
-
-    fret = fcntl(sock, F_SETFL, f);
-    assert(fret != -1);
-
-    return ret;
-}
-
 static int
 tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
@@ -316,8 +297,8 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
-        ret = recv_blocking(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len),
-                            0);
+        ret = recv(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len),
+                   MSG_WAITALL);
         if (ret < 0) {
             return ret;
         }
@@ -372,7 +353,7 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
         return -errno;
     }
 
-    ret = recv_blocking(sock, data, len, 0);
+    ret = recv(sock, data, len, MSG_WAITALL);
     if (ret < 0) {
         free(data);
         return -errno;
