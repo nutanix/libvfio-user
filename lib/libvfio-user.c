@@ -930,20 +930,17 @@ process_request(vfu_ctx_t *vfu_ctx)
         ret = 0;
     }
 
-    if (!(hdr.flags.no_reply)) {
-        // FIXME: SPEC: should the reply include the command? I'd say yes?
-        ret = tran_sock_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true, 0,
-                                   iovecs, nr_iovecs, fds_out, nr_fds_out,
-                                   -ret);
-        if (unlikely(ret < 0)) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to complete command: %s",
-                    strerror(-ret));
-        }
-    } else {
+    if (hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
          */
         ret = 0;
+    } else {
+        ret = vfu_ctx->trans->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
+                                    fds_out, nr_fds_out, -ret);
+        if (unlikely(ret < 0)) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
+        }
     }
 
     if (iovecs != NULL) {

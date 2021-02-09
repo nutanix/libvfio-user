@@ -50,6 +50,10 @@ struct transport_ops {
     int (*get_request)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                        int *fds, size_t *nr_fds);
 
+    int (*reply)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
+                 struct iovec *iovecs, size_t nr_iovecs,
+                 int *fds, int count, int err);
+
     int (*send_msg)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                     enum vfio_user_command cmd,
                     void *send_data, size_t send_len,
