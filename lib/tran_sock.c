@@ -729,6 +729,17 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     return get_msg(hdr, sizeof *hdr, fds, nr_fds, vfu_ctx->conn_fd, sock_flags);
 }
 
+static int
+tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
+              enum vfio_user_command cmd,
+              void *send_data, size_t send_len,
+              struct vfio_user_header *hdr,
+              void *recv_data, size_t recv_len)
+{
+    return tran_sock_msg(vfu_ctx->conn_fd, msg_id, cmd, send_data, send_len,
+                         hdr, recv_data, recv_len);
+}
+
 static void
 tran_sock_detach(vfu_ctx_t *vfu_ctx)
 {
@@ -751,6 +762,7 @@ struct transport_ops tran_sock_ops = {
     .init = tran_sock_init,
     .attach = tran_sock_attach,
     .get_request = tran_sock_get_request,
+    .send_msg = tran_sock_send_msg,
     .detach = tran_sock_detach,
     .fini = tran_sock_fini
 };

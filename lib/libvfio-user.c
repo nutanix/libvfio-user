@@ -1445,9 +1445,9 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
-    ret = tran_sock_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_READ,
-                        &dma_send, sizeof dma_send, NULL,
-                        dma_recv, recv_size);
+    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
+                                   &dma_send, sizeof dma_send, NULL,
+                                   dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
@@ -1471,9 +1471,9 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
-    ret = tran_sock_msg(vfu_ctx->conn_fd, msg_id, VFIO_USER_DMA_WRITE,
-                        dma_send, send_size, NULL,
-                        &dma_recv, sizeof(dma_recv));
+    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
+                                   dma_send, send_size, NULL,
+                                   &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
     return ret;
