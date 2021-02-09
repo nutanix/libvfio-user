@@ -218,7 +218,7 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
     while (true) {
         switch (header->id) {
             case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
-                *sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
+                *sparse = (struct vfio_region_info_cap_sparse_mmap *)header;
                 printf("%s: Sparse cap nr_mmap_areas %d\n", __func__,
                        (*sparse)->nr_areas);
                 for (i = 0; i < (*sparse)->nr_areas; i++) {

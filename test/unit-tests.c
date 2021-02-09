@@ -1218,12 +1218,12 @@ static struct test_setup_migr_reg_dat {
 } migr_reg_data = {
     .c = {
         .version = VFU_MIGR_CALLBACKS_VERS,
-        .transition = (void*)0x1,
-        .get_pending_bytes = (void*)0x2,
-        .prepare_data = (void*)0x3,
-        .read_data = (void*)0x4,
-        .write_data = (void*)0x5,
-        .data_written = (void*)0x6
+        .transition = (void *)0x1,
+        .get_pending_bytes = (void *)0x2,
+        .prepare_data = (void *)0x3,
+        .read_data = (void *)0x4,
+        .write_data = (void *)0x5,
+        .data_written = (void *)0x6
     }
 };
 

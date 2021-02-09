@@ -546,7 +546,7 @@ int main(int argc, char *argv[])
     }
     struct iovec migr_mmap_areas[] = {
         [0] = {
-            .iov_base  = (void*)migr_regs_size,
+            .iov_base  = (void *)migr_regs_size,
             .iov_len = migr_data_size
         },
     };

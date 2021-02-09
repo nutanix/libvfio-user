@@ -461,19 +461,20 @@ typedef struct {
 
 /**
  * vfu_setup_device_migration provides an abstraction over the migration
- * protocol: the user specifies a set of callbacks which are called in respone
- * to client accesses of the migration region; the migration read/write
- * callbacks are not called. Offsets in callbacks are relative to @data_offset.
+ * protocol: the user specifies a set of callbacks which are called in response
+ * to client accesses of the migration region; the migration region read/write
+ * callbacks are not called after this function call. Offsets in callbacks are
+ * relative to @data_offset.
  * 
  * @vfu_ctx: the libvfio-user context
  * @callbacks: migration callbacks
  * @data_offset: offset in the migration region where data begins.
  *
- * @returns 0 on success, -1 on error, Sets errno.
+ * @returns 0 on success, -1 on error, sets errno.
  */
 int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
-                                     const vfu_migration_callbacks_t * callbacks,
+                                     const vfu_migration_callbacks_t *callbacks,
                                      uint64_t data_offset);
 
 /**
@@ -589,16 +590,16 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 /*
  * Supported PCI regions.
  *
- * Note to developers: in VFIO, each region starts at a terabyte offset
- * (VFIO_PCI_INDEX_TO_OFFSET) and because Linux supports up to 128 TB of
- * virtual memory, there can be up to 128 device regions. PCI regions are fixed
- * and in retrospect this choice has proven to be problematic because devices
- * might contain potentially unused regions. New regions can now be positioned
- * anywhere by using the VFIO_REGION_INFO_CAP_TYPE capability.
- * In vfio-user we don't have this problem because the region index is just an
+ * Note: in VFIO, each region starts at a terabyte offset
+ * (VFIO_PCI_INDEX_TO_OFFSET) and because Linux supports up to 128 TB of user
+ * space virtual memory, there can be up to 128 device regions. PCI regions are
+ * fixed and in retrospect this choice has proven to be problematic because
+ * devices might contain potentially unused regions. New regions can now be
+ * positioned anywhere by using the VFIO_REGION_INFO_CAP_TYPE capability.  In
+ * vfio-user we don't have this problem because the region index is just an
  * identifier: the VMM memory maps a file descriptor that is passed to it and
- * the offset that it memory maps is relative to the beginning of the region,
- * therefore it is something reasonably small. Thus, additional regions can
+ * the mapping offset is derived from the mmap_areas offset value, rather than a
+ * static mapping from region index to offset. Thus, additional regions can
  * have static indexes in vfio-user.
  */
 enum {

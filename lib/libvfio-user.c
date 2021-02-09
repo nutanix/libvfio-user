@@ -1256,7 +1256,7 @@ static bool
 maps_over_migr_regs(struct iovec *iov)
 {
     return ranges_intersect(0, vfu_get_migr_register_area_size(),
-                            (size_t)iov->iov_base, (size_t)iov->iov_len);
+                            (size_t)iov->iov_base, iov->iov_len);
 }
 
 static bool
@@ -1306,7 +1306,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
         size < vfu_get_migr_register_area_size()) {
-        vfu_log(vfu_ctx, LOG_ERR, "ivalid migration region size %d", size);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %d", size);
         return ERROR(EINVAL);
     }
 
@@ -1409,7 +1409,7 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 
 int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
-                                     const vfu_migration_callbacks_t * callbacks,
+                                     const vfu_migration_callbacks_t *callbacks,
                                      uint64_t data_offset)
 {
     int ret = 0;
