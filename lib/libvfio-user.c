@@ -1104,15 +1104,6 @@ vfu_get_private(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->pvt;
 }
 
-int
-vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
-{
-
-    assert(vfu_ctx != NULL);
-
-    return vfu_ctx->tran->attach(vfu_ctx);
-}
-
 vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
                vfu_dev_type_t dev_type)
@@ -1186,6 +1177,24 @@ err_out:
     errno = -err;
 
     return NULL;
+}
+
+int
+vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
+{
+
+    assert(vfu_ctx != NULL);
+
+    return vfu_ctx->tran->attach(vfu_ctx);
+}
+
+int
+vfu_get_poll_fd(vfu_ctx_t *vfu_ctx)
+{
+
+    assert(vfu_ctx != NULL);
+
+    return vfu_ctx->tran->get_poll_fd(vfu_ctx);
 }
 
 int

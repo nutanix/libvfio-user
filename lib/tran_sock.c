@@ -56,78 +56,6 @@ typedef struct {
     int conn_fd;
 } tran_sock_t;
 
-static int
-tran_sock_init(vfu_ctx_t *vfu_ctx)
-{
-    struct sockaddr_un addr = { .sun_family = AF_UNIX };
-    tran_sock_t *ts = NULL;
-    mode_t mode;
-    int ret;
-
-    assert(vfu_ctx != NULL);
-
-    /* FIXME SPDK can't easily run as non-root */
-    mode = umask(0000);
-
-    ts = calloc(1, sizeof(tran_sock_t));
-
-    if (ts == NULL) {
-        ret = -errno;
-        goto out;
-    }
-
-    ts->listen_fd = -1;
-    ts->conn_fd = -1;
-
-    if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-	    ret = -errno;
-        goto out;
-    }
-
-    if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        ret = fcntl(ts->listen_fd, F_SETFL,
-                    fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
-        if (ret < 0) {
-            ret = -errno;
-            goto out;
-        }
-    }
-
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
-    if (ret >= (int)sizeof(addr.sun_path)) {
-        ret = -ENAMETOOLONG;
-    }
-    if (ret < 0) {
-        goto out;
-    }
-
-    /* start listening business */
-    ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (ret < 0) {
-	    ret = -errno;
-        goto out;
-    }
-
-    ret = listen(ts->listen_fd, 0);
-    if (ret < 0) {
-        ret = -errno;
-    }
-
-out:
-    umask(mode);
-
-    if (ret != 0) {
-        if (ts->listen_fd != -1) {
-            close(ts->listen_fd);
-        }
-        free(ts);
-        return ret;
-    }
-
-    vfu_ctx->tran_data = ts;
-    return 0;
-}
-
 int
 tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                      enum vfio_user_command cmd,
@@ -442,6 +370,90 @@ tran_sock_msg(int sock, uint16_t msg_id, enum vfio_user_command cmd,
 {
     return tran_sock_msg_fds(sock, msg_id, cmd, send_data, send_len, hdr,
                              recv_data, recv_len, NULL, NULL);
+}
+
+static int
+tran_sock_init(vfu_ctx_t *vfu_ctx)
+{
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    tran_sock_t *ts = NULL;
+    mode_t mode;
+    int ret;
+
+    assert(vfu_ctx != NULL);
+
+    /* FIXME SPDK can't easily run as non-root */
+    mode = umask(0000);
+
+    ts = calloc(1, sizeof(tran_sock_t));
+
+    if (ts == NULL) {
+        ret = -errno;
+        goto out;
+    }
+
+    ts->listen_fd = -1;
+    ts->conn_fd = -1;
+
+    if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+	    ret = -errno;
+        goto out;
+    }
+
+    if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+        ret = fcntl(ts->listen_fd, F_SETFL,
+                    fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
+        if (ret < 0) {
+            ret = -errno;
+            goto out;
+        }
+    }
+
+    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
+    if (ret >= (int)sizeof(addr.sun_path)) {
+        ret = -ENAMETOOLONG;
+    }
+    if (ret < 0) {
+        goto out;
+    }
+
+    /* start listening business */
+    ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (ret < 0) {
+	    ret = -errno;
+        goto out;
+    }
+
+    ret = listen(ts->listen_fd, 0);
+    if (ret < 0) {
+        ret = -errno;
+    }
+
+out:
+    umask(mode);
+
+    if (ret != 0) {
+        if (ts->listen_fd != -1) {
+            close(ts->listen_fd);
+        }
+        free(ts);
+        return ret;
+    }
+
+    vfu_ctx->tran_data = ts;
+    return 0;
+}
+
+int
+tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
+{
+    tran_sock_t *ts = vfu_ctx->tran_data;
+
+    if (ts->conn_fd != -1) {
+        return ts->conn_fd;
+    }
+
+    return ts->listen_fd;
 }
 
 /*
@@ -820,6 +832,7 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
 
 struct transport_ops tran_sock_ops = {
     .init = tran_sock_init,
+    .get_poll_fd = tran_sock_get_poll_fd,
     .attach = tran_sock_attach,
     .get_request = tran_sock_get_request,
     .recv_body = tran_sock_recv_body,
