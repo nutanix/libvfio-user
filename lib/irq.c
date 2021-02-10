@@ -397,7 +397,7 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     eventfd_t val = 1;
 
-    if (validate_irq_subindex(vfu_ctx, subindex) == false) {
+    if (!validate_irq_subindex(vfu_ctx, subindex)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -415,8 +415,7 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     int ret, msg_id = 1;
     struct vfio_user_irq_info irq_info;
 
-    ret = validate_irq_subindex(vfu_ctx, subindex);
-    if (ret == false) {
+    if (!validate_irq_subindex(vfu_ctx, subindex)) {
         return ERROR_INT(EINVAL);
     }
 
