@@ -143,7 +143,7 @@ main(int argc, char *argv[])
     ret = vfu_run_ctx(vfu_ctx);
     if (ret != 0) {
         if (errno != ENOTCONN && errno != EINTR) {
-            err(EXIT_FAILURE, "failed to realize device emulation");
+            err(EXIT_FAILURE, "failed to realize device emulation: %m");
         }
     }
 
