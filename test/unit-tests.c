@@ -350,10 +350,6 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
         .migration = (struct migration*)0x8badf00d
     };
 
-    patch(device_is_stopped);
-    expect_value(__wrap_device_is_stopped, migr, vfu_ctx.migration);
-    will_return(__wrap_device_is_stopped, false);
-
     patch(get_next_command);
     expect_value(__wrap_get_next_command, vfu_ctx, &vfu_ctx);
     expect_any(__wrap_get_next_command, hdr);
