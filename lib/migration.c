@@ -528,6 +528,9 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
         pos -= migr->data_offset;
         if (is_write) {
             ret = migr->callbacks.write_data(vfu_ctx, buf, count, pos);
+            if (ret == -1) {
+                ret = -errno;
+            }
         } else {
             /*
              * FIXME <linux/vfio.h> says:
@@ -538,6 +541,9 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
              * Does this mean that partial reads are not allowed?
              */
             ret = migr->callbacks.read_data(vfu_ctx, buf, count, pos);
+            if (ret == -1) {
+                ret = -errno;
+            }
         }
     }
 
