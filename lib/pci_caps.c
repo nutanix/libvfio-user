@@ -535,12 +535,12 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 
     if (flags & ~(VFU_CAP_FLAG_EXTENDED | VFU_CAP_FLAG_CALLBACK |
         VFU_CAP_FLAG_READONLY)) {
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     if ((flags & VFU_CAP_FLAG_CALLBACK) &&
         vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb == NULL) {
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     cap.off = pos;
@@ -553,11 +553,11 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case VFU_PCI_TYPE_EXPRESS:
             break;
         default:
-            return ERROR(EINVAL);
+            return ERROR_INT(EINVAL);
         }
 
         if (vfu_ctx->pci.nr_ext_caps == VFU_MAX_CAPS) {
-            return ERROR(ENOSPC);
+            return ERROR_INT(ENOSPC);
         }
 
         cap.id = ((struct pcie_ext_cap_hdr *)data)->id;
@@ -575,20 +575,20 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
             break;
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
-            return ERROR(ENOTSUP);
+            return ERROR_INT(ENOTSUP);
         }
 
         cap.size = cap_size(vfu_ctx, data, extended);
 
         if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
-            return ERROR(EINVAL);
+            return ERROR_INT(EINVAL);
         }
 
         ret = ext_cap_place(vfu_ctx, &cap, data);
 
     } else {
         if (vfu_ctx->pci.nr_caps == VFU_MAX_CAPS) {
-            return ERROR(ENOSPC);
+            return ERROR_INT(ENOSPC);
         }
 
         cap.id = ((struct cap_hdr *)data)->id;
@@ -614,20 +614,20 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
             break;
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
-            return ERROR(ENOTSUP);
+            return ERROR_INT(ENOTSUP);
         }
 
         cap.size = cap_size(vfu_ctx, data, extended);
 
         if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
-            return ERROR(EINVAL);
+            return ERROR_INT(EINVAL);
         }
 
         ret = cap_place(vfu_ctx, &cap, data);
     }
 
     if (ret != 0) {
-        return ERROR(ret);
+        return ERROR_INT(ret);
     }
 
     if (extended) {
