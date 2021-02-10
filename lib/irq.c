@@ -380,15 +380,12 @@ static int
 validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     if (vfu_ctx == NULL) {
-        errno = EINVAL;
         return -1;
     }
 
     if ((subindex >= vfu_ctx->irqs->max_ivs)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad IRQ %d, max=%d\n", subindex,
                vfu_ctx->irqs->max_ivs);
-        /* FIXME should return -errno */
-        errno = EINVAL;
         return -1;
     }
 
@@ -403,14 +400,12 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 
     ret = validate_irq_subindex(vfu_ctx, subindex);
     if (ret < 0) {
-        return ret;
+        return ERROR_INT(-ret);
     }
 
     if (vfu_ctx->irqs->efds[subindex] == -1) {
         vfu_log(vfu_ctx, LOG_ERR, "no fd for interrupt %d\n", subindex);
-        /* FIXME should return -errno */
-        errno = ENOENT;
-        return -1;
+        return ERROR_INT(ENOENT);
     }
 
     return eventfd_write(vfu_ctx->irqs->efds[subindex], val);
@@ -424,7 +419,7 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 
     ret = validate_irq_subindex(vfu_ctx, subindex);
     if (ret < 0) {
-        return -1;
+        return ERROR_INT(EINVAL);
     }
 
     irq_info.subindex = subindex;
@@ -433,9 +428,7 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
                                    &irq_info, sizeof irq_info,
                                    NULL, NULL, 0);
     if (ret < 0) {
-        /* FIXME should return -errno */
-	    errno = -ret;
-	    return -1;
+	    return ERROR_INT(-ret);
     }
 
     return 0;

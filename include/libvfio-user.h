@@ -546,7 +546,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr, uint32_t len,
  *       mapping
  * @cnt: number of scatter/gather entries to map
  *
- * @returns 0 on success, -1 on failure
+ * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
 vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
@@ -573,6 +573,8 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to read into
+ *
+ * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
@@ -583,6 +585,8 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
  * @data: data buffer to write
+ *
+ * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
