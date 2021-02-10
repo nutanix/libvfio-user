@@ -215,7 +215,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
 
     if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
-    } else if (is_migr_reg(vfu_ctx, region_index)) {
+    } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
@@ -396,9 +396,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
 
     *nr_fds = 0;
     if (caps_size > 0) {
-        if (vfu_reg->mmap_areas != NULL) {
-            (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
-        }
+        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
         if (argsz >= (*vfio_reg)->argsz) {
             dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index),
                          *vfio_reg, fds, nr_fds);
@@ -985,7 +983,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->pci.config_space == NULL) {
         vfu_ctx->pci.config_space = calloc(1, cfg_reg->size);
         if (vfu_ctx->pci.config_space == NULL) {
-            return ERROR(ENOMEM);
+            return ERROR_INT(ENOMEM);
         }
     }
 
@@ -1014,7 +1012,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         vfu_ctx->irqs = calloc(1, sizeof(vfu_irqs_t) + size);
         if (vfu_ctx->irqs == NULL) {
             // vfu_ctx->pci.config_space should be free'ed by vfu_destroy_ctx().
-            return ERROR(ENOMEM);
+            return ERROR_INT(ENOMEM);
         }
 
         // Set context irq information.
@@ -1050,7 +1048,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     assert(vfu_ctx != NULL);
 
     if (!vfu_ctx->realized) {
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
@@ -1125,23 +1123,21 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
+    size_t i;
 
     //FIXME: Validate arguments.
 
     if (trans != VFU_TRANS_SOCK) {
-        errno = ENOTSUP;
-        return NULL;
+        return ERROR_PTR(ENOTSUP);
     }
 
     if (dev_type != VFU_DEV_TYPE_PCI) {
-        errno = EINVAL;
-        return NULL;
+        return ERROR_PTR(EINVAL);
     }
 
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
     if (vfu_ctx == NULL) {
-        errno = ENOMEM;
-        return NULL;
+        return ERROR_PTR(ENOMEM);
     }
 
     vfu_ctx->fd = -1;
@@ -1163,7 +1159,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
      * to seperate migration region from standard regions in vfu_ctx.reg_info
      * and move it into vfu_ctx.migration.
      */
-    vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS + 1;
+    vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;
     vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof *vfu_ctx->reg_info);
     if (vfu_ctx->reg_info == NULL) {
         err = -ENOMEM;
@@ -1187,13 +1183,16 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         vfu_ctx->fd = err;
     }
 
+    for (i = 0; i< vfu_ctx->nr_regions; i++) {
+        vfu_ctx->reg_info[i].fd = -1;
+    }
+
     return vfu_ctx;
 
 err_out:
     vfu_destroy_ctx(vfu_ctx);
-    errno = -err;
 
-    return NULL;
+    return ERROR_PTR(-err);
 }
 
 int
@@ -1201,7 +1200,7 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 {
 
     if (log_level != LOG_ERR && log_level != LOG_INFO && log_level != LOG_DEBUG) {
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     vfu_ctx->log = log;
@@ -1232,6 +1231,38 @@ copyin_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
+static bool
+ranges_intersect(size_t off1, size_t size1, size_t off2, size_t size2)
+{
+    /*
+     * For two ranges to intersect, the start of each range must be before the
+     * end of the other range.
+     * TODO already defined in lib/pci_caps.c, maybe introduce a file for misc
+     * utility functions?
+     */
+    return (off1 < (off2 + size2) && off2 < (off1 + size1));
+}
+
+static bool
+maps_over_migr_regs(struct iovec *iov)
+{
+    return ranges_intersect(0, vfu_get_migr_register_area_size(),
+                            (size_t)iov->iov_base, iov->iov_len);
+}
+
+static bool
+validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
+{
+    int i;
+
+    for (i = 0; i < reg->nr_mmap_areas; i++) {
+        if (maps_over_migr_regs(&reg->mmap_areas[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
@@ -1240,20 +1271,20 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     struct iovec whole_region = { .iov_base = 0, .iov_len = size };
     vfu_reg_info_t *reg;
     size_t i;
-    int ret;
+    int ret = 0;
 
     assert(vfu_ctx != NULL);
 
     if ((mmap_areas == NULL) != (nr_mmap_areas == 0) ||
         (mmap_areas != NULL && fd == -1)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid mappable region arguments");
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     if (region_idx < VFU_PCI_DEV_BAR0_REGION_IDX ||
-        region_idx > VFU_PCI_DEV_VGA_REGION_IDX) {
+        region_idx >= VFU_PCI_DEV_NUM_REGIONS) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid region index %d", region_idx);
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     /*
@@ -1261,13 +1292,19 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
      */
     if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
         flags != VFU_REGION_FLAG_RW) {
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
+        size < vfu_get_migr_register_area_size()) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %d", size);
+        return ERROR_INT(EINVAL);
     }
 
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
         if ((size_t)iov->iov_base + iov->iov_len > size) {
-            return ERROR(EINVAL);
+            return ERROR_INT(EINVAL);
         }
     }
 
@@ -1286,11 +1323,30 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (nr_mmap_areas > 0) {
         ret = copyin_mmap_areas(reg, mmap_areas, nr_mmap_areas);
         if (ret < 0) {
-            memset(reg, 0, sizeof (*reg));
-            return ERROR(-ret);
+            goto out;
         }
     }
 
+    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX) {
+        if (!validate_sparse_mmaps_for_migr_reg(reg)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "migration registers cannot be memory mapped");
+            ret = -EINVAL;
+            goto out;
+        }
+
+        /*
+         * FIXME keeping for now until we're sure we're OK with fixing the
+         * migration region index.
+         */
+        vfu_ctx->migr_reg = reg;
+    }
+out:
+    if (ret < 0) {
+        free(reg->mmap_areas);
+        memset(reg, 0, sizeof (*reg));
+        return ERROR_INT(-ret);
+    }
     return 0;
 }
 
@@ -1314,7 +1370,7 @@ vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
     // Create the internal DMA controller.
     vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
     if (vfu_ctx->dma == NULL) {
-        return ERROR(ENOMEM);
+        return ERROR_INT(ENOMEM);
     }
 
     vfu_ctx->map_dma = map_dma;
@@ -1334,7 +1390,7 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
         vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ index %d, should be between "
                "(%d to %d)", type, VFU_DEV_INTX_IRQ,
                VFU_DEV_REQ_IRQ);
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     vfu_ctx->irq_count[type] = count;
@@ -1343,40 +1399,31 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 }
 
 int
-vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
+vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
+                                     const vfu_migration_callbacks_t *callbacks,
+                                     uint64_t data_offset)
 {
-    vfu_reg_info_t *migr_reg;
     int ret = 0;
 
     assert(vfu_ctx != NULL);
+    assert(callbacks != NULL);
 
-    //FIXME: Validate args.
-
-    if (vfu_ctx->migr_reg != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "device migration is already setup");
-        return ERROR(EEXIST);
+    if (vfu_ctx->migr_reg == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "no device migration region");
+        return ERROR_INT(EINVAL);
     }
 
-    /* FIXME hacky, find a more robust way to allocate a region index */
-    migr_reg = &vfu_ctx->reg_info[(vfu_ctx->nr_regions - 1)];
-
-    /* FIXME: Are there sparse areas need to be setup flags accordingly */
-    ret = copyin_mmap_areas(migr_reg, migration->mmap_areas,
-                            migration->nr_mmap_areas);
-    if (ret < 0) {
-        return ERROR(-ret);
+    if (callbacks->version != VFU_MIGR_CALLBACKS_VERS) {
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported migration callbacks version %d",
+                callbacks->version);
+        return ERROR_INT(EINVAL);
     }
 
-    migr_reg->flags = VFU_REGION_FLAG_RW;
-    migr_reg->size = sizeof(struct vfio_device_migration_info) + migration->size;
-
-    vfu_ctx->migration = init_migration(migration, &ret);
+    vfu_ctx->migration = init_migration(callbacks, data_offset, &ret);
     if (vfu_ctx->migration == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to initialize device migration");
-        free(migr_reg->mmap_areas);
-        return ERROR(ret);
+        return ERROR_INT(ret);
     }
-    vfu_ctx->migr_reg = migr_reg;
 
     return 0;
 }
@@ -1395,8 +1442,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
     assert(vfu_ctx != NULL);
 
     if (unlikely(vfu_ctx->unmap_dma == NULL)) {
-        errno = EINVAL;
-        return -1;
+        return ERROR_INT(EINVAL);
     }
 
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
@@ -1406,11 +1452,18 @@ inline int
 vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 	       struct iovec *iov, int cnt)
 {
+    int ret;
+
     if (unlikely(vfu_ctx->unmap_dma == NULL)) {
-        errno = EINVAL;
-        return -1;
+        return ERROR_INT(EINVAL);
     }
-    return dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
+
+    ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
+    if (ret < 0) {
+        return ERROR_INT(-ret);
+    }
+
+    return 0;
 }
 
 inline void
@@ -1437,7 +1490,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_recv = calloc(recv_size, 1);
     if (dma_recv == NULL) {
-        return -ENOMEM;
+        return ERROR_INT(ENOMEM);
     }
 
     dma_send.addr = sg->dma_addr;
@@ -1448,7 +1501,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
-    return ret;
+    return ret < 0 ? ERROR_INT(-ret) : 0;
 }
 
 int
@@ -1463,7 +1516,7 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send = calloc(send_size, 1);
     if (dma_send == NULL) {
-        return -ENOMEM;
+        return ERROR_INT(ENOMEM);
     }
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
@@ -1473,7 +1526,7 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
                                   &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
-    return ret;
+    return ret < 0 ? ERROR_INT(-ret) : 0;
 }
 
 uint64_t
