@@ -398,20 +398,41 @@ migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count)
     return 0;
 }
 
+size_t
+nr_pages(size_t size)
+{
+    return (size / sysconf(_SC_PAGE_SIZE) + (size % sysconf(_SC_PAGE_SIZE) > 1));
+}
+
+size_t
+page_align(size_t size) {
+    return  nr_pages(size) * sysconf(_SC_PAGE_SIZE);
+}
+
 int main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
     char opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    size_t bar1_size = 0x3000;
+    const size_t bar1_size = 0x3000;
+    size_t migr_regs_size, migr_data_size, migr_size;
     struct server_data server_data = {
         .migration = {
             .state = VFU_MIGR_STATE_RUNNING
         }
     };
     vfu_ctx_t *vfu_ctx;
-    FILE *fp;
+    FILE *bar1_fp, *migr_fp;
+    const vfu_migration_callbacks_t migr_callbacks = {
+        .version = VFU_MIGR_CALLBACKS_VERS,
+        .transition = &migration_device_state_transition,
+        .get_pending_bytes = &migration_get_pending_bytes,
+        .prepare_data = &migration_prepare_data,
+        .read_data = &migration_read_data,
+        .data_written = &migration_data_written,
+        .write_data = &migration_write_data
+    };
 
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
@@ -463,25 +484,26 @@ int main(int argc, char *argv[])
      * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
      */
-    if ((fp = tmpfile()) == NULL) {
+    if ((bar1_fp = tmpfile()) == NULL) {
         err(EXIT_FAILURE, "failed to create BAR1 file");
     }
     server_data.bar1_size = bar1_size;
-    if (ftruncate(fileno(fp), server_data.bar1_size) == -1) {
+    if (ftruncate(fileno(bar1_fp), server_data.bar1_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate BAR1 file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fileno(fp), 0);
+                            MAP_SHARED, fileno(bar1_fp), 0);
     if (server_data.bar1 == MAP_FAILED) {
         err(EXIT_FAILURE, "failed to mmap BAR1");
     }
-    struct iovec mmap_areas[] = {
+    struct iovec bar1_mmap_areas[] = {
         { .iov_base  = (void*)0, .iov_len = 0x1000 },
         { .iov_base  = (void*)0x2000, .iov_len = 0x1000 }
     };
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            server_data.bar1_size, &bar1_access,
-                           VFU_REGION_FLAG_RW, mmap_areas, 2, fileno(fp));
+                           VFU_REGION_FLAG_RW, bar1_mmap_areas, 2,
+                           fileno(bar1_fp));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
@@ -501,21 +523,41 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup irq counts");
     }
 
-    vfu_migration_t migration = {
-        .size = bar1_size + sizeof(time_t),
-        .mmap_areas = mmap_areas,
-        .nr_mmap_areas = 2,
-        .callbacks = {
-            .transition = &migration_device_state_transition,
-            .get_pending_bytes = &migration_get_pending_bytes,
-            .prepare_data = &migration_prepare_data,
-            .read_data = &migration_read_data,
-            .data_written = &migration_data_written,
-            .write_data = &migration_write_data
-        }
-    };
+    /* setup migration */
 
-    ret = vfu_setup_device_migration(vfu_ctx, &migration);
+    /*
+     * The migration registers aren't memory mappable, so in order to make the
+     * rest of the migration region memory mappable we must effectively reserve
+     * an entire page.
+     */
+    migr_regs_size = vfu_get_migr_register_area_size();
+    migr_data_size = page_align(bar1_size + sizeof(time_t));
+    migr_size = migr_regs_size + migr_data_size;
+    if ((migr_fp = tmpfile()) == NULL) {
+        err(EXIT_FAILURE, "failed to create migration file");
+    }
+    if (ftruncate(fileno(migr_fp), migr_size) == -1) {
+        err(EXIT_FAILURE, "failed to truncate migration file");
+    }
+    server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
+                            MAP_SHARED, fileno(bar1_fp), 0);
+    if (server_data.bar1 == MAP_FAILED) {
+        err(EXIT_FAILURE, "failed to mmap migration file");
+    }
+    struct iovec migr_mmap_areas[] = {
+        [0] = {
+            .iov_base  = (void *)migr_regs_size,
+            .iov_len = migr_data_size
+        },
+    };
+    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
+                           NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
+                           ARRAY_SIZE(migr_mmap_areas), fileno(migr_fp));
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup migration region");
+    }
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
+                                               migr_regs_size);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
     }

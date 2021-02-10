@@ -215,7 +215,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
 
     if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
-    } else if (is_migr_reg(vfu_ctx, region_index)) {
+    } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
@@ -1128,6 +1128,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 {
     vfu_ctx_t *vfu_ctx = NULL;
     int err = 0;
+    size_t i;
 
     //FIXME: Validate arguments.
 
@@ -1166,7 +1167,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
      * to seperate migration region from standard regions in vfu_ctx.reg_info
      * and move it into vfu_ctx.migration.
      */
-    vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS + 1;
+    vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;
     vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof *vfu_ctx->reg_info);
     if (vfu_ctx->reg_info == NULL) {
         err = -ENOMEM;
@@ -1188,6 +1189,10 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
             goto err_out;
         }
         vfu_ctx->fd = err;
+    }
+
+    for (i = 0; i< vfu_ctx->nr_regions; i++) {
+        vfu_ctx->reg_info[i].fd = -1;
     }
 
     return vfu_ctx;
@@ -1235,6 +1240,38 @@ copyin_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
+static bool
+ranges_intersect(size_t off1, size_t size1, size_t off2, size_t size2)
+{
+    /*
+     * For two ranges to intersect, the start of each range must be before the
+     * end of the other range.
+     * TODO already defined in lib/pci_caps.c, maybe introduce a file for misc
+     * utility functions?
+     */
+    return (off1 < (off2 + size2) && off2 < (off1 + size1));
+}
+
+static bool
+maps_over_migr_regs(struct iovec *iov)
+{
+    return ranges_intersect(0, vfu_get_migr_register_area_size(),
+                            (size_t)iov->iov_base, iov->iov_len);
+}
+
+static bool
+validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
+{
+    int i;
+
+    for (i = 0; i < reg->nr_mmap_areas; i++) {
+        if (maps_over_migr_regs(&reg->mmap_areas[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
@@ -1243,7 +1280,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     struct iovec whole_region = { .iov_base = 0, .iov_len = size };
     vfu_reg_info_t *reg;
     size_t i;
-    int ret;
+    int ret = 0;
 
     assert(vfu_ctx != NULL);
 
@@ -1254,7 +1291,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     }
 
     if (region_idx < VFU_PCI_DEV_BAR0_REGION_IDX ||
-        region_idx > VFU_PCI_DEV_VGA_REGION_IDX) {
+        region_idx >= VFU_PCI_DEV_NUM_REGIONS) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid region index %d", region_idx);
         return ERROR(EINVAL);
     }
@@ -1264,6 +1301,12 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
      */
     if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
         flags != VFU_REGION_FLAG_RW) {
+        return ERROR(EINVAL);
+    }
+
+    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
+        size < vfu_get_migr_register_area_size()) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %d", size);
         return ERROR(EINVAL);
     }
 
@@ -1289,11 +1332,30 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (nr_mmap_areas > 0) {
         ret = copyin_mmap_areas(reg, mmap_areas, nr_mmap_areas);
         if (ret < 0) {
-            memset(reg, 0, sizeof (*reg));
-            return ERROR(-ret);
+            goto out;
         }
     }
 
+    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX) {
+        if (!validate_sparse_mmaps_for_migr_reg(reg)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "migration registers cannot be memory mapped");
+            ret = -EINVAL;
+            goto out;
+        }
+
+        /*
+         * FIXME keeping for now until we're sure we're OK with fixing the
+         * migration region index.
+         */
+        vfu_ctx->migr_reg = reg;
+    }
+out:
+    if (ret < 0) {
+        free(reg->mmap_areas);
+        memset(reg, 0, sizeof (*reg));
+        return ERROR(-ret);
+    }
     return 0;
 }
 
@@ -1346,40 +1408,31 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 }
 
 int
-vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, vfu_migration_t *migration)
+vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
+                                     const vfu_migration_callbacks_t *callbacks,
+                                     uint64_t data_offset)
 {
-    vfu_reg_info_t *migr_reg;
     int ret = 0;
 
     assert(vfu_ctx != NULL);
+    assert(callbacks != NULL);
 
-    //FIXME: Validate args.
-
-    if (vfu_ctx->migr_reg != NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "device migration is already setup");
-        return ERROR(EEXIST);
+    if (vfu_ctx->migr_reg == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "no device migration region");
+        return ERROR(EINVAL);
     }
 
-    /* FIXME hacky, find a more robust way to allocate a region index */
-    migr_reg = &vfu_ctx->reg_info[(vfu_ctx->nr_regions - 1)];
-
-    /* FIXME: Are there sparse areas need to be setup flags accordingly */
-    ret = copyin_mmap_areas(migr_reg, migration->mmap_areas,
-                            migration->nr_mmap_areas);
-    if (ret < 0) {
-        return ERROR(-ret);
+    if (callbacks->version != VFU_MIGR_CALLBACKS_VERS) {
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported migration callbacks version %d",
+                callbacks->version);
+        return ERROR(EINVAL);
     }
 
-    migr_reg->flags = VFU_REGION_FLAG_RW;
-    migr_reg->size = sizeof(struct vfio_device_migration_info) + migration->size;
-
-    vfu_ctx->migration = init_migration(migration, &ret);
+    vfu_ctx->migration = init_migration(callbacks, data_offset, &ret);
     if (vfu_ctx->migration == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to initialize device migration");
-        free(migr_reg->mmap_areas);
         return ERROR(ret);
     }
-    vfu_ctx->migr_reg = migr_reg;
 
     return 0;
 }
