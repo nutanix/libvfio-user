@@ -33,6 +33,8 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include "mocks.h"
 #include "dma.h"
@@ -124,6 +126,10 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 int
 __wrap_close(int fd)
 {
+    if (!is_patched(close)) {
+        return __real_close(fd);
+    }
+
     check_expected(fd);
     return mock();
 }
@@ -168,6 +174,19 @@ __wrap_process_request(vfu_ctx_t *vfu_ctx)
     return mock();
 }
 
+int __wrap_bind(int sockfd __attribute__((unused)),
+    const struct sockaddr *addr __attribute__((unused)),
+    socklen_t addrlen __attribute__((unused)))
+{
+    return 0;
+}
+
+int __wrap_listen(int sockfd __attribute__((unused)),
+    int backlog __attribute__((unused)))
+{
+    return 0;
+}
+
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
@@ -179,7 +198,9 @@ static struct function funcs[] = {
     {.addr = &__wrap_close},
     {.addr = &__wrap_tran_sock_send_iovec},
     {.addr = &__wrap_free},
-    {.addr = &__wrap_process_request}
+    {.addr = &__wrap_process_request},
+    {.addr = &__wrap_bind},
+    {.addr = &__wrap_listen}
 };
 
 static struct function*
