@@ -39,6 +39,7 @@
 #include <alloca.h>
 #include <string.h>
 #include <linux/pci_regs.h>
+#include <sys/param.h>
 
 #include "dma.h"
 #include "libvfio-user.h"
@@ -478,7 +479,7 @@ static void
 test_get_region_info(UNUSED void **state)
 {
     struct iovec iov = { .iov_base = (void*)0x8badf00, .iov_len = 0x0d15ea5e };
-    vfu_reg_info_t reg_info[] = {
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
         {
             .size = 0xcadebabe
         },
@@ -486,12 +487,18 @@ test_get_region_info(UNUSED void **state)
             .flags = VFU_REGION_FLAG_RW,
             .size = 0xdeadbeef,
             .fd = 0x12345
+        },
+        [VFU_PCI_DEV_MIGR_REGION_IDX] = {
+            .flags = VFU_REGION_FLAG_RW,
+            .size = 0x1000,
+            .fd = -1
         }
     };
     vfu_ctx_t vfu_ctx = {
         .client_max_fds = 1,
-        .nr_regions = 2,
-        .reg_info = reg_info
+        .nr_regions = ARRAY_SIZE(reg_info),
+        .reg_info = reg_info,
+        .migr_reg = &reg_info[VFU_PCI_DEV_MIGR_REGION_IDX]
     };
     uint32_t index = 0;
     uint32_t argsz = 0;
@@ -559,7 +566,26 @@ test_get_region_info(UNUSED void **state)
     free(vfio_reg);
     free(fds);
 
-    /* FIXME add check for migration region and for multiple sparse areas */
+    /* migration cap */
+    fds = NULL;
+    vfu_ctx.reg_info[1].mmap_areas = NULL;
+    vfu_ctx.reg_info[1].nr_mmap_areas = 0;
+    argsz = sizeof(struct vfio_region_info) + sizeof(struct vfio_region_info_cap_type);
+    assert_int_equal(0,
+                     dev_get_reginfo(&vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX,
+                                     argsz, &vfio_reg, &fds, &nr_fds));
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_CAPS,
+                     vfio_reg->flags);
+    struct vfio_region_info_cap_type *type = (struct vfio_region_info_cap_type*)(vfio_reg + 1);
+    assert_int_equal(VFIO_REGION_INFO_CAP_TYPE, type->header.id);
+    assert_int_equal(VFIO_REGION_TYPE_MIGRATION , type->type);
+    assert_int_equal(VFIO_REGION_SUBTYPE_MIGRATION, type->subtype);
+    assert_null(fds);
+    assert_int_equal(0, nr_fds);
+    free(vfio_reg);
+
+    /* FIXME add check  for multiple sparse areas */
 }
 
 /*
@@ -1209,9 +1235,156 @@ test_migration_state_transitions(void **state __attribute__ ((unused)))
  * and provide a function to execute before and after each unit test.
  */
 static int
-setup(void **state __attribute__((unused))) {
+setup(void **state __attribute__((unused)))
+{
     unpatch_all();
     return 0;
+}
+
+static struct test_setup_migr_reg_dat {
+    vfu_ctx_t *v;
+    size_t rs; /* migration registers size */
+    size_t ds; /* migration data size */
+    size_t s; /* migration region size*/
+    const vfu_migration_callbacks_t c;
+} migr_reg_data = {
+    .c = {
+        .version = VFU_MIGR_CALLBACKS_VERS,
+        .transition = (void *)0x1,
+        .get_pending_bytes = (void *)0x2,
+        .prepare_data = (void *)0x3,
+        .read_data = (void *)0x4,
+        .write_data = (void *)0x5,
+        .data_written = (void *)0x6
+    }
+};
+
+static int
+setup_test_setup_migration_region(void **state)
+{
+    struct test_setup_migr_reg_dat *p = &migr_reg_data;
+    p->v = vfu_create_ctx(VFU_TRANS_SOCK, "test", 0, NULL,
+        VFU_DEV_TYPE_PCI);
+    if (p->v == NULL) {
+        return -1;
+    }
+    p->rs = ROUND_UP(sizeof(struct vfio_device_migration_info), sysconf(_SC_PAGE_SIZE));
+    p->ds = sysconf(_SC_PAGE_SIZE);
+    p->s = p->rs + p->ds;
+    *state = p;
+    return setup(state);
+}
+
+static vfu_ctx_t *
+get_vfu_ctx(void **state)
+{
+    return (*((struct test_setup_migr_reg_dat **)(state)))->v;
+}
+
+static int
+teardown_test_setup_migration_region(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    vfu_destroy_ctx(p->v);
+    return 0;
+}
+
+static void
+test_setup_migration_region_too_small(void **state)
+{
+    vfu_ctx_t *v = get_vfu_ctx(state);
+    int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
+        vfu_get_migr_register_area_size() - 1, NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+    assert_int_equal(-1, r);
+    assert_int_equal(EINVAL, errno);
+}
+
+static void
+test_setup_migration_region_size_ok(void **state)
+{
+    vfu_ctx_t *v = get_vfu_ctx(state);
+    int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
+        vfu_get_migr_register_area_size(), NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+    assert_int_equal(0, r);
+}
+
+static void
+test_setup_migration_region_fully_mappable(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s,
+        NULL, VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0,
+        0xdeadbeef);
+    assert_int_equal(-1, r);
+    assert_int_equal(EINVAL, errno);
+}
+
+static void
+test_setup_migration_region_sparsely_mappable_over_migration_registers(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    struct iovec mmap_areas[] = {
+        [0] = {
+            .iov_base = 0,
+            .iov_len = p->rs
+        }
+    };
+    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1, 0xdeadbeef);
+    assert_int_equal(-1, r);
+    assert_int_equal(EINVAL, errno);
+}
+
+static void
+test_setup_migration_region_sparsely_mappable_valid(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    struct iovec mmap_areas[] = {
+        [0] = {
+            .iov_base = (void *)p->rs,
+            .iov_len = p->ds
+        }
+    };
+    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
+        0xdeadbeef);
+    assert_int_equal(0, r);
+}
+
+static void
+test_setup_migration_callbacks_without_migration_region(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    assert_int_equal(-1, vfu_setup_device_migration_callbacks(p->v, &p->c, 0));
+    assert_int_equal(EINVAL, errno);
+}
+
+static void
+test_setup_migration_callbacks_bad_data_offset(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+    assert_int_equal(0, r);
+    r = vfu_setup_device_migration_callbacks(p->v, &p->c,
+        vfu_get_migr_register_area_size() - 1);
+    assert_int_equal(-1, r);
+}
+
+static void
+test_setup_migration_callbacks(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+    assert_int_equal(0, r);
+    r = vfu_setup_device_migration_callbacks(p->v, &p->c,
+        vfu_get_migr_register_area_size());
+    assert_int_equal(0, r);
+    assert_non_null(p->v->migration);
+    /* FIXME can't validate p->v->migration because it's a private strcut, need to move it out of lib/migration.c */
 }
 
 int main(void)
@@ -1239,7 +1412,31 @@ int main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma_cb, setup),
-        cmocka_unit_test_setup(test_migration_state_transitions, setup)
+        cmocka_unit_test_setup(test_migration_state_transitions, setup),
+        cmocka_unit_test_setup_teardown(test_setup_migration_region_too_small,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_region_fully_mappable,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_over_migration_registers,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_valid,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_callbacks_without_migration_region,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_callbacks_bad_data_offset,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
+        cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
+            setup_test_setup_migration_region,
+            teardown_test_setup_migration_region),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
