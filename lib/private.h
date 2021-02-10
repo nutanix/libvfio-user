@@ -37,10 +37,17 @@
 #include "dma.h"
 
 static inline int
-ERROR(int err)
+ERROR_INT(int err)
 {
     errno = err;
     return -1;
+}
+
+static inline void *
+ERROR_PTR(int err)
+{
+    errno = err;
+    return NULL;
 }
 
 struct transport_ops {
