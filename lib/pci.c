@@ -418,12 +418,12 @@ vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
         break;
     default:
         vfu_log(vfu_ctx, LOG_ERR, "invalid PCI type %u", pci_type);
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     if (hdr_type != PCI_HEADER_TYPE_NORMAL) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid PCI header type %d", hdr_type);
-        return ERROR(EINVAL);
+        return ERROR_INT(EINVAL);
     }
 
     /*
@@ -433,13 +433,13 @@ vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
     if (vfu_ctx->pci.config_space != NULL) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "PCI configuration space header already setup");
-        return ERROR(EEXIST);
+        return ERROR_INT(EEXIST);
     }
 
     // Allocate a buffer for the config space.
     cfg_space = calloc(1, size);
     if (cfg_space == NULL) {
-        return ERROR(ENOMEM);
+        return ERROR_INT(ENOMEM);
     }
 
     vfu_ctx->pci.type = pci_type;

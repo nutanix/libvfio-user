@@ -473,7 +473,7 @@ static void
 test_get_region_info(UNUSED void **state)
 {
     struct iovec iov = { .iov_base = (void*)0x8badf00, .iov_len = 0x0d15ea5e };
-    vfu_reg_info_t reg_info[] = {
+    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
         {
             .size = 0xcadebabe
         },
@@ -481,12 +481,18 @@ test_get_region_info(UNUSED void **state)
             .flags = VFU_REGION_FLAG_RW,
             .size = 0xdeadbeef,
             .fd = 0x12345
+        },
+        [VFU_PCI_DEV_MIGR_REGION_IDX] = {
+            .flags = VFU_REGION_FLAG_RW,
+            .size = 0x1000,
+            .fd = -1
         }
     };
     vfu_ctx_t vfu_ctx = {
         .client_max_fds = 1,
-        .nr_regions = 2,
-        .reg_info = reg_info
+        .nr_regions = ARRAY_SIZE(reg_info),
+        .reg_info = reg_info,
+        .migr_reg = &reg_info[VFU_PCI_DEV_MIGR_REGION_IDX]
     };
     uint32_t index = 0;
     uint32_t argsz = 0;
@@ -554,7 +560,26 @@ test_get_region_info(UNUSED void **state)
     free(vfio_reg);
     free(fds);
 
-    /* FIXME add check for migration region and for multiple sparse areas */
+    /* migration cap */
+    fds = NULL;
+    vfu_ctx.reg_info[1].mmap_areas = NULL;
+    vfu_ctx.reg_info[1].nr_mmap_areas = 0;
+    argsz = sizeof(struct vfio_region_info) + sizeof(struct vfio_region_info_cap_type);
+    assert_int_equal(0,
+                     dev_get_reginfo(&vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX,
+                                     argsz, &vfio_reg, &fds, &nr_fds));
+    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
+                     VFIO_REGION_INFO_FLAG_CAPS,
+                     vfio_reg->flags);
+    struct vfio_region_info_cap_type *type = (struct vfio_region_info_cap_type*)(vfio_reg + 1);
+    assert_int_equal(VFIO_REGION_INFO_CAP_TYPE, type->header.id);
+    assert_int_equal(VFIO_REGION_TYPE_MIGRATION , type->type);
+    assert_int_equal(VFIO_REGION_SUBTYPE_MIGRATION, type->subtype);
+    assert_null(fds);
+    assert_int_equal(0, nr_fds);
+    free(vfio_reg);
+
+    /* FIXME add check  for multiple sparse areas */
 }
 
 /*

@@ -376,41 +376,34 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     return dev_set_irqs(vfu_ctx, irq_set, data);
 }
 
-static int
+static bool
 validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     if (vfu_ctx == NULL) {
-        errno = EINVAL;
-        return -1;
+        return false;
     }
 
     if ((subindex >= vfu_ctx->irqs->max_ivs)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad IRQ %d, max=%d\n", subindex,
                vfu_ctx->irqs->max_ivs);
-        /* FIXME should return -errno */
-        errno = EINVAL;
-        return -1;
+        return false;
     }
 
-    return 0;
+    return true;
 }
 
 int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
-    int ret;
     eventfd_t val = 1;
 
-    ret = validate_irq_subindex(vfu_ctx, subindex);
-    if (ret < 0) {
-        return ret;
+    if (!validate_irq_subindex(vfu_ctx, subindex)) {
+        return ERROR_INT(EINVAL);
     }
 
     if (vfu_ctx->irqs->efds[subindex] == -1) {
         vfu_log(vfu_ctx, LOG_ERR, "no fd for interrupt %d\n", subindex);
-        /* FIXME should return -errno */
-        errno = ENOENT;
-        return -1;
+        return ERROR_INT(ENOENT);
     }
 
     return eventfd_write(vfu_ctx->irqs->efds[subindex], val);
@@ -422,9 +415,8 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     int ret, msg_id = 1;
     struct vfio_user_irq_info irq_info;
 
-    ret = validate_irq_subindex(vfu_ctx, subindex);
-    if (ret < 0) {
-        return -1;
+    if (!validate_irq_subindex(vfu_ctx, subindex)) {
+        return ERROR_INT(EINVAL);
     }
 
     irq_info.subindex = subindex;
@@ -433,9 +425,7 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
                                    &irq_info, sizeof irq_info,
                                    NULL, NULL, 0);
     if (ret < 0) {
-        /* FIXME should return -errno */
-	    errno = -ret;
-	    return -1;
+	    return ERROR_INT(-ret);
     }
 
     return 0;
