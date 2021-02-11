@@ -696,7 +696,7 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
     int ret;
 
     /* FIXME get request shouldn't set errno, it should return it as -errno */
-    ret = vfu_ctx->trans->get_request(vfu_ctx, hdr, fds, nr_fds);
+    ret = vfu_ctx->tran->get_request(vfu_ctx, hdr, fds, nr_fds);
     if (unlikely(ret < 0)) {
         if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
@@ -934,8 +934,8 @@ process_request(vfu_ctx_t *vfu_ctx)
          */
         ret = 0;
     } else {
-        ret = vfu_ctx->trans->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
-                                    fds_out, nr_fds_out, -ret);
+        ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
+                                   fds_out, nr_fds_out, -ret);
         if (unlikely(ret < 0)) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
         }
@@ -1081,12 +1081,12 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
-    if (vfu_ctx->trans->detach != NULL) {
-        vfu_ctx->trans->detach(vfu_ctx);
+    if (vfu_ctx->tran->detach != NULL) {
+        vfu_ctx->tran->detach(vfu_ctx);
     }
 
-    if (vfu_ctx->trans->fini != NULL) {
-        vfu_ctx->trans->fini(vfu_ctx);
+    if (vfu_ctx->tran->fini != NULL) {
+        vfu_ctx->tran->fini(vfu_ctx);
     }
 
     if (vfu_ctx->dma != NULL) {
@@ -1114,7 +1114,7 @@ vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
 
     assert(vfu_ctx != NULL);
 
-    return vfu_ctx->trans->attach(vfu_ctx);
+    return vfu_ctx->tran->attach(vfu_ctx);
 }
 
 vfu_ctx_t *
@@ -1143,7 +1143,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->fd = -1;
     vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
-    vfu_ctx->trans = &tran_sock_ops;
+    vfu_ctx->tran = &tran_sock_ops;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
@@ -1175,8 +1175,8 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto err_out;
     }
 
-    if (vfu_ctx->trans->init != NULL) {
-        err = vfu_ctx->trans->init(vfu_ctx);
+    if (vfu_ctx->tran->init != NULL) {
+        err = vfu_ctx->tran->init(vfu_ctx);
         if (err < 0) {
             goto err_out;
         }
@@ -1495,9 +1495,9 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
-    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
-                                   &dma_send, sizeof dma_send, NULL,
-                                   dma_recv, recv_size);
+    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
+                                  &dma_send, sizeof dma_send, NULL,
+                                  dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
@@ -1521,9 +1521,9 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
-    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
-                                   dma_send, send_size, NULL,
-                                   &dma_recv, sizeof(dma_recv));
+    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
+                                  dma_send, send_size, NULL,
+                                  &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
     return ret < 0 ? ERROR_INT(-ret) : 0;

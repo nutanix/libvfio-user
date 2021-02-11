@@ -347,8 +347,8 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     vfu_ctx_t vfu_ctx = {
         .conn_fd = 0xcafebabe,
         .client_max_fds = ARRAY_SIZE(fds),
-        .migration = (struct migration*)0x8badf00d,
-        .trans = &tran_sock_ops,
+        .migration = (struct migration *)0x8badf00d,
+        .tran = &tran_sock_ops,
     };
 
     patch(device_is_stopped);
@@ -434,7 +434,7 @@ test_attach_ctx(void **state __attribute__((unused)))
         .attach = &dummy_attach,
     };
     vfu_ctx_t vfu_ctx = {
-        .trans = &transport_ops,
+        .tran = &transport_ops,
     };
 
     assert_int_equal(222, vfu_attach_ctx(&vfu_ctx));

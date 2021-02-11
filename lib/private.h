@@ -122,7 +122,7 @@ struct vfu_ctx {
     size_t                  nr_regions;
     vfu_reg_info_t          *reg_info;
     struct pci_dev          pci;
-    struct transport_ops    *trans;
+    struct transport_ops    *tran;
     uint64_t                flags;
     char                    *uuid;
     vfu_map_dma_cb_t        *map_dma;
