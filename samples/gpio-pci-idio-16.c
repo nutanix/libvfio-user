@@ -122,8 +122,7 @@ main(int argc, char *argv[])
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
                            &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
     if (ret < 0) {
-        fprintf(stderr, "failed to setup region\n");
-        goto out;
+        err(EXIT_FAILURE, "failed to setup region");
     }
 
     ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
@@ -143,16 +142,13 @@ main(int argc, char *argv[])
 
     ret = vfu_run_ctx(vfu_ctx);
     if (ret != 0) {
-        if (ret != -ENOTCONN && ret != -EINTR) {
-            fprintf(stderr, "failed to realize device emulation\n");
-            goto out;
+        if (errno != ENOTCONN && errno != EINTR) {
+            err(EXIT_FAILURE, "failed to realize device emulation");
         }
-        ret = 0;
     }
 
-out:
     vfu_destroy_ctx(vfu_ctx);
-    return ret;
+    return EXIT_SUCCESS;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -57,6 +57,13 @@ struct transport_ops {
     int (*get_request)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                        int *fds, size_t *nr_fds);
 
+    int (*recv_body)(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
+                     void **datap);
+
+    int (*reply)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
+                 struct iovec *iovecs, size_t nr_iovecs,
+                 int *fds, int count, int err);
+
     int (*send_msg)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                     enum vfio_user_command cmd,
                     void *send_data, size_t send_len,
@@ -118,7 +125,7 @@ struct vfu_ctx {
     size_t                  nr_regions;
     vfu_reg_info_t          *reg_info;
     struct pci_dev          pci;
-    struct transport_ops    *trans;
+    struct transport_ops    *tran;
     uint64_t                flags;
     char                    *uuid;
     vfu_map_dma_cb_t        *map_dma;
