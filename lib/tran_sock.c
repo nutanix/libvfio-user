@@ -695,10 +695,13 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
 static int
 tran_sock_attach(vfu_ctx_t *vfu_ctx)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
     int ret;
 
     assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
     if (ts->conn_fd == -1) {
@@ -719,8 +722,13 @@ static int
 tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                       int *fds, size_t *nr_fds)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
     int sock_flags = 0;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
@@ -737,11 +745,18 @@ static int
 tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
                     void **datap)
 {
-    size_t body_size = hdr->msg_size - sizeof (*hdr);
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    size_t body_size;
+    tran_sock_t *ts;
     void *data;
     int ret;
 
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+    assert(hdr != NULL);
+
+    ts = vfu_ctx->tran_data;
+
+    body_size = hdr->msg_size - sizeof (*hdr);
     // FIXME: should check max-msg-size
     data = malloc(body_size);
 
@@ -773,7 +788,12 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                 struct iovec *iovecs, size_t nr_iovecs,
                 int *fds, int count, int err)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     // FIXME: SPEC: should the reply include the command? I'd say yes?
     return tran_sock_send_iovec(ts->conn_fd, msg_id, true, 0,
@@ -787,7 +807,12 @@ tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
               struct vfio_user_header *hdr,
               void *recv_data, size_t recv_len)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     return tran_sock_msg(ts->conn_fd, msg_id, cmd, send_data, send_len,
                          hdr, recv_data, recv_len);
@@ -796,9 +821,15 @@ tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 static void
 tran_sock_detach(vfu_ctx_t *vfu_ctx)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     if (ts->conn_fd != -1) {
+        // FIXME: handle EINTR
         (void) close(ts->conn_fd);
         ts->conn_fd = -1;
     }
@@ -807,9 +838,15 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
 static void
 tran_sock_fini(vfu_ctx_t *vfu_ctx)
 {
-    tran_sock_t *ts = vfu_ctx->tran_data;
+    tran_sock_t *ts;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->ts != NULL);
+
+    ts = vfu_ctx->tran_data;
 
     if (ts->listen_fd != -1) {
+        // FIXME: handle EINTR
         (void) close(ts->listen_fd);
         ts->listen_fd = -1;
     }
