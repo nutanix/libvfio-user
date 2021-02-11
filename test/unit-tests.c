@@ -352,7 +352,7 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     tran_sock_t ts = { .fd = 23, .conn_fd = 24 };
     vfu_ctx_t vfu_ctx = {
         .client_max_fds = ARRAY_SIZE(fds),
-        .migration = (struct migration*)0x8badf00d,
+        .migration = (struct migration *)0x8badf00d,
         .tran = &tran_sock_ops,
         .tran_data = &ts
     };

@@ -81,7 +81,7 @@ arm_timer(vfu_ctx_t *vfu_ctx, time_t t)
             new.it_value.tv_sec);
     if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to arm timer: %m");
-        return -errno;
+        return -1;
     }
     return 0;
 }
@@ -339,7 +339,8 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
      */
 
     if (offset != 0 || size != server_data->migration.pending_bytes) {
-        return -EINVAL;
+        errno = EINVAL;
+        return -1;
     }
 
     memcpy(buf, server_data->bar1, server_data->bar1_size);
@@ -365,7 +366,8 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
     if (offset != 0 || size < server_data->bar1_size) {
         vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
                 offset, offset + size - 1);
-        return -EINVAL;
+        errno = EINVAL;
+        return -1;
     }
 
     memcpy(server_data->bar1, buf, server_data->bar1_size);
@@ -375,7 +377,8 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
         return 0;
     }
     if (size != sizeof server_data->bar0) {
-        return -EINVAL;
+        errno = EINVAL;
+        return -1;
     }
     memcpy(&server_data->bar0, buf, sizeof server_data->bar0);
     ret = bar0_access(vfu_ctx, buf, sizeof server_data->bar0, 0, true);
@@ -574,7 +577,7 @@ int main(int argc, char *argv[])
 
     do {
         ret = vfu_run_ctx(vfu_ctx);
-        if (ret == -EINTR) {
+        if (ret == -1 && errno == EINTR) {
             if (irq_triggered) {
                 irq_triggered = false;
                 vfu_irq_trigger(vfu_ctx, 0);
@@ -601,9 +604,9 @@ int main(int argc, char *argv[])
         }
     } while (ret == 0);
 
-    if (ret != -ENOTCONN && ret != -EINTR && ret != -ESHUTDOWN) {
-        errx(EXIT_FAILURE, "failed to realize device emulation: %s\n",
-             strerror(-ret));
+    if (ret == -1 &&
+        errno != ENOTCONN && errno != EINTR && errno != ESHUTDOWN) {
+        errx(EXIT_FAILURE, "failed to realize device emulation");
     }
 
     vfu_destroy_ctx(vfu_ctx);

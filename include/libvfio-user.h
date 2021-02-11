@@ -148,7 +148,7 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  *
  * @vfu_ctx: The libvfio-user context to poll
  *
- * @returns 0 on success, -errno on failure.
+ * @returns 0 on success, -1 on error. Sets errno.
  */
 int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx);
@@ -201,7 +201,7 @@ vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);
  * @offset: byte offset within the region
  * @is_write: whether or not this is a write
  *
- * @returns the number of bytes read or written, or a negative integer on error
+ * @returns the number of bytes read or written, or -1 on error, setting errno.
  */
 typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
                                          size_t count, loff_t offset,
@@ -408,9 +408,14 @@ typedef struct {
      */
     int version;
 
-    /* migration state transition callback */
-    /* TODO rename to vfu_migration_state_transition_callback */
-    /* FIXME maybe we should create a single callback and pass the state? */
+    /*
+     * Migration state transition callback.
+     *
+     * Returns -1 on error, setting errno.
+     *
+     * TODO rename to vfu_migration_state_transition_callback
+     * FIXME maybe we should create a single callback and pass the state?
+     */
     int (*transition)(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state);
 
     /* Callbacks for saving device state */
@@ -441,7 +446,9 @@ typedef struct {
     /*
      * Function that is called to read migration data. offset and size can be
      * any subrange on the offset and size previously returned by prepare_data.
-     * The function must return the amount of data read or -errno on error.
+     * The function must return the amount of data read or -1 on error, setting
+     * errno.
+     *
      * This function can be called even if the migration data can be memory
      * mapped.
      *
@@ -454,7 +461,8 @@ typedef struct {
 
     /*
      * Fuction that is called for writing previously stored device state. The
-     * function must return the amount of data written or -errno on error.
+     * function must return the amount of data written or -1 on error, setting
+     * errno.
      */
     ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, __u64 count,
                           __u64 offset);
