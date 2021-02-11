@@ -174,6 +174,8 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 
     return 0;
 }
+UNIT_TEST_SYMBOL(tran_sock_send_iovec);
+#define tran_sock_send_iovec __wrap_tran_sock_send_iovec
 
 int
 tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
@@ -711,6 +713,16 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 static int
+tran_sock_reply(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
+                struct iovec *iovecs, size_t nr_iovecs,
+                int *fds, int count, int err)
+{
+    // FIXME: SPEC: should the reply include the command? I'd say yes?
+    return tran_sock_send_iovec(vfu_ctx->conn_fd, msg_id, true, 0,
+                                iovecs, nr_iovecs, fds, count, err);
+}
+
+static int
 tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
               enum vfio_user_command cmd,
               void *send_data, size_t send_len,
@@ -743,6 +755,7 @@ struct transport_ops tran_sock_ops = {
     .init = tran_sock_init,
     .attach = tran_sock_attach,
     .get_request = tran_sock_get_request,
+    .reply = tran_sock_reply,
     .send_msg = tran_sock_send_msg,
     .detach = tran_sock_detach,
     .fini = tran_sock_fini

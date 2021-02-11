@@ -347,7 +347,8 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     vfu_ctx_t vfu_ctx = {
         .conn_fd = 0xcafebabe,
         .client_max_fds = ARRAY_SIZE(fds),
-        .migration = (struct migration*)0x8badf00d
+        .migration = (struct migration*)0x8badf00d,
+        .trans = &tran_sock_ops,
     };
 
     patch(device_is_stopped);
