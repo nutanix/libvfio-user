@@ -1048,9 +1048,9 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
     do {
         err = process_request(vfu_ctx);
-    } while (err >= 0 && blocking);
+    } while (err == 0 && blocking);
 
-    return err >= 0 ? 0 : err;
+    return err == 0 ? 0 : ERROR_INT(-err);
 }
 
 static void
