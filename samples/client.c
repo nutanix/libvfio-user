@@ -367,7 +367,7 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
 
     ret = tran_sock_msg(sock, msg_id,
                         VFIO_USER_DEVICE_GET_INFO,
-                        dev_info, sizeof(*dev_info),
+                        NULL, 0,
                         NULL,
                         dev_info, sizeof(*dev_info));
 
