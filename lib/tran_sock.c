@@ -784,6 +784,39 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
 }
 
 static int
+tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
+                    void **datap)
+{
+    size_t body_size = hdr->msg_size - sizeof (*hdr);
+    void *data;
+    int ret;
+
+    // FIXME: should check max-msg-size
+    data = malloc(body_size);
+
+    if (data == NULL) {
+        return -errno;
+    }
+
+    ret = recv(vfu_ctx->conn_fd, data, body_size, 0);
+    if (ret < 0) {
+        ret = -errno;
+        free(data);
+        return ret;
+    }
+
+    if (ret != (int)body_size) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%d, actual=%d",
+                hdr->msg_id, body_size, ret);
+        free(data);
+        return -EINVAL;
+    }
+
+    *datap = data;
+    return 0;
+}
+
+static int
 tran_sock_reply(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                 struct iovec *iovecs, size_t nr_iovecs,
                 int *fds, int count, int err)
