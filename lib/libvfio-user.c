@@ -670,12 +670,13 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
     }
 
     if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        vfu_log(vfu_ctx, LOG_ERR, "header not a request");
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", hdr->msg_id);
         return -EINVAL;
     }
 
     if (hdr->msg_size < sizeof hdr) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size in header %d", hdr->msg_size);
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
+                hdr->msg_id, hdr->msg_size);
         return -EINVAL;
     }
 
@@ -734,6 +735,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
     struct vfio_device_info *dev_info;
     struct vfio_region_info *dev_region_info_in, *dev_region_info_out = NULL;
     void *cmd_data = NULL;
+    size_t cmd_data_size;
 
     assert(vfu_ctx != NULL);
     assert(hdr != NULL);
@@ -747,29 +749,13 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         return ret;
     }
 
-    /*
-     * TODO from now on if an error occurs we still need to reply. Move this
-     * code into a separate function so that we don't have to use goto.
-     */
+    cmd_data_size = hdr->msg_size - sizeof (*hdr);
 
-    hdr->msg_size -= sizeof(struct vfio_user_header);
-    if (hdr->msg_size > 0) {
-        cmd_data = malloc(hdr->msg_size);
-        if (cmd_data == NULL) {
-            ret = -ENOMEM;
-            goto reply;
-        }
-        // FIXME: should be transport op
-        ret = recv(vfu_ctx->conn_fd, cmd_data, hdr->msg_size, 0);
+    if (cmd_data_size > 0) {
+        ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
+
         if (ret < 0) {
-            ret = -errno;
-            goto reply;
-        }
-        if (ret != (int)hdr->msg_size) {
-            vfu_log(vfu_ctx, LOG_ERR, "short read, expected=%d, actual=%d",
-                    hdr->msg_size, ret);
-            ret = -EINVAL;
-            goto reply;
+            return ret;
         }
     }
 
@@ -778,90 +764,98 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stop-and-copy state", hdr->cmd);
         ret = -EINVAL;
-        goto reply;
+        goto out;
     }
 
     switch (hdr->cmd) {
-        case VFIO_USER_DMA_MAP:
-        case VFIO_USER_DMA_UNMAP:
-            ret = handle_dma_map_or_unmap(vfu_ctx, hdr->msg_size,
-                                          hdr->cmd == VFIO_USER_DMA_MAP,
-                                          fds, nr_fds, cmd_data);
+    case VFIO_USER_DMA_MAP:
+    case VFIO_USER_DMA_UNMAP:
+        ret = handle_dma_map_or_unmap(vfu_ctx, cmd_data_size,
+                                      hdr->cmd == VFIO_USER_DMA_MAP,
+                                      fds, nr_fds, cmd_data);
+        break;
+
+    case VFIO_USER_DEVICE_GET_INFO:
+        dev_info = calloc(1, sizeof *dev_info);
+        if (dev_info == NULL) {
+            ret = -ENOMEM;
             break;
-        case VFIO_USER_DEVICE_GET_INFO:
-            dev_info = calloc(1, sizeof *dev_info);
-            if (dev_info == NULL) {
-                ret = -ENOMEM;
-                goto reply;
-            }
-            ret = handle_device_get_info(vfu_ctx, hdr->msg_size, dev_info);
-            if (ret >= 0) {
-                _iovecs[1].iov_base = dev_info;
-                _iovecs[1].iov_len = dev_info->argsz;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
+        }
+        ret = handle_device_get_info(vfu_ctx, cmd_data_size, dev_info);
+        if (ret >= 0) {
+            _iovecs[1].iov_base = dev_info;
+            _iovecs[1].iov_len = dev_info->argsz;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_GET_REGION_INFO:
+        dev_region_info_in = cmd_data;
+        ret = handle_device_get_region_info(vfu_ctx, cmd_data_size,
+                                            dev_region_info_in,
+                                            &dev_region_info_out, fds_out,
+                                            nr_fds_out);
+        if (ret == 0) {
+            _iovecs[1].iov_base = dev_region_info_out;
+            _iovecs[1].iov_len = dev_region_info_in->argsz;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_GET_IRQ_INFO:
+        irq_info = calloc(1, sizeof *irq_info);
+        if (irq_info == NULL) {
+            ret = -ENOMEM;
             break;
-        case VFIO_USER_DEVICE_GET_REGION_INFO:
-            dev_region_info_in = cmd_data;
-            ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size,
-                                                dev_region_info_in,
-                                                &dev_region_info_out, fds_out,
-                                                nr_fds_out);
-            if (ret == 0) {
-                _iovecs[1].iov_base = dev_region_info_out;
-                _iovecs[1].iov_len = dev_region_info_in->argsz;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_GET_IRQ_INFO:
-            irq_info = calloc(1, sizeof *irq_info);
-            if (irq_info == NULL) {
-                ret = -ENOMEM;
-                goto reply;
-            }
-            ret = handle_device_get_irq_info(vfu_ctx, hdr->msg_size, cmd_data,
-                                             irq_info);
-            if (ret == 0) {
-                _iovecs[1].iov_base = irq_info;
-                _iovecs[1].iov_len = sizeof *irq_info;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_SET_IRQS:
-            ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, nr_fds,
-                                         cmd_data);
-            break;
-        case VFIO_USER_REGION_READ:
-        case VFIO_USER_REGION_WRITE:
-            ret = handle_region_access(vfu_ctx, hdr->msg_size, hdr->cmd,
-                                       &(_iovecs[1].iov_base),
-                                       &(_iovecs[1].iov_len),
-                                       cmd_data);
-            if (ret == 0) {
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_RESET:
-            ret = handle_device_reset(vfu_ctx);
-            break;
-        case VFIO_USER_DIRTY_PAGES:
-            // FIXME: don't allow migration calls if migration == NULL
-            ret = handle_dirty_pages(vfu_ctx, hdr->msg_size, iovecs, nr_iovecs,
+        }
+        ret = handle_device_get_irq_info(vfu_ctx, cmd_data_size, cmd_data,
+                                         irq_info);
+        if (ret == 0) {
+            _iovecs[1].iov_base = irq_info;
+            _iovecs[1].iov_len = sizeof *irq_info;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_SET_IRQS:
+        ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
                                      cmd_data);
-            if (ret >= 0) {
-                *free_iovec_data = false;
-            }
-            break;
-        default:
-            vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
-            ret = -EINVAL;
-            goto reply;
+        break;
+
+    case VFIO_USER_REGION_READ:
+    case VFIO_USER_REGION_WRITE:
+        ret = handle_region_access(vfu_ctx, cmd_data_size, hdr->cmd,
+                                   &(_iovecs[1].iov_base),
+                                   &(_iovecs[1].iov_len),
+                                   cmd_data);
+        if (ret == 0) {
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_RESET:
+        ret = handle_device_reset(vfu_ctx);
+        break;
+
+    case VFIO_USER_DIRTY_PAGES:
+        // FIXME: don't allow migration calls if migration == NULL
+        ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs, nr_iovecs,
+                                 cmd_data);
+        if (ret >= 0) {
+            *free_iovec_data = false;
+        }
+        break;
+    default:
+        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
+        ret = -EINVAL;
+        break;
     }
-reply:
+
+out:
     free(cmd_data);
     return ret;
 }
@@ -922,8 +916,8 @@ process_request(vfu_ctx_t *vfu_ctx)
      */
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to handle command %d: %s", hdr.cmd,
-                strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %s", hdr.msg_id,
+                hdr.cmd, strerror(-ret));
     } else {
         ret = 0;
     }
