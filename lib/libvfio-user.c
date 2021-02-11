@@ -929,7 +929,7 @@ process_request(vfu_ctx_t *vfu_ctx)
         ret = 0;
     } else {
         ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
-                                    fds_out, nr_fds_out, -ret);
+                                   fds_out, nr_fds_out, -ret);
         if (unlikely(ret < 0)) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
         }
