@@ -760,9 +760,17 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
     }
 
     if (device_is_stopped_and_copying(vfu_ctx->migration)
-        && !(hdr->cmd == VFIO_USER_REGION_READ || hdr->cmd == VFIO_USER_REGION_WRITE)) {
+        && !(hdr->cmd == VFIO_USER_REGION_READ ||
+             hdr->cmd == VFIO_USER_REGION_WRITE ||
+             hdr->cmd == VFIO_USER_DIRTY_PAGES)) {
         vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stop-and-copy state", hdr->cmd);
+        ret = -EINVAL;
+        goto out;
+    } else if (device_is_stopped(vfu_ctx->migration) &&
+               hdr->cmd != VFIO_USER_DIRTY_PAGES) {
+        vfu_log(vfu_ctx, LOG_ERR,
+               "bad command %d while device in stopped state", hdr->cmd);
         ret = -EINVAL;
         goto out;
     }
@@ -843,12 +851,17 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
 
     case VFIO_USER_DIRTY_PAGES:
         // FIXME: don't allow migration calls if migration == NULL
-        ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs, nr_iovecs,
-                                 cmd_data);
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs,
+                                     nr_iovecs, cmd_data);
+        } else {
+            ret = 0;
+        }
         if (ret >= 0) {
             *free_iovec_data = false;
         }
         break;
+
     default:
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
         ret = -EINVAL;
@@ -876,10 +889,6 @@ process_request(vfu_ctx_t *vfu_ctx)
     bool free_iovec_data = true;
 
     assert(vfu_ctx != NULL);
-
-    if (device_is_stopped(vfu_ctx->migration)) {
-        return -ESHUTDOWN;
-    }
 
     /*
      * FIXME if migration device state is VFIO_DEVICE_STATE_STOP then only
