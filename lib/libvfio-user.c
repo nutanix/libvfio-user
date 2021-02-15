@@ -843,12 +843,17 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
 
     case VFIO_USER_DIRTY_PAGES:
         // FIXME: don't allow migration calls if migration == NULL
-        ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs, nr_iovecs,
-                                 cmd_data);
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs,
+                                     nr_iovecs, cmd_data);
+        } else {
+            ret = 0;
+        }
         if (ret >= 0) {
             *free_iovec_data = false;
         }
         break;
+
     default:
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
         ret = -EINVAL;
