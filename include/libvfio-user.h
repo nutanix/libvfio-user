@@ -130,6 +130,13 @@ int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
+ * Return a file descriptor suitable for waiting on via epoll() or similar. This
+ * should not be cached, as it may change after a successful vfu_attach_ctx().
+ */
+int
+vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
+
+/**
  * Polls the vfu_ctx and processes the command recieved from client.
  * - Blocking vfu_ctx:
  *   Blocks until new request is received from client and continues processing

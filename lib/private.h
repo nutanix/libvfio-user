@@ -52,6 +52,9 @@ ERROR_PTR(int err)
 
 struct transport_ops {
     int (*init)(vfu_ctx_t *vfu_ctx);
+
+    int (*get_poll_fd)(vfu_ctx_t *vfu_ctx);
+
     int (*attach)(vfu_ctx_t *vfu_ctx);
 
     int (*get_request)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
