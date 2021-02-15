@@ -117,8 +117,6 @@ struct pci_dev {
 struct vfu_ctx {
     void                    *pvt;
     dma_controller_t        *dma;
-    int                     fd;
-    int                     conn_fd;
     vfu_reset_cb_t          *reset;
     int           log_level;
     vfu_log_fn_t            *log;
@@ -126,6 +124,7 @@ struct vfu_ctx {
     vfu_reg_info_t          *reg_info;
     struct pci_dev          pci;
     struct transport_ops    *tran;
+    void                    *tran_data;
     uint64_t                flags;
     char                    *uuid;
     vfu_map_dma_cb_t        *map_dma;

@@ -1143,10 +1143,9 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         return ERROR_PTR(ENOMEM);
     }
 
-    vfu_ctx->fd = -1;
-    vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
     vfu_ctx->tran = &tran_sock_ops;
+    vfu_ctx->tran_data = NULL;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
@@ -1183,7 +1182,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         if (err < 0) {
             goto err_out;
         }
-        vfu_ctx->fd = err;
     }
 
     for (i = 0; i< vfu_ctx->nr_regions; i++) {
