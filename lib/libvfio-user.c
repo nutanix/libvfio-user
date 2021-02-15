@@ -670,12 +670,13 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
     }
 
     if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        vfu_log(vfu_ctx, LOG_ERR, "header not a request");
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", hdr->msg_id);
         return -EINVAL;
     }
 
     if (hdr->msg_size < sizeof hdr) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size in header %d", hdr->msg_size);
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
+                hdr->msg_id, hdr->msg_size);
         return -EINVAL;
     }
 
@@ -696,7 +697,7 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
     int ret;
 
     /* FIXME get request shouldn't set errno, it should return it as -errno */
-    ret = vfu_ctx->trans->get_request(vfu_ctx, hdr, fds, nr_fds);
+    ret = vfu_ctx->tran->get_request(vfu_ctx, hdr, fds, nr_fds);
     if (unlikely(ret < 0)) {
         if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
             return 0;
@@ -734,6 +735,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
     struct vfio_device_info *dev_info;
     struct vfio_region_info *dev_region_info_in, *dev_region_info_out = NULL;
     void *cmd_data = NULL;
+    size_t cmd_data_size;
 
     assert(vfu_ctx != NULL);
     assert(hdr != NULL);
@@ -747,29 +749,13 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         return ret;
     }
 
-    /*
-     * TODO from now on if an error occurs we still need to reply. Move this
-     * code into a separate function so that we don't have to use goto.
-     */
+    cmd_data_size = hdr->msg_size - sizeof (*hdr);
 
-    hdr->msg_size -= sizeof(struct vfio_user_header);
-    if (hdr->msg_size > 0) {
-        cmd_data = malloc(hdr->msg_size);
-        if (cmd_data == NULL) {
-            ret = -ENOMEM;
-            goto reply;
-        }
-        // FIXME: should be transport op
-        ret = recv(vfu_ctx->conn_fd, cmd_data, hdr->msg_size, 0);
+    if (cmd_data_size > 0) {
+        ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
+
         if (ret < 0) {
-            ret = -errno;
-            goto reply;
-        }
-        if (ret != (int)hdr->msg_size) {
-            vfu_log(vfu_ctx, LOG_ERR, "short read, expected=%d, actual=%d",
-                    hdr->msg_size, ret);
-            ret = -EINVAL;
-            goto reply;
+            return ret;
         }
     }
 
@@ -780,95 +766,104 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stop-and-copy state", hdr->cmd);
         ret = -EINVAL;
-        goto reply;
+        goto out;
     } else if (device_is_stopped(vfu_ctx->migration) &&
                hdr->cmd != VFIO_USER_DIRTY_PAGES) {
         vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stopped state", hdr->cmd);
         ret = -EINVAL;
+        goto out;
     }
 
     switch (hdr->cmd) {
-        case VFIO_USER_DMA_MAP:
-        case VFIO_USER_DMA_UNMAP:
-            ret = handle_dma_map_or_unmap(vfu_ctx, hdr->msg_size,
-                                          hdr->cmd == VFIO_USER_DMA_MAP,
-                                          fds, nr_fds, cmd_data);
+    case VFIO_USER_DMA_MAP:
+    case VFIO_USER_DMA_UNMAP:
+        ret = handle_dma_map_or_unmap(vfu_ctx, cmd_data_size,
+                                      hdr->cmd == VFIO_USER_DMA_MAP,
+                                      fds, nr_fds, cmd_data);
+        break;
+
+    case VFIO_USER_DEVICE_GET_INFO:
+        dev_info = calloc(1, sizeof *dev_info);
+        if (dev_info == NULL) {
+            ret = -ENOMEM;
             break;
-        case VFIO_USER_DEVICE_GET_INFO:
-            dev_info = calloc(1, sizeof *dev_info);
-            if (dev_info == NULL) {
-                ret = -ENOMEM;
-                goto reply;
-            }
-            ret = handle_device_get_info(vfu_ctx, hdr->msg_size, dev_info);
-            if (ret >= 0) {
-                _iovecs[1].iov_base = dev_info;
-                _iovecs[1].iov_len = dev_info->argsz;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
+        }
+        ret = handle_device_get_info(vfu_ctx, cmd_data_size, dev_info);
+        if (ret >= 0) {
+            _iovecs[1].iov_base = dev_info;
+            _iovecs[1].iov_len = dev_info->argsz;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_GET_REGION_INFO:
+        dev_region_info_in = cmd_data;
+        ret = handle_device_get_region_info(vfu_ctx, cmd_data_size,
+                                            dev_region_info_in,
+                                            &dev_region_info_out, fds_out,
+                                            nr_fds_out);
+        if (ret == 0) {
+            _iovecs[1].iov_base = dev_region_info_out;
+            _iovecs[1].iov_len = dev_region_info_in->argsz;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_GET_IRQ_INFO:
+        irq_info = calloc(1, sizeof *irq_info);
+        if (irq_info == NULL) {
+            ret = -ENOMEM;
             break;
-        case VFIO_USER_DEVICE_GET_REGION_INFO:
-            dev_region_info_in = cmd_data;
-            ret = handle_device_get_region_info(vfu_ctx, hdr->msg_size,
-                                                dev_region_info_in,
-                                                &dev_region_info_out, fds_out,
-                                                nr_fds_out);
-            if (ret == 0) {
-                _iovecs[1].iov_base = dev_region_info_out;
-                _iovecs[1].iov_len = dev_region_info_in->argsz;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_GET_IRQ_INFO:
-            irq_info = calloc(1, sizeof *irq_info);
-            if (irq_info == NULL) {
-                ret = -ENOMEM;
-                goto reply;
-            }
-            ret = handle_device_get_irq_info(vfu_ctx, hdr->msg_size, cmd_data,
-                                             irq_info);
-            if (ret == 0) {
-                _iovecs[1].iov_base = irq_info;
-                _iovecs[1].iov_len = sizeof *irq_info;
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_SET_IRQS:
-            ret = handle_device_set_irqs(vfu_ctx, hdr->msg_size, fds, nr_fds,
-                                         cmd_data);
-            break;
-        case VFIO_USER_REGION_READ:
-        case VFIO_USER_REGION_WRITE:
-            ret = handle_region_access(vfu_ctx, hdr->msg_size, hdr->cmd,
-                                       &(_iovecs[1].iov_base),
-                                       &(_iovecs[1].iov_len),
-                                       cmd_data);
-            if (ret == 0) {
-                *iovecs = _iovecs;
-                *nr_iovecs = 2;
-            }
-            break;
-        case VFIO_USER_DEVICE_RESET:
-            ret = handle_device_reset(vfu_ctx);
-            break;
-        case VFIO_USER_DIRTY_PAGES:
-            // FIXME: don't allow migration calls if migration == NULL
-            ret = handle_dirty_pages(vfu_ctx, hdr->msg_size, iovecs, nr_iovecs,
+        }
+        ret = handle_device_get_irq_info(vfu_ctx, cmd_data_size, cmd_data,
+                                         irq_info);
+        if (ret == 0) {
+            _iovecs[1].iov_base = irq_info;
+            _iovecs[1].iov_len = sizeof *irq_info;
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_SET_IRQS:
+        ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
                                      cmd_data);
-            if (ret >= 0) {
-                *free_iovec_data = false;
-            }
-            break;
-        default:
-            vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
-            ret = -EINVAL;
-            goto reply;
+        break;
+
+    case VFIO_USER_REGION_READ:
+    case VFIO_USER_REGION_WRITE:
+        ret = handle_region_access(vfu_ctx, cmd_data_size, hdr->cmd,
+                                   &(_iovecs[1].iov_base),
+                                   &(_iovecs[1].iov_len),
+                                   cmd_data);
+        if (ret == 0) {
+            *iovecs = _iovecs;
+            *nr_iovecs = 2;
+        }
+        break;
+
+    case VFIO_USER_DEVICE_RESET:
+        ret = handle_device_reset(vfu_ctx);
+        break;
+
+    case VFIO_USER_DIRTY_PAGES:
+        // FIXME: don't allow migration calls if migration == NULL
+        ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs, nr_iovecs,
+                                 cmd_data);
+        if (ret >= 0) {
+            *free_iovec_data = false;
+        }
+        break;
+    default:
+        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
+        ret = -EINVAL;
+        break;
     }
-reply:
+
+out:
     free(cmd_data);
     return ret;
 }
@@ -925,26 +920,23 @@ process_request(vfu_ctx_t *vfu_ctx)
      */
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to handle command %d: %s", hdr.cmd,
-                strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %s", hdr.msg_id,
+                hdr.cmd, strerror(-ret));
     } else {
         ret = 0;
     }
 
-    if (!(hdr.flags.no_reply)) {
-        // FIXME: SPEC: should the reply include the command? I'd say yes?
-        ret = tran_sock_send_iovec(vfu_ctx->conn_fd, hdr.msg_id, true, 0,
-                                   iovecs, nr_iovecs, fds_out, nr_fds_out,
-                                   -ret);
-        if (unlikely(ret < 0)) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to complete command: %s",
-                    strerror(-ret));
-        }
-    } else {
+    if (hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
          */
         ret = 0;
+    } else {
+        ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
+                                   fds_out, nr_fds_out, -ret);
+        if (unlikely(ret < 0)) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
+        }
     }
 
     if (iovecs != NULL) {
@@ -1087,12 +1079,12 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
-    if (vfu_ctx->trans->detach != NULL) {
-        vfu_ctx->trans->detach(vfu_ctx);
+    if (vfu_ctx->tran->detach != NULL) {
+        vfu_ctx->tran->detach(vfu_ctx);
     }
 
-    if (vfu_ctx->trans->fini != NULL) {
-        vfu_ctx->trans->fini(vfu_ctx);
+    if (vfu_ctx->tran->fini != NULL) {
+        vfu_ctx->tran->fini(vfu_ctx);
     }
 
     if (vfu_ctx->dma != NULL) {
@@ -1120,7 +1112,7 @@ vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
 
     assert(vfu_ctx != NULL);
 
-    return vfu_ctx->trans->attach(vfu_ctx);
+    return vfu_ctx->tran->attach(vfu_ctx);
 }
 
 vfu_ctx_t *
@@ -1149,7 +1141,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->fd = -1;
     vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
-    vfu_ctx->trans = &tran_sock_ops;
+    vfu_ctx->tran = &tran_sock_ops;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
@@ -1181,8 +1173,8 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto err_out;
     }
 
-    if (vfu_ctx->trans->init != NULL) {
-        err = vfu_ctx->trans->init(vfu_ctx);
+    if (vfu_ctx->tran->init != NULL) {
+        err = vfu_ctx->tran->init(vfu_ctx);
         if (err < 0) {
             goto err_out;
         }
@@ -1501,9 +1493,9 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
-    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
-                                   &dma_send, sizeof dma_send, NULL,
-                                   dma_recv, recv_size);
+    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
+                                  &dma_send, sizeof dma_send, NULL,
+                                  dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);
 
@@ -1527,9 +1519,9 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     dma_send->addr = sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
-    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
-                                   dma_send, send_size, NULL,
-                                   &dma_recv, sizeof(dma_recv));
+    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
+                                  dma_send, send_size, NULL,
+                                  &dma_recv, sizeof(dma_recv));
     free(dma_send);
 
     return ret < 0 ? ERROR_INT(-ret) : 0;

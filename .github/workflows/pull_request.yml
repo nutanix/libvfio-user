@@ -35,11 +35,11 @@ jobs:
   fedora-rawhide:
     timeout-minutes: 5
     runs-on: ubuntu-latest
-    container: fedora:rawhide
+    container: fedora
     steps:
       - uses: actions/checkout@v2
       - name: pre-push
         run: |
-          yum -y install gcc make clang cmake json-c-devel libcmocka-devel \
+          dnf -y install --releasever=34 gcc make clang cmake json-c-devel libcmocka-devel \
               openssl-devel pciutils diffutils valgrind
           make pre-push VERBOSE=1

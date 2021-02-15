@@ -420,10 +420,10 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     }
 
     irq_info.subindex = subindex;
-    ret = vfu_ctx->trans->send_msg(vfu_ctx, msg_id,
-                                   VFIO_USER_VM_INTERRUPT,
-                                   &irq_info, sizeof irq_info,
-                                   NULL, NULL, 0);
+    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id,
+                                  VFIO_USER_VM_INTERRUPT,
+                                  &irq_info, sizeof irq_info,
+                                  NULL, NULL, 0);
     if (ret < 0) {
 	    return ERROR_INT(-ret);
     }
