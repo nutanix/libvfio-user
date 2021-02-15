@@ -398,7 +398,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts->conn_fd = -1;
 
     if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-	    ret = -errno;
+        ret = -errno;
         goto out;
     }
 
@@ -422,7 +422,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     /* start listening business */
     ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
     if (ret < 0) {
-	    ret = -errno;
+        ret = -errno;
         goto out;
     }
 
