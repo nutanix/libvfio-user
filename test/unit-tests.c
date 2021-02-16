@@ -989,16 +989,19 @@ test_pci_ext_caps(void **state __attribute__((unused)))
 }
 
 static void
-test_device_get_info(void **state __attribute__((unused)))
+test_device_get_info(void **state UNUSED)
 {
-    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef};
-    struct vfio_device_info d = { 0 };
+    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
+    struct vfio_device_info d_in = { .argsz = sizeof (d_in) };
+    struct vfio_device_info d_out;
 
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof d, &d));
-    assert_int_equal(sizeof d, d.argsz);
-    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET, d.flags);
-    assert_int_equal(vfu_ctx.nr_regions, d.num_regions);
-    assert_int_equal(VFU_DEV_NUM_IRQS, d.num_irqs);
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof (d_in),
+                                               &d_in, &d_out));
+    assert_int_equal(sizeof (d_out), d_out.argsz);
+    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
+                     d_out.flags);
+    assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
+    assert_int_equal(VFU_DEV_NUM_IRQS, d_out.num_irqs);
 }
 
 /*
@@ -1006,20 +1009,24 @@ test_device_get_info(void **state __attribute__((unused)))
  * with more fields.
  */
 static void
-test_device_get_info_compat(void **state __attribute__((unused)))
+test_device_get_info_compat(void **state UNUSED)
 {
-    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef};
-    struct vfio_device_info d = { 0 };
+    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
+    struct vfio_device_info d_in = { .argsz = sizeof (d_in) + 1 };
+    struct vfio_device_info d_out;
 
-    /* more fields */
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, (sizeof d) + 1, &d));
-    assert_int_equal(sizeof d, d.argsz);
-    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET, d.flags);
-    assert_int_equal(vfu_ctx.nr_regions, d.num_regions);
-    assert_int_equal(VFU_DEV_NUM_IRQS, d.num_irqs);
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof (d_in) + 1,
+                                               &d_in, &d_out));
+    assert_int_equal(sizeof (d_out), d_out.argsz);
+    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
+                     d_out.flags);
+    assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
+    assert_int_equal(VFU_DEV_NUM_IRQS, d_out.num_irqs);
 
     /* fewer fields */
-    assert_int_equal(-EINVAL, handle_device_get_info(&vfu_ctx, (sizeof d) - 1, &d));
+    assert_int_equal(-EINVAL,
+                     handle_device_get_info(&vfu_ctx, (sizeof (d_in)) - 1,
+                                            &d_in, &d_out));
 }
 
 

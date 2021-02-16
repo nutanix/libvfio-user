@@ -714,7 +714,7 @@ Message format
 +--------------+----------------------------+
 | Command      | 4                          |
 +--------------+----------------------------+
-| Message size | 16 in command, 32 in reply |
+| Message size | 32                         |
 +--------------+----------------------------+
 | Flags        | Reply bit set in reply     |
 +--------------+----------------------------+
@@ -724,9 +724,8 @@ Message format
 +--------------+----------------------------+
 
 This command message is sent by the client to the server to query for basic
-information about the device. Only the message header is needed in the command
-message.  The VFIO device info structure is defined in ``<linux/vfio.h>``
-(``struct vfio_device_info``).
+information about the device. The VFIO device info structure is defined in
+``<linux/vfio.h>`` (``struct vfio_device_info``).
 
 VFIO device info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -751,7 +750,9 @@ VFIO device info format
 | num_irqs    | 28     | 4                        |
 +-------------+--------+--------------------------+
 
-* *argsz* is the size of the VFIO device info structure.
+* *argsz* is the size of the VFIO device info structure. This is the only field
+that should be set to non-zero in the request, identifying the client's expected
+size. Currently this is a fixed value.
 * *flags* contains the following device attributes.
 
   * VFIO_DEVICE_FLAGS_RESET indicates that the device supports the

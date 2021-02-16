@@ -427,23 +427,27 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
 }
 
 int
-handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       struct vfio_device_info *dev_info)
+handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
+                       struct vfio_device_info *in_dev_info,
+                       struct vfio_device_info *out_dev_info)
 {
     assert(vfu_ctx != NULL);
-    assert(dev_info != NULL);
+    assert(in_dev_info != NULL);
+    assert(out_dev_info != NULL);
 
-    if (size < sizeof *dev_info) {
+    if (in_size < sizeof (*in_dev_info) ||
+        in_dev_info->argsz < sizeof (*in_dev_info)) {
         return -EINVAL;
     }
 
-    dev_info->argsz = sizeof *dev_info;
-    dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
-    dev_info->num_regions = vfu_ctx->nr_regions;
-    dev_info->num_irqs = VFU_DEV_NUM_IRQS;
+    out_dev_info->argsz = sizeof (*in_dev_info);
+    out_dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
+    out_dev_info->num_regions = vfu_ctx->nr_regions;
+    out_dev_info->num_irqs = VFU_DEV_NUM_IRQS;
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "sent devinfo flags %#x, num_regions %d, num_irqs"
-            " %d", dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
+    vfu_log(vfu_ctx, LOG_DEBUG, "devinfo flags %#x, num_regions %d, "
+            "num_irqs %d", out_dev_info->flags, out_dev_info->num_regions,
+            out_dev_info->num_irqs);
 
     return 0;
 }
@@ -789,7 +793,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             ret = -ENOMEM;
             break;
         }
-        ret = handle_device_get_info(vfu_ctx, cmd_data_size, dev_info);
+        ret = handle_device_get_info(vfu_ctx, cmd_data_size, cmd_data,
+                                     dev_info);
         if (ret >= 0) {
             _iovecs[1].iov_base = dev_info;
             _iovecs[1].iov_len = dev_info->argsz;
