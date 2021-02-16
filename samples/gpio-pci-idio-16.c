@@ -79,7 +79,7 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 }
 
 static __u64
-migration_get_pending_bytes(vfu_ctx_t *vfu_ctx __attribute__((unused)))
+migration_get_pending_bytes(UNUSED vfu_ctx_t *vfu_ctx)
 {
     if (dirty) {
         return sizeof(pin);
@@ -88,8 +88,7 @@ migration_get_pending_bytes(vfu_ctx_t *vfu_ctx __attribute__((unused)))
 }
 
 static int
-migration_prepare_data(vfu_ctx_t *vfu_ctx __attribute__((unused)),
-                       __u64 *offset, __u64 *size)
+migration_prepare_data(UNUSED vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
 {
     *offset = 0;
     if (size != NULL) { /* null means resuming */
@@ -99,27 +98,29 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx __attribute__((unused)),
 }
 
 static ssize_t
-migration_read_data(vfu_ctx_t *vfu_ctx __attribute__((unused)), void *buf,
-                    __u64 size,  __u64 offset)
+migration_read_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, __u64 size,
+                    __u64 offset)
 {
-    assert (offset == 0 && size == sizeof(pin));
+    assert(offset == 0);
+    assert(size == sizeof(pin));
     memcpy(buf, &pin, sizeof(pin));
     dirty = false;
     return 0;
 }
 
 static int
-migration_data_written(vfu_ctx_t *vfu_ctx __attribute__((unused)), __u64 count)
+migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, __u64 count)
 {
     assert(count == sizeof(pin));
     return 0;
 }
 
 static ssize_t
-migration_write_data(vfu_ctx_t *vfu_ctx __attribute__((unused)),
-                     void *buf, __u64 size, __u64 offset)
+migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, __u64 size,
+                     __u64 offset)
 {
-    assert(offset == 0 && size == sizeof(pin));
+    assert(offset == 0);
+    assert(size == sizeof(pin));
     memcpy(&pin, buf, sizeof(pin));
     return 0;
 }
