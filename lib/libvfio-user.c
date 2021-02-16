@@ -1111,15 +1111,6 @@ vfu_get_private(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->pvt;
 }
 
-int
-vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
-{
-
-    assert(vfu_ctx != NULL);
-
-    return vfu_ctx->tran->attach(vfu_ctx);
-}
-
 vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
                vfu_dev_type_t dev_type)
@@ -1143,10 +1134,9 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         return ERROR_PTR(ENOMEM);
     }
 
-    vfu_ctx->fd = -1;
-    vfu_ctx->conn_fd = -1;
     vfu_ctx->dev_type = dev_type;
     vfu_ctx->tran = &tran_sock_ops;
+    vfu_ctx->tran_data = NULL;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
@@ -1183,7 +1173,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         if (err < 0) {
             goto err_out;
         }
-        vfu_ctx->fd = err;
     }
 
     for (i = 0; i< vfu_ctx->nr_regions; i++) {
@@ -1196,6 +1185,24 @@ err_out:
     vfu_destroy_ctx(vfu_ctx);
 
     return ERROR_PTR(-err);
+}
+
+int
+vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
+{
+
+    assert(vfu_ctx != NULL);
+
+    return vfu_ctx->tran->attach(vfu_ctx);
+}
+
+int
+vfu_get_poll_fd(vfu_ctx_t *vfu_ctx)
+{
+
+    assert(vfu_ctx != NULL);
+
+    return vfu_ctx->tran->get_poll_fd(vfu_ctx);
 }
 
 int

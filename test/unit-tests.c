@@ -337,6 +337,11 @@ set_nr_fds(const long unsigned int value,
     return 1;
 }
 
+typedef struct {
+    int fd;
+    int conn_fd;
+} tran_sock_t;
+
 /*
  * Tests that if if exec_command fails then process_request frees passed file
  * descriptors.
@@ -344,11 +349,12 @@ set_nr_fds(const long unsigned int value,
 static void
 test_process_command_free_passed_fds(void **state __attribute__((unused)))
 {
+    tran_sock_t ts = { .fd = 23, .conn_fd = 24 };
     vfu_ctx_t vfu_ctx = {
-        .conn_fd = 0xcafebabe,
         .client_max_fds = ARRAY_SIZE(fds),
         .migration = (struct migration *)0x8badf00d,
         .tran = &tran_sock_ops,
+        .tran_data = &ts
     };
 
     patch(get_next_command);
@@ -377,7 +383,7 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
     will_return(__wrap_close, 0);
 
     patch(tran_sock_send_iovec);
-    expect_value(__wrap_tran_sock_send_iovec, sock, vfu_ctx.conn_fd);
+    expect_value(__wrap_tran_sock_send_iovec, sock, ts.conn_fd);
     expect_any(__wrap_tran_sock_send_iovec, msg_id);
     expect_value(__wrap_tran_sock_send_iovec, is_reply, true);
     expect_any(__wrap_tran_sock_send_iovec, cmd);
@@ -420,7 +426,7 @@ dummy_attach(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
 
-    return 222;
+    return 0;
 }
 
 static void
@@ -433,7 +439,7 @@ test_attach_ctx(void **state __attribute__((unused)))
         .tran = &transport_ops,
     };
 
-    assert_int_equal(222, vfu_attach_ctx(&vfu_ctx));
+    assert_int_equal(0, vfu_attach_ctx(&vfu_ctx));
 }
 
 static void
@@ -603,7 +609,7 @@ test_vfu_ctx_create(void **state __attribute__((unused)))
     assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
 
     patch(close);
-    expect_value(__wrap_close, fd, vfu_ctx->fd);
+    expect_value(__wrap_close, fd, ((tran_sock_t *)vfu_ctx->tran_data)->fd);
     will_return(__wrap_close, 0);
 
     vfu_destroy_ctx(vfu_ctx);
