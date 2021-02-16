@@ -800,6 +800,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             _iovecs[1].iov_len = dev_info->argsz;
             *iovecs = _iovecs;
             *nr_iovecs = 2;
+        } else {
+            free(dev_info);
         }
         break;
 
@@ -830,6 +832,8 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
             _iovecs[1].iov_len = sizeof *irq_info;
             *iovecs = _iovecs;
             *nr_iovecs = 2;
+        } else {
+            free(irq_info);
         }
         break;
 
