@@ -36,4 +36,7 @@ void patch(void *fn);
 
 bool is_patched(void *fn);
 
+bool
+__real_cmd_allowed_when_stopped_and_copying(u_int16_t cmd);
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
