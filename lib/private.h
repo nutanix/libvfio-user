@@ -177,7 +177,8 @@ consume_fd(int *fds, size_t nr_fds, size_t index);
 
 int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       struct vfio_device_info *dev_info);
+                       struct vfio_device_info *in_dev_info,
+                       struct vfio_device_info *out_dev_info);
 
 long
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
