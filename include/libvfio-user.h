@@ -664,7 +664,7 @@ enum {
  */
 int
 vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
-             int hdr_type, int revision __attribute__((unused)));
+             int hdr_type, int revision);
 
 /*
  * Set the Vendor ID, Device ID, Subsystem Vendor ID, and Subsystem ID fields of

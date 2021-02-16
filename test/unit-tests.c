@@ -50,7 +50,7 @@
 #include "tran_sock.h"
 
 static void
-test_dma_map_without_dma(void **state __attribute__((unused)))
+test_dma_map_without_dma(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
     size_t size = sizeof(struct vfio_user_dma_region);
@@ -63,7 +63,7 @@ test_dma_map_without_dma(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_map_mappable_without_fd(void **state __attribute__((unused)))
+test_dma_map_mappable_without_fd(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma };
@@ -77,7 +77,7 @@ test_dma_map_mappable_without_fd(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_map_without_fd(void **state __attribute__((unused)))
+test_dma_map_without_fd(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma };
@@ -103,8 +103,9 @@ test_dma_map_without_fd(void **state __attribute__((unused)))
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
-static void dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
-                uint32_t prot)
+static void
+dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
+           uint32_t prot)
 {
     if (iova == 0xcafebabe) {
         assert_int_equal(0x1000, len);
@@ -123,7 +124,7 @@ static void dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
  * results in only the mappable one being memory mapped.
  */
 static void
-test_dma_add_regions_mixed(void **state __attribute__((unused)))
+test_dma_add_regions_mixed(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb};
@@ -169,7 +170,7 @@ test_dma_add_regions_mixed(void **state __attribute__((unused)))
  * failing halfway through.
  */
 static void
-test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
+test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma };
@@ -241,7 +242,7 @@ test_dma_add_regions_mixed_partial_failure(void **state __attribute__((unused)))
  * succeeds.
  */
 static void
-test_dma_map_return_value(void **state __attribute__((unused)))
+test_dma_map_return_value(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma };
@@ -264,7 +265,7 @@ test_dma_map_return_value(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
+test_dma_controller_add_region_no_fd(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
     dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(dma_memory_region_t));
@@ -294,7 +295,7 @@ test_dma_controller_add_region_no_fd(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_controller_remove_region_no_fd(void **state __attribute__((unused)))
+test_dma_controller_remove_region_no_fd(void **state UNUSED)
 {
     dma_memory_region_t r = {
         .dma_addr = 0xdeadbeef,
@@ -330,7 +331,7 @@ set_fds(const long unsigned int value, const long unsigned int data)
 
 static int
 set_nr_fds(const long unsigned int value,
-           const long unsigned int data __attribute__((unused)))
+           const long unsigned int data UNUSED)
 {
     int *nr_fds = (int*)value;
     assert(nr_fds != NULL);
@@ -348,7 +349,7 @@ typedef struct {
  * descriptors.
  */
 static void
-test_process_command_free_passed_fds(void **state __attribute__((unused)))
+test_process_command_free_passed_fds(void **state UNUSED)
 {
     tran_sock_t ts = { .fd = 23, .conn_fd = 24 };
     vfu_ctx_t vfu_ctx = {
@@ -399,7 +400,7 @@ test_process_command_free_passed_fds(void **state __attribute__((unused)))
 }
 
 static void
-test_realize_ctx(void **state __attribute__((unused)))
+test_realize_ctx(void **state UNUSED)
 {
     vfu_reg_info_t *cfg_reg;
     vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS + 1] = { { 0 } };
@@ -431,7 +432,7 @@ dummy_attach(vfu_ctx_t *vfu_ctx)
 }
 
 static void
-test_attach_ctx(void **state __attribute__((unused)))
+test_attach_ctx(void **state UNUSED)
 {
     struct transport_ops transport_ops = {
         .attach = &dummy_attach,
@@ -589,7 +590,7 @@ test_get_region_info(UNUSED void **state)
  * FIXME expand and validate
  */
 static void
-test_vfu_ctx_create(void **state __attribute__((unused)))
+test_vfu_ctx_create(void **state UNUSED)
 {
     vfu_ctx_t *vfu_ctx = NULL;
     struct pmcap pm = { { 0 } };
@@ -632,7 +633,7 @@ test_pci_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 static void
-test_pci_caps(void **state __attribute__((unused)))
+test_pci_caps(void **state UNUSED)
 {
     vfu_pci_config_space_t config_space;
     vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
@@ -823,7 +824,7 @@ test_pci_ext_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 static void
-test_pci_ext_caps(void **state __attribute__((unused)))
+test_pci_ext_caps(void **state UNUSED)
 {
     uint8_t config_space[PCI_CFG_SPACE_EXP_SIZE] = { 0, };
     vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
@@ -1035,7 +1036,7 @@ test_device_get_info_compat(void **state UNUSED)
  * Performs various checks when adding sparse memory regions.
  */
 static void
-test_setup_sparse_region(void **state __attribute__((unused)))
+test_setup_sparse_region(void **state UNUSED)
 {
     vfu_reg_info_t reg_info;
     vfu_ctx_t vfu_ctx = { .reg_info = &reg_info };
@@ -1086,7 +1087,7 @@ test_setup_sparse_region(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_map_sg(void **state __attribute__((unused)))
+test_dma_map_sg(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
     size_t size = sizeof(dma_controller_t) + sizeof(dma_memory_region_t);
@@ -1116,7 +1117,7 @@ test_dma_map_sg(void **state __attribute__((unused)))
 }
 
 static void
-test_dma_addr_to_sg(void **state __attribute__((unused)))
+test_dma_addr_to_sg(void **state UNUSED)
 {
     dma_controller_t *dma = alloca(sizeof(dma_controller_t) + sizeof(dma_memory_region_t));
     dma_sg_t sg;
@@ -1157,7 +1158,7 @@ test_dma_addr_to_sg(void **state __attribute__((unused)))
 }
 
 static void
-test_vfu_setup_device_dma_cb(void **state __attribute__((unused)))
+test_vfu_setup_device_dma_cb(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
 
@@ -1167,7 +1168,7 @@ test_vfu_setup_device_dma_cb(void **state __attribute__((unused)))
 }
 
 static void
-test_migration_state_transitions(void **state __attribute__ ((unused)))
+test_migration_state_transitions(void **state UNUSED)
 {
     bool (*f)(__u32, __u32) = vfio_migr_state_transition_is_valid;
     __u32 i, j;
@@ -1239,7 +1240,7 @@ test_migration_state_transitions(void **state __attribute__ ((unused)))
  * and provide a function to execute before and after each unit test.
  */
 static int
-setup(void **state __attribute__((unused)))
+setup(void **state UNUSED)
 {
     unpatch_all();
     return 0;
