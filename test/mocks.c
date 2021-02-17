@@ -114,7 +114,7 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 {
     if (!is_patched(exec_command)) {
         return __real_exec_command(vfu_ctx, hdr, size, fds, nr_fds, fds_out,
-                                   nr_fds_out,  _iovecs, iovecs, nr_iovecs,
+                                   nr_fds_out, _iovecs, iovecs, nr_iovecs,
                                    free_iovec_data);
     }
     check_expected(vfu_ctx);
@@ -236,6 +236,22 @@ __wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     return mock();
 }
 
+int
+__wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                          struct iovec **iovecs, size_t *nr_iovecs,
+                          struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+{
+    if (!is_patched(handle_dirty_pages)) {
+        return __real_handle_dirty_pages(vfu_ctx, size, iovecs, nr_iovecs,
+                                         dirty_bitmap);
+    }
+    check_expected(vfu_ctx);
+    check_expected(size);
+    check_expected(iovecs);
+    check_expected(nr_iovecs);
+    check_expected(dirty_bitmap);
+    return mock();
+}
 
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
@@ -255,6 +271,7 @@ static struct function funcs[] = {
     {.addr = &__wrap_cmd_allowed_when_stopped_and_copying},
     {.addr = &__wrap_device_is_stopped},
     {.addr = &__wrap_should_exec_command},
+    {.addr = &__wrap_handle_dirty_pages},
 };
 
 static struct function*

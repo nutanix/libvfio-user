@@ -29,6 +29,7 @@
  */
 
 #include <stdbool.h>
+#include "private.h"
 
 void unpatch_all(void);
 
@@ -38,5 +39,10 @@ bool is_patched(void *fn);
 
 bool
 __real_cmd_allowed_when_stopped_and_copying(u_int16_t cmd);
+
+int
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                   struct iovec **iovecs, size_t *nr_iovecs,
+                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

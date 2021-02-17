@@ -59,6 +59,7 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped_and_copyin
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=cmd_allowed_when_stopped_and_copying")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=should_exec_command")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=handle_dirty_pages")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND unit-tests)

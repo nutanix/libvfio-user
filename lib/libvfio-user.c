@@ -621,7 +621,7 @@ out:
     return ret;
 }
 
-static int
+int
 handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                    struct iovec **iovecs, size_t *nr_iovecs,
                    struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
@@ -654,6 +654,8 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     return ret;
 }
+UNIT_TEST_SYMBOL(handle_dirty_pages);
+#define handle_dirty_pages __wrap_handle_dirty_pages
 
 /*
  * FIXME return value is messed up, sometimes we return -1 and set errno while
