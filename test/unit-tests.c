@@ -46,6 +46,7 @@
 #include "pci.h"
 #include "private.h"
 #include "migration.h"
+#include "mocks.h"
 #include "tran_sock.h"
 
 static void
@@ -1390,6 +1391,45 @@ test_setup_migration_callbacks(void **state)
     /* FIXME can't validate p->v->migration because it's a private strcut, need to move it out of lib/migration.c */
 }
 
+static void
+test_dirty_pages_without_dma(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { .migration = NULL };
+    struct vfio_user_header hdr = {
+        .cmd = VFIO_USER_DIRTY_PAGES,
+        .flags = {
+            .type = VFIO_USER_F_TYPE_COMMAND
+        },
+        .msg_size = sizeof hdr
+    };
+    size_t size = sizeof hdr;
+    int fds = 0;
+    struct iovec _iovecs = { 0 };
+    struct iovec *iovecs = NULL;
+    size_t nr_iovecs = 0;
+    bool free_iovec_data = false;
+    int r;
+
+    patch(handle_dirty_pages);
+
+    /* XXX w/o DMA controller */
+    r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL,
+                     &_iovecs, &iovecs, &nr_iovecs, &free_iovec_data);
+    assert_int_equal(0, r);
+
+    /* XXX w/ DMA controller */
+    vfu_ctx.dma = (void*)0xdeadbeef;
+    expect_value(__wrap_handle_dirty_pages, vfu_ctx, &vfu_ctx);
+    expect_value(__wrap_handle_dirty_pages, size, 0);
+    expect_value(__wrap_handle_dirty_pages, iovecs, &iovecs);
+    expect_value(__wrap_handle_dirty_pages, nr_iovecs, &nr_iovecs);
+    expect_value(__wrap_handle_dirty_pages, dirty_bitmap, NULL);
+    will_return(__wrap_handle_dirty_pages, 0xabcd);
+    r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL,
+                     &_iovecs, &iovecs, &nr_iovecs, &free_iovec_data);
+    assert_int_equal(0xabcd, r);
+}
+
 int main(void)
 {
    const struct CMUnitTest tests[] = {
@@ -1440,6 +1480,7 @@ int main(void)
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
             setup_test_setup_migration_region,
             teardown_test_setup_migration_region),
+        cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

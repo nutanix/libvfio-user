@@ -88,6 +88,9 @@ __wrap__dma_controller_do_remove_region(dma_controller_t *dma,
 bool
 __wrap_device_is_stopped(struct migration *migr)
 {
+    if (!is_patched(device_is_stopped)) {
+        return __real_device_is_stopped(migr);
+    }
     check_expected(migr);
     return mock();
 }
@@ -109,6 +112,11 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                     int *nr_fds_out, struct iovec *_iovecs, struct iovec **iovecs,
                     size_t *nr_iovecs, bool *free_iovec_data)
 {
+    if (!is_patched(exec_command)) {
+        return __real_exec_command(vfu_ctx, hdr, size, fds, nr_fds, fds_out,
+                                   nr_fds_out, _iovecs, iovecs, nr_iovecs,
+                                   free_iovec_data);
+    }
     check_expected(vfu_ctx);
     check_expected(hdr);
     check_expected(size);
@@ -187,6 +195,23 @@ int __wrap_listen(int sockfd __attribute__((unused)),
     return 0;
 }
 
+int
+__wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                          struct iovec **iovecs, size_t *nr_iovecs,
+                          struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+{
+    if (!is_patched(handle_dirty_pages)) {
+        return __real_handle_dirty_pages(vfu_ctx, size, iovecs, nr_iovecs,
+                                         dirty_bitmap);
+    }
+    check_expected(vfu_ctx);
+    check_expected(size);
+    check_expected(iovecs);
+    check_expected(nr_iovecs);
+    check_expected(dirty_bitmap);
+    return mock();
+}
+
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
@@ -200,7 +225,8 @@ static struct function funcs[] = {
     {.addr = &__wrap_free},
     {.addr = &__wrap_process_request},
     {.addr = &__wrap_bind},
-    {.addr = &__wrap_listen}
+    {.addr = &__wrap_listen},
+    {.addr = &__wrap_handle_dirty_pages},
 };
 
 static struct function*
