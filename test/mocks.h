@@ -42,4 +42,32 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                    struct iovec **iovecs, size_t *nr_iovecs,
                    struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
+int
+__real_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                          struct iovec **iovecs, size_t *nr_iovecs,
+                          struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
+
+int
+__real_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
+                                 size_t size, int fd, off_t offset,
+                                 uint32_t prot);
+
+bool
+__real_device_is_stopped(struct migration *migr);
+
+int
+__real_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                    size_t size, int *fds, size_t *nr_fds, size_t **fds_out,
+                    int *nr_fds_out, struct iovec *_iovecs, struct iovec **iovecs,
+                    size_t *nr_iovecs, bool *free_iovec_data);
+int
+__real_close(int fd);
+
+void
+__real_free(void *ptr);
+
+int
+__real_process_request(vfu_ctx_t *vfu_ctx);
+
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
