@@ -29,11 +29,17 @@
  */
 
 #include <stdbool.h>
+#include "private.h"
 
 void unpatch_all(void);
 
 void patch(void *fn);
 
 bool is_patched(void *fn);
+
+int
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                   struct iovec **iovecs, size_t *nr_iovecs,
+                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
