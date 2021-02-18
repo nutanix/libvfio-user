@@ -39,8 +39,6 @@ target_link_libraries(unit-tests PUBLIC cmocka json-c)
 
 target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
 
-target_compile_options(unit-tests PUBLIC "-Wno-implicit-function-declaration")
-
 # No "target_link_options" in cmake2
 target_link_libraries(unit-tests PUBLIC
                       "-Wl,--wrap=_dma_controller_do_remove_region")
