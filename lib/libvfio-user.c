@@ -71,7 +71,7 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
     }
 
     va_start(ap, fmt);
-    vsnprintf(buf, sizeof buf, fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     vfu_ctx->log(vfu_ctx, level, buf);
     errno = _errno;
@@ -245,14 +245,14 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     assert(vfu_ctx != NULL);
     assert(ra != NULL);
 
-    if (size < sizeof (*ra)) {
+    if (size < sizeof(*ra)) {
         vfu_log(vfu_ctx, LOG_ERR, "message size too small (%d)", size);
         return false;
     }
 
-    if (cmd == VFIO_USER_REGION_WRITE && size - sizeof (*ra) != ra->count) {
+    if (cmd == VFIO_USER_REGION_WRITE && size - sizeof(*ra) != ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
-                "expected %lu, got %u", size - sizeof (*ra), ra->count);
+                "expected %lu, got %u", size - sizeof(*ra), ra->count);
         return false;
     }
 
@@ -303,7 +303,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
         return 0;
     }
 
-    *len = sizeof (*ra);
+    *len = sizeof(*ra);
     if (cmd == VFIO_USER_REGION_READ) {
         *len += ra->count;
     }
@@ -435,12 +435,12 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
     assert(in_dev_info != NULL);
     assert(out_dev_info != NULL);
 
-    if (in_size < sizeof (*in_dev_info) ||
-        in_dev_info->argsz < sizeof (*in_dev_info)) {
+    if (in_size < sizeof(*in_dev_info) ||
+        in_dev_info->argsz < sizeof(*in_dev_info)) {
         return -EINVAL;
     }
 
-    out_dev_info->argsz = sizeof (*in_dev_info);
+    out_dev_info->argsz = sizeof(*in_dev_info);
     out_dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
     out_dev_info->num_regions = vfu_ctx->nr_regions;
     out_dev_info->num_irqs = VFU_DEV_NUM_IRQS;
@@ -633,7 +633,7 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(nr_iovecs != NULL);
     assert(dirty_bitmap != NULL);
 
-    if (size < sizeof *dirty_bitmap || size != dirty_bitmap->argsz) {
+    if (size < sizeof(*dirty_bitmap) || size != dirty_bitmap->argsz) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid header size %u", size);
         return -EINVAL;
     }
@@ -646,7 +646,7 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
         ret = handle_dirty_pages_get(vfu_ctx, iovecs, nr_iovecs,
                                      (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
-                                     size - sizeof *dirty_bitmap);
+                                     size - sizeof(*dirty_bitmap));
     } else {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_bitmap->flags);
         ret = -EINVAL;
@@ -670,7 +670,7 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
 {
     assert(hdr != NULL);
 
-    if (size < sizeof hdr) {
+    if (size < sizeof(hdr)) {
         vfu_log(vfu_ctx, LOG_ERR, "short header read %ld", size);
         return -EINVAL;
     }
@@ -680,7 +680,7 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
         return -EINVAL;
     }
 
-    if (hdr->msg_size < sizeof hdr) {
+    if (hdr->msg_size < sizeof(hdr)) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
                 hdr->msg_id, hdr->msg_size);
         return -EINVAL;
@@ -791,7 +791,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         return -EINVAL;
     }
 
-    cmd_data_size = hdr->msg_size - sizeof (*hdr);
+    cmd_data_size = hdr->msg_size - sizeof(*hdr);
 
     if (cmd_data_size > 0) {
         ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
@@ -810,7 +810,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         break;
 
     case VFIO_USER_DEVICE_GET_INFO:
-        dev_info = calloc(1, sizeof *dev_info);
+        dev_info = calloc(1, sizeof(*dev_info));
         if (dev_info == NULL) {
             ret = -ENOMEM;
             break;
@@ -842,7 +842,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         break;
 
     case VFIO_USER_DEVICE_GET_IRQ_INFO:
-        irq_info = calloc(1, sizeof *irq_info);
+        irq_info = calloc(1, sizeof(*irq_info));
         if (irq_info == NULL) {
             ret = -ENOMEM;
             break;
@@ -851,7 +851,7 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
                                          irq_info);
         if (ret == 0) {
             _iovecs[1].iov_base = irq_info;
-            _iovecs[1].iov_len = sizeof *irq_info;
+            _iovecs[1].iov_len = sizeof(*irq_info);
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
@@ -1183,7 +1183,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
      * and move it into vfu_ctx.migration.
      */
     vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;
-    vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof *vfu_ctx->reg_info);
+    vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof(*vfu_ctx->reg_info));
     if (vfu_ctx->reg_info == NULL) {
         err = -ENOMEM;
         goto err_out;
@@ -1253,7 +1253,7 @@ static int
 copyin_mmap_areas(vfu_reg_info_t *reg_info,
                   struct iovec *mmap_areas, uint32_t nr_mmap_areas)
 {
-    size_t size = nr_mmap_areas * sizeof (*mmap_areas);
+    size_t size = nr_mmap_areas * sizeof(*mmap_areas);
 
     if (mmap_areas == NULL || nr_mmap_areas ==  0) {
         return 0;
@@ -1384,7 +1384,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 out:
     if (ret < 0) {
         free(reg->mmap_areas);
-        memset(reg, 0, sizeof (*reg));
+        memset(reg, 0, sizeof(*reg));
         return ERROR_INT(-ret);
     }
     return 0;
@@ -1536,7 +1536,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     dma_send.addr = sg->dma_addr;
     dma_send.count = sg->length;
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
-                                  &dma_send, sizeof dma_send, NULL,
+                                  &dma_send, sizeof(dma_send), NULL,
                                   dma_recv, recv_size);
     memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
     free(dma_recv);

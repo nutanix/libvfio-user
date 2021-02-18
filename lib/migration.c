@@ -70,7 +70,7 @@ init_migration(const vfu_migration_callbacks_t * callbacks,
         return NULL;
     }
 
-    migr = calloc(1, sizeof *migr);
+    migr = calloc(1, sizeof(*migr));
     if (migr == NULL) {
         *err = ENOMEM;
         return NULL;

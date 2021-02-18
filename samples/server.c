@@ -346,7 +346,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
     memcpy(buf, server_data->bar1, server_data->bar1_size);
     if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
         memcpy(buf + server_data->bar1_size, &server_data->bar0,
-               sizeof server_data->bar0);
+               sizeof(server_data->bar0));
     }
     server_data->migration.pending_bytes = 0;
 
@@ -376,12 +376,12 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
     if (size == 0) {
         return 0;
     }
-    if (size != sizeof server_data->bar0) {
+    if (size != sizeof(server_data->bar0)) {
         errno = EINVAL;
         return -1;
     }
-    memcpy(&server_data->bar0, buf, sizeof server_data->bar0);
-    ret = bar0_access(vfu_ctx, buf, sizeof server_data->bar0, 0, true);
+    memcpy(&server_data->bar0, buf, sizeof(server_data->bar0));
+    ret = bar0_access(vfu_ctx, buf, sizeof(server_data->bar0), 0, true);
     assert(ret == (int)size); /* FIXME */
 
     return 0;
