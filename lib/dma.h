@@ -286,9 +286,6 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
     return 0;
 }
 
-/* FIXME useless define */
-#define UNUSED __attribute__((unused))
-
 static inline void
 dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
 	     UNUSED struct iovec *iov, int cnt)

@@ -182,15 +182,15 @@ __wrap_process_request(vfu_ctx_t *vfu_ctx)
     return mock();
 }
 
-int __wrap_bind(int sockfd __attribute__((unused)),
-    const struct sockaddr *addr __attribute__((unused)),
-    socklen_t addrlen __attribute__((unused)))
+int
+__wrap_bind(int sockfd UNUSED, const struct sockaddr *addr UNUSED,
+            socklen_t addrlen UNUSED)
 {
     return 0;
 }
 
-int __wrap_listen(int sockfd __attribute__((unused)),
-    int backlog __attribute__((unused)))
+int
+__wrap_listen(int sockfd UNUSED, int backlog UNUSED)
 {
     return 0;
 }
