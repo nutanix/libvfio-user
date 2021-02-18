@@ -72,5 +72,10 @@ __real_free(void *ptr);
 int
 __real_process_request(vfu_ctx_t *vfu_ctx);
 
+bool
+__real_device_is_stopped_and_copying(struct migration *migration);
+
+bool
+__real_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
