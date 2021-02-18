@@ -730,6 +730,38 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
 UNIT_TEST_SYMBOL(get_next_command);
 #define get_next_command __wrap_get_next_command
 
+bool
+cmd_allowed_when_stopped_and_copying(uint16_t cmd)
+{
+    return cmd == VFIO_USER_REGION_READ ||
+           cmd == VFIO_USER_REGION_WRITE ||
+           cmd == VFIO_USER_DIRTY_PAGES;
+}
+UNIT_TEST_SYMBOL(cmd_allowed_when_stopped_and_copying);
+#define cmd_allowed_when_stopped_and_copying __wrap_cmd_allowed_when_stopped_and_copying
+
+bool
+should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
+{
+    assert(vfu_ctx != NULL);
+
+    if (device_is_stopped_and_copying(vfu_ctx->migration)) {
+        if (!cmd_allowed_when_stopped_and_copying(cmd)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "bad command %d while device in stop-and-copy state", cmd);
+            return false;
+        }
+    } else if (device_is_stopped(vfu_ctx->migration) &&
+               cmd != VFIO_USER_DIRTY_PAGES) {
+        vfu_log(vfu_ctx, LOG_ERR,
+               "bad command %d while device in stopped state", cmd);
+        return false;
+    }
+    return true;
+}
+UNIT_TEST_SYMBOL(should_exec_command);
+#define should_exec_command __wrap_should_exec_command
+
 int
 exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
              int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
@@ -755,6 +787,10 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         return ret;
     }
 
+    if (!should_exec_command(vfu_ctx, hdr->cmd)) {
+        return -EINVAL;
+    }
+
     cmd_data_size = hdr->msg_size - sizeof (*hdr);
 
     if (cmd_data_size > 0) {
@@ -763,22 +799,6 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         if (ret < 0) {
             return ret;
         }
-    }
-
-    if (device_is_stopped_and_copying(vfu_ctx->migration)
-        && !(hdr->cmd == VFIO_USER_REGION_READ ||
-             hdr->cmd == VFIO_USER_REGION_WRITE ||
-             hdr->cmd == VFIO_USER_DIRTY_PAGES)) {
-        vfu_log(vfu_ctx, LOG_ERR,
-               "bad command %d while device in stop-and-copy state", hdr->cmd);
-        ret = -EINVAL;
-        goto out;
-    } else if (device_is_stopped(vfu_ctx->migration) &&
-               hdr->cmd != VFIO_USER_DIRTY_PAGES) {
-        vfu_log(vfu_ctx, LOG_ERR,
-               "bad command %d while device in stopped state", hdr->cmd);
-        ret = -EINVAL;
-        goto out;
     }
 
     switch (hdr->cmd) {
@@ -879,7 +899,6 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
         break;
     }
 
-out:
     free(cmd_data);
     return ret;
 }

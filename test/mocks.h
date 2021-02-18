@@ -37,6 +37,9 @@ void patch(void *fn);
 
 bool is_patched(void *fn);
 
+bool
+__real_cmd_allowed_when_stopped_and_copying(u_int16_t cmd);
+
 int
 handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                    struct iovec **iovecs, size_t *nr_iovecs,
@@ -69,5 +72,10 @@ __real_free(void *ptr);
 int
 __real_process_request(vfu_ctx_t *vfu_ctx);
 
+bool
+__real_device_is_stopped_and_copying(struct migration *migration);
+
+bool
+__real_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

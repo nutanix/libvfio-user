@@ -86,12 +86,12 @@ __wrap__dma_controller_do_remove_region(dma_controller_t *dma,
 }
 
 bool
-__wrap_device_is_stopped(struct migration *migr)
+__wrap_device_is_stopped(struct migration *migration)
 {
     if (!is_patched(device_is_stopped)) {
-        return __real_device_is_stopped(migr);
+        return __real_device_is_stopped(migration);
     }
-    check_expected(migr);
+    check_expected(migration);
     return mock();
 }
 
@@ -195,6 +195,47 @@ int __wrap_listen(int sockfd __attribute__((unused)),
     return 0;
 }
 
+bool
+__wrap_device_is_stopped_and_copying(struct migration *migration)
+{
+    if (!is_patched(device_is_stopped_and_copying)) {
+        return __real_device_is_stopped_and_copying(migration);
+    }
+    check_expected(migration);
+    return mock();
+}
+
+bool
+__wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
+{
+    if (!is_patched(cmd_allowed_when_stopped_and_copying)) {
+        return __real_cmd_allowed_when_stopped_and_copying(cmd);
+    }
+    check_expected(cmd);
+    return mock();
+}
+
+bool
+__wrap_cmd_allowed_when_stopped(struct migration *migration)
+{
+    if (!is_patched(device_is_stopped)) {
+        return __real_device_is_stopped(migration);
+    }
+    check_expected(migration);
+    return mock();
+}
+
+bool
+__wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
+{
+    if (!is_patched(should_exec_command)) {
+        return __real_should_exec_command(vfu_ctx, cmd);
+    }
+    check_expected(vfu_ctx);
+    check_expected(cmd);
+    return mock();
+}
+
 int
 __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                           struct iovec **iovecs, size_t *nr_iovecs,
@@ -226,6 +267,10 @@ static struct function funcs[] = {
     {.addr = &__wrap_process_request},
     {.addr = &__wrap_bind},
     {.addr = &__wrap_listen},
+    {.addr = &__wrap_device_is_stopped_and_copying},
+    {.addr = &__wrap_cmd_allowed_when_stopped_and_copying},
+    {.addr = &__wrap_device_is_stopped},
+    {.addr = &__wrap_should_exec_command},
     {.addr = &__wrap_handle_dirty_pages},
 };
 
