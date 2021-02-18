@@ -39,8 +39,6 @@ target_link_libraries(unit-tests PUBLIC cmocka json-c)
 
 target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
 
-target_compile_options(unit-tests PUBLIC "-Wno-implicit-function-declaration")
-
 # No "target_link_options" in cmake2
 target_link_libraries(unit-tests PUBLIC
                       "-Wl,--wrap=_dma_controller_do_remove_region")
@@ -55,6 +53,10 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=free")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=process_request")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=bind")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=listen")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped_and_copying")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=cmd_allowed_when_stopped_and_copying")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=should_exec_command")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=handle_dirty_pages")
 
 enable_testing()

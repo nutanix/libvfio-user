@@ -48,6 +48,7 @@
 #include "migration.h"
 #include "mocks.h"
 #include "tran_sock.h"
+#include "migration_priv.h"
 
 static void
 test_dma_map_without_dma(void **state UNUSED)
@@ -162,7 +163,7 @@ test_dma_add_regions_mixed(void **state UNUSED)
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
     expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof r, true, &fd, 1, r));
+    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof(r), true, &fd, 1, r));
 }
 
 /*
@@ -275,7 +276,7 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     off_t offset = 0;
     dma_memory_region_t *r;
 
-    memset(dma, 0, sizeof (*dma) + sizeof(dma_memory_region_t));
+    memset(dma, 0, sizeof(*dma) + sizeof(dma_memory_region_t));
 
     dma->vfu_ctx = &vfu_ctx;
     dma->max_regions = 1;
@@ -642,10 +643,10 @@ test_pci_caps(void **state UNUSED)
     vfu_ctx_t vfu_ctx = { .pci.config_space = &config_space,
                           .reg_info = reg_info,
     };
-    struct vsc *vsc1 = alloca(sizeof (*vsc1) + 3);
-    struct vsc *vsc2 = alloca(sizeof (*vsc2) + 13);
-    struct vsc *vsc3 = alloca(sizeof (*vsc3) + 13);
-    struct vsc *vsc4 = alloca(sizeof (*vsc4) + 13);
+    struct vsc *vsc1 = alloca(sizeof(*vsc1) + 3);
+    struct vsc *vsc2 = alloca(sizeof(*vsc2) + 13);
+    struct vsc *vsc3 = alloca(sizeof(*vsc3) + 13);
+    struct vsc *vsc4 = alloca(sizeof(*vsc4) + 13);
     struct pmcap pm = { { 0 } };
     size_t expoffsets[] = {
         PCI_STD_HEADER_SIZEOF,
@@ -658,10 +659,10 @@ test_pci_caps(void **state UNUSED)
     size_t offset;
     ssize_t ret;
 
-    memset(&config_space, 0, sizeof (config_space));
+    memset(&config_space, 0, sizeof(config_space));
 
     vfu_ctx.reg_info = calloc(VFU_PCI_DEV_NUM_REGIONS,
-                              sizeof (*vfu_ctx.reg_info));
+                              sizeof(*vfu_ctx.reg_info));
 
     pm.hdr.id = PCI_CAP_ID_PM;
     pm.pmcs.raw = 0xef01;
@@ -771,14 +772,14 @@ test_pci_caps(void **state UNUSED)
     pm.pmcs.raw = 0xffff;
 
     ret = pci_config_space_access(&vfu_ctx, (char *)&pm.pmcs,
-                                  sizeof (struct pmcs), expoffsets[0] +
+                                  sizeof(struct pmcs), expoffsets[0] +
                                   offsetof(struct pmcap, pmcs), true);
 
-    assert_int_equal(sizeof (struct pmcs), ret);
+    assert_int_equal(sizeof(struct pmcs), ret);
 
     assert_memory_equal(pci_config_space_ptr(&vfu_ctx, expoffsets[0] +
                                              offsetof(struct pmcap, pmcs)),
-                        &pm.pmcs, sizeof (struct pmcs));
+                        &pm.pmcs, sizeof(struct pmcs));
 
     /* check read only capability */
 
@@ -814,9 +815,9 @@ test_pci_ext_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     uint8_t *ptr = pci_config_space_ptr(vfu_ctx, offset);
 
     assert_int_equal(is_write, true);
-    assert_int_equal(offset, PCI_CFG_SPACE_SIZE + sizeof (struct dsncap) +
-                     sizeof (struct pcie_ext_cap_vsc_hdr) + 8 +
-                     sizeof (struct pcie_ext_cap_vsc_hdr));
+    assert_int_equal(offset, PCI_CFG_SPACE_SIZE + sizeof(struct dsncap) +
+                     sizeof(struct pcie_ext_cap_vsc_hdr) + 8 +
+                     sizeof(struct pcie_ext_cap_vsc_hdr));
     assert_int_equal(count, 10);
     assert_memory_equal(ptr, "Hello world.", 10);
     memcpy(ptr, buf, count);
@@ -834,15 +835,15 @@ test_pci_ext_caps(void **state UNUSED)
                           .reg_info = reg_info,
     };
 
-    struct pcie_ext_cap_vsc_hdr *vsc1 = alloca(sizeof (*vsc1) + 5);
-    struct pcie_ext_cap_vsc_hdr *vsc2 = alloca(sizeof (*vsc2) + 13);
-    struct pcie_ext_cap_vsc_hdr *vsc3 = alloca(sizeof (*vsc3) + 13);
-    struct pcie_ext_cap_vsc_hdr *vsc4 = alloca(sizeof (*vsc4) + 13);
+    struct pcie_ext_cap_vsc_hdr *vsc1 = alloca(sizeof(*vsc1) + 5);
+    struct pcie_ext_cap_vsc_hdr *vsc2 = alloca(sizeof(*vsc2) + 13);
+    struct pcie_ext_cap_vsc_hdr *vsc3 = alloca(sizeof(*vsc3) + 13);
+    struct pcie_ext_cap_vsc_hdr *vsc4 = alloca(sizeof(*vsc4) + 13);
     struct pcie_ext_cap_hdr *hdr;
     size_t expoffsets[] = {
         PCI_CFG_SPACE_SIZE,
-        PCI_CFG_SPACE_SIZE + sizeof (struct dsncap),
-        PCI_CFG_SPACE_SIZE + sizeof (struct dsncap) + sizeof (*vsc1) + 8,
+        PCI_CFG_SPACE_SIZE + sizeof(struct dsncap),
+        PCI_CFG_SPACE_SIZE + sizeof(struct dsncap) + sizeof(*vsc1) + 8,
         512,
         600
     };
@@ -853,7 +854,7 @@ test_pci_ext_caps(void **state UNUSED)
     vfu_ctx.pci.type = VFU_PCI_TYPE_EXPRESS;
 
     vfu_ctx.reg_info = calloc(VFU_PCI_DEV_NUM_REGIONS,
-                              sizeof (*vfu_ctx.reg_info));
+                              sizeof(*vfu_ctx.reg_info));
 
     vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb = test_pci_ext_caps_region_cb;
     vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = PCI_CFG_SPACE_EXP_SIZE;
@@ -863,16 +864,16 @@ test_pci_ext_caps(void **state UNUSED)
     dsn.sn_hi = 0x8;
 
     vsc1->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc1->len = sizeof (*vsc1) + 5;
+    vsc1->len = sizeof(*vsc1) + 5;
     memcpy(vsc1->data, "abcde", 5);
     vsc2->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc2->len = sizeof (*vsc2) + 13;
+    vsc2->len = sizeof(*vsc2) + 13;
     memcpy(vsc2->data, "Hello world.", 12);
     vsc3->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc3->len = sizeof (*vsc3) + 13;
+    vsc3->len = sizeof(*vsc3) + 13;
     memcpy(vsc3->data, "Hello world.", 12);
     vsc4->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc4->len = sizeof (*vsc4) + 13;
+    vsc4->len = sizeof(*vsc4) + 13;
     memcpy(vsc4->data, "Hello world.", 12);
 
     offset = vfu_pci_add_capability(&vfu_ctx, 4096, VFU_CAP_FLAG_EXTENDED, &dsn);
@@ -994,12 +995,12 @@ static void
 test_device_get_info(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof (d_in) };
+    struct vfio_device_info d_in = { .argsz = sizeof(d_in) };
     struct vfio_device_info d_out;
 
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof (d_in),
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in),
                                                &d_in, &d_out));
-    assert_int_equal(sizeof (d_out), d_out.argsz);
+    assert_int_equal(sizeof(d_out), d_out.argsz);
     assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
                      d_out.flags);
     assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
@@ -1014,12 +1015,12 @@ static void
 test_device_get_info_compat(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof (d_in) + 1 };
+    struct vfio_device_info d_in = { .argsz = sizeof(d_in) + 1 };
     struct vfio_device_info d_out;
 
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof (d_in) + 1,
+    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in) + 1,
                                                &d_in, &d_out));
-    assert_int_equal(sizeof (d_out), d_out.argsz);
+    assert_int_equal(sizeof(d_out), d_out.argsz);
     assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
                      d_out.flags);
     assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
@@ -1027,7 +1028,7 @@ test_device_get_info_compat(void **state UNUSED)
 
     /* fewer fields */
     assert_int_equal(-EINVAL,
-                     handle_device_get_info(&vfu_ctx, (sizeof (d_in)) - 1,
+                     handle_device_get_info(&vfu_ctx, (sizeof(d_in)) - 1,
                                             &d_in, &d_out));
 }
 
@@ -1393,6 +1394,136 @@ test_setup_migration_callbacks(void **state)
 }
 
 static void
+test_device_is_stopped_and_copying(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { .migration = NULL };
+
+    assert_false(device_is_stopped_and_copying(vfu_ctx.migration));
+    assert_false(device_is_stopped(vfu_ctx.migration));
+
+    size_t i;
+    struct migration migration;
+    vfu_ctx.migration = &migration;
+    for (i = 0; i < ARRAY_SIZE(migr_states); i++) {
+        if (migr_states[i].name == NULL) {
+            continue;
+        }
+        migration.info.device_state = i;
+        bool r = device_is_stopped_and_copying(vfu_ctx.migration);
+        if (i == VFIO_DEVICE_STATE_SAVING) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+        r = device_is_stopped(vfu_ctx.migration);
+        if (i == VFIO_DEVICE_STATE_STOP) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+    }
+}
+
+static void
+test_cmd_allowed_when_stopped_and_copying(UNUSED void **state)
+{
+    size_t i;
+
+    for (i = 0; i < VFIO_USER_MAX; i++) {
+        bool r = cmd_allowed_when_stopped_and_copying(i);
+        if (i == VFIO_USER_REGION_READ || i == VFIO_USER_REGION_WRITE ||
+            i == VFIO_USER_DIRTY_PAGES) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+    }
+}
+
+static void
+test_should_exec_command(UNUSED void **state)
+{
+    struct migration migration = { { 0 } };
+    vfu_ctx_t vfu_ctx = { .migration = &migration };
+
+    patch(device_is_stopped_and_copying);
+    patch(cmd_allowed_when_stopped_and_copying);
+    patch(device_is_stopped);
+
+    /* XXX stopped and copying, command allowed */
+    will_return(__wrap_device_is_stopped_and_copying, true);
+    expect_value(__wrap_device_is_stopped_and_copying, migration, &migration);
+    will_return(__wrap_cmd_allowed_when_stopped_and_copying, true);
+    expect_value(__wrap_cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
+    assert_true(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* XXX stopped and copying, command not allowed */
+    will_return(__wrap_device_is_stopped_and_copying, true);
+    expect_any(__wrap_device_is_stopped_and_copying, migration);
+    will_return(__wrap_cmd_allowed_when_stopped_and_copying, false);
+    expect_any(__wrap_cmd_allowed_when_stopped_and_copying, cmd);
+    assert_false(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* XXX stopped */
+    will_return(__wrap_device_is_stopped_and_copying, false);
+    expect_any(__wrap_device_is_stopped_and_copying, migration);
+    will_return(__wrap_device_is_stopped, true);
+    expect_value(__wrap_device_is_stopped, migration, &migration);
+    assert_false(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* XXX none of the above */
+    will_return(__wrap_device_is_stopped_and_copying, false);
+    expect_any(__wrap_device_is_stopped_and_copying, migration);
+    will_return(__wrap_device_is_stopped, false);
+    expect_any(__wrap_device_is_stopped, migration);
+    assert_true(should_exec_command(&vfu_ctx, 0xbeef));
+}
+
+int recv_body(UNUSED vfu_ctx_t *vfu_ctx, UNUSED const struct vfio_user_header *hdr,
+              UNUSED void **datap)
+{
+    /* hack to avoid having to refactor the rest of exec_command */
+    return -1;
+}
+
+static void
+test_exec_command(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    struct vfio_user_header hdr = {
+        .cmd = 0xbeef,
+        .flags.type = VFIO_USER_F_TYPE_COMMAND,
+        .msg_size = sizeof(hdr) + 1
+    };
+    size_t size = sizeof(hdr);
+    int fds = 0;
+    struct iovec _iovecs = { 0 };
+    struct iovec *iovecs = NULL;
+    size_t nr_iovecs = 0;
+    bool free_iovec_data = false;
+    int r;
+
+    /* XXX should NOT execute command */
+    patch(should_exec_command);
+    will_return(__wrap_should_exec_command, false);
+    expect_value(__wrap_should_exec_command, vfu_ctx, &vfu_ctx);
+    expect_value(__wrap_should_exec_command, cmd, 0xbeef);
+    r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL, &_iovecs,
+                     &iovecs, &nr_iovecs, &free_iovec_data);
+    assert_int_equal(-EINVAL, r);
+
+    /* XXX should execute command */
+    struct transport_ops tran = { .recv_body = recv_body };
+    vfu_ctx.tran = &tran;
+    will_return(__wrap_should_exec_command, true);
+    expect_value(__wrap_should_exec_command, vfu_ctx, &vfu_ctx);
+    expect_value(__wrap_should_exec_command, cmd, 0xbeef);
+    r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL, &_iovecs,
+                     &iovecs, &nr_iovecs, &free_iovec_data);
+    assert_int_equal(-1, r);
+}
+
+static void
 test_dirty_pages_without_dma(UNUSED void **state)
 {
     vfu_ctx_t vfu_ctx = { .migration = NULL };
@@ -1401,15 +1532,16 @@ test_dirty_pages_without_dma(UNUSED void **state)
         .flags = {
             .type = VFIO_USER_F_TYPE_COMMAND
         },
-        .msg_size = sizeof hdr
+        .msg_size = sizeof(hdr)
     };
-    size_t size = sizeof hdr;
+    size_t size = sizeof(hdr);
     int fds = 0;
     struct iovec _iovecs = { 0 };
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     bool free_iovec_data = false;
     int r;
+
 
     patch(handle_dirty_pages);
 
@@ -1481,6 +1613,10 @@ int main(void)
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
             setup_test_setup_migration_region,
             teardown_test_setup_migration_region),
+        cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
+        cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
+        cmocka_unit_test_setup(test_should_exec_command, setup),
+        cmocka_unit_test_setup(test_exec_command, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
     };
 

@@ -138,17 +138,17 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
 
     switch (offset - cap->off) {
     case offsetof(struct pmcap, pc):
-        if (count != sizeof (struct pc)) {
+        if (count != sizeof(struct pc)) {
             return -EINVAL;
         }
         assert(false); /* FIXME implement */
         break;
     case offsetof(struct pmcap, pmcs):
-        if (count != sizeof (struct pmcs)) {
+        if (count != sizeof(struct pmcs)) {
             return -EINVAL;
         }
         handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
-        return sizeof (struct pmcs);
+        return sizeof(struct pmcs);
     }
     return -EINVAL;
 }
@@ -561,7 +561,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         }
 
         cap.id = ((struct pcie_ext_cap_hdr *)data)->id;
-        cap.hdr_size = sizeof (struct pcie_ext_cap_hdr);
+        cap.hdr_size = sizeof(struct pcie_ext_cap_hdr);
 
         switch (cap.id) {
         case PCI_EXT_CAP_ID_DSN:
@@ -571,7 +571,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case PCI_EXT_CAP_ID_VNDR:
             cap.name = "Vendor-Specific";
             cap.cb = ext_cap_write_vendor;
-            cap.hdr_size = sizeof (struct pcie_ext_cap_vsc_hdr);
+            cap.hdr_size = sizeof(struct pcie_ext_cap_vsc_hdr);
             break;
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
@@ -592,7 +592,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         }
 
         cap.id = ((struct cap_hdr *)data)->id;
-        cap.hdr_size = sizeof (struct cap_hdr);
+        cap.hdr_size = sizeof(struct cap_hdr);
 
         switch (cap.id) {
         case PCI_CAP_ID_PM:
@@ -610,7 +610,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case PCI_CAP_ID_VNDR:
             cap.name = "Vendor-Specific";
             cap.cb = cap_write_vendor;
-            cap.hdr_size = sizeof (struct vsc);
+            cap.hdr_size = sizeof(struct vsc);
             break;
         default:
             vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
@@ -632,10 +632,10 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 
     if (extended) {
         memcpy(&vfu_ctx->pci.ext_caps[vfu_ctx->pci.nr_ext_caps],
-               &cap, sizeof (cap));
+               &cap, sizeof(cap));
         vfu_ctx->pci.nr_ext_caps++;
     } else {
-        memcpy(&vfu_ctx->pci.caps[vfu_ctx->pci.nr_caps], &cap, sizeof (cap));
+        memcpy(&vfu_ctx->pci.caps[vfu_ctx->pci.nr_caps], &cap, sizeof(cap));
         vfu_ctx->pci.nr_caps++;
     }
 
@@ -647,7 +647,7 @@ vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
 {
     struct pcie_ext_cap_hdr *hdr = NULL;
 
-    if (offset + sizeof (*hdr) >= pci_config_space_size(vfu_ctx)) {
+    if (offset + sizeof(*hdr) >= pci_config_space_size(vfu_ctx)) {
         errno = EINVAL;
         return 0;
     }
@@ -663,7 +663,7 @@ vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
     for (;;) {
         offset = (uint8_t *)hdr - pci_config_space_ptr(vfu_ctx, 0);
 
-        if (offset + sizeof (*hdr) >= pci_config_space_size(vfu_ctx)) {
+        if (offset + sizeof(*hdr) >= pci_config_space_size(vfu_ctx)) {
             errno = EINVAL;
             return 0;
         }

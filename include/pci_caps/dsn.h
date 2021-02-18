@@ -48,7 +48,7 @@ struct dsncap {
     uint32_t sn_lo;
     uint32_t sn_hi;
 } __attribute__((packed));
-_Static_assert(sizeof (struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
+_Static_assert(sizeof(struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
                "bad DSN Capability size");
 
 #ifdef __cplusplus
