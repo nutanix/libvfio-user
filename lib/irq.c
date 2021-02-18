@@ -332,7 +332,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(irq_info_in != NULL);
     assert(irq_info_out != NULL);
 
-    if (size != sizeof *irq_info_in || size != irq_info_in->argsz) {
+    if (size != sizeof(*irq_info_in) || size != irq_info_in->argsz) {
         vfu_log(vfu_ctx, LOG_WARNING, "IRQ info size %d", size);
         return -EINVAL;
     }
@@ -349,7 +349,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
-    if (size < sizeof *irq_set || size != irq_set->argsz) {
+    if (size < sizeof(*irq_set) || size != irq_set->argsz) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size %d", size);
         return -EINVAL;
     }
@@ -422,7 +422,7 @@ vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     irq_info.subindex = subindex;
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id,
                                   VFIO_USER_VM_INTERRUPT,
-                                  &irq_info, sizeof irq_info,
+                                  &irq_info, sizeof(irq_info),
                                   NULL, NULL, 0);
     if (ret < 0) {
 	    return ERROR_INT(-ret);

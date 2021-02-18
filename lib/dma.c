@@ -175,7 +175,7 @@ dma_controller_remove_region(dma_controller_t *dma,
                  * check whether memmove eliminates this warning.
                  */
                 memcpy(region, &dma->regions[dma->nregions - 1],
-                       sizeof *region);
+                       sizeof(*region));
             dma->nregions--;
             return 0;
         }

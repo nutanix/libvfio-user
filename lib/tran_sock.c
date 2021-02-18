@@ -68,7 +68,7 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     struct vfio_user_header hdr = {.msg_id = msg_id};
     struct msghdr msg;
     size_t i;
-    size_t size = count * sizeof *fds;
+    size_t size = count * sizeof(*fds);
     char *buf;
 
     if (nr_iovecs == 0) {
@@ -216,7 +216,7 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
 
     /* FIXME if ret == -1 then fcntl can overwrite recv's errno */
 
-    ret = get_msg(hdr, sizeof *hdr, fds, nr_fds, sock, 0);
+    ret = get_msg(hdr, sizeof(*hdr), fds, nr_fds, sock, 0);
     if (ret == -1) {
         return -errno;
     }
@@ -248,8 +248,8 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
         }
     }
 
-    if (len != NULL && *len > 0 && hdr->msg_size > sizeof *hdr) {
-        ret = recv(sock, data, MIN(hdr->msg_size - sizeof *hdr, *len),
+    if (len != NULL && *len > 0 && hdr->msg_size > sizeof(*hdr)) {
+        ret = recv(sock, data, MIN(hdr->msg_size - sizeof(*hdr), *len),
                    MSG_WAITALL);
         if (ret < 0) {
             return ret;
@@ -289,9 +289,9 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
         return ret;
     }
 
-    assert(hdr->msg_size >= sizeof (*hdr));
+    assert(hdr->msg_size >= sizeof(*hdr));
 
-    len = hdr->msg_size - sizeof (*hdr);
+    len = hdr->msg_size - sizeof(*hdr);
 
     if (len == 0) {
         *datap = NULL;
@@ -339,7 +339,7 @@ tran_sock_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
         return ret;
     }
     if (hdr == NULL) {
-        hdr = alloca(sizeof *hdr);
+        hdr = alloca(sizeof(*hdr));
     }
     return tran_sock_recv_fds(sock, hdr, true, &msg_id, recv_data, &recv_len,
                               recv_fds, recv_fd_count);
@@ -411,7 +411,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
         }
     }
 
-    ret = snprintf(addr.sun_path, sizeof addr.sun_path, "%s", vfu_ctx->uuid);
+    ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
     if (ret >= (int)sizeof(addr.sun_path)) {
         ret = -ENAMETOOLONG;
     }
@@ -564,7 +564,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         goto out;
     }
 
-    if (vlen < sizeof (*cversion)) {
+    if (vlen < sizeof(*cversion)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "msg%#hx: VFIO_USER_VERSION: invalid size %lu", *msg_idp, vlen);
         ret = -EINVAL;
@@ -580,9 +580,9 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 
     vfu_ctx->client_max_fds = 1;
 
-    if (vlen > sizeof (*cversion)) {
+    if (vlen > sizeof(*cversion)) {
         const char *json_str = (const char *)cversion->data;
-        size_t len = vlen - sizeof (*cversion);
+        size_t len = vlen - sizeof(*cversion);
         size_t pgsize = 0;
 
         if (json_str[len - 1] != '\0') {
@@ -647,7 +647,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
     int slen;
 
     if (vfu_ctx->migration == NULL) {
-        slen = snprintf(server_caps, sizeof (server_caps),
+        slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
                     "\"max_fds\":%u,"
@@ -655,7 +655,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
                 "}"
              "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE);
     } else {
-        slen = snprintf(server_caps, sizeof (server_caps),
+        slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
                     "\"max_fds\":%u,"
@@ -675,7 +675,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
 
     /* [0] is for the header. */
     iovecs[1].iov_base = &sversion;
-    iovecs[1].iov_len = sizeof (sversion);
+    iovecs[1].iov_len = sizeof(sversion);
     iovecs[2].iov_base = server_caps;
     /* Include the NUL. */
     iovecs[2].iov_len = slen + 1;
@@ -755,7 +755,7 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
         sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     }
-    return get_msg(hdr, sizeof *hdr, fds, nr_fds, ts->conn_fd, sock_flags);
+    return get_msg(hdr, sizeof(*hdr), fds, nr_fds, ts->conn_fd, sock_flags);
 }
 
 static int
@@ -779,7 +779,7 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
 
     ts = vfu_ctx->tran_data;
 
-    body_size = hdr->msg_size - sizeof (*hdr);
+    body_size = hdr->msg_size - sizeof(*hdr);
 
     data = malloc(body_size);
 
