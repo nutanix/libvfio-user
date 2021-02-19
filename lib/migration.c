@@ -113,7 +113,7 @@ static ssize_t
 handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
                     __u32 *device_state, bool is_write) {
 
-    int ret;
+    int ret = 0;
 
     assert(migr != NULL);
     assert(device_state != NULL);
