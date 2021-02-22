@@ -618,11 +618,19 @@ test_vfu_ctx_create(void **state UNUSED)
     vfu_destroy_ctx(vfu_ctx);
 }
 
+bool pci_caps_writing = true;
+
 static ssize_t
 test_pci_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t offset, bool is_write)
 {
     uint8_t *ptr = pci_config_space_ptr(vfu_ctx, offset);
+
+    if (!pci_caps_writing) {
+        assert_int_equal(is_write, false);
+        memcpy(buf, ptr, count);
+        return count;
+    }
 
     assert_int_equal(is_write, true);
     assert_int_equal(offset, PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + 8 +
@@ -658,6 +666,7 @@ test_pci_caps(void **state UNUSED)
     };
     size_t offset;
     ssize_t ret;
+    char buf[256];
 
     memset(&config_space, 0, sizeof(config_space));
 
@@ -805,14 +814,31 @@ test_pci_caps(void **state UNUSED)
                         expoffsets[2] + offsetof(struct vsc, data)),
                         "Bye world.", 10);
 
+    /* check straddling read */
+
+    pci_caps_writing = false;
+
+    ret = pci_config_space_access(&vfu_ctx, buf, sizeof (buf), 0, false);
+
+    assert_int_equal(ret, sizeof (buf));
+    assert_memory_equal(pci_config_space_ptr(&vfu_ctx, 0), buf, sizeof (buf));
+
     free(vfu_ctx.reg_info);
 }
+
+static bool pci_ext_caps_writing = true;
 
 static ssize_t
 test_pci_ext_caps_region_cb(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                             loff_t offset, bool is_write)
 {
     uint8_t *ptr = pci_config_space_ptr(vfu_ctx, offset);
+
+    if (!pci_ext_caps_writing) {
+        assert_int_equal(is_write, false);
+        memcpy(buf, ptr, count);
+        return count;
+    }
 
     assert_int_equal(is_write, true);
     assert_int_equal(offset, PCI_CFG_SPACE_SIZE + sizeof(struct dsncap) +
@@ -856,6 +882,7 @@ test_pci_ext_caps(void **state UNUSED)
     struct dsncap dsn;
     size_t offset;
     ssize_t ret;
+    char buf[512];
 
     vfu_ctx.pci.type = VFU_PCI_TYPE_EXPRESS;
 
@@ -1002,6 +1029,15 @@ test_pci_ext_caps(void **state UNUSED)
     assert_memory_equal(pci_config_space_ptr(&vfu_ctx,
                         expoffsets[2] + offsetof(struct pcie_ext_cap_vsc_hdr, data)),
                         "Bye world.", 10);
+
+    /* check straddling read */
+
+    pci_ext_caps_writing = false;
+
+    ret = pci_config_space_access(&vfu_ctx, buf, sizeof (buf), 0, false);
+
+    assert_int_equal(ret, sizeof (buf));
+    assert_memory_equal(pci_config_space_ptr(&vfu_ctx, 0), buf, sizeof (buf));
 
     free(vfu_ctx.reg_info);
 }
