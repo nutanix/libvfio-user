@@ -722,14 +722,15 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
     if (ts->conn_fd == -1) {
-        return -errno;
+        return -1;
     }
 
     ret = negotiate(vfu_ctx, ts->conn_fd);
     if (ret < 0) {
         close(ts->conn_fd);
         ts->conn_fd = -1;
-        return ret;
+        errno = -ret;
+        return -1;
     }
 
     return 0;
