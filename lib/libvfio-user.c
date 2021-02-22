@@ -437,8 +437,6 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
 
     if (in_size < sizeof(*in_dev_info) ||
         in_dev_info->argsz < sizeof(*in_dev_info)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad device get info size %d %d", in_size,
-                in_dev_info->argsz);
         return -EINVAL;
     }
 
