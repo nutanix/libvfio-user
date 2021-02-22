@@ -959,7 +959,7 @@ test_pci_ext_caps(void **state UNUSED)
     assert_int_equal(EINVAL, errno);
 
     offset = vfu_pci_find_next_capability(&vfu_ctx, true,
-                                          expoffsets[1] + 1,
+                                          expoffsets[1] + 8,
                                           PCI_EXT_CAP_ID_DSN);
     assert_int_equal(0, offset);
     assert_int_equal(ENOENT, errno);
