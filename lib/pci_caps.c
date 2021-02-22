@@ -372,7 +372,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
     }
 
     if (!is_write) {
-        memcpy(buf + offset, pci_config_space_ptr(vfu_ctx, offset), count);
+        memcpy(buf, pci_config_space_ptr(vfu_ctx, offset), count);
         return count;
     }
 
