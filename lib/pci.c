@@ -393,6 +393,7 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
         offset += ret;
         count -= ret;
+        buf += ret;
     }
 
     return offset - start;
