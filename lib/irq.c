@@ -355,6 +355,9 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     }
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
+        case VFIO_IRQ_SET_DATA_NONE:
+            vfu_log(vfu_ctx, LOG_NOTICE, "ignoring IRQ type %d");
+            return 0;
         case VFIO_IRQ_SET_DATA_EVENTFD:
             data = fds;
             if (nr_fds != irq_set->count) {
