@@ -356,7 +356,14 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     switch (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
         case VFIO_IRQ_SET_DATA_NONE:
-            vfu_log(vfu_ctx, LOG_NOTICE, "ignoring IRQ type %d");
+            /*
+             * FIXME The way it's handled in this case is a hack, it should be
+             * properly fixed, see issue #359 for more details.
+             */
+            vfu_log(vfu_ctx, LOG_NOTICE,
+                    "ignore IRQ DATA_NONE, action=%#x, index=%ld, start=%ld, count=%ld",
+                    irq_set->flags & VFIO_IRQ_SET_ACTION_TYPE_MASK,
+                    irq_set->index, irq_set->start, irq_set->count);
             return 0;
         case VFIO_IRQ_SET_DATA_EVENTFD:
             data = fds;
