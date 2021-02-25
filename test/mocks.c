@@ -66,6 +66,24 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
     return mock();
 }
 
+int
+__wrap_dma_controller_remove_region(dma_controller_t *dma,
+                                    dma_addr_t dma_addr, size_t size,
+                                    vfu_unmap_dma_cb_t *unmap_dma, void *data)
+{
+    if (!is_patched(dma_controller_remove_region)) {
+        return __real_dma_controller_remove_region(dma, dma_addr, size,
+                                                   unmap_dma, data);
+    }
+
+    check_expected(dma);
+    check_expected(dma_addr);
+    check_expected(size);
+    check_expected(unmap_dma);
+    check_expected(data);
+    return mock();
+}
+
 void *
 __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
                       size_t len)
@@ -256,6 +274,7 @@ __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
+    {.addr = &__wrap_dma_controller_remove_region},
     {.addr = &__wrap_dma_map_region},
     {.addr = &__wrap__dma_controller_do_remove_region},
     {.addr = &__wrap_device_is_stopped},

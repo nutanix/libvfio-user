@@ -105,7 +105,7 @@ test_dma_map_without_fd(void **state UNUSED)
 }
 
 static void
-dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
+dma_map_cb(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
            uint32_t prot)
 {
     if (iova == 0xcafebabe) {
@@ -116,7 +116,7 @@ dma_map_cb(UNUSED vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
         assert_int_equal(0x1000, len);
         assert_int_equal(PROT_NONE, prot);
     }
-
+    (*((size_t*)vfu_ctx->pvt))++;
     return;
 }
 
@@ -128,7 +128,8 @@ static void
 test_dma_add_regions_mixed(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
-    vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb};
+    size_t count;
+    vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb, .pvt = &count};
     dma.vfu_ctx = &vfu_ctx;
     struct vfio_user_dma_region r[2] = {
         [0] = {
@@ -164,6 +165,7 @@ test_dma_add_regions_mixed(void **state UNUSED)
     expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
 
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof(r), true, &fd, 1, r));
+    assert_int_equal(2, count);
 }
 
 /*
@@ -263,6 +265,42 @@ test_dma_map_return_value(void **state UNUSED)
     assert_int_equal(0,
         handle_dma_map_or_unmap(&vfu_ctx, sizeof(struct vfio_user_dma_region),
             true, &fd, 0, &r));
+}
+
+/*
+ * Tests that handle_dma_map_or_unmap calls dma_controller_remove_region.
+ */
+static void
+test_handle_dma_unmap(void **state UNUSED)
+{
+    dma_controller_t d = { 0 };
+    vfu_ctx_t v = {
+        .dma = &d,
+        .map_dma = (void*)0xcafebabe,
+        .unmap_dma = (void*)0x8badf00d
+    };
+    struct vfio_user_dma_region r[2] = {
+        { .addr = 0xabcd, .size = 0x1234 },
+        { .addr = 0xbcda, .size = 0x4321 }
+    };
+
+    patch(dma_controller_add_region);
+    patch(dma_controller_remove_region);
+    expect_value(__wrap_dma_controller_remove_region, dma, &d);
+    expect_value(__wrap_dma_controller_remove_region, dma_addr, 0xabcd);
+    expect_value(__wrap_dma_controller_remove_region, size, 0x1234);
+    expect_value(__wrap_dma_controller_remove_region, unmap_dma, 0x8badf00d);
+    expect_value(__wrap_dma_controller_remove_region, data, &v);
+    will_return(__wrap_dma_controller_remove_region, 0);
+    expect_value(__wrap_dma_controller_remove_region, dma, &d);
+    expect_value(__wrap_dma_controller_remove_region, dma_addr, 0xbcda);
+    expect_value(__wrap_dma_controller_remove_region, size, 0x4321);
+    expect_value(__wrap_dma_controller_remove_region, unmap_dma, 0x8badf00d);
+    expect_value(__wrap_dma_controller_remove_region, data, &v);
+    will_return(__wrap_dma_controller_remove_region, 0);
+
+    assert_int_equal(0,
+        handle_dma_map_or_unmap(&v, sizeof(r), false, (void*)0xdeadbeef, 0, r));
 }
 
 static void
@@ -1573,6 +1611,7 @@ int main(void)
         cmocka_unit_test_setup(test_dma_add_regions_mixed_partial_failure, setup),
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_no_fd, setup),
+        cmocka_unit_test_setup(test_handle_dma_unmap, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_realize_ctx, setup),
         cmocka_unit_test_setup(test_attach_ctx, setup),

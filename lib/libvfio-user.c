@@ -488,7 +488,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
     size_t fdi;
 
     assert(vfu_ctx != NULL);
-    assert(fds != NULL);
+    assert(fds != NULL); /* TODO assert valid only for map */
 
     if (vfu_ctx->dma == NULL) {
         return 0;
@@ -557,10 +557,10 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                     dma_regions[i].addr,
                     dma_regions[i].addr + dma_regions[i].size - 1);
         }
-        if (ret < 0) {
+        if (ret < 0) { /* FIXME this if will never be taken */
             return ret;
         }
-        if (vfu_ctx->map_dma != NULL) {
+        if (map && vfu_ctx->map_dma != NULL) {
             vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr, dma_regions[i].size,
                              dma_regions[i].prot);
         }
