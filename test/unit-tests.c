@@ -128,7 +128,7 @@ static void
 test_dma_add_regions_mixed(void **state UNUSED)
 {
     dma_controller_t dma = { 0 };
-    size_t count;
+    size_t count = 0;
     vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb, .pvt = &count};
     dma.vfu_ctx = &vfu_ctx;
     struct vfio_user_dma_region r[2] = {
