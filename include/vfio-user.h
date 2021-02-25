@@ -126,11 +126,6 @@ struct vfio_user_irq_info {
 
 /* copied from <linux/vfio.h> */
 
-#define VFIO_REGION_TYPE_MIGRATION              (3)
-#define VFIO_REGION_SUBTYPE_MIGRATION           (1)
-
-struct vfio_device_migration_info {
-	__u32 device_state;         /* VFIO device state */
 #define VFIO_DEVICE_STATE_STOP      (0)
 #define VFIO_DEVICE_STATE_RUNNING   (1 << 0)
 #define VFIO_DEVICE_STATE_SAVING    (1 << 1)
@@ -151,11 +146,19 @@ struct vfio_device_migration_info {
 	((state & ~VFIO_DEVICE_STATE_MASK) | VFIO_DEVICE_SATE_SAVING | \
 					     VFIO_DEVICE_STATE_RESUMING)
 
+/* RHEL kernels have some of it backported */
+#ifndef VFIO_REGION_TYPE_MIGRATION /* not a RHEL kernel */
+#define VFIO_REGION_TYPE_MIGRATION              (3)
+#define VFIO_REGION_SUBTYPE_MIGRATION           (1)
+
+struct vfio_device_migration_info {
+	__u32 device_state;         /* VFIO device state */
 	__u32 reserved;
 	__u64 pending_bytes;
 	__u64 data_offset;
 	__u64 data_size;
 };
+#endif /* not a RHEL kernel */
 
 struct vfio_bitmap {
 	__u64        pgsize;	/* page size for bitmap in bytes */
