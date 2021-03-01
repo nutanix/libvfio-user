@@ -97,7 +97,7 @@ __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
 
 void
 __wrap__dma_controller_do_remove_region(dma_controller_t *dma,
-                                       dma_memory_region_t *region)
+                                        dma_memory_region_t *region)
 {
     check_expected(dma);
     check_expected(region);

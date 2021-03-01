@@ -446,7 +446,7 @@ static int
 access_region(int sock, int region, bool is_write, uint64_t offset,
             void *data, size_t data_len)
 {
-    static int msg_id = -1;
+    static int msg_id = 0xf00f;
     struct vfio_user_region_access send_region_access = {
         .offset = offset,
         .region = region,
@@ -792,6 +792,7 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
             errx(EXIT_FAILURE, "failed to read pending_bytes: %s",
                  strerror(-ret));
         }
+        printf("pending_bytes %llu nr_iters %zu\n", pending_bytes, nr_iters);
     }
     return i;
 }

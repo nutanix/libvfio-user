@@ -51,8 +51,6 @@
 // FIXME: is this the value we want?
 #define SERVER_MAX_FDS 8
 
-#define SERVER_MAX_MSG_SIZE 65536
-
 typedef struct {
     int listen_fd;
     int conn_fd;
@@ -737,8 +735,8 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 }
 
 static int
-tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                      int *fds, size_t *nr_fds)
+tran_sock_get_request_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                             int *fds, size_t *nr_fds)
 {
     tran_sock_t *ts;
     int sock_flags = 0;
@@ -760,68 +758,81 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 static int
-tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
-                    void **datap)
+tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    size_t body_size;
     tran_sock_t *ts;
-    void *data;
     int ret;
 
     assert(vfu_ctx != NULL);
     assert(vfu_ctx->tran_data != NULL);
-    assert(hdr != NULL);
-
-    if (hdr->msg_size > SERVER_MAX_MSG_SIZE) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
-                hdr->msg_id, hdr->msg_size);
-        return -EINVAL;
-    }
+    assert(msg != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    body_size = hdr->msg_size - sizeof(*hdr);
+    msg->in_data = malloc(msg->in_size);
 
-    data = malloc(body_size);
-
-    if (data == NULL) {
+    if (msg->in_data == NULL) {
         return -errno;
     }
 
-    ret = recv(ts->conn_fd, data, body_size, 0);
+    ret = recv(ts->conn_fd, msg->in_data, msg->in_size, 0);
 
     if (ret < 0) {
         ret = -errno;
-        free(data);
+        free(msg->in_data);
+        msg->in_data = NULL;
         return ret;
     }
 
-    if (ret != (int)body_size) {
+    if (ret != (int)msg->in_size) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%d, actual=%d",
-                hdr->msg_id, body_size, ret);
-        free(data);
+                msg->hdr.msg_id, msg->in_size, ret);
+        free(msg->in_data);
+        msg->in_data = NULL;
         return -EINVAL;
     }
 
-    *datap = data;
     return 0;
 }
 
 static int
-tran_sock_reply(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
-                struct iovec *iovecs, size_t nr_iovecs,
-                int *fds, int count, int err)
+tran_sock_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
 {
+    struct iovec *iovecs;
+    size_t nr_iovecs;
     tran_sock_t *ts;
+    int ret;
 
     assert(vfu_ctx != NULL);
     assert(vfu_ctx->tran_data != NULL);
+    assert(msg != NULL);
 
     ts = vfu_ctx->tran_data;
 
+    /* First iovec entry is for msg header. */
+    nr_iovecs = (msg->nr_out_iovecs != 0) ? (msg->nr_out_iovecs + 1) : 2;
+    iovecs = calloc(nr_iovecs, sizeof(*iovecs));
+
+    if (iovecs == NULL) {
+        return -errno;
+    }
+
+    if (msg->out_iovecs != NULL) {
+        bcopy(msg->out_iovecs, iovecs + 1,
+              msg->nr_out_iovecs * sizeof(*iovecs));
+    } else {
+        iovecs[1].iov_base = msg->out_data;
+        iovecs[1].iov_len = msg->out_size;
+    }
+
     // FIXME: SPEC: should the reply include the command? I'd say yes?
-    return tran_sock_send_iovec(ts->conn_fd, msg_id, true, 0,
-                                iovecs, nr_iovecs, fds, count, err);
+    ret = tran_sock_send_iovec(ts->conn_fd, msg->hdr.msg_id, true, 0,
+                               iovecs, nr_iovecs,
+                               msg->out_fds, msg->nr_out_fds, err);
+
+    free(iovecs);
+
+    return ret;
 }
 
 static int
@@ -848,11 +859,10 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->conn_fd != -1) {
+    if (ts != NULL && ts->conn_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->conn_fd);
         ts->conn_fd = -1;
@@ -865,11 +875,10 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->listen_fd != -1) {
+    if (ts != NULL && ts->listen_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->listen_fd);
         ts->listen_fd = -1;
@@ -883,7 +892,7 @@ struct transport_ops tran_sock_ops = {
     .init = tran_sock_init,
     .get_poll_fd = tran_sock_get_poll_fd,
     .attach = tran_sock_attach,
-    .get_request = tran_sock_get_request,
+    .get_request_header = tran_sock_get_request_header,
     .recv_body = tran_sock_recv_body,
     .reply = tran_sock_reply,
     .send_msg = tran_sock_send_msg,

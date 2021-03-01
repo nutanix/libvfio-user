@@ -36,19 +36,35 @@
 #include "pci_caps.h"
 #include "dma.h"
 
-static inline int
-ERROR_INT(int err)
-{
-    errno = err;
-    return -1;
-}
+#define SERVER_MAX_MSG_SIZE 65536
 
-static inline void *
-ERROR_PTR(int err)
-{
-    errno = err;
-    return NULL;
-}
+/*
+ * Structure used to hold an in-flight request+reply.
+ *
+ * Incoming request body and fds are stored in in_*.
+ *
+ * Outgoing requests are either stored in out_data, or out_iovecs. In the latter
+ * case, the iovecs refer to data that should not be freed.
+ */
+typedef struct {
+    /* in/out */
+    struct vfio_user_header hdr;
+
+    int *in_fds;
+    size_t nr_in_fds;
+
+    void *in_data;
+    size_t in_size;
+
+    int *out_fds;
+    size_t nr_out_fds;
+
+    void *out_data;
+    size_t out_size;
+
+    struct iovec *out_iovecs;
+    size_t nr_out_iovecs;
+} vfu_msg_t;
 
 struct transport_ops {
     int (*init)(vfu_ctx_t *vfu_ctx);
@@ -57,15 +73,12 @@ struct transport_ops {
 
     int (*attach)(vfu_ctx_t *vfu_ctx);
 
-    int (*get_request)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                       int *fds, size_t *nr_fds);
+    int (*get_request_header)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                              int *fds, size_t *nr_fds);
 
-    int (*recv_body)(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
-                     void **datap);
+    int (*recv_body)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
-    int (*reply)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
-                 struct iovec *iovecs, size_t nr_iovecs,
-                 int *fds, int count, int err);
+    int (*reply)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err);
 
     int (*send_msg)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
                     enum vfio_user_command cmd,
@@ -136,45 +149,40 @@ struct vfu_ctx {
     vfu_dev_type_t          dev_type;
 };
 
+static inline int
+ERROR_INT(int err)
+{
+    errno = err;
+    return -1;
+}
+
+static inline void *
+ERROR_PTR(int err)
+{
+    errno = err;
+    return NULL;
+}
+
 void
 dump_buffer(const char *prefix, const char *buf, uint32_t count);
+
+int
+consume_fd(int *fds, size_t nr_fds, size_t index);
 
 vfu_reg_info_t *
 vfu_get_region_info(vfu_ctx_t *vfu_ctx);
 
-int
-handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
-                        int *fds, size_t nr_fds,
-                        struct vfio_user_dma_region *dma_regions);
+#ifdef UNIT_TEST
 
 void
 _dma_controller_do_remove_region(dma_controller_t *dma,
                                  dma_memory_region_t *region);
 
 int
-get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
-                 size_t *nr_fds);
+handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 int
-exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
-             struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
-             bool *free_iovec_data);
-
-int
-process_request(vfu_ctx_t *vfu_ctx);
-
-int
-consume_fd(int *fds, size_t nr_fds, size_t index);
-
-int
-handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       struct vfio_device_info *in_dev_info,
-                       struct vfio_device_info *out_dev_info);
-
-long
-dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
-                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
+handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 bool
 cmd_allowed_when_stopped_and_copying(uint16_t cmd);
@@ -183,8 +191,15 @@ bool
 should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
 
 int
-handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
+get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp);
+
+int
+exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+
+int
+process_request(vfu_ctx_t *vfu_ctx);
+
+#endif /* UNIT_TEST */
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 

@@ -53,43 +53,41 @@ vfio_irq_idx_to_str(int index)
     }
 }
 
-static long
-dev_get_irqinfo(vfu_ctx_t *vfu_ctx, struct vfio_irq_info *irq_info_in,
-                struct vfio_irq_info *irq_info_out)
+int
+handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    assert(vfu_ctx != NULL);
-    assert(irq_info_in != NULL);
-    assert(irq_info_out != NULL);
+    struct vfio_irq_info *in_info;
+    struct vfio_irq_info *out_info;
 
-    // Ensure provided argsz is sufficiently big and index is within bounds.
-    if ((irq_info_in->argsz < sizeof(struct vfio_irq_info)) ||
-        (irq_info_in->index >= VFU_DEV_NUM_IRQS)) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad irq_info (size=%d index=%d)\n",
-                irq_info_in->argsz, irq_info_in->index);
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    in_info = msg->in_data;
+
+    // FIXME: don't do the ->argsz/in_size check elsewhere
+    if (msg->in_size < sizeof(*in_info) || msg->in_size != in_info->argsz) {
         return -EINVAL;
     }
 
-    irq_info_out->count = vfu_ctx->irq_count[irq_info_in->index];
-    irq_info_out->flags = VFIO_IRQ_INFO_EVENTFD;
+    if (in_info->index >= VFU_DEV_NUM_IRQS) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad irq_info index %d\n", in_info->index);
+        return -EINVAL;
+    }
+
+    msg->out_size = sizeof (*out_info);
+    msg->out_data = calloc(1, sizeof(*out_info));
+
+    if (msg->out_data == NULL) {
+        return -errno;
+    }
+
+    out_info = msg->out_data;
+    out_info->argsz = sizeof (*out_info);
+    out_info->flags = VFIO_IRQ_INFO_EVENTFD;
+    out_info->index = in_info->index;
+    out_info->count = vfu_ctx->irq_count[in_info->index];
 
     return 0;
-}
-
-int
-handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                           struct vfio_irq_info *irq_info_in,
-                           struct vfio_irq_info *irq_info_out)
-{
-    assert(vfu_ctx != NULL);
-    assert(irq_info_in != NULL);
-    assert(irq_info_out != NULL);
-
-    if (size != sizeof(*irq_info_in) || size != irq_info_in->argsz) {
-        vfu_log(vfu_ctx, LOG_WARNING, "IRQ info size %d", size);
-        return -EINVAL;
-    }
-
-    return dev_get_irqinfo(vfu_ctx, irq_info_in, irq_info_out);
 }
 
 static long
@@ -298,21 +296,21 @@ invalid:
 }
 
 int
-handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       int *fds, size_t nr_fds, struct vfio_irq_set *irq_set)
+handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    struct vfio_irq_set *irq_set = msg->in_data;
     uint32_t data_type;
     int ret;
 
     assert(vfu_ctx != NULL);
-    assert(irq_set != NULL);
+    assert(msg != NULL);
 
-    if (size < sizeof(*irq_set) || size != irq_set->argsz) {
-        vfu_log(vfu_ctx, LOG_ERR, "%s: bad size %u", __func__, size);
+    if (msg->in_size < sizeof(*irq_set) || msg->in_size != irq_set->argsz) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size %d", msg->in_size);
         return -EINVAL;
     }
 
-    ret = device_set_irqs_validate(vfu_ctx, irq_set, nr_fds);
+    ret = device_set_irqs_validate(vfu_ctx, irq_set, msg->nr_in_fds);
     if (ret != 0) {
         return ret;
     }
@@ -330,7 +328,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     data_type = irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK;
 
     if ((data_type == VFIO_IRQ_SET_DATA_NONE && irq_set->count == 0) ||
-        (data_type == VFIO_IRQ_SET_DATA_EVENTFD && nr_fds == 0)) {
+        (data_type == VFIO_IRQ_SET_DATA_EVENTFD && msg->nr_in_fds == 0)) {
         return irqs_disable(vfu_ctx, irq_set->index,
                             irq_set->start, irq_set->count);
     }
@@ -343,7 +341,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
     case VFIO_IRQ_SET_DATA_NONE:
         return irqs_set_data_none(vfu_ctx, irq_set);
     case VFIO_IRQ_SET_DATA_EVENTFD:
-        return irqs_set_data_eventfd(vfu_ctx, irq_set, fds);
+        return irqs_set_data_eventfd(vfu_ctx, irq_set, msg->in_fds);
     case VFIO_IRQ_SET_DATA_BOOL:
         return irqs_set_data_bool(vfu_ctx, irq_set, irq_set + 1);
         break;
