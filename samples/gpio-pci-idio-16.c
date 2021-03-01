@@ -125,11 +125,24 @@ migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, __u64 size,
     return 0;
 }
 
+static void
+map_dma(vfu_ctx_t *vfu_ctx UNUSED, uint64_t iova UNUSED, uint64_t len UNUSED,
+        uint32_t prot UNUSED)
+{
+}
+
+static int
+unmap_dma(vfu_ctx_t *vfu_ctx UNUSED, uint64_t iova UNUSED, uint64_t len UNUSED)
+{
+    return 0;
+}
+
 int
 main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
+    bool dma = false;
     char opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
@@ -146,13 +159,16 @@ main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "v")) != -1) {
+    while ((opt = getopt(argc, argv, "vd")) != -1) {
         switch (opt) {
             case 'v':
                 verbose = true;
                 break;
+            case 'd':
+                dma = true;
+                break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-v] <socketpath>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-d] [-v] <socketpath>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
@@ -209,6 +225,13 @@ main(int argc, char *argv[])
     ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup irq counts");
+    }
+
+    if (dma) {
+        ret = vfu_setup_device_dma_cb(vfu_ctx, map_dma, unmap_dma);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to setup DMA");
+        }
     }
 
     ret = vfu_realize_ctx(vfu_ctx);
