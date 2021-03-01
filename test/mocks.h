@@ -55,6 +55,11 @@ __real_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
                                  size_t size, int fd, off_t offset,
                                  uint32_t prot);
 
+int
+__real_dma_controller_remove_region(dma_controller_t *dma,
+                                    dma_addr_t dma_addr, size_t size,
+                                    vfu_unmap_dma_cb_t *unmap_dma, void *data);
+
 bool
 __real_device_is_stopped(struct migration *migr);
 
