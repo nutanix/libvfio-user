@@ -282,8 +282,8 @@ test_handle_dma_unmap(void **state UNUSED)
     dma_controller_t d = { 0 };
     vfu_ctx_t v = {
         .dma = &d,
-        .map_dma = (void*)0xcafebabe,
-        .unmap_dma = (void*)0x8badf00d
+        .map_dma = (void *)0xcafebabe,
+        .unmap_dma = (void *)0x8badf00d
     };
     struct vfio_user_dma_region r[2] = {
         { .addr = 0xabcd, .size = 0x1234 },
@@ -306,7 +306,7 @@ test_handle_dma_unmap(void **state UNUSED)
     will_return(__wrap_dma_controller_remove_region, 0);
 
     assert_int_equal(0,
-        handle_dma_map_or_unmap(&v, sizeof(r), false, (void*)0xdeadbeef, 0, r));
+        handle_dma_map_or_unmap(&v, sizeof(r), false, (void *)0xdeadbeef, 0, r));
 }
 
 static void
