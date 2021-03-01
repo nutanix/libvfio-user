@@ -38,8 +38,9 @@ target_link_libraries(server vfio-user-static ssl crypto)
 add_executable(null null.c)
 target_link_libraries(null vfio-user-static pthread)
 
+LINK_DIRECTORIES(${CMAKE_BINARY_DIR}/lib)
 add_executable(gpio-pci-idio-16 gpio-pci-idio-16.c)
-target_link_libraries(gpio-pci-idio-16 vfio-user-static)
+target_link_libraries(gpio-pci-idio-16 vfio-user)
 
 add_executable(lspci lspci.c)
 target_link_libraries(lspci vfio-user-static)
