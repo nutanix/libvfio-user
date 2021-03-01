@@ -53,6 +53,7 @@ target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
 target_link_libraries(unit-tests PUBLIC
                       "-Wl,--wrap=_dma_controller_do_remove_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_add_region")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_remove_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_map_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=get_next_command")
