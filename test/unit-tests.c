@@ -673,15 +673,15 @@ test_pci_caps(void **state UNUSED)
 
     vsc2->hdr.id = PCI_CAP_ID_VNDR;
     vsc2->size = 16;
-    memcpy(vsc2->data, "Hello world.", 12);
+    memcpy(vsc2->data, "Hello world.", 13);
 
     vsc3->hdr.id = PCI_CAP_ID_VNDR;
     vsc3->size = 16;
-    memcpy(vsc3->data, "Hello world.", 12);
+    memcpy(vsc3->data, "Hello world.", 13);
 
     vsc4->hdr.id = PCI_CAP_ID_VNDR;
     vsc4->size = 16;
-    memcpy(vsc4->data, "Hello world.", 12);
+    memcpy(vsc4->data, "Hello world.", 13);
 
     offset = vfu_pci_add_capability(&vfu_ctx, 0, VFU_CAP_FLAG_CALLBACK, &pm);
     assert_int_equal(-1, offset);
@@ -835,11 +835,17 @@ test_pci_ext_caps(void **state UNUSED)
                           .reg_info = reg_info,
     };
 
-    struct pcie_ext_cap_vsc_hdr *vsc1 = alloca(sizeof(*vsc1) + 5);
-    struct pcie_ext_cap_vsc_hdr *vsc2 = alloca(sizeof(*vsc2) + 13);
-    struct pcie_ext_cap_vsc_hdr *vsc3 = alloca(sizeof(*vsc3) + 13);
-    struct pcie_ext_cap_vsc_hdr *vsc4 = alloca(sizeof(*vsc4) + 13);
     struct pcie_ext_cap_hdr *hdr;
+    size_t explens[] = {
+        sizeof(struct pcie_ext_cap_vsc_hdr) + 5,
+        sizeof(struct pcie_ext_cap_vsc_hdr) + 13,
+        sizeof(struct pcie_ext_cap_vsc_hdr) + 13,
+        sizeof(struct pcie_ext_cap_vsc_hdr) + 13,
+    };
+    struct pcie_ext_cap_vsc_hdr *vsc1 = alloca(explens[0]);
+    struct pcie_ext_cap_vsc_hdr *vsc2 = alloca(explens[1]);
+    struct pcie_ext_cap_vsc_hdr *vsc3 = alloca(explens[2]);
+    struct pcie_ext_cap_vsc_hdr *vsc4 = alloca(explens[3]);
     size_t expoffsets[] = {
         PCI_CFG_SPACE_SIZE,
         PCI_CFG_SPACE_SIZE + sizeof(struct dsncap),
@@ -859,22 +865,31 @@ test_pci_ext_caps(void **state UNUSED)
     vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb = test_pci_ext_caps_region_cb;
     vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = PCI_CFG_SPACE_EXP_SIZE;
 
+    memset(&dsn, 0, sizeof (dsn));
+
     dsn.hdr.id = PCI_EXT_CAP_ID_DSN;
     dsn.sn_lo = 0x4;
     dsn.sn_hi = 0x8;
 
+    memset(vsc1, 0, explens[0]);
+    vsc1->len = explens[0];
     vsc1->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc1->len = sizeof(*vsc1) + 5;
     memcpy(vsc1->data, "abcde", 5);
+
+    memset(vsc2, 0, explens[1]);
+    vsc2->len = explens[1];
     vsc2->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc2->len = sizeof(*vsc2) + 13;
-    memcpy(vsc2->data, "Hello world.", 12);
+    memcpy(vsc2->data, "Hello world.", 13);
+
+    memset(vsc3, 0, explens[2]);
+    vsc3->len = explens[2];
     vsc3->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc3->len = sizeof(*vsc3) + 13;
-    memcpy(vsc3->data, "Hello world.", 12);
+    memcpy(vsc3->data, "Hello world.", 13);
+
+    memset(vsc4, 0, explens[3]);
+    vsc4->len = explens[3];
     vsc4->hdr.id = PCI_EXT_CAP_ID_VNDR;
-    vsc4->len = sizeof(*vsc4) + 13;
-    memcpy(vsc4->data, "Hello world.", 12);
+    memcpy(vsc4->data, "Hello world.", 13);
 
     offset = vfu_pci_add_capability(&vfu_ctx, 4096, VFU_CAP_FLAG_EXTENDED, &dsn);
     assert_int_equal(-1, offset);
