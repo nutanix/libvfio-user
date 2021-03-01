@@ -26,6 +26,16 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+if (WITH_ASAN EQUAL 1)
+  unset(valgrind)
+else()
+  set(valgrind_path "/usr/bin/valgrind")
+  set(valgrind_args "--error-exitcode=1 --leak-check=full --quiet")
+  set(valgrind_args "${valgrind_args} --show-leak-kinds=all --track-origins=yes")
+  separate_arguments(valgrind_args)
+  set(valgrind ${valgrind_path} ${valgrind_args})
+endif()
+
 add_executable(unit-tests unit-tests.c mocks.c
 		../lib/dma.c
 		../lib/irq.c
@@ -61,6 +71,6 @@ target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=should_exec_command")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=handle_dirty_pages")
 
 enable_testing()
-add_test(NAME unit-tests COMMAND unit-tests)
+add_test(NAME unit-tests COMMAND ${valgrind} ${CMAKE_CURRENT_BINARY_DIR}/unit-tests)
 add_test(NAME lspci COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-lspci.sh)
 add_test(NAME client-server COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-client-server.sh)
