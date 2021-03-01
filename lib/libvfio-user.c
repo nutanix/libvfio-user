@@ -533,6 +533,10 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         strerror(-ret));
                 break;
             }
+            if (vfu_ctx->map_dma != NULL) {
+                vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr,
+                                 dma_regions[i].size, dma_regions[i].prot);
+            }
             ret = 0;
             vfu_log(vfu_ctx, LOG_DEBUG,
                     "added DMA region %#lx-%#lx offset=%#lx fd=%d prot=%#x",
@@ -556,13 +560,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                     "removed DMA region %#lx-%#lx",
                     dma_regions[i].addr,
                     dma_regions[i].addr + dma_regions[i].size - 1);
-        }
-        if (ret < 0) { /* FIXME this if will never be taken */
-            return ret;
-        }
-        if (map && vfu_ctx->map_dma != NULL) {
-            vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr, dma_regions[i].size,
-                             dma_regions[i].prot);
         }
     }
     return ret;

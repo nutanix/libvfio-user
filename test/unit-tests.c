@@ -123,6 +123,10 @@ dma_map_cb(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
 /*
  * Tests that adding multiple DMA regions that not all of them are mappable
  * results in only the mappable one being memory mapped.
+ * FIXME this test no longer tests what it's supposed to be testing, since
+ * checking that a non-mappable DMA region doesn't get mmap'ed can only be done
+ * in dma_controller_add_region. We don't have such a test (we only have
+ * test_dma_controller_add_region_no_fd), we should add it.
  */
 static void
 test_dma_add_regions_mixed(void **state UNUSED)
@@ -149,7 +153,7 @@ test_dma_add_regions_mixed(void **state UNUSED)
     int fd = 0x0badf00d;
 
     patch(dma_controller_add_region);
-    will_return(__wrap_dma_controller_add_region, 0);
+    /* 1st region */
     will_return(__wrap_dma_controller_add_region, 0);
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[0].addr);
@@ -157,6 +161,8 @@ test_dma_add_regions_mixed(void **state UNUSED)
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
     expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
+    /* 2nd region */
+    will_return(__wrap_dma_controller_add_region, 0);    
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
