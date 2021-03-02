@@ -40,7 +40,7 @@ target_link_libraries(null vfio-user-static pthread)
 
 LINK_DIRECTORIES(${CMAKE_BINARY_DIR}/lib)
 add_executable(gpio-pci-idio-16 gpio-pci-idio-16.c)
-target_link_libraries(gpio-pci-idio-16 vfio-user)
+target_link_libraries(gpio-pci-idio-16 vfio-user-shared)
 
 add_executable(lspci lspci.c)
 target_link_libraries(lspci vfio-user-static)
