@@ -343,7 +343,9 @@ static void
 test_dma_controller_remove_region_mapped(void **state UNUSED)
 {
     vfu_ctx_t v = { 0 };
-    dma_controller_t *d = alloca(sizeof(*d) + sizeof(*d->regions));
+    size_t size = sizeof(dma_controller_t) + sizeof(dma_memory_region_t);
+    dma_controller_t *d = alloca(size);
+    memset(d, 0, size);
 
     d->vfu_ctx = &v;
     d->max_regions = d->nregions = 1;
@@ -366,7 +368,9 @@ static void
 test_dma_controller_remove_region_unmapped(void **state UNUSED)
 {
     vfu_ctx_t v = { 0 };
-    dma_controller_t *d = alloca(sizeof(*d) + sizeof(*d->regions));
+    size_t size = sizeof(dma_controller_t) + sizeof(dma_memory_region_t);
+    dma_controller_t *d = alloca(size);
+    memset(d, 0, size);
 
     d->vfu_ctx = &v;
     d->max_regions = d->nregions = 1;
