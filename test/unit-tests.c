@@ -340,24 +340,46 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
 }
 
 static void
-test_dma_controller_remove_region_no_fd(void **state UNUSED)
+test_dma_controller_remove_region_mapped(void **state UNUSED)
 {
-    dma_memory_region_t r = {
-        .dma_addr = 0xdeadbeef,
-        .size = 0x100,
-        .fd = -1,
-        .virt_addr = NULL
-    };
-    vfu_ctx_t vfu_ctx = { 0 };
-    dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(r));
-    dma->vfu_ctx = &vfu_ctx;
-    dma->nregions = 1;
-    dma->max_regions = 1;
-    dma->regions[0] = r;
+    vfu_ctx_t v = { 0 };
+    dma_controller_t *d = alloca(sizeof(*d) + sizeof(*d->regions));
+
+    d->vfu_ctx = &v;
+    d->max_regions = d->nregions = 1;
+    d->regions[0].dma_addr = 0xdeadbeef;
+    d->regions[0].size = 0x100;
+    d->regions[0].virt_addr = (void *)0xcafebabe;
+    expect_value(mock_unmap_dma, vfu_ctx, &v);
+    expect_value(mock_unmap_dma, iova, 0xdeadbeef);
+    expect_value(mock_unmap_dma, len, 0x100);
+    /* FIXME add uni test when unmap_dma fails */
+    will_return(mock_unmap_dma, 0);
     patch(_dma_controller_do_remove_region);
-    expect_value(__wrap__dma_controller_do_remove_region, dma, dma);
-    expect_value(__wrap__dma_controller_do_remove_region, region, &dma->regions[0]);
-    assert_int_equal(0, dma_controller_remove_region(dma, r.dma_addr, r.size, NULL, NULL));
+    expect_value(__wrap__dma_controller_do_remove_region, dma, d);
+    expect_value(__wrap__dma_controller_do_remove_region, region, &d->regions[0]);
+    assert_int_equal(0,
+        dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
+}
+
+static void
+test_dma_controller_remove_region_unmapped(void **state UNUSED)
+{
+    vfu_ctx_t v = { 0 };
+    dma_controller_t *d = alloca(sizeof(*d) + sizeof(*d->regions));
+
+    d->vfu_ctx = &v;
+    d->max_regions = d->nregions = 1;
+    d->regions[0].dma_addr = 0xdeadbeef;
+    d->regions[0].size = 0x100;
+    d->regions[0].virt_addr = NULL;
+    expect_value(mock_unmap_dma, vfu_ctx, &v);
+    expect_value(mock_unmap_dma, iova, 0xdeadbeef);
+    expect_value(mock_unmap_dma, len, 0x100);
+    will_return(mock_unmap_dma, 0);
+    patch(_dma_controller_do_remove_region);
+    assert_int_equal(0,
+        dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
 }
 
 static int fds[] = { 0xab, 0xcd };
@@ -1667,7 +1689,8 @@ int main(void)
         cmocka_unit_test_setup(test_dma_add_regions_mixed, setup),
         cmocka_unit_test_setup(test_dma_add_regions_mixed_partial_failure, setup),
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
-        cmocka_unit_test_setup(test_dma_controller_remove_region_no_fd, setup),
+        cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
+        cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
         cmocka_unit_test_setup(test_handle_dma_unmap, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_realize_ctx, setup),

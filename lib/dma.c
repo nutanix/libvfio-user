@@ -168,7 +168,9 @@ dma_controller_remove_region(dma_controller_t *dma,
             return err;
         }
         assert(region->refcnt == 0);
-        _dma_controller_do_remove_region(dma, region);
+        if (region->virt_addr != NULL) {
+            _dma_controller_do_remove_region(dma, region);
+        }
         if (dma->nregions > 1)
             /*
              * FIXME valgrind complains with 'Source and destination overlap in memcpy',

@@ -271,6 +271,16 @@ __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
     return mock();
 }
 
+/* Always mocked. */
+int
+mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
+{
+    check_expected(vfu_ctx);
+    check_expected(iova);
+    check_expected(len);
+    return mock();
+}
+
 /* FIXME should be something faster than unsorted array, look at tsearch(3). */
 static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},

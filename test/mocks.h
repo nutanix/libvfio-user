@@ -83,4 +83,7 @@ __real_device_is_stopped_and_copying(struct migration *migration);
 bool
 __real_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
 
+int
+mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len);
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
