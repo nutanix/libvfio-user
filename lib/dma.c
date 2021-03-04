@@ -156,29 +156,30 @@ dma_controller_remove_region(dma_controller_t *dma,
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
-        if (region->dma_addr == dma_addr && region->size == size) {
-            if (region->refcnt > 0) {
-                err = unmap_dma(data, region->dma_addr, region->size);
-                if (err != 0) {
-                    vfu_log(dma->vfu_ctx, LOG_ERR,
-                           "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
-                           region->dma_addr, region->dma_addr + region->size,
-                           strerror(-err));
-                    return err;
-                }
-                assert(region->refcnt == 0);
-            }
-            _dma_controller_do_remove_region(dma, region);
-            if (dma->nregions > 1)
-                /*
-                 * FIXME valgrind complains with 'Source and destination overlap in memcpy',
-                 * check whether memmove eliminates this warning.
-                 */
-                memcpy(region, &dma->regions[dma->nregions - 1],
-                       sizeof(*region));
-            dma->nregions--;
-            return 0;
+        if (region->dma_addr != dma_addr || region->size != size) {
+            continue;
         }
+        err = unmap_dma(data, region->dma_addr, region->size);
+        if (err != 0) {
+            vfu_log(dma->vfu_ctx, LOG_ERR,
+                   "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
+                   region->dma_addr, region->dma_addr + region->size,
+                   strerror(-err));
+            return err;
+        }
+        assert(region->refcnt == 0);
+        if (region->virt_addr != NULL) {
+            _dma_controller_do_remove_region(dma, region);
+        }
+        if (dma->nregions > 1)
+            /*
+             * FIXME valgrind complains with 'Source and destination overlap in memcpy',
+             * check whether memmove eliminates this warning.
+             */
+            memcpy(region, &dma->regions[dma->nregions - 1],
+                   sizeof(*region));
+        dma->nregions--;
+        return 0;
     }
     return -ENOENT;
 }
