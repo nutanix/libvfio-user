@@ -77,19 +77,11 @@ struct transport_ops {
     void (*fini)(vfu_ctx_t *vfu_ctx);
 };
 
-typedef enum {
-    IRQ_NONE = 0,
-    IRQ_INTX,
-    IRQ_MSI,
-    IRQ_MSIX,
-} irq_type_t;
-
 typedef struct {
-    irq_type_t  type;       /* irq type this device is using */
     int         err_efd;    /* eventfd for irq err */
     int         req_efd;    /* eventfd for irq req */
     uint32_t    max_ivs;    /* maximum number of ivs supported */
-    int         efds[0];    /* XXX must be last */
+    int         efds[0];    /* must be last */
 } vfu_irqs_t;
 
 struct migration;
@@ -189,6 +181,10 @@ cmd_allowed_when_stopped_and_copying(uint16_t cmd);
 
 bool
 should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
+
+int
+handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
+                       int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
