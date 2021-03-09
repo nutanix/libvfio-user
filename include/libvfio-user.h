@@ -508,22 +508,6 @@ int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
 
 /**
- * Sends message to client to trigger an interrupt.
- *
- * libvfio-user takes care of using the IRQ type (INTx, MSI/X), the caller only
- * needs to specify the sub-index.
- * This api can be used to trigger interrupt by sending message to client.
- *
- * @vfu_ctx: the libvfio-user context to trigger interrupt
- * @subindex: vector subindex to trigger interrupt on
- *
- * @returns 0 on success, or -1 on failure. Sets errno.
- */
-
-int
-vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex);
-
-/**
  * Takes a guest physical address and returns a list of scatter/gather entries
  * than can be individually mapped in the program's virtual memory.  A single
  * linear guest physical address span may need to be split into multiple

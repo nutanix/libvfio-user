@@ -516,47 +516,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
 }
 
 static void
-wait_for_irqs(int sock, int irq_fd)
-{
-    int ret;
-    uint64_t val;
-    size_t size;
-    struct vfio_user_irq_info vfio_user_irq_info;
-    struct vfio_user_header hdr;
-    uint16_t msg_id = 0xbabe;
-
-    if (read(irq_fd, &val, sizeof(val)) == -1) {
-        err(EXIT_FAILURE, "failed to read from irqfd");
-    }
-    printf("INTx triggered!\n");
-
-    size = sizeof(vfio_user_irq_info);
-    ret = tran_sock_recv(sock, &hdr, false, &msg_id,
-                         &vfio_user_irq_info, &size);
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to receive IRQ message: %s",
-             strerror(-ret));
-    }
-
-    if (hdr.cmd != VFIO_USER_VM_INTERRUPT) {
-        errx(EXIT_FAILURE, "unexpected cmd %d\n", hdr.cmd);
-    }
-
-    if (vfio_user_irq_info.subindex >= 1) {
-        errx(EXIT_FAILURE, "bad IRQ %d, max=1\n", vfio_user_irq_info.subindex);
-    }
-
-    // Is a NULL iovec like this OK?
-    ret = tran_sock_send(sock, msg_id, true, hdr.cmd, NULL, 0);
-    if (ret < 0) {
-        errx(EXIT_FAILURE,
-             "failed to send reply for VFIO_USER_VM_INTERRUPT: %s",
-             strerror(-ret));
-    }
-}
-
-static void
-access_bar0(int sock, int irq_fd, time_t *t)
+access_bar0(int sock, time_t *t)
 {
     int ret;
 
@@ -575,8 +535,17 @@ access_bar0(int sock, int irq_fd, time_t *t)
     }
 
     printf("read from BAR0: %ld\n", *t);
+}
 
-    wait_for_irqs(sock, irq_fd);
+static void
+wait_for_irq(int irq_fd)
+{
+    uint64_t val;
+
+    if (read(irq_fd, &val, sizeof(val)) == -1) {
+        err(EXIT_FAILURE, "failed to read from irqfd");
+    }
+    printf("INTx triggered!\n");
 }
 
 static void
@@ -1249,7 +1218,9 @@ int main(int argc, char *argv[])
      * via explicit messages.
      */
     t = time(NULL) + 1;
-    access_bar0(sock, irq_fd, &t);
+    access_bar0(sock, &t);
+
+    wait_for_irq(irq_fd);
 
     /* FIXME check that above took at least 1s */
 
@@ -1340,7 +1311,7 @@ int main(int argc, char *argv[])
     }
     irq_fd = ret;
 
-    wait_for_irqs(sock, irq_fd);
+    wait_for_irq(irq_fd);
 
     handle_dma_io(sock, dma_regions + server_max_fds,
                   nr_dma_regions - server_max_fds,
