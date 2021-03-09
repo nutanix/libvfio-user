@@ -580,15 +580,9 @@ int main(int argc, char *argv[])
         if (ret == -1 && errno == EINTR) {
             if (irq_triggered) {
                 irq_triggered = false;
-                vfu_irq_trigger(vfu_ctx, 0);
-                /*
-                 * Apart from triggering an IRQ via the eventfd, we also
-                 * trigger an IRQ via a message, simply for demonstrating how
-                 * it's done. The client expects this behavior from the server.
-                 */
-                ret = vfu_irq_message(vfu_ctx, 0);
+                ret = vfu_irq_trigger(vfu_ctx, 0);
                 if (ret < 0) {
-                    err(EXIT_FAILURE, "vfu_irq_message() failed");
+                    err(EXIT_FAILURE, "vfu_irq_trigger() failed");
                 }
 
                 /*
