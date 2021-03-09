@@ -1703,29 +1703,34 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.argsz = sizeof (irq_set);
 
     ret = handle_device_set_irqs(&vfu_ctx, 0, NULL, 0, &irq_set);
+    /* bad message size */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.argsz = 3;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad .argsz */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.argsz = sizeof (irq_set);
     irq_set.index = VFU_DEV_NUM_IRQS;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad .index */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.index = VFU_DEV_MSIX_IRQ;
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_ACTION_UNMASK;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad flags, MASK and UNMASK */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE |
                     VFIO_IRQ_SET_DATA_BOOL;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad flags, DATA_NONE and DATA_BOOL */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
@@ -1733,12 +1738,14 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.count = 2;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start, count range */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.start = 2049;
     irq_set.count = 1;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start, count range */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.start = 0;
@@ -1746,11 +1753,13 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.index = VFU_DEV_ERR_IRQ;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for err irq */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.index = VFU_DEV_REQ_IRQ;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for req irq */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.start = 1;
@@ -1758,6 +1767,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.index = VFU_DEV_MSIX_IRQ;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start for count == 0 */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
@@ -1765,6 +1775,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.start = 0;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for count == 0 */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
@@ -1772,6 +1783,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.start = 0;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action and data type for count == 0 */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
@@ -1779,6 +1791,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.start = 0;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for DATA_BOOL */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
@@ -1786,6 +1799,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.start = 0;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for DATA_NONE */
     assert_int_equal(-EINVAL, ret);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
@@ -1793,6 +1807,7 @@ test_device_set_irqs(UNUSED void **state)
     irq_set.start = 0;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for count == 2 */
     assert_int_equal(-EINVAL, ret);
 
     irqs->err_efd = irqs->req_efd = -1;
