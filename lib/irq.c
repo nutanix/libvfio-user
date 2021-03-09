@@ -419,26 +419,4 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     return eventfd_write(vfu_ctx->irqs->efds[subindex], val);
 }
 
-int
-vfu_irq_message(vfu_ctx_t *vfu_ctx, uint32_t subindex)
-{
-    int ret, msg_id = 1;
-    struct vfio_user_irq_info irq_info;
-
-    if (!validate_irq_subindex(vfu_ctx, subindex)) {
-        return ERROR_INT(EINVAL);
-    }
-
-    irq_info.subindex = subindex;
-    ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id,
-                                  VFIO_USER_VM_INTERRUPT,
-                                  &irq_info, sizeof(irq_info),
-                                  NULL, NULL, 0);
-    if (ret < 0) {
-	    return ERROR_INT(-ret);
-    }
-
-    return 0;
-}
-
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
