@@ -122,8 +122,8 @@ struct vfu_ctx {
     void                    *tran_data;
     uint64_t                flags;
     char                    *uuid;
-    vfu_map_dma_cb_t        *map_dma;
-    vfu_unmap_dma_cb_t      *unmap_dma;
+    vfu_dma_register_cb_t   *dma_register;
+    vfu_dma_unregister_cb_t *dma_unregister;
 
     int                     client_max_fds;
 
@@ -139,8 +139,15 @@ struct vfu_ctx {
 void
 dump_buffer(const char *prefix, const char *buf, uint32_t count);
 
+int
+consume_fd(int *fds, size_t nr_fds, size_t index);
+
 vfu_reg_info_t *
 vfu_get_region_info(vfu_ctx_t *vfu_ctx);
+
+long
+dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
+                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
 
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
@@ -148,16 +155,9 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         struct vfio_user_dma_region *dma_regions);
 
 int
-consume_fd(int *fds, size_t nr_fds, size_t index);
-
-int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                        struct vfio_device_info *in_dev_info,
                        struct vfio_device_info *out_dev_info);
-
-long
-dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
-                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
 
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,

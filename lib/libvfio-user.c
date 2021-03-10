@@ -57,6 +57,7 @@
 #include "private.h"
 #include "tran_sock.h"
 
+
 void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 {
@@ -154,7 +155,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
-                    i, iov->iov_base, iov->iov_base + iov->iov_len);
+                    i, iov->iov_base, iov_end(iov));
 
             (*fds)[i] = vfu_reg->fd;
             sparse->areas[i].offset = (uintptr_t)iov->iov_base;
@@ -488,7 +489,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
     size_t fdi;
 
     assert(vfu_ctx != NULL);
-    assert(fds != NULL); /* TODO assert valid only for map */
+    assert(nr_fds == 0 || fds != NULL);
 
     if (vfu_ctx->dma == NULL) {
         return 0;
@@ -505,61 +506,54 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
     }
 
     for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
+        struct vfio_user_dma_region *region = &dma_regions[i];
+
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s DMA region [%#lx-%#lx) offset=%#lx "
+                "prot=%#x flags=%#x", map ? "adding" : "removing",
+                region->addr, region->addr + region->size,
+                region->offset, region->prot, region->flags);
+
         if (map) {
             int fd = -1;
-            if (dma_regions[i].flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+            if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
                 fd = consume_fd(fds, nr_fds, fdi++);
                 if (fd < 0) {
+                    vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region: "
+                            "mappable but fd not provided\n");
                     ret = fd;
                     break;
                 }
             }
 
-            ret = dma_controller_add_region(vfu_ctx->dma,
-                                            dma_regions[i].addr,
-                                            dma_regions[i].size,
-                                            fd,
-                                            dma_regions[i].offset,
-                                            dma_regions[i].prot);
+            ret = dma_controller_add_region(vfu_ctx->dma, (void *)region->addr,
+                                            region->size, fd, region->offset,
+                                            region->prot);
             if (ret < 0) {
                 if (fd != -1) {
                     close(fd);
                 }
-                vfu_log(vfu_ctx, LOG_INFO,
-                        "failed to add DMA region %#lx-%#lx offset=%#lx fd=%d: %s",
-                        dma_regions[i].addr,
-                        dma_regions[i].addr + dma_regions[i].size - 1,
-                        dma_regions[i].offset, fd,
+                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region: %s",
                         strerror(-ret));
                 break;
             }
-            if (vfu_ctx->map_dma != NULL) {
-                vfu_ctx->map_dma(vfu_ctx, dma_regions[i].addr,
-                                 dma_regions[i].size, dma_regions[i].prot);
+
+            if (vfu_ctx->dma_register != NULL) {
+                vfu_ctx->dma_register(vfu_ctx,
+                                      &vfu_ctx->dma->regions[ret].info);
             }
+
             ret = 0;
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                    "added DMA region %#lx-%#lx offset=%#lx fd=%d prot=%#x",
-                    dma_regions[i].addr,
-                    dma_regions[i].addr + dma_regions[i].size - 1,
-                    dma_regions[i].offset, fd, dma_regions[i].prot);
         } else {
             ret = dma_controller_remove_region(vfu_ctx->dma,
-                                               dma_regions[i].addr,
-                                               dma_regions[i].size,
-                                               vfu_ctx->unmap_dma, vfu_ctx);
+                                               (void *)region->addr,
+                                               region->size,
+                                               vfu_ctx->dma_unregister,
+                                               vfu_ctx);
             if (ret < 0) {
-                vfu_log(vfu_ctx, LOG_INFO,
-                        "failed to remove DMA region %#lx-%#lx: %s",
-                        dma_regions[i].addr,
-                        dma_regions[i].addr + dma_regions[i].size - 1,
+                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region: %s",
                         strerror(-ret));
                 break;
             }
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                    "removed DMA region %#lx-%#lx",
-                    dma_regions[i].addr,
-                    dma_regions[i].addr + dma_regions[i].size - 1);
         }
     }
     return ret;
@@ -600,8 +594,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
 
     for (i = 1; i < *nr_iovecs; i++) {
         struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma, r->iova, r->size,
-                                            r->bitmap.pgsize, r->bitmap.size,
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma, (void *)r->iova,
+                                            r->size, r->bitmap.pgsize,
+                                            r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             goto out;
@@ -1328,7 +1323,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
-        if ((size_t)iov->iov_base + iov->iov_len > size) {
+        if ((size_t)iov_end(iov) > size) {
             return ERROR_INT(EINVAL);
         }
     }
@@ -1386,8 +1381,8 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 }
 
 int
-vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
-                        vfu_unmap_dma_cb_t *unmap_dma)
+vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
+                     vfu_dma_unregister_cb_t *dma_unregister)
 {
 
     assert(vfu_ctx != NULL);
@@ -1398,8 +1393,8 @@ vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
         return ERROR_INT(ENOMEM);
     }
 
-    vfu_ctx->map_dma = map_dma;
-    vfu_ctx->unmap_dma = unmap_dma;
+    vfu_ctx->dma_register = dma_register;
+    vfu_ctx->dma_unregister = dma_unregister;
 
     return 0;
 }
@@ -1451,33 +1446,33 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
-inline vfu_reg_info_t *
+vfu_reg_info_t *
 vfu_get_region_info(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
     return vfu_ctx->reg_info;
 }
 
-inline int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
+int
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, void *dma_addr,
                uint32_t len, dma_sg_t *sg, int max_sg, int prot)
 {
     assert(vfu_ctx != NULL);
 
-    if (unlikely(vfu_ctx->unmap_dma == NULL)) {
+    if (unlikely(vfu_ctx->dma == NULL)) {
         return ERROR_INT(EINVAL);
     }
 
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
 
-inline int
+int
 vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 	       struct iovec *iov, int cnt)
 {
     int ret;
 
-    if (unlikely(vfu_ctx->unmap_dma == NULL)) {
+    if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -1489,10 +1484,10 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
     return 0;
 }
 
-inline void
+void
 vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
-    if (unlikely(vfu_ctx->unmap_dma == NULL)) {
+    if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
     }
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
@@ -1516,7 +1511,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
         return ERROR_INT(ENOMEM);
     }
 
-    dma_send.addr = sg->dma_addr;
+    dma_send.addr = (uint64_t)sg->dma_addr;
     dma_send.count = sg->length;
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
                                   &dma_send, sizeof(dma_send), NULL,
@@ -1541,7 +1536,7 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     if (dma_send == NULL) {
         return ERROR_INT(ENOMEM);
     }
-    dma_send->addr = sg->dma_addr;
+    dma_send->addr = (uint64_t)sg->dma_addr;
     dma_send->count = sg->length;
     memcpy(dma_send->data, data, sg->length); /* FIXME no need to copy! */
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,

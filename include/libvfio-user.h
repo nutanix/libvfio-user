@@ -60,12 +60,9 @@ extern "C" {
 
 #define VFU_DMA_REGIONS  0x10
 
-// FIXME: too common a name?
-typedef uint64_t dma_addr_t;
-
 typedef struct {
-    dma_addr_t dma_addr;
-    int region; /* TODO replace region and length with struct iovec */
+    void *dma_addr;
+    int region;
     int length;
     uint64_t offset;
     bool mappable;
@@ -313,40 +310,81 @@ int
 vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
 
 /*
- * Function that is called when the guest maps a DMA region. Optional.
+ * Info for a guest DMA region.  @iova is always valid; the other parameters
+ * will only be set if the guest DMA region is VFIO_USER_F_DMA_REGION_MAPPABLE,
+ * and a file descriptor has been passed across the vfio-user socket.
  *
- * @vfu_ctx: the libvfio-user context
- * @iova: iova address
- * @len: length
- * @prot: memory protection used to map region as defined in <sys/mman.h>
+ * @iova: guest DMA range. This is the guest physical range (as we don't
+ *   support vIOMMU) that the guest registers for DMA, via a VFIO_USER_DMA_MAP
+ *   message, and is the address space used as input to vfu_addr_to_sg().
+ * @vaddr: if the range is mapped into this process, this is the virtual address
+ *   of the start of the region.
+ * @mapping: if @vaddr is non-NULL, this range represents the actual range
+ *   mmap()ed into the process. This might be (large) page aligned, and
+ *   therefore be different from @vaddr + @iova.iov_len.
+ * @page_size: if @vaddr is non-NULL, page size of the mapping (e.g. 2MB)
+ * @prot: if @vaddr is non-NULL, protection settings of the mapping as per
+ *   mmap(2)
+ *
+ * For a real example, using the gpio sample server, and a qemu configured to
+ * use large pages and share its memory:
+ *
+ * gpio: mapped DMA region iova=[0xf0000-0x10000000) vaddr=0x2aaaab0f0000
+ * page_size=0x200000 mapping=[0x2aaaab000000-0x2aaabb000000)
+ *
+ * This region can be directly accessed at 0x2aaaab0f0000, but the underlying
+ * large page mapping is in the range [0x2aaaab000000-0x2aaabb000000).
  */
-typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
-                                uint64_t iova, uint64_t len, uint32_t prot);
+typedef struct vfu_dma_info {
+    struct iovec iova;
+    void *vaddr;
+    struct iovec mapping;
+    size_t page_size;
+    uint32_t prot;
+} vfu_dma_info_t;
 
 /*
- * Function that is called when the guest unmaps a DMA region. The device
- * must release all references to that region before the callback returns.
- * This is required if you want to be able to access guest memory.
+ * Called when a guest registers one of its DMA regions via a VFIO_USER_DMA_MAP
+ * message.
  *
  * @vfu_ctx: the libvfio-user context
- * @iova: iova address
- * @len: length
+ * @info: the DMA info
  */
-typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx,
-                                 uint64_t iova, uint64_t len);
+typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+
+/*
+ * Function that is called when the guest unregisters a DMA region. The device
+ * must release all references to that region before the callback returns.
+ * This is required if you want to be able to access guest memory directly via
+ * a mapping.
+ *
+ * The callback should return 0 on success, errno on failure (although
+ * unregister should not fail: this will not stop a guest from unregistering the
+ * region).
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @info: the DMA info
+ */
+typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /**
- * Setup device DMA map/unmap callbacks. This will also enable bookkeeping of
- * DMA regions received from client, otherwise they will be just acknowledged.
+ * Setup device DMA registration callbacks. When libvfio-user is notified of a
+ * DMA range addition or removal, these callbacks will be invoked.
+ *
+ * If this function is not called, guest DMA regions are not accessible via
+ * vfu_addr_to_sg().
+ *
+ * To directly access this DMA memory via a local mapping with vfu_map_sg(), at
+ * least @dma_unregister must be provided.
  *
  * @vfu_ctx: the libvfio-user context
- * @map_dma: DMA region map callback (optional)
- * @unmap_dma: DMA region unmap callback (optional)
+ * @dma_register DMA region registration callback (optional)
+ * @dma_unregister: DMA region unregistration callback (optional)
  */
 
 int
-vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
-                        vfu_unmap_dma_cb_t *unmap_dma);
+vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
+                     vfu_dma_unregister_cb_t *dma_unregister);
 
 enum vfu_dev_irq_type {
     VFU_DEV_INTX_IRQ,
@@ -481,7 +519,7 @@ typedef struct {
  * to client accesses of the migration region; the migration region read/write
  * callbacks are not called after this function call. Offsets in callbacks are
  * relative to @data_offset.
- * 
+ *
  * @vfu_ctx: the libvfio-user context
  * @callbacks: migration callbacks
  * @data_offset: offset in the migration region where data begins.
@@ -512,8 +550,8 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  * than can be individually mapped in the program's virtual memory.  A single
  * linear guest physical address span may need to be split into multiple
  * scatter/gather regions due to limitations of how memory can be mapped.
- * Field unmap_dma must have been provided at context creation time in order
- * to use this function.
+ *
+ * vfu_setup_device_dma() must have been called prior to using this function.
  *
  * @vfu_ctx: the libvfio-user context
  * @dma_addr: the guest physical address
@@ -530,15 +568,16 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  *              entries necessary to complete this request (errno=0).
  */
 int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr, uint32_t len,
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, void *dma_addr, uint32_t len,
                dma_sg_t *sg, int max_sg, int prot);
 
 /**
  * Maps a list scatter/gather entries from the guest's physical address space
  * to the program's virtual memory. It is the caller's responsibility to remove
- * the mappings by calling vfu_unmap_sg.
- * Field unmap_dma must have been provided at context creation time in order
- * to use this function.
+ * the mappings by calling vfu_unmap_sg().
+ *
+ * This is only supported when a @dma_unregister callback is provided to
+ * vfu_setup_device_dma().
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries returned by vfu_addr_to_sg
@@ -553,10 +592,8 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
            struct iovec *iov, int cnt);
 
 /**
- * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg) from
+ * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg()) from
  * the program's virtual memory.
- * Field unmap_dma must have been provided at context creation time in order
- * to use this function.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap
