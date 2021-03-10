@@ -116,18 +116,18 @@ dma_controller_destroy(dma_controller_t *dma);
  */
 int
 dma_controller_add_region(dma_controller_t *dma,
-                          dma_addr_t dma_addr, size_t size,
+                          void *dma_addr, size_t size,
                           int fd, off_t offset, uint32_t prot);
 
 int
 dma_controller_remove_region(dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size,
+                             void *dma_addr, size_t size,
                              vfu_unmap_dma_cb_t *unmap_dma, void *data);
 
 // Helper for dma_addr_to_sg() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   dma_addr_t dma_addr, uint32_t len,
+                   void *dma_addr, uint32_t len,
                    dma_sg_t *sg, int max_sg, int prot);
 
 static bool
@@ -183,7 +183,7 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
 }
 
 static inline int
-dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
+dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, void *dma_addr,
             uint32_t len, int prot, int region_index)
 {
     const dma_memory_region_t *const region = &dma->regions[region_index];
@@ -195,7 +195,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
 
     sg->dma_addr = region->iova.iov_base;
     sg->region = region_index;
-    sg->offset = dma_addr - (dma_addr_t)region->iova.iov_base;
+    sg->offset = dma_addr - region->iova.iov_base;
     sg->length = len;
     if (_dma_should_mark_dirty(dma, prot)) {
         _dma_mark_dirty(dma, region, sg);
@@ -220,18 +220,18 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
  */
 static inline int
 dma_addr_to_sg(const dma_controller_t *dma,
-               dma_addr_t dma_addr, uint32_t len,
+               void *dma_addr, uint32_t len,
                dma_sg_t *sg, int max_sg, int prot)
 {
     static __thread int region_hint;
     int cnt, ret;
 
     const dma_memory_region_t *const region = &dma->regions[region_hint];
-    const dma_addr_t region_end = (dma_addr_t)region->iova.iov_base + region->iova.iov_len;
+    const void *region_end = region->iova.iov_base + region->iova.iov_len;
 
     // Fast path: single region.
     if (likely(max_sg > 0 && len > 0 &&
-               dma_addr >= (dma_addr_t)region->iova.iov_base && dma_addr + len <= region_end &&
+               dma_addr >= region->iova.iov_base && dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
         ret = dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
         if (ret < 0) {
@@ -311,7 +311,7 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
 }
 
 static inline void *
-dma_map_addr(dma_controller_t *dma, dma_addr_t dma_addr, uint32_t len, int prot)
+dma_map_addr(dma_controller_t *dma, void *dma_addr, uint32_t len, int prot)
 {
     dma_sg_t sg;
     struct iovec iov;
@@ -326,7 +326,7 @@ dma_map_addr(dma_controller_t *dma, dma_addr_t dma_addr, uint32_t len, int prot)
 
 static inline void
 dma_unmap_addr(dma_controller_t *dma,
-               dma_addr_t dma_addr, uint32_t len, void *addr)
+               void *dma_addr, uint32_t len, void *addr)
 {
     dma_sg_t sg;
     struct iovec iov = {
@@ -350,7 +350,7 @@ int
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
 int
-dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
+dma_controller_dirty_page_get(dma_controller_t *dma, void *addr, int len,
                               size_t pgsize, size_t size, char **data);
 
 #endif /* LIB_VFIO_USER_DMA_H */

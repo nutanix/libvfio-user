@@ -51,13 +51,13 @@ __real_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
                           struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
 int
-__real_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
+__real_dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
                                  size_t size, int fd, off_t offset,
                                  uint32_t prot);
 
 int
 __real_dma_controller_remove_region(dma_controller_t *dma,
-                                    dma_addr_t dma_addr, size_t size,
+                                    void *dma_addr, size_t size,
                                     vfu_unmap_dma_cb_t *unmap_dma, void *data);
 
 bool

@@ -124,7 +124,7 @@ UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
 /* FIXME not thread safe */
 int
 dma_controller_remove_region(dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size,
+                             void *dma_addr, size_t size,
                              vfu_unmap_dma_cb_t *unmap_dma, void *data)
 {
     int idx;
@@ -136,7 +136,7 @@ dma_controller_remove_region(dma_controller_t *dma,
     for (idx = 0; idx < dma->nregions; idx++) {
         const struct iovec *pvaddr;
         region = &dma->regions[idx];
-        if ((dma_addr_t)region->iova.iov_base != dma_addr || region->iova.iov_len != size) {
+        if (region->iova.iov_base != dma_addr || region->iova.iov_len != size) {
             continue;
         }
         if (region->vaddr.iov_base == MAP_FAILED) {
@@ -201,7 +201,7 @@ dma_controller_destroy(dma_controller_t *dma)
 
 int
 dma_controller_add_region(dma_controller_t *dma,
-                          dma_addr_t dma_addr, size_t size,
+                          void *dma_addr, size_t size,
                           int fd, off_t offset, uint32_t prot)
 {
     int idx;
@@ -214,7 +214,7 @@ dma_controller_add_region(dma_controller_t *dma,
         region = &dma->regions[idx];
 
         /* First check if this is the same exact region. */
-        if ((uint64_t)region->iova.iov_base == dma_addr && region->iova.iov_len == size) {
+        if (region->iova.iov_base == dma_addr && region->iova.iov_len == size) {
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad offset for new DMA region %#lx-%#lx, want=%ld, existing=%ld\n",
@@ -243,10 +243,10 @@ dma_controller_add_region(dma_controller_t *dma,
         }
 
         /* Check for overlap, i.e. start of one region is within another. */
-        if ((dma_addr >= (dma_addr_t)region->iova.iov_base &&
-             dma_addr < (dma_addr_t)region->iova.iov_base + region->iova.iov_len) ||
-            ((dma_addr_t)region->iova.iov_base >= dma_addr &&
-             (dma_addr_t)region->iova.iov_base < dma_addr + size)) {
+        if ((dma_addr >= region->iova.iov_base &&
+             dma_addr < region->iova.iov_base + region->iova.iov_len) ||
+            (region->iova.iov_base >= dma_addr &&
+             region->iova.iov_base < dma_addr + size)) {
             vfu_log(dma->vfu_ctx, LOG_INFO,
                    "new DMA region %#lx+%#lx overlaps with DMA region %#lx-%#lx\n",
                    dma_addr, size, region->iova.iov_base, region->iova.iov_len);
@@ -351,7 +351,7 @@ UNIT_TEST_SYMBOL(dma_map_region);
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   dma_addr_t dma_addr, uint32_t len,
+                   void *dma_addr, uint32_t len,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
@@ -362,9 +362,9 @@ _dma_addr_sg_split(const dma_controller_t *dma,
         found = false;
         for (idx = 0; idx < dma->nregions; idx++) {
             const dma_memory_region_t *const region = &dma->regions[idx];
-            const dma_addr_t region_end = (dma_addr_t)region->iova.iov_base + region->iova.iov_len;
+            const void *region_end = region->iova.iov_base + region->iova.iov_len;
 
-            while (dma_addr >= (dma_addr_t)region->iova.iov_base && dma_addr < region_end) {
+            while (dma_addr >= region->iova.iov_base && dma_addr < region_end) {
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
@@ -470,7 +470,7 @@ int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 }
 
 int
-dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
+dma_controller_dirty_page_get(dma_controller_t *dma, void *addr, int len,
                               size_t pgsize, size_t size, char **data)
 {
     int ret;
@@ -487,7 +487,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
      * IOVAs.
      */
     ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
-    if (ret != 1 || (dma_addr_t)sg.dma_addr != addr || sg.length != len) {
+    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
         return -ENOTSUP;
     }
 

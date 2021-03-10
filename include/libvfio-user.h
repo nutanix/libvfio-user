@@ -60,9 +60,6 @@ extern "C" {
 
 #define VFU_DMA_REGIONS  0x10
 
-// FIXME: too common a name?
-typedef uint64_t dma_addr_t;
-
 typedef struct {
     void *dma_addr;
     int region; /* TODO replace region and length with struct iovec */
@@ -534,7 +531,7 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  *              entries necessary to complete this request (errno=0).
  */
 int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr, uint32_t len,
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, void *dma_addr, uint32_t len,
                dma_sg_t *sg, int max_sg, int prot);
 
 /**

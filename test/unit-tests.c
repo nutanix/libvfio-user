@@ -308,7 +308,7 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
     dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(dma_memory_region_t));
-    dma_addr_t dma_addr = 0xdeadbeef;
+    void *dma_addr = (void *)0xdeadbeef;
     size_t size = 0;
     int fd = -1;
     off_t offset = 0;
@@ -356,7 +356,8 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     expect_value(__wrap__dma_controller_do_remove_region, dma, d);
     expect_value(__wrap__dma_controller_do_remove_region, region, &d->regions[0]);
     assert_int_equal(0,
-        dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
+        dma_controller_remove_region(d, (void *)0xdeadbeef, 0x100,
+            mock_unmap_dma, &v));
 }
 
 static void
@@ -378,7 +379,8 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
     will_return(mock_unmap_dma, 0);
     patch(_dma_controller_do_remove_region);
     assert_int_equal(0,
-        dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
+        dma_controller_remove_region(d, (void *)0xdeadbeef, 0x100,
+            mock_unmap_dma, &v));
 }
 
 static int fds[] = { 0xab, 0xcd };
@@ -1250,7 +1252,7 @@ test_dma_addr_to_sg(void **state UNUSED)
     /* fast path, region hint hit */
     r->prot = PROT_WRITE;
     assert_int_equal(1,
-        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
+        dma_addr_to_sg(dma, (void *)0x2000, 0x400, &sg, 1, PROT_READ));
     assert_int_equal(r->iova.iov_base, sg.dma_addr);
     assert_int_equal(0, sg.region);
     assert_int_equal(0x2000 - (unsigned long long)r->iova.iov_base, sg.offset);
@@ -1260,17 +1262,17 @@ test_dma_addr_to_sg(void **state UNUSED)
     errno = 0;
     r->prot = PROT_WRITE;
     assert_int_equal(-1,
-        dma_addr_to_sg(dma, 0x6000, 0x400, &sg, 1, PROT_READ));
+        dma_addr_to_sg(dma, (void *)0x6000, 0x400, &sg, 1, PROT_READ));
     assert_int_equal(0, errno);
 
     r->prot = PROT_READ;
     assert_int_equal(-1,
-        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_WRITE));
+        dma_addr_to_sg(dma, (void *)0x2000, 0x400, &sg, 1, PROT_WRITE));
     assert_int_equal(EACCES, errno);
 
     r->prot = PROT_READ|PROT_WRITE;
     assert_int_equal(1,
-        dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
+        dma_addr_to_sg(dma, (void *)0x2000, 0x400, &sg, 1, PROT_READ));
 
     /* TODO test more scenarios */
 }

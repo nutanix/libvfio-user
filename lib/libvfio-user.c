@@ -516,7 +516,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
             }
 
             ret = dma_controller_add_region(vfu_ctx->dma,
-                                            dma_regions[i].addr,
+                                            (void *)dma_regions[i].addr,
                                             dma_regions[i].size,
                                             fd,
                                             dma_regions[i].offset,
@@ -551,7 +551,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                     dma_regions[i].offset, fd, dma_regions[i].prot);
         } else {
             ret = dma_controller_remove_region(vfu_ctx->dma,
-                                               dma_regions[i].addr,
+                                               (void *)dma_regions[i].addr,
                                                dma_regions[i].size,
                                                vfu_ctx->unmap_dma, vfu_ctx);
             if (ret < 0) {
@@ -606,8 +606,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
 
     for (i = 1; i < *nr_iovecs; i++) {
         struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma, r->iova, r->size,
-                                            r->bitmap.pgsize, r->bitmap.size,
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma, (void *)r->iova,
+                                            r->size, r->bitmap.pgsize,
+                                            r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             goto out;
@@ -1479,7 +1480,7 @@ vfu_get_region_info(vfu_ctx_t *vfu_ctx)
 }
 
 inline int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, dma_addr_t dma_addr,
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, void *dma_addr,
                uint32_t len, dma_sg_t *sg, int max_sg, int prot)
 {
     assert(vfu_ctx != NULL);
