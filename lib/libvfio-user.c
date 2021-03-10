@@ -1037,7 +1037,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
             }
         }
 
-        //FIXME: assert(max_ivs > 0)?
+        // FIXME: assert(max_ivs > 0)?
         size = sizeof(int) * max_ivs;
         vfu_ctx->irqs = calloc(1, sizeof(vfu_irqs_t) + size);
         if (vfu_ctx->irqs == NULL) {
@@ -1051,7 +1051,6 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         }
         vfu_ctx->irqs->err_efd = -1;
         vfu_ctx->irqs->req_efd = -1;
-        vfu_ctx->irqs->type = IRQ_NONE;
         vfu_ctx->irqs->max_ivs = max_ivs;
 
         // Reflect on the config space whether INTX is available.
@@ -1423,10 +1422,8 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 
     assert(vfu_ctx != NULL);
 
-    if (type < VFU_DEV_INTX_IRQ || type > VFU_DEV_REQ_IRQ) {
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ index %d, should be between "
-               "(%d to %d)", type, VFU_DEV_INTX_IRQ,
-               VFU_DEV_REQ_IRQ);
+    if (type >= VFU_DEV_NUM_IRQS) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ type index %u", type);
         return ERROR_INT(EINVAL);
     }
 

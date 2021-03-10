@@ -1276,6 +1276,8 @@ VFIO IRQ set format
     was sent in the message meta-data. These descriptors will be signalled when
     the action defined by the action flags occurs. In AF_UNIX sockets, the
     descriptors are sent as SCM_RIGHTS type ancillary data.
+    If no file descriptors are provided, this de-assigns the specified
+    previously configured interrupts.
   * *VFIO_IRQ_SET_ACTION_MASK* indicates a masking event. It can be used with
     VFIO_IRQ_SET_DATA_BOOL or VFIO_IRQ_SET_DATA_NONE to mask an interrupt, or
     with VFIO_IRQ_SET_DATA_EVENTFD to generate an event when the guest masks
@@ -1292,8 +1294,8 @@ VFIO IRQ set format
 * *index* is the index of IRQ type being setup.
 * *start* is the start of the sub-index being set.
 * *count* describes the number of sub-indexes being set. As a special case, a
-  count of 0 with data flags of VFIO_IRQ_SET_DATA_NONE disables all interrupts
-  of the index.
+  count (and start) of 0, with data flags of VFIO_IRQ_SET_DATA_NONE disables
+  all interrupts of the index.
 * *data* is an optional field included when the
   VFIO_IRQ_SET_DATA_BOOL flag is present. It contains an array of booleans
   that specify whether the action is to be performed on the corresponding
