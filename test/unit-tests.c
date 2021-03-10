@@ -104,22 +104,6 @@ test_dma_map_without_fd(void **state UNUSED)
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &r));
 }
 
-static void
-dma_map_cb(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
-           uint32_t prot)
-{
-    if (iova == 0xcafebabe) {
-        assert_int_equal(0x1000, len);
-        assert_int_equal(PROT_READ | PROT_WRITE, prot);
-    } else {
-        assert_int_equal(0xdeadbeef, iova);
-        assert_int_equal(0x1000, len);
-        assert_int_equal(PROT_NONE, prot);
-    }
-    (*((size_t*)vfu_ctx->pvt))++;
-    return;
-}
-
 /*
  * Tests that adding multiple DMA regions that not all of them are mappable
  * results in only the mappable one being memory mapped.
@@ -131,10 +115,13 @@ dma_map_cb(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len,
 static void
 test_dma_add_regions_mixed(void **state UNUSED)
 {
-    dma_controller_t dma = { 0 };
+    dma_controller_t *dma = alloca(sizeof(*dma) + sizeof(dma_memory_region_t) * 2);
+    dma->nregions = 2;
+    dma->regions[0].vaddr.iov_base = (void *)0x123456789;
+    dma->regions[1].vaddr.iov_base = (void *)0x987654321;
     size_t count = 0;
-    vfu_ctx_t vfu_ctx = { .dma = &dma , .map_dma = dma_map_cb, .pvt = &count};
-    dma.vfu_ctx = &vfu_ctx;
+    vfu_ctx_t vfu_ctx = { .dma = dma , .map_dma = mock_map_dma, .pvt = &count };
+    dma->vfu_ctx = &vfu_ctx;
     struct vfio_user_dma_region r[2] = {
         [0] = {
             .addr = 0xdeadbeef,
@@ -161,17 +148,24 @@ test_dma_add_regions_mixed(void **state UNUSED)
     expect_value(__wrap_dma_controller_add_region, fd, -1);
     expect_value(__wrap_dma_controller_add_region, offset, r[0].offset);
     expect_value(__wrap_dma_controller_add_region, prot, r[0].prot);
+    expect_value(mock_map_dma, vfu_ctx, &vfu_ctx);
+    expect_value(mock_map_dma, iova, &dma->regions[0].iova);
+    expect_value(mock_map_dma, vaddr, &dma->regions[0].vaddr);
+    expect_value(mock_map_dma, prot, r[0].prot);
     /* 2nd region */
-    will_return(__wrap_dma_controller_add_region, 0);    
+    will_return(__wrap_dma_controller_add_region, 1);    
     expect_value(__wrap_dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(__wrap_dma_controller_add_region, dma_addr, r[1].addr);
     expect_value(__wrap_dma_controller_add_region, size, r[1].size);
     expect_value(__wrap_dma_controller_add_region, fd, fd);
     expect_value(__wrap_dma_controller_add_region, offset, r[1].offset);
     expect_value(__wrap_dma_controller_add_region, prot, r[1].prot);
+    expect_value(mock_map_dma, vfu_ctx, &vfu_ctx);
+    expect_value(mock_map_dma, iova, &dma->regions[1].iova);
+    expect_value(mock_map_dma, vaddr, &dma->regions[1].vaddr);
+    expect_value(mock_map_dma, prot, r[1].prot);
 
     assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx, sizeof(r), true, &fd, 1, r));
-    assert_int_equal(2, count);
 }
 
 /*
@@ -325,13 +319,14 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     dma->vfu_ctx = &vfu_ctx;
     dma->max_regions = 1;
 
-    assert_int_equal(0, dma_controller_add_region(dma, dma_addr, size, fd,
-                     offset, PROT_NONE));
+    assert_int_equal(0,
+                     dma_controller_add_region(dma, dma_addr, size, fd,
+                        offset, PROT_NONE));
     assert_int_equal(1, dma->nregions);
     r = &dma->regions[0];
-    assert_ptr_equal(NULL, r->virt_addr);
-    assert_ptr_equal(dma_addr, r->dma_addr);
-    assert_int_equal(size, r->size);
+    assert_ptr_equal(MAP_FAILED, r->vaddr.iov_base);
+    assert_ptr_equal(dma_addr, r->iova.iov_base);
+    assert_int_equal(size, r->iova.iov_len);
     assert_int_equal(0x1000, r->page_size);
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
@@ -349,13 +344,13 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
 
     d->vfu_ctx = &v;
     d->max_regions = d->nregions = 1;
-    d->regions[0].dma_addr = 0xdeadbeef;
-    d->regions[0].size = 0x100;
-    d->regions[0].virt_addr = (void *)0xcafebabe;
+    d->regions[0].iova.iov_base = (void *)0xdeadbeef;
+    d->regions[0].iova.iov_len = 0x100;
+    d->regions[0].vaddr.iov_base = (void *)0xcafebabe;
     expect_value(mock_unmap_dma, vfu_ctx, &v);
-    expect_value(mock_unmap_dma, iova, 0xdeadbeef);
-    expect_value(mock_unmap_dma, len, 0x100);
-    /* FIXME add uni test when unmap_dma fails */
+    expect_value(mock_unmap_dma, iova, &d->regions[0].iova);
+    expect_value(mock_unmap_dma, vaddr, &d->regions[0].vaddr);
+    /* FIXME add unit test when unmap_dma fails */
     will_return(mock_unmap_dma, 0);
     patch(_dma_controller_do_remove_region);
     expect_value(__wrap__dma_controller_do_remove_region, dma, d);
@@ -374,12 +369,12 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
 
     d->vfu_ctx = &v;
     d->max_regions = d->nregions = 1;
-    d->regions[0].dma_addr = 0xdeadbeef;
-    d->regions[0].size = 0x100;
-    d->regions[0].virt_addr = NULL;
+    d->regions[0].iova.iov_base = (void *)0xdeadbeef;
+    d->regions[0].iova.iov_len = 0x100;
+    d->regions[0].vaddr.iov_base = MAP_FAILED;
     expect_value(mock_unmap_dma, vfu_ctx, &v);
-    expect_value(mock_unmap_dma, iova, 0xdeadbeef);
-    expect_value(mock_unmap_dma, len, 0x100);
+    expect_value(mock_unmap_dma, iova, &d->regions[0].iova);
+    expect_value(mock_unmap_dma, vaddr, NULL);
     will_return(mock_unmap_dma, 0);
     patch(_dma_controller_do_remove_region);
     assert_int_equal(0,
@@ -1220,6 +1215,7 @@ test_dma_map_sg(void **state UNUSED)
     memset(dma, 0, size);
     dma->vfu_ctx = &vfu_ctx;
     dma->nregions = 1;
+    dma->regions[0].vaddr.iov_base = MAP_FAILED;
 
     /* bad region */
     assert_int_equal(-EINVAL, dma_map_sg(dma, &sg, &iovec, 1));
@@ -1229,7 +1225,7 @@ test_dma_map_sg(void **state UNUSED)
     assert_int_equal(-EFAULT, dma_map_sg(dma, &sg, &iovec, 1));
 
     /* w/ fd */
-    dma->regions[0].virt_addr = (void*)0xdead0000;
+    dma->regions[0].vaddr.iov_base = (void *)0xdead0000;
     sg.offset = 0x0000beef;
     sg.length = 0xcafebabe;
     assert_int_equal(0, dma_map_sg(dma, &sg, &iovec, 1));
@@ -1247,17 +1243,17 @@ test_dma_addr_to_sg(void **state UNUSED)
 
     dma->nregions = 1;
     r = &dma->regions[0];
-    r->dma_addr = 0x1000;
-    r->size = 0x4000;
-    r->virt_addr = (void*)0xdeadbeef;
+    r->iova.iov_base = (void *)0x1000;
+    r->iova.iov_len = 0x4000;
+    r->vaddr.iov_base = (void *)0xdeadbeef;
 
     /* fast path, region hint hit */
     r->prot = PROT_WRITE;
     assert_int_equal(1,
         dma_addr_to_sg(dma, 0x2000, 0x400, &sg, 1, PROT_READ));
-    assert_int_equal(r->dma_addr, sg.dma_addr);
+    assert_int_equal(r->iova.iov_base, sg.dma_addr);
     assert_int_equal(0, sg.region);
-    assert_int_equal(0x2000 - r->dma_addr, sg.offset);
+    assert_int_equal(0x2000 - (unsigned long long)r->iova.iov_base, sg.offset);
     assert_int_equal(0x400, sg.length);
     assert_true(sg.mappable);
 

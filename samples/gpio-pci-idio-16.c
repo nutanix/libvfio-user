@@ -126,13 +126,14 @@ migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, __u64 size,
 }
 
 static void
-map_dma(vfu_ctx_t *vfu_ctx UNUSED, uint64_t iova UNUSED, uint64_t len UNUSED,
-        uint32_t prot UNUSED)
+map_dma(vfu_ctx_t *vfu_ctx UNUSED, const struct iovec *iova UNUSED,
+        const struct iovec *vaddr UNUSED, uint32_t prot UNUSED)
 {
 }
 
 static int
-unmap_dma(vfu_ctx_t *vfu_ctx UNUSED, uint64_t iova UNUSED, uint64_t len UNUSED)
+unmap_dma(vfu_ctx_t *vfu_ctx UNUSED, const struct iovec *iova UNUSED,
+          const struct iovec *vaddr UNUSED)
 {
     return 0;
 }

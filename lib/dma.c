@@ -99,11 +99,11 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
     assert(dma != NULL);
     assert(region != NULL);
 
-    err = dma_unmap_region(region, region->virt_addr, region->size);
+    err = munmap(region->vaddr.iov_base, region->vaddr.iov_len);
     if (err != 0) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d vaddr=%p-%p\n",
-               region->fd, region->virt_addr,
-               region->virt_addr + region->size - 1);
+                region->fd, region->vaddr.iov_base,
+                region->vaddr.iov_base + region->vaddr.iov_len - 1);
     }
     if (region->fd != -1) {
         if (close(region->fd) == -1) {
@@ -121,27 +121,6 @@ UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
  */
 #define _dma_controller_do_remove_region __wrap__dma_controller_do_remove_region
 
-/*
- * FIXME no longer used. Also, it doesn't work for addresses that span two
- * DMA regions.
- */
-bool
-dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
-                            size_t size)
-{
-    dma_memory_region_t *region;
-    int i;
-
-    for (i = 0; i < dma->nregions; i++) {
-        region = &dma->regions[i];
-        if (dma_addr == region->dma_addr && size <= region->size) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 /* FIXME not thread safe */
 int
 dma_controller_remove_region(dma_controller_t *dma,
@@ -155,20 +134,26 @@ dma_controller_remove_region(dma_controller_t *dma,
     assert(dma != NULL);
 
     for (idx = 0; idx < dma->nregions; idx++) {
+        const struct iovec *pvaddr;
         region = &dma->regions[idx];
-        if (region->dma_addr != dma_addr || region->size != size) {
+        if ((dma_addr_t)region->iova.iov_base != dma_addr || region->iova.iov_len != size) {
             continue;
         }
-        err = unmap_dma(data, region->dma_addr, region->size);
+        if (region->vaddr.iov_base == MAP_FAILED) {
+            pvaddr = NULL;
+        } else {
+            pvaddr = &region->vaddr;
+        }
+        err = unmap_dma(data, &region->iova, pvaddr);
         if (err != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
-                   region->dma_addr, region->dma_addr + region->size,
+                   region->iova.iov_base, region->iova.iov_base + region->iova.iov_len,
                    strerror(-err));
             return err;
         }
         assert(region->refcnt == 0);
-        if (region->virt_addr != NULL) {
+        if (region->vaddr.iov_base != MAP_FAILED) {
             _dma_controller_do_remove_region(dma, region);
         }
         if (dma->nregions > 1)
@@ -195,8 +180,9 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        vfu_log(dma->vfu_ctx, LOG_INFO, "unmap vaddr=%p IOVA=%lx",
-               region->virt_addr, region->dma_addr);
+        vfu_log(dma->vfu_ctx, LOG_INFO, "unmap IOVA=%#lx-%#lx) vaddr=%#lx-%#lx)",
+                region->iova.iov_base, region->iova.iov_base + region->iova.iov_len - 1,
+                region->vaddr.iov_base, region->vaddr.iov_base + region->vaddr.iov_len - 1);
 
         _dma_controller_do_remove_region(dma, region);
     }
@@ -228,7 +214,7 @@ dma_controller_add_region(dma_controller_t *dma,
         region = &dma->regions[idx];
 
         /* First check if this is the same exact region. */
-        if (region->dma_addr == dma_addr && region->size == size) {
+        if ((uint64_t)region->iova.iov_base == dma_addr && region->iova.iov_len == size) {
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR,
                        "bad offset for new DMA region %#lx-%#lx, want=%ld, existing=%ld\n",
@@ -257,13 +243,13 @@ dma_controller_add_region(dma_controller_t *dma,
         }
 
         /* Check for overlap, i.e. start of one region is within another. */
-        if ((dma_addr >= region->dma_addr &&
-             dma_addr < region->dma_addr + region->size) ||
-            (region->dma_addr >= dma_addr &&
-             region->dma_addr < dma_addr + size)) {
+        if ((dma_addr >= (dma_addr_t)region->iova.iov_base &&
+             dma_addr < (dma_addr_t)region->iova.iov_base + region->iova.iov_len) ||
+            ((dma_addr_t)region->iova.iov_base >= dma_addr &&
+             (dma_addr_t)region->iova.iov_base < dma_addr + size)) {
             vfu_log(dma->vfu_ctx, LOG_INFO,
                    "new DMA region %#lx+%#lx overlaps with DMA region %#lx-%#lx\n",
-                   dma_addr, size, region->dma_addr, region->size);
+                   dma_addr, size, region->iova.iov_base, region->iova.iov_len);
             goto err;
         }
     }
@@ -287,8 +273,8 @@ dma_controller_add_region(dma_controller_t *dma,
     }
     page_size = MAX(page_size, getpagesize());
 
-    region->dma_addr = dma_addr;
-    region->size = size;
+    region->iova.iov_base = (void *)dma_addr;
+    region->iova.iov_len = size;
     region->page_size = page_size;
     region->offset = offset;
     region->prot = prot;
@@ -296,9 +282,10 @@ dma_controller_add_region(dma_controller_t *dma,
     region->refcnt = 0;
 
     if (fd != -1) {
-        region->virt_addr = dma_map_region(region, region->prot, 0,
-                                           region->size);
-        if (region->virt_addr == MAP_FAILED) {
+        region->vaddr.iov_base = dma_map_region(region, region->prot, 0,
+                                                region->iova.iov_len,
+                                                &region->vaddr.iov_len);
+        if (region->vaddr.iov_base == MAP_FAILED) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %#lx-%#lx: %s\n",
                    dma_addr, dma_addr + size, strerror(errno));
@@ -311,7 +298,8 @@ dma_controller_add_region(dma_controller_t *dma,
             goto err;
         }
     } else {
-        region->virt_addr = NULL;
+        region->vaddr.iov_base = MAP_FAILED;
+        region->vaddr.iov_len = 0;
     }
     dma->nregions++;
 
@@ -331,40 +319,35 @@ mmap_round(size_t *offset, size_t *size, size_t page_size)
 }
 
 void *
-dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
+dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len,
+               size_t *mmap_size)
 {
-    size_t mmap_offset, mmap_size = len;
+    size_t mmap_offset;
     char *mmap_base;
 
-    if (offset >= region->size || offset + len > region->size) {
+    if (offset >= region->iova.iov_len || offset + len > region->iova.iov_len) {
         return MAP_FAILED;
     }
 
     offset += region->offset;
     mmap_offset = offset;
-    mmap_round(&mmap_offset, &mmap_size, region->page_size);
+    *mmap_size = len;
+    mmap_round(&mmap_offset, mmap_size, region->page_size);
 
     // Do the mmap.
     // Note: As per mmap(2) manpage, on some hardware architectures
     //       (e.g., i386), PROT_WRITE implies PROT_READ
-    mmap_base = mmap(NULL, mmap_size, prot, MAP_SHARED,
+    mmap_base = mmap(NULL, *mmap_size, prot, MAP_SHARED,
                      region->fd, mmap_offset);
     if (mmap_base == MAP_FAILED) {
         return mmap_base;
     }
     // Do not dump.
-    madvise(mmap_base, mmap_size, MADV_DONTDUMP);
+    madvise(mmap_base, *mmap_size, MADV_DONTDUMP);
 
     return mmap_base + (offset - mmap_offset);
 }
 UNIT_TEST_SYMBOL(dma_map_region);
-
-int
-dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
-{
-    mmap_round((size_t *)&virt_addr, &len, region->page_size);
-    return munmap(virt_addr, len);
-}
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
@@ -379,9 +362,9 @@ _dma_addr_sg_split(const dma_controller_t *dma,
         found = false;
         for (idx = 0; idx < dma->nregions; idx++) {
             const dma_memory_region_t *const region = &dma->regions[idx];
-            const dma_addr_t region_end = region->dma_addr + region->size;
+            const dma_addr_t region_end = (dma_addr_t)region->iova.iov_base + region->iova.iov_len;
 
-            while (dma_addr >= region->dma_addr && dma_addr < region_end) {
+            while (dma_addr >= (dma_addr_t)region->iova.iov_base && dma_addr < region_end) {
                 size_t region_len = MIN(region_end - dma_addr, len);
 
                 if (cnt < max_sg) {
@@ -449,7 +432,7 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
 
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
-        ssize_t bitmap_size = _get_bitmap_size(region->size, pgsize);
+        ssize_t bitmap_size = _get_bitmap_size(region->iova.iov_len, pgsize);
         if (bitmap_size < 0) {
             return bitmap_size;
         }
@@ -504,7 +487,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
      * IOVAs.
      */
     ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
-    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
+    if (ret != 1 || (dma_addr_t)sg.dma_addr != addr || sg.length != len) {
         return -ENOTSUP;
     }
 

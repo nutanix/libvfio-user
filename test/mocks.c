@@ -272,12 +272,23 @@ __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 }
 
 /* Always mocked. */
-int
-mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
+void
+mock_map_dma(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
+             const struct iovec *vaddr, uint32_t prot)
 {
     check_expected(vfu_ctx);
     check_expected(iova);
-    check_expected(len);
+    check_expected(vaddr);
+    check_expected(prot);
+}
+
+int
+mock_unmap_dma(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
+               const struct iovec *vaddr)
+{
+    check_expected(vfu_ctx);
+    check_expected(iova);
+    check_expected(vaddr);
     return mock();
 }
 

@@ -82,15 +82,13 @@
 struct vfu_ctx;
 
 typedef struct {
-    dma_addr_t dma_addr;        // DMA address of this region
+    struct iovec iova;          // DMA address and size of this region
+    struct iovec vaddr;         // Virtual address and size of this region
     uint32_t prot;              // memory protection of the mapping
                                 // defined in sys/mman.h
-
-    size_t size;                // Size of this region
     int fd;                     // File descriptor to mmap
     int page_size;              // Page size of this fd
     off_t offset;               // File offset
-    void *virt_addr;            // Virtual address of this region
     int refcnt;                 // Number of users of this region
     char *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
@@ -141,9 +139,9 @@ _dma_should_mark_dirty(const dma_controller_t *dma, int prot)
 }
 
 static size_t
-_get_pgstart(size_t pgsize, uint64_t base_addr, uint64_t offset)
+_get_pgstart(size_t pgsize, void *base_addr, uint64_t offset)
 {
-    return (offset - base_addr) / pgsize;
+    return (offset - (uint64_t)base_addr) / pgsize;
 }
 
 static size_t
@@ -163,7 +161,7 @@ _dma_bitmap_get_pgrange(const dma_controller_t *dma,
     assert(start != NULL);
     assert(end != NULL);
 
-    *start = _get_pgstart(dma->dirty_pgsize, region->dma_addr, sg->offset);
+    *start = _get_pgstart(dma->dirty_pgsize, region->iova.iov_base, sg->offset);
     *end = _get_pgend(dma->dirty_pgsize, sg->length, *start);
 }
 
@@ -195,14 +193,14 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, dma_addr_t dma_addr,
         return -1;
     }
 
-    sg->dma_addr = region->dma_addr;
+    sg->dma_addr = region->iova.iov_base;
     sg->region = region_index;
-    sg->offset = dma_addr - region->dma_addr;
+    sg->offset = dma_addr - (dma_addr_t)region->iova.iov_base;
     sg->length = len;
     if (_dma_should_mark_dirty(dma, prot)) {
         _dma_mark_dirty(dma, region, sg);
     }
-    sg->mappable = region->virt_addr != NULL;
+    sg->mappable = region->vaddr.iov_base != MAP_FAILED;
 
     return 0;
 }
@@ -229,11 +227,11 @@ dma_addr_to_sg(const dma_controller_t *dma,
     int cnt, ret;
 
     const dma_memory_region_t *const region = &dma->regions[region_hint];
-    const dma_addr_t region_end = region->dma_addr + region->size;
+    const dma_addr_t region_end = (dma_addr_t)region->iova.iov_base + region->iova.iov_len;
 
     // Fast path: single region.
     if (likely(max_sg > 0 && len > 0 &&
-               dma_addr >= region->dma_addr && dma_addr + len <= region_end &&
+               dma_addr >= (dma_addr_t)region->iova.iov_base && dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
         ret = dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
         if (ret < 0) {
@@ -252,7 +250,7 @@ dma_addr_to_sg(const dma_controller_t *dma,
 
 void *
 dma_map_region(dma_memory_region_t *region, int prot,
-               size_t offset, size_t len);
+               size_t offset, size_t len, size_t *mmap_sze);
 
 int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);
@@ -273,12 +271,12 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
             return -EINVAL;
         }
         region = &dma->regions[sg[i].region];
-        if (region->virt_addr == NULL) {
+        if (region->vaddr.iov_base == MAP_FAILED) {
             return -EFAULT;
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %#lx-%#lx\n",
                sg->dma_addr + sg->offset, sg->dma_addr + sg->offset + sg->length);
-        iov[i].iov_base = region->virt_addr + sg[i].offset;
+        iov[i].iov_base = region->vaddr.iov_base + sg[i].offset;
         iov[i].iov_len = sg[i].length;
         region->refcnt++;
     }
@@ -299,7 +297,7 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
          * tfind(3)
          */
         for (r = dma->regions;
-             r < dma->regions + dma->nregions && r->dma_addr != sg[i].dma_addr;
+             r < dma->regions + dma->nregions && r->iova.iov_base != sg[i].dma_addr;
              r++);
         if (r > dma->regions + dma->nregions) {
             /* bad region */
@@ -354,10 +352,6 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
                               size_t pgsize, size_t size, char **data);
-
-bool
-dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
-                            size_t size);
 
 #endif /* LIB_VFIO_USER_DMA_H */
 

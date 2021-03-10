@@ -64,7 +64,7 @@ extern "C" {
 typedef uint64_t dma_addr_t;
 
 typedef struct {
-    dma_addr_t dma_addr;
+    void *dma_addr;
     int region; /* TODO replace region and length with struct iovec */
     int length;
     uint64_t offset;
@@ -316,12 +316,14 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  * Function that is called when the guest maps a DMA region. Optional.
  *
  * @vfu_ctx: the libvfio-user context
- * @iova: iova address
- * @len: length
+ * @iova: IOVA address and length
+ * @vaddr: virtual address and length if the region is mappable, which can be
+ *  different from IOVA due to alignment. If the region is not mappable then
+ *  @vaddr is set to NULL.
  * @prot: memory protection used to map region as defined in <sys/mman.h>
  */
-typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
-                                uint64_t iova, uint64_t len, uint32_t prot);
+typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
+                                const struct iovec *vaddr, uint32_t prot);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
@@ -329,11 +331,13 @@ typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx,
  * This is required if you want to be able to access guest memory.
  *
  * @vfu_ctx: the libvfio-user context
- * @iova: iova address
- * @len: length
+ * @iova: IOVA address and length
+ * @vaddr: virtual address and length if the region is mappable, which can be
+ *  different from IOVA due to alignment. If the region is not mappable then
+ *  @vaddr is set to NULL.
  */
-typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx,
-                                 uint64_t iova, uint64_t len);
+typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
+                                 const struct iovec *vaddr);
 
 /**
  * Setup device DMA map/unmap callbacks. This will also enable bookkeeping of
