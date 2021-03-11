@@ -1682,7 +1682,172 @@ test_dirty_pages_without_dma(UNUSED void **state)
     assert_int_equal(0xabcd, r);
 }
 
-int main(void)
+static void
+test_device_set_irqs(UNUSED void **state)
+{
+    vfu_irqs_t *irqs = alloca(sizeof (*irqs) + sizeof (int));
+    struct vfio_irq_set irq_set = { 0, };
+    vfu_ctx_t vfu_ctx = { 0, };
+    int fd = 0xdead;
+    int ret;
+
+    vfu_ctx.irq_count[VFU_DEV_MSIX_IRQ] = 2048;
+    vfu_ctx.irq_count[VFU_DEV_ERR_IRQ] = 1;
+    vfu_ctx.irq_count[VFU_DEV_REQ_IRQ] = 1;
+    vfu_ctx.irqs = irqs;
+
+    /* validation tests */
+
+    irq_set.argsz = sizeof (irq_set);
+
+    ret = handle_device_set_irqs(&vfu_ctx, 0, NULL, 0, &irq_set);
+    /* bad message size */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.argsz = 3;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad .argsz */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.argsz = sizeof (irq_set);
+    irq_set.index = VFU_DEV_NUM_IRQS;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad .index */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.index = VFU_DEV_MSIX_IRQ;
+    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_ACTION_UNMASK;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad flags, MASK and UNMASK */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE |
+                    VFIO_IRQ_SET_DATA_BOOL;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad flags, DATA_NONE and DATA_BOOL */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
+    irq_set.start = 2047;
+    irq_set.count = 2;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start, count range */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.start = 2049;
+    irq_set.count = 1;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start, count range */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.start = 0;
+    irq_set.count = 1;
+    irq_set.index = VFU_DEV_ERR_IRQ;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for err irq */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.index = VFU_DEV_REQ_IRQ;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for req irq */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.start = 1;
+    irq_set.count = 0;
+    irq_set.index = VFU_DEV_MSIX_IRQ;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad start for count == 0 */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
+    irq_set.count = 0;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action for count == 0 */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
+    irq_set.count = 0;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    /* bad action and data type for count == 0 */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
+    irq_set.count = 1;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for DATA_BOOL */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
+    irq_set.count = 1;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for DATA_NONE */
+    assert_int_equal(-EINVAL, ret);
+
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
+    irq_set.count = 2;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    /* bad fds for count == 2 */
+    assert_int_equal(-EINVAL, ret);
+
+    irqs->err_efd = irqs->req_efd = -1;
+
+    /* Basic disable functionality. */
+
+    irq_set.index = VFU_DEV_REQ_IRQ;
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
+    irq_set.count = 0;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    assert_int_equal(0, ret);
+
+    irq_set.index = VFU_DEV_REQ_IRQ;
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
+    irq_set.count = 1;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
+    assert_int_equal(0, ret);
+
+    /* Basic enable. */
+
+    irq_set.index = VFU_DEV_MSIX_IRQ;
+    vfu_ctx.irq_count[VFU_DEV_MSIX_IRQ] = 1;
+    irqs->efds[0] = -1;
+    fd = 0xbeef;
+
+    irq_set.index = VFU_DEV_MSIX_IRQ;
+    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
+    irq_set.count = 1;
+    irq_set.start = 0;
+
+    ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
+    assert_int_equal(0, ret);
+    assert_int_equal(0xbeef, irqs->efds[0]);
+
+}
+
+int
+main(void)
 {
    const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_dma_map_without_dma, setup),
@@ -1739,6 +1904,7 @@ int main(void)
         cmocka_unit_test_setup(test_should_exec_command, setup),
         cmocka_unit_test_setup(test_exec_command, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
+        cmocka_unit_test_setup(test_device_set_irqs, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
