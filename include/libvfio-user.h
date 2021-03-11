@@ -313,10 +313,13 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  * Function that is called when the guest maps a DMA region. Optional.
  *
  * @vfu_ctx: the libvfio-user context
- * @iova: IOVA address and length
+ * @iova: I/O virtual address and length. This is the guest physical address
+ *  range that the guest registers for DMA. This address range refers to the
+ *  guest's memory and is invalid in the user's address space. This memory is
+ *  memory mapped in the user's address space at @vaddr.
  * @vaddr: virtual address and length if the region is mappable, which can be
  *  different from IOVA due to alignment. If the region is not mappable then
- *  @vaddr is set to NULL.
+ *  @vaddr is NULL.
  * @prot: memory protection used to map region as defined in <sys/mman.h>
  */
 typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
