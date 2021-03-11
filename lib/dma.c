@@ -148,7 +148,7 @@ dma_controller_remove_region(dma_controller_t *dma,
         if (err != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to notify of removal of DMA region %#lx-%#lx: %s\n",
-                   region->iova.iov_base, region->iova.iov_base + region->iova.iov_len,
+                   region->iova.iov_base, iov_end(&region->iova),
                    strerror(-err));
             return err;
         }
@@ -180,9 +180,9 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        vfu_log(dma->vfu_ctx, LOG_INFO, "unmap IOVA=%#lx-%#lx) vaddr=%#lx-%#lx)",
-                region->iova.iov_base, region->iova.iov_base + region->iova.iov_len - 1,
-                region->vaddr.iov_base, region->vaddr.iov_base + region->vaddr.iov_len - 1);
+        vfu_log(dma->vfu_ctx, LOG_INFO, "unmap IOVA=%#lx-%#lx vaddr=%#lx-%#lx",
+                region->iova.iov_base, iov_end(&region->iova) - 1,
+                region->vaddr.iov_base, iov_end(&region->vaddr) - 1);
 
         _dma_controller_do_remove_region(dma, region);
     }
@@ -244,7 +244,7 @@ dma_controller_add_region(dma_controller_t *dma,
 
         /* Check for overlap, i.e. start of one region is within another. */
         if ((dma_addr >= region->iova.iov_base &&
-             dma_addr < region->iova.iov_base + region->iova.iov_len) ||
+             dma_addr < iov_end(&region->iova)) ||
             (region->iova.iov_base >= dma_addr &&
              region->iova.iov_base < dma_addr + size)) {
             vfu_log(dma->vfu_ctx, LOG_INFO,

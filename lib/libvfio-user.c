@@ -57,6 +57,7 @@
 #include "private.h"
 #include "tran_sock.h"
 
+
 void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 {
@@ -154,7 +155,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
-                    i, iov->iov_base, iov->iov_base + iov->iov_len);
+                    i, iov->iov_base, iov_end(iov));
 
             (*fds)[i] = vfu_reg->fd;
             sparse->areas[i].offset = (uintptr_t)iov->iov_base;
@@ -1346,7 +1347,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
-        if ((size_t)iov->iov_base + iov->iov_len > size) {
+        if ((size_t)iov_end(iov) > size) {
             return ERROR_INT(EINVAL);
         }
     }

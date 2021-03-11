@@ -79,6 +79,8 @@
 #include "libvfio-user.h"
 #include "common.h"
 
+#define iov_end(iov) ((iov)->iov_base + (iov)->iov_len)
+
 struct vfu_ctx;
 
 typedef struct {
