@@ -62,7 +62,7 @@ extern "C" {
 
 typedef struct {
     void *dma_addr;
-    int region; /* TODO replace region and length with struct iovec */
+    int region;
     int length;
     uint64_t offset;
     bool mappable;
