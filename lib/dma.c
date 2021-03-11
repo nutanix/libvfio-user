@@ -125,7 +125,7 @@ UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
 int
 dma_controller_remove_region(dma_controller_t *dma,
                              void *dma_addr, size_t size,
-                             vfu_unmap_dma_cb_t *unmap_dma, void *data)
+                             vfu_dma_unregister_cb_t *unmap_dma, void *data)
 {
     int idx;
     dma_memory_region_t *region;

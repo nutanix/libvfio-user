@@ -69,7 +69,7 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
 int
 __wrap_dma_controller_remove_region(dma_controller_t *dma,
                                     void *dma_addr, size_t size,
-                                    vfu_unmap_dma_cb_t *unmap_dma, void *data)
+                                    vfu_dma_unregister_cb_t *unmap_dma, void *data)
 {
     if (!is_patched(dma_controller_remove_region)) {
         return __real_dma_controller_remove_region(dma, dma_addr, size,

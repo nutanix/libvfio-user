@@ -1404,8 +1404,8 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 }
 
 int
-vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
-                        vfu_unmap_dma_cb_t *unmap_dma)
+vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *map_dma,
+                        vfu_dma_unregister_cb_t *unmap_dma)
 {
 
     assert(vfu_ctx != NULL);

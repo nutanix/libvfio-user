@@ -122,8 +122,8 @@ struct vfu_ctx {
     void                    *tran_data;
     uint64_t                flags;
     char                    *uuid;
-    vfu_map_dma_cb_t        *map_dma;
-    vfu_unmap_dma_cb_t      *unmap_dma;
+    vfu_dma_register_cb_t   *map_dma;
+    vfu_dma_unregister_cb_t *unmap_dma;
 
     int                     client_max_fds;
 

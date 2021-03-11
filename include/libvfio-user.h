@@ -322,8 +322,9 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  *  @vaddr is NULL.
  * @prot: memory protection used to map region as defined in <sys/mman.h>
  */
-typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
-                                const struct iovec *vaddr, uint32_t prot);
+typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx,
+                                     const struct iovec *iova,
+                                     const struct iovec *vaddr, uint32_t prot);
 
 /*
  * Function that is called when the guest unmaps a DMA region. The device
@@ -336,8 +337,9 @@ typedef void (vfu_map_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
  *  different from IOVA due to alignment. If the region is not mappable then
  *  @vaddr is set to NULL.
  */
-typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
-                                 const struct iovec *vaddr);
+typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx,
+                                      const struct iovec *iova,
+                                      const struct iovec *vaddr);
 
 /**
  * Setup device DMA map/unmap callbacks. This will also enable bookkeeping of
@@ -349,8 +351,8 @@ typedef int (vfu_unmap_dma_cb_t)(vfu_ctx_t *vfu_ctx, const struct iovec *iova,
  */
 
 int
-vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_map_dma_cb_t *map_dma,
-                        vfu_unmap_dma_cb_t *unmap_dma);
+vfu_setup_device_dma_cb(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *map_dma,
+                        vfu_dma_unregister_cb_t *unmap_dma);
 
 enum vfu_dev_irq_type {
     VFU_DEV_INTX_IRQ,
