@@ -42,6 +42,7 @@
 #include <errno.h>
 
 #include "dma.h"
+#include "private.h"
 
 static inline ssize_t
 fd_get_blocksize(int fd)
@@ -417,6 +418,8 @@ out:
     errno = 0;
     return cnt;
 }
+
+ssize_t _get_bitmap_size(size_t region_size, size_t pgsize);
 
 ssize_t _get_bitmap_size(size_t region_size, size_t pgsize)
 {
