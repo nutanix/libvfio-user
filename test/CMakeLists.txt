@@ -50,8 +50,7 @@ target_link_libraries(unit-tests PUBLIC cmocka json-c)
 target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
 
 # No "target_link_options" in cmake2
-target_link_libraries(unit-tests PUBLIC
-                      "-Wl,--wrap=_dma_controller_do_remove_region")
+target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_unmap_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_add_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_remove_region")
 target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_map_region")

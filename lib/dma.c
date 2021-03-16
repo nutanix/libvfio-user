@@ -91,8 +91,8 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions)
 }
 
 void
-_dma_controller_do_remove_region(dma_controller_t *dma,
-                                 dma_memory_region_t *region)
+dma_controller_unmap_region(dma_controller_t *dma,
+                            dma_memory_region_t *region)
 {
     int err;
 
@@ -112,14 +112,14 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
         }
     }
 }
-UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
+UNIT_TEST_SYMBOL(dma_controller_unmap_region);
 
 /*
  * FIXME super ugly, but without this functions within the same compilation
  * unit don't call the wrapped version, making unit testing impossible.
  * Ideally we'd like the UNIT_TEST_SYMBOL macro to solve this.
  */
-#define _dma_controller_do_remove_region __wrap__dma_controller_do_remove_region
+#define dma_controller_unmap_region __wrap_dma_controller_unmap_region
 
 /*
  * FIXME no longer used. Also, it doesn't work for addresses that span two
@@ -169,7 +169,7 @@ dma_controller_remove_region(dma_controller_t *dma,
         }
         assert(region->refcnt == 0);
         if (region->virt_addr != NULL) {
-            _dma_controller_do_remove_region(dma, region);
+            dma_controller_unmap_region(dma, region);
         }
         if (dma->nregions > 1)
             /*
@@ -190,7 +190,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
 {
     int i;
 
-    assert(dma);
+    assert(dma != NULL);
 
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
@@ -198,7 +198,11 @@ dma_controller_remove_regions(dma_controller_t *dma)
         vfu_log(dma->vfu_ctx, LOG_INFO, "unmap vaddr=%p IOVA=%lx",
                region->virt_addr, region->dma_addr);
 
-        _dma_controller_do_remove_region(dma, region);
+        if (region->virt_addr != NULL) {
+            dma_controller_unmap_region(dma, region);
+        } else {
+            assert(region->fd == -1);
+        }
     }
 }
 

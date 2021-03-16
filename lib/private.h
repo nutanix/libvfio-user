@@ -147,10 +147,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         int *fds, size_t nr_fds,
                         struct vfio_user_dma_region *dma_regions);
 
-void
-_dma_controller_do_remove_region(dma_controller_t *dma,
-                                 dma_memory_region_t *region);
-
 int
 get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
                  size_t *nr_fds);
@@ -185,6 +181,14 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
+
+#ifdef UNIT_TEST
+
+void
+dma_controller_unmap_region(dma_controller_t *dma,
+                            dma_memory_region_t *region);
+
+#endif /* UNIT_TEST */
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 

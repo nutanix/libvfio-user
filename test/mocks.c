@@ -96,7 +96,7 @@ __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
 }
 
 void
-__wrap__dma_controller_do_remove_region(dma_controller_t *dma,
+__wrap_dma_controller_unmap_region(dma_controller_t *dma,
                                        dma_memory_region_t *region)
 {
     check_expected(dma);
@@ -286,7 +286,7 @@ static struct function funcs[] = {
     {.addr = &__wrap_dma_controller_add_region},
     {.addr = &__wrap_dma_controller_remove_region},
     {.addr = &__wrap_dma_map_region},
-    {.addr = &__wrap__dma_controller_do_remove_region},
+    {.addr = &__wrap_dma_controller_unmap_region},
     {.addr = &__wrap_device_is_stopped},
     {.addr = &__wrap_get_next_command},
     {.addr = &__wrap_exec_command},

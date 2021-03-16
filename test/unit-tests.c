@@ -357,9 +357,9 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     expect_value(mock_unmap_dma, len, 0x100);
     /* FIXME add uni test when unmap_dma fails */
     will_return(mock_unmap_dma, 0);
-    patch(_dma_controller_do_remove_region);
-    expect_value(__wrap__dma_controller_do_remove_region, dma, d);
-    expect_value(__wrap__dma_controller_do_remove_region, region, &d->regions[0]);
+    patch(dma_controller_unmap_region);
+    expect_value(__wrap_dma_controller_unmap_region, dma, d);
+    expect_value(__wrap_dma_controller_unmap_region, region, &d->regions[0]);
     assert_int_equal(0,
         dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
 }
@@ -381,7 +381,7 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
     expect_value(mock_unmap_dma, iova, 0xdeadbeef);
     expect_value(mock_unmap_dma, len, 0x100);
     will_return(mock_unmap_dma, 0);
-    patch(_dma_controller_do_remove_region);
+    patch(dma_controller_unmap_region);
     assert_int_equal(0,
         dma_controller_remove_region(d, 0xdeadbeef, 0x100, mock_unmap_dma, &v));
 }
