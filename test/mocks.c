@@ -50,6 +50,11 @@ struct function
 int
 __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
                                  size_t size, int fd, off_t offset,
+                                 uint32_t prot);
+
+int
+__wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
+                                 size_t size, int fd, off_t offset,
                                  uint32_t prot)
 {
     if (!is_patched(dma_controller_add_region)) {
@@ -65,6 +70,11 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
     check_expected(prot);
     return mock();
 }
+
+int
+__wrap_dma_controller_remove_region(dma_controller_t *dma,
+                                    dma_addr_t dma_addr, size_t size,
+                                    vfu_unmap_dma_cb_t *unmap_dma, void *data);
 
 int
 __wrap_dma_controller_remove_region(dma_controller_t *dma,
@@ -86,6 +96,10 @@ __wrap_dma_controller_remove_region(dma_controller_t *dma,
 
 void *
 __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
+                      size_t len);
+
+void *
+__wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
                       size_t len)
 {
     check_expected_ptr(region);
@@ -97,11 +111,18 @@ __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
 
 void
 __wrap__dma_controller_do_remove_region(dma_controller_t *dma,
+                                       dma_memory_region_t *region);
+
+void
+__wrap__dma_controller_do_remove_region(dma_controller_t *dma,
                                        dma_memory_region_t *region)
 {
     check_expected(dma);
     check_expected(region);
 }
+
+bool
+__wrap_device_is_stopped(struct migration *migration);
 
 bool
 __wrap_device_is_stopped(struct migration *migration)
@@ -115,6 +136,10 @@ __wrap_device_is_stopped(struct migration *migration)
 
 int
 __wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                        int *fds, size_t *nr_fds);
+
+int
+__wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                         int *fds, size_t *nr_fds)
 {
     check_expected(vfu_ctx);
@@ -123,6 +148,12 @@ __wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     check_expected(nr_fds);
     return mock();
 }
+
+int
+__wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                    size_t size, int *fds, size_t *nr_fds, size_t **fds_out,
+                    int *nr_fds_out, struct iovec *_iovecs, struct iovec **iovecs,
+                    size_t *nr_iovecs, bool *free_iovec_data);
 
 int
 __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
@@ -150,6 +181,9 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 int
+__wrap_close(int fd);
+
+int
 __wrap_close(int fd)
 {
     if (!is_patched(close)) {
@@ -159,6 +193,12 @@ __wrap_close(int fd)
     check_expected(fd);
     return mock();
 }
+
+int
+__wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                            enum vfio_user_command cmd,
+                            struct iovec *iovecs, size_t nr_iovecs,
+                            int *fds, int count, int err);
 
 int
 __wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
@@ -179,6 +219,9 @@ __wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 }
 
 void
+__wrap_free(void *ptr);
+
+void
 __wrap_free(void *ptr)
 {
     if (!is_patched(free)) {
@@ -187,6 +230,9 @@ __wrap_free(void *ptr)
     }
     check_expected(ptr);
 }
+
+int
+__wrap_process_request(vfu_ctx_t *vfu_ctx);
 
 int
 __wrap_process_request(vfu_ctx_t *vfu_ctx)
@@ -202,16 +248,26 @@ __wrap_process_request(vfu_ctx_t *vfu_ctx)
 
 int
 __wrap_bind(int sockfd UNUSED, const struct sockaddr *addr UNUSED,
+            socklen_t addrlen UNUSED);
+
+int
+__wrap_bind(int sockfd UNUSED, const struct sockaddr *addr UNUSED,
             socklen_t addrlen UNUSED)
 {
     return 0;
 }
 
 int
+__wrap_listen(int sockfd UNUSED, int backlog UNUSED);
+
+int
 __wrap_listen(int sockfd UNUSED, int backlog UNUSED)
 {
     return 0;
 }
+
+bool
+__wrap_device_is_stopped_and_copying(struct migration *migration);
 
 bool
 __wrap_device_is_stopped_and_copying(struct migration *migration)
@@ -224,6 +280,9 @@ __wrap_device_is_stopped_and_copying(struct migration *migration)
 }
 
 bool
+__wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd);
+
+bool
 __wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
 {
     if (!is_patched(cmd_allowed_when_stopped_and_copying)) {
@@ -232,6 +291,9 @@ __wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
     check_expected(cmd);
     return mock();
 }
+
+bool
+__wrap_cmd_allowed_when_stopped(struct migration *migration);
 
 bool
 __wrap_cmd_allowed_when_stopped(struct migration *migration)
@@ -244,6 +306,9 @@ __wrap_cmd_allowed_when_stopped(struct migration *migration)
 }
 
 bool
+__wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
+
+bool
 __wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 {
     if (!is_patched(should_exec_command)) {
@@ -253,6 +318,11 @@ __wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     check_expected(cmd);
     return mock();
 }
+
+int
+__wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                          struct iovec **iovecs, size_t *nr_iovecs,
+                          struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
 int
 __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
@@ -272,6 +342,9 @@ __wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 }
 
 /* Always mocked. */
+int
+mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len);
+
 int
 mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
 {

@@ -186,6 +186,11 @@ int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
 
+int
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                   struct iovec **iovecs, size_t *nr_iovecs,
+                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
+
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
