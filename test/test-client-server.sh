@@ -17,5 +17,7 @@ ${valgrind} ../samples/server ${sock} &
 while [ ! -S ${sock} ]; do
 	sleep 0.1
 done
-${valgrind} ../samples/client ${sock}
+${valgrind} ../samples/client ${sock} || {
+    kill $(jobs -p)
+}
 wait
