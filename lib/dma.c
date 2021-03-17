@@ -101,7 +101,7 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
 
     err = munmap(region->vaddr.iov_base, region->vaddr.iov_len);
     if (err != 0) {
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d vaddr=%p-%p\n",
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d vaddr=%p-%p: %m\n",
                 region->fd, region->vaddr.iov_base,
                 region->vaddr.iov_base + region->vaddr.iov_len - 1);
     }
