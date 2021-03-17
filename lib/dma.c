@@ -105,11 +105,12 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
                region->fd, region->virt_addr,
                region->virt_addr + region->size - 1);
     }
-    if (region->fd != -1) {
-        if (close(region->fd) == -1) {
-            vfu_log(dma->vfu_ctx, LOG_DEBUG,
-                    "failed to close fd %d: %m\n", region->fd);
-        }
+
+    assert(region->fd != -1);
+
+    if (close(region->fd) == -1) {
+        vfu_log(dma->vfu_ctx, LOG_WARNING, "failed to close fd %d: %m\n",
+                region->fd);
     }
 }
 UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
