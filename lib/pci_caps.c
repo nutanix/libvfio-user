@@ -639,6 +639,9 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         vfu_ctx->pci.nr_caps++;
     }
 
+    vfu_log(vfu_ctx, LOG_DEBUG, "initalized PCI%s capability %s at [%#lx, %#lx)\n",
+            cap.name, extended ? "-e" : "", cap.off, sizeof(cap));
+
     return cap.off;
 }
 
