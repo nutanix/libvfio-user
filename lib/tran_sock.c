@@ -446,7 +446,7 @@ out:
     return 0;
 }
 
-int
+static int
 tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
 {
     tran_sock_t *ts = vfu_ctx->tran_data;
@@ -537,7 +537,7 @@ out:
     return ret;
 }
 
-int
+static int
 recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
              struct vfio_user_version **versionp)
 {
@@ -637,7 +637,7 @@ out:
     return ret;
 }
 
-int
+static int
 send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
              struct vfio_user_version *cversion)
 {

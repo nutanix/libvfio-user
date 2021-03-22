@@ -42,6 +42,7 @@
 #include <stddef.h>
 
 #include "libvfio-user.h"
+#include "private.h"
 
 struct migration *
 init_migration(const vfu_migration_callbacks_t *callbacks,
@@ -54,11 +55,9 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 bool
 migration_available(vfu_ctx_t *vfu_ctx);
 
-bool
-device_is_stopped_and_copying(struct migration *migr);
+MOCKED(bool, device_is_stopped, struct migration *migr);
 
-bool
-device_is_stopped(struct migration *migr);
+MOCKED(bool, device_is_stopped_and_copying, struct migration *migration);
 
 size_t
 migration_get_pgsize(struct migration *migr);

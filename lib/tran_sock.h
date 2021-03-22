@@ -60,12 +60,9 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
  * Send a message to the other end.  The iovecs array should leave the first
  * entry empty, as it will be used for the header.
  */
-int
-tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                     enum vfio_user_command cmd,
-                     struct iovec *iovecs, size_t nr_iovecs,
-                     int *fds, int count,
-                     int err);
+MOCKED(int, tran_sock_send_iovec, int sock, uint16_t msg_id, bool is_reply,
+       enum vfio_user_command cmd, struct iovec *iovecs, size_t nr_iovecs,
+       int *fds, int count, int err);
 
 /*
  * Send a message to the other end with the given data.

@@ -1600,8 +1600,9 @@ test_should_exec_command(UNUSED void **state)
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 }
 
-int recv_body(UNUSED vfu_ctx_t *vfu_ctx, UNUSED const struct vfio_user_header *hdr,
-              UNUSED void **datap)
+static int
+recv_body(UNUSED vfu_ctx_t *vfu_ctx, UNUSED const struct vfio_user_header *hdr,
+          UNUSED void **datap)
 {
     /* hack to avoid having to refactor the rest of exec_command */
     return -1;
