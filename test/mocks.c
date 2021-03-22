@@ -28,13 +28,19 @@
  *
  */
 
+// for RTLD_NEXT
+#define _GNU_SOURCE
+
+#include <dlfcn.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <setjmp.h>
-#include <cmocka.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+
+#include <cmocka.h>
 
 #include "mocks.h"
 #include "dma.h"
@@ -44,16 +50,74 @@
 
 struct function
 {
-    void *addr;
+    const char *name;
     bool patched;
 };
+;
+static int (*__real_close)(int);
+
+static struct function funcs[] = {
+    /* mocked internal funcs */
+    { .name = "_dma_controller_do_remove_region" },
+    { .name = "cmd_allowed_when_stopped_and_copying" },
+    { .name = "device_is_stopped_and_copying" },
+    { .name = "device_is_stopped" },
+    { .name = "dma_controller_add_region" },
+    { .name = "dma_controller_remove_region" },
+    { .name = "dma_map_region" },
+    { .name = "exec_command" },
+    { .name = "get_next_command" },
+    { .name = "handle_dirty_pages" },
+    { .name = "process_request" },
+    { .name = "should_exec_command" },
+    { .name = "tran_sock_send_iovec" },
+    /* system libs */
+    { .name = "bind" },
+    { .name = "close" },
+    { .name = "listen" },
+};
+
+static struct function *
+find(const char *name)
+{
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(funcs); i++) {
+        if (strcmp(name, funcs[i].name) == 0) {
+            return &funcs[i];
+        }
+    }
+    assert(false);
+}
+
+void
+patch(const char *name)
+{
+    struct function *func = find(name);
+    func->patched = true;
+}
+
+static bool
+is_patched(const char *name)
+{
+    return find(name)->patched;
+}
+
+void
+unpatch_all(void)
+{
+    size_t i;
+    for (i = 0; i < ARRAY_SIZE(funcs); i++) {
+        funcs[i].patched = false;
+    }
+}
 
 int
-__wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
-                                 size_t size, int fd, off_t offset,
-                                 uint32_t prot)
+dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
+                          size_t size, int fd, off_t offset,
+                          uint32_t prot)
 {
-    if (!is_patched(dma_controller_add_region)) {
+    if (!is_patched("dma_controller_add_region")) {
         return __real_dma_controller_add_region(dma, dma_addr, size, fd, offset,
                                                 prot);
     }
@@ -68,11 +132,11 @@ __wrap_dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
 }
 
 int
-__wrap_dma_controller_remove_region(dma_controller_t *dma,
-                                    dma_addr_t dma_addr, size_t size,
-                                    vfu_unmap_dma_cb_t *unmap_dma, void *data)
+dma_controller_remove_region(dma_controller_t *dma,
+                             dma_addr_t dma_addr, size_t size,
+                             vfu_unmap_dma_cb_t *unmap_dma, void *data)
 {
-    if (!is_patched(dma_controller_remove_region)) {
+    if (!is_patched("dma_controller_remove_region")) {
         return __real_dma_controller_remove_region(dma, dma_addr, size,
                                                    unmap_dma, data);
     }
@@ -86,8 +150,8 @@ __wrap_dma_controller_remove_region(dma_controller_t *dma,
 }
 
 void *
-__wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
-                      size_t len)
+dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
+               size_t len)
 {
     check_expected_ptr(region);
     check_expected(prot);
@@ -97,17 +161,17 @@ __wrap_dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
 }
 
 void
-__wrap__dma_controller_do_remove_region(dma_controller_t *dma,
-                                       dma_memory_region_t *region)
+_dma_controller_do_remove_region(dma_controller_t *dma,
+                                 dma_memory_region_t *region)
 {
     check_expected(dma);
     check_expected(region);
 }
 
 bool
-__wrap_device_is_stopped(struct migration *migration)
+device_is_stopped(struct migration *migration)
 {
-    if (!is_patched(device_is_stopped)) {
+    if (!is_patched("device_is_stopped")) {
         return __real_device_is_stopped(migration);
     }
     check_expected(migration);
@@ -115,8 +179,8 @@ __wrap_device_is_stopped(struct migration *migration)
 }
 
 int
-__wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                        int *fds, size_t *nr_fds)
+get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                 int *fds, size_t *nr_fds)
 {
     check_expected(vfu_ctx);
     check_expected(hdr);
@@ -126,13 +190,13 @@ __wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 int
-__wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                    size_t size, int *fds, size_t nr_fds, int **fds_out,
-                    size_t *nr_fds_out, struct iovec *_iovecs,
-                    struct iovec **iovecs, size_t *nr_iovecs,
-                    bool *free_iovec_data)
+exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+             size_t size, int *fds, size_t nr_fds, int **fds_out,
+             size_t *nr_fds_out, struct iovec *_iovecs,
+             struct iovec **iovecs, size_t *nr_iovecs,
+             bool *free_iovec_data)
 {
-    if (!is_patched(exec_command)) {
+    if (!is_patched("exec_command")) {
         return __real_exec_command(vfu_ctx, hdr, size, fds, nr_fds, fds_out,
                                    nr_fds_out, _iovecs, iovecs, nr_iovecs,
                                    free_iovec_data);
@@ -152,21 +216,10 @@ __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 }
 
 int
-__wrap_close(int fd)
-{
-    if (!is_patched(close)) {
-        return __real_close(fd);
-    }
-
-    check_expected(fd);
-    return mock();
-}
-
-int
-__wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                            enum vfio_user_command cmd,
-                            struct iovec *iovecs, size_t nr_iovecs,
-                            int *fds, int count, int err)
+tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
+                     enum vfio_user_command cmd,
+                     struct iovec *iovecs, size_t nr_iovecs,
+                     int *fds, int count, int err)
 {
     check_expected(sock);
     check_expected(msg_id);
@@ -180,21 +233,11 @@ __wrap_tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     return mock();
 }
 
-void
-__wrap_free(void *ptr)
-{
-    if (!is_patched(free)) {
-        __real_free(ptr);
-        return;
-    }
-    check_expected(ptr);
-}
-
 int
-__wrap_process_request(vfu_ctx_t *vfu_ctx)
+process_request(vfu_ctx_t *vfu_ctx)
 {
 
-    if (!is_patched(process_request)) {
+    if (!is_patched("process_request")) {
         return __real_process_request(vfu_ctx);
     }
     check_expected(vfu_ctx);
@@ -202,23 +245,10 @@ __wrap_process_request(vfu_ctx_t *vfu_ctx)
     return mock();
 }
 
-int
-__wrap_bind(int sockfd UNUSED, const struct sockaddr *addr UNUSED,
-            socklen_t addrlen UNUSED)
-{
-    return 0;
-}
-
-int
-__wrap_listen(int sockfd UNUSED, int backlog UNUSED)
-{
-    return 0;
-}
-
 bool
-__wrap_device_is_stopped_and_copying(struct migration *migration)
+device_is_stopped_and_copying(struct migration *migration)
 {
-    if (!is_patched(device_is_stopped_and_copying)) {
+    if (!is_patched("device_is_stopped_and_copying")) {
         return __real_device_is_stopped_and_copying(migration);
     }
     check_expected(migration);
@@ -226,9 +256,9 @@ __wrap_device_is_stopped_and_copying(struct migration *migration)
 }
 
 bool
-__wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
+cmd_allowed_when_stopped_and_copying(uint16_t cmd)
 {
-    if (!is_patched(cmd_allowed_when_stopped_and_copying)) {
+    if (!is_patched("cmd_allowed_when_stopped_and_copying")) {
         return __real_cmd_allowed_when_stopped_and_copying(cmd);
     }
     check_expected(cmd);
@@ -236,9 +266,9 @@ __wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
 }
 
 bool
-__wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
+should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 {
-    if (!is_patched(should_exec_command)) {
+    if (!is_patched("should_exec_command")) {
         return __real_should_exec_command(vfu_ctx, cmd);
     }
     check_expected(vfu_ctx);
@@ -247,11 +277,11 @@ __wrap_should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 }
 
 int
-__wrap_handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
-                          struct iovec **iovecs, size_t *nr_iovecs,
-                          struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
+                   struct iovec **iovecs, size_t *nr_iovecs,
+                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
 {
-    if (!is_patched(handle_dirty_pages)) {
+    if (!is_patched("handle_dirty_pages")) {
         return __real_handle_dirty_pages(vfu_ctx, size, iovecs, nr_iovecs,
                                          dirty_bitmap);
     }
@@ -273,61 +303,34 @@ mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
     return mock();
 }
 
-/* FIXME should be something faster than unsorted array, look at tsearch(3). */
-static struct function funcs[] = {
-    {.addr = &__wrap_dma_controller_add_region},
-    {.addr = &__wrap_dma_controller_remove_region},
-    {.addr = &__wrap_dma_map_region},
-    {.addr = &__wrap__dma_controller_do_remove_region},
-    {.addr = &__wrap_device_is_stopped},
-    {.addr = &__wrap_get_next_command},
-    {.addr = &__wrap_exec_command},
-    {.addr = &__wrap_close},
-    {.addr = &__wrap_tran_sock_send_iovec},
-    {.addr = &__wrap_free},
-    {.addr = &__wrap_process_request},
-    {.addr = &__wrap_bind},
-    {.addr = &__wrap_listen},
-    {.addr = &__wrap_device_is_stopped_and_copying},
-    {.addr = &__wrap_cmd_allowed_when_stopped_and_copying},
-    {.addr = &__wrap_device_is_stopped},
-    {.addr = &__wrap_should_exec_command},
-    {.addr = &__wrap_handle_dirty_pages},
-};
+/* System-provided funcs. */
 
-static struct function*
-find(void *addr)
+int
+bind(int sockfd UNUSED, const struct sockaddr *addr UNUSED,
+     socklen_t addrlen UNUSED)
 {
-    size_t i;
+    return 0;
+}
 
-    for (i = 0; i < ARRAY_SIZE(funcs); i++) {
-        if (addr == funcs[i].addr) {
-            return &funcs[i];
+int
+close(int fd)
+{
+    if (!is_patched("close")) {
+        if (__real_close == NULL) {
+            __real_close = dlsym(RTLD_NEXT, "close");
         }
+
+        return __real_close(fd);
     }
-    assert(false);
+
+    check_expected(fd);
+    return mock();
 }
 
-void
-patch(void *addr)
+int
+listen(int sockfd UNUSED, int backlog UNUSED)
 {
-    struct function *func = find(addr);
-    func->patched = true;
-}
-
-bool
-is_patched(void *addr)
-{
-    return find(addr)->patched;
-}
-
-void
-unpatch_all(void)
-{
-    size_t i;
-    for (i = 0; i < ARRAY_SIZE(funcs); i++) {
-        funcs[i].patched = false;
-    }
+    return 0;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

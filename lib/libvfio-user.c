@@ -619,9 +619,9 @@ out:
 }
 
 int
-handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
-                   struct iovec **iovecs, size_t *nr_iovecs,
-                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, uint32_t size,
+                                struct iovec **iovecs, size_t *nr_iovecs,
+                                struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
 {
     int ret;
 
@@ -651,8 +651,6 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     return ret;
 }
-UNIT_TEST_SYMBOL(handle_dirty_pages);
-#define handle_dirty_pages __wrap_handle_dirty_pages
 
 /*
  * FIXME return value is messed up, sometimes we return -1 and set errno while
@@ -694,8 +692,8 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
  * the number of bytes read.
  */
 int
-get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
-                 size_t *nr_fds)
+MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                              int *fds, size_t *nr_fds)
 {
     int ret;
 
@@ -724,21 +722,17 @@ get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
     }
     return ret;
 }
-UNIT_TEST_SYMBOL(get_next_command);
-#define get_next_command __wrap_get_next_command
 
 bool
-cmd_allowed_when_stopped_and_copying(uint16_t cmd)
+MOCK_DEFINE(cmd_allowed_when_stopped_and_copying)(uint16_t cmd)
 {
     return cmd == VFIO_USER_REGION_READ ||
            cmd == VFIO_USER_REGION_WRITE ||
            cmd == VFIO_USER_DIRTY_PAGES;
 }
-UNIT_TEST_SYMBOL(cmd_allowed_when_stopped_and_copying);
-#define cmd_allowed_when_stopped_and_copying __wrap_cmd_allowed_when_stopped_and_copying
 
 bool
-should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
+MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 {
     assert(vfu_ctx != NULL);
 
@@ -756,14 +750,13 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     }
     return true;
 }
-UNIT_TEST_SYMBOL(should_exec_command);
-#define should_exec_command __wrap_should_exec_command
 
 int
-exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
-             struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
-             bool *free_iovec_data)
+MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+                          size_t size, int *fds, size_t nr_fds, int **fds_out,
+                          size_t *nr_fds_out, struct iovec *_iovecs,
+                          struct iovec **iovecs, size_t *nr_iovecs,
+                          bool *free_iovec_data)
 {
     int ret;
     struct vfio_irq_info *irq_info;
@@ -899,11 +892,9 @@ exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
     free(cmd_data);
     return ret;
 }
-UNIT_TEST_SYMBOL(exec_command);
-#define exec_command __wrap_exec_command
 
 int
-process_request(vfu_ctx_t *vfu_ctx)
+MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
 {
     struct vfio_user_header hdr = { 0, };
     int ret;
@@ -985,8 +976,6 @@ process_request(vfu_ctx_t *vfu_ctx)
     free(fds_out);
     return ret;
 }
-UNIT_TEST_SYMBOL(process_request);
-#define process_request __wrap_process_request
 
 int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
