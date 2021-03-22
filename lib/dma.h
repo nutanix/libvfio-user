@@ -116,15 +116,16 @@ dma_controller_destroy(dma_controller_t *dma);
  *   where this region would have been mapped to if the call could succeed
  *   (e.g. due to conflict with existing region).
  */
-MOCKED(int, dma_controller_add_region, dma_controller_t *dma,
-       dma_addr_t dma_addr, size_t size, int fd, off_t offset, uint32_t prot);
+MOCK_DECLARE(int, dma_controller_add_region, dma_controller_t *dma,
+             dma_addr_t dma_addr, size_t size, int fd, off_t offset,
+             uint32_t prot);
 
-MOCKED(void, _dma_controller_do_remove_region, dma_controller_t *dma,
-       dma_memory_region_t *region);
+MOCK_DECLARE(void, _dma_controller_do_remove_region, dma_controller_t *dma,
+             dma_memory_region_t *region);
 
-MOCKED(int, dma_controller_remove_region, dma_controller_t *dma,
-       dma_addr_t dma_addr, size_t size, vfu_unmap_dma_cb_t *unmap_dma,
-       void *data);
+MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
+             dma_addr_t dma_addr, size_t size, vfu_unmap_dma_cb_t *unmap_dma,
+             void *data);
 
 // Helper for dma_addr_to_sg() slow path.
 int
@@ -250,8 +251,8 @@ dma_addr_to_sg(const dma_controller_t *dma,
     return cnt;
 }
 
-MOCKED(void *, dma_map_region, dma_memory_region_t *region, int prot,
-       size_t offset, size_t len);
+MOCK_DECLARE(void *, dma_map_region, dma_memory_region_t *region, int prot,
+             size_t offset, size_t len);
 
 int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len);

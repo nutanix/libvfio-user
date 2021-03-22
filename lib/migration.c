@@ -477,13 +477,13 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 bool
-device_is_stopped_and_copying(struct migration *migr)
+MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {
     return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_SAVING;
 }
 
 bool
-device_is_stopped(struct migration *migr)
+MOCK_DEFINE(device_is_stopped)(struct migration *migr)
 {
     return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_STOP;
 }

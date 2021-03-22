@@ -58,10 +58,10 @@ typedef struct {
 } tran_sock_t;
 
 int
-tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                     enum vfio_user_command cmd,
-                     struct iovec *iovecs, size_t nr_iovecs,
-                     int *fds, int count, int err)
+MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
+                                  enum vfio_user_command cmd,
+                                  struct iovec *iovecs, size_t nr_iovecs,
+                                  int *fds, int count, int err)
 {
     int ret;
     struct vfio_user_header hdr = {.msg_id = msg_id};
@@ -123,8 +123,6 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
 
     return 0;
 }
-UNIT_TEST_SYMBOL(tran_sock_send_iovec);
-#define tran_sock_send_iovec __wrap_tran_sock_send_iovec
 
 int
 tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
