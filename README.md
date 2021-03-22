@@ -179,12 +179,13 @@ to build the `gpio-pci-idio-16` kernel module yourself - it's part of the
 standard Linux kernel, but not usually built and shipped on x86. Start your
 guest VM:
 
-    ./x86_64-softmmu/qemu-system-x86_64 -mem-prealloc -m 1024 \
-      -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=mem,share=yes,size=1073741824 \
-      -kernel ~/vmlinuz -initrd ~/initrd -nographic \
-      -append "console=ttyS0 root=/dev/sda1 single" \
-      -hda ~/bionic-server-cloudimg-amd64-0.raw \
-      -device vfio-user-pci,socket=/tmp/vfio-user.sock
+    ./x86_64-softmmu/qemu-system-x86_64  -mem-prealloc -m 256 \
+    -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=/dev/hugepages/gpio,share=yes,size=256M \
+    -numa node,memdev=ram-node0 \
+    -kernel ~/vmlinuz -initrd ~/initrd -nographic \
+    -append "console=ttyS0 root=/dev/sda1 single" \
+    -hda ~/bionic-server-cloudimg-amd64-0.raw \
+    -device vfio-user-pci,socket=/tmp/vfio-user.sock
 
 Log in to your guest VM, and you should be able to load the module and observe
 the emulated GPIO device's pins:
