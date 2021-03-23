@@ -216,7 +216,8 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 
     assert(vfu_ctx != NULL);
 
-    ret = vfu_addr_to_sg(vfu_ctx, server_data->regions[0].iova.iov_base,
+    ret = vfu_addr_to_sg(vfu_ctx,
+                         (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
                          count, &sg, 1, PROT_WRITE);
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to map 0x%p-0x%p: %s\n",

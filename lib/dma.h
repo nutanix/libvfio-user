@@ -111,10 +111,11 @@ dma_controller_destroy(dma_controller_t *dma);
  *   (e.g. due to conflict with existing region).
  */
 MOCK_DECLARE(int, dma_controller_add_region, dma_controller_t *dma,
-             void *dma_addr, size_t size, int fd, off_t offset, uint32_t prot);
+             vfu_dma_addr_t dma_addr, size_t size, int fd, off_t offset,
+             uint32_t prot);
 
 MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
-             void *dma_addr, size_t size,
+             vfu_dma_addr_t dma_addr, size_t size,
              vfu_dma_unregister_cb_t *dma_unregister, void *data);
 
 MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
@@ -123,7 +124,7 @@ MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
 // Helper for dma_addr_to_sg() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   void *dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint32_t len,
                    dma_sg_t *sg, int max_sg, int prot);
 
 static bool
@@ -179,7 +180,7 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
 }
 
 static inline int
-dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, void *dma_addr,
+dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
             uint32_t len, int prot, int region_index)
 {
     const dma_memory_region_t *const region = &dma->regions[region_index];
@@ -216,7 +217,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, void *dma_addr,
  */
 static inline int
 dma_addr_to_sg(const dma_controller_t *dma,
-               void *dma_addr, uint32_t len,
+               vfu_dma_addr_t dma_addr, size_t len,
                dma_sg_t *sg, int max_sg, int prot)
 {
     static __thread int region_hint;
@@ -311,8 +312,8 @@ int
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
 int
-dma_controller_dirty_page_get(dma_controller_t *dma, void *addr, int len,
-                              size_t pgsize, size_t size, char **data);
+dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
+                              int len, size_t pgsize, size_t size, char **data);
 
 #endif /* LIB_VFIO_USER_DMA_H */
 

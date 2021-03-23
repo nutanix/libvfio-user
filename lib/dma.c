@@ -137,7 +137,7 @@ array_remove(void *array, size_t elem_size, size_t index, int *nr_elemsp)
 /* FIXME not thread safe */
 int
 MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
-                                          void *dma_addr, size_t size,
+                                          vfu_dma_addr_t dma_addr, size_t size,
                                           vfu_dma_unregister_cb_t *dma_unregister,
                                           void *data)
 {
@@ -247,9 +247,9 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
 }
 
 int
-MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma, void *dma_addr,
-                                       size_t size, int fd, off_t offset,
-                                       uint32_t prot)
+MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
+                                       vfu_dma_addr_t dma_addr, size_t size,
+                                       int fd, off_t offset, uint32_t prot)
 {
     int idx;
     dma_memory_region_t *region;
@@ -359,7 +359,7 @@ err:
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   void *dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint32_t len,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
@@ -370,8 +370,8 @@ _dma_addr_sg_split(const dma_controller_t *dma,
         found = false;
         for (idx = 0; idx < dma->nregions; idx++) {
             const dma_memory_region_t *const region = &dma->regions[idx];
-            void *region_start = region->info.iova.iov_base;
-            void *region_end = iov_end(&region->info.iova);
+            vfu_dma_addr_t region_start = region->info.iova.iov_base;
+            vfu_dma_addr_t region_end = iov_end(&region->info.iova);
 
             while (dma_addr >= region_start && dma_addr < region_end) {
                 size_t region_len = MIN(region_end - dma_addr, len);
@@ -483,8 +483,8 @@ int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 }
 
 int
-dma_controller_dirty_page_get(dma_controller_t *dma, void *addr, int len,
-                              size_t pgsize, size_t size, char **data)
+dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
+                              int len, size_t pgsize, size_t size, char **data)
 {
     int ret;
     ssize_t bitmap_size;

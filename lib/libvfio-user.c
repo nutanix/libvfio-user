@@ -594,7 +594,8 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
 
     for (i = 1; i < *nr_iovecs; i++) {
         struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma, (void *)r->iova,
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                            (vfu_dma_addr_t)r->iova,
                                             r->size, r->bitmap.pgsize,
                                             r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
@@ -1454,8 +1455,8 @@ vfu_get_region_info(vfu_ctx_t *vfu_ctx)
 }
 
 int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, void *dma_addr,
-               uint32_t len, dma_sg_t *sg, int max_sg, int prot)
+vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
+               size_t len, dma_sg_t *sg, int max_sg, int prot)
 {
     assert(vfu_ctx != NULL);
 
