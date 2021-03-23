@@ -847,11 +847,10 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->conn_fd != -1) {
+    if (ts != NULL && ts->conn_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->conn_fd);
         ts->conn_fd = -1;
@@ -864,11 +863,10 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->listen_fd != -1) {
+    if (ts != NULL && ts->listen_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->listen_fd);
         ts->listen_fd = -1;
