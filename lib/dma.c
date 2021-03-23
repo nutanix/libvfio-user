@@ -42,6 +42,7 @@
 #include <errno.h>
 
 #include "dma.h"
+#include "private.h"
 
 static inline ssize_t
 fd_get_blocksize(int fd)
@@ -113,7 +114,6 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
     }
 }
 UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
-
 /*
  * FIXME super ugly, but without this functions within the same compilation
  * unit don't call the wrapped version, making unit testing impossible.
@@ -418,7 +418,8 @@ out:
     return cnt;
 }
 
-ssize_t _get_bitmap_size(size_t region_size, size_t pgsize)
+static ssize_t
+get_bitmap_size(size_t region_size, size_t pgsize)
 {
     if (pgsize == 0) {
         return -EINVAL;
@@ -449,7 +450,7 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
 
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
-        ssize_t bitmap_size = _get_bitmap_size(region->size, pgsize);
+        ssize_t bitmap_size = get_bitmap_size(region->size, pgsize);
         if (bitmap_size < 0) {
             return bitmap_size;
         }
@@ -512,7 +513,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, dma_addr_t addr, int len,
         return -EINVAL;
     }
 
-    bitmap_size = _get_bitmap_size(len, pgsize);
+    bitmap_size = get_bitmap_size(len, pgsize);
     if (bitmap_size < 0) {
         return bitmap_size;
     }

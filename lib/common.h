@@ -58,6 +58,21 @@
 #define UNIT_TEST_SYMBOL(x) \
     typeof(x) __wrap_##x __attribute__((weak, alias(#x)))
 
+#ifdef UNIT_TEST
+
+#define MOCKED(r, f, ...) \
+    r f(__VA_ARGS__); \
+    r __real_ ## f(__VA_ARGS__); \
+    r __wrap_ ## f(__VA_ARGS__);
+
+#else /* UNIT_TEST */
+
+#define MOCKED(r, f, ...) \
+    r f(__VA_ARGS__); \
+    r __wrap_ ## f(__VA_ARGS__)
+
+#endif /* UNIT_TEST */
+
 #endif /* LIB_VFIO_USER_COMMON_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

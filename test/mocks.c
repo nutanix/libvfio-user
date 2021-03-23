@@ -40,6 +40,7 @@
 #include "dma.h"
 #include "migration.h"
 #include "../lib/private.h"
+#include "../lib/tran_sock.h"
 
 struct function
 {
@@ -126,9 +127,10 @@ __wrap_get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
 int
 __wrap_exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                    size_t size, int *fds, size_t *nr_fds, size_t **fds_out,
-                    int *nr_fds_out, struct iovec *_iovecs, struct iovec **iovecs,
-                    size_t *nr_iovecs, bool *free_iovec_data)
+                    size_t size, int *fds, size_t nr_fds, int **fds_out,
+                    size_t *nr_fds_out, struct iovec *_iovecs,
+                    struct iovec **iovecs, size_t *nr_iovecs,
+                    bool *free_iovec_data)
 {
     if (!is_patched(exec_command)) {
         return __real_exec_command(vfu_ctx, hdr, size, fds, nr_fds, fds_out,
@@ -230,16 +232,6 @@ __wrap_cmd_allowed_when_stopped_and_copying(uint16_t cmd)
         return __real_cmd_allowed_when_stopped_and_copying(cmd);
     }
     check_expected(cmd);
-    return mock();
-}
-
-bool
-__wrap_cmd_allowed_when_stopped(struct migration *migration)
-{
-    if (!is_patched(device_is_stopped)) {
-        return __real_device_is_stopped(migration);
-    }
-    check_expected(migration);
     return mock();
 }
 

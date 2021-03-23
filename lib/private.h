@@ -147,23 +147,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         int *fds, size_t nr_fds,
                         struct vfio_user_dma_region *dma_regions);
 
-void
-_dma_controller_do_remove_region(dma_controller_t *dma,
-                                 dma_memory_region_t *region);
-
-int
-get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, int *fds,
-                 size_t *nr_fds);
-
-int
-exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size,
-             int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
-             struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
-             bool *free_iovec_data);
-
-int
-process_request(vfu_ctx_t *vfu_ctx);
-
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
@@ -176,15 +159,27 @@ long
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
                 struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
 
-bool
-cmd_allowed_when_stopped_and_copying(uint16_t cmd);
-
-bool
-should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd);
-
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
+
+MOCKED(bool, should_exec_command, vfu_ctx_t *vfu_ctx, uint16_t cmd);
+
+MOCKED(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
+
+MOCKED(int, get_next_command, vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+       int *fds, size_t *nr_fds);
+
+MOCKED(int, exec_command, vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
+       size_t size, int *fds, size_t nr_fds, int **fds_out, size_t *nr_fds_out,
+       struct iovec *_iovecs, struct iovec **iovecs, size_t *nr_iovecs,
+       bool *free_iovec_data);
+
+MOCKED(int, process_request, vfu_ctx_t *vfu_ctx);
+
+MOCKED(int, handle_dirty_pages, vfu_ctx_t *vfu_ctx, uint32_t size,
+       struct iovec **iovecs, size_t *nr_iovecs,
+       struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
