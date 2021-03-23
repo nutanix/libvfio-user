@@ -28,9 +28,6 @@
  *
  */
 
-// for RTLD_NEXT
-#define _GNU_SOURCE
-
 #include <dlfcn.h>
 #include <setjmp.h>
 #include <stdarg.h>
