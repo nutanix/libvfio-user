@@ -51,7 +51,7 @@ set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 
 set(CMAKE_C_FLAGS
-    "${CMAKE_C_FLAGS} -Wall -Werror -Wextra ")
+    "${CMAKE_C_FLAGS} -D_GNU_SOURCE -Wall -Werror -Wextra")
 set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -Wno-missing-field-initializers -Wmissing-declarations")
 
