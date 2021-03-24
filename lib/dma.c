@@ -402,7 +402,8 @@ out:
     if (!found) {
         // There is still a region which was not found.
         assert(len > 0);
-        cnt = -1;
+        errno = ENOENT;
+        return -1;
     } else if (cnt > max_sg) {
         cnt = -cnt - 1;
     }
