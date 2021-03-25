@@ -181,6 +181,24 @@ MOCK_DECLARE(int, handle_dirty_pages, vfu_ctx_t *vfu_ctx, uint32_t size,
              struct iovec **iovecs, size_t *nr_iovecs,
              struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
 
+MOCK_DECLARE(bool, should_exec_command, vfu_ctx_t *vfu_ctx, uint16_t cmd);
+
+MOCK_DECLARE(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
+
+MOCK_DECLARE(int, get_next_command, vfu_ctx_t *vfu_ctx,
+             struct vfio_user_header *hdr, int *fds, size_t *nr_fds);
+
+MOCK_DECLARE(int, exec_command, vfu_ctx_t *vfu_ctx,
+             struct vfio_user_header *hdr, size_t size, int *fds, size_t nr_fds,
+             int **fds_out, size_t *nr_fds_out, struct iovec *_iovecs,
+             struct iovec **iovecs, size_t *nr_iovecs, bool *free_iovec_data);
+
+MOCK_DECLARE(int, process_request, vfu_ctx_t *vfu_ctx);
+
+MOCK_DECLARE(int, handle_dirty_pages, vfu_ctx_t *vfu_ctx, uint32_t size,
+             struct iovec **iovecs, size_t *nr_iovecs,
+             struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap);
+
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

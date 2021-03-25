@@ -30,7 +30,6 @@
  *
  */
 
-#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -718,6 +717,13 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ts = vfu_ctx->tran_data;
 
+    if (ts->conn_fd != -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: already attached with fd=%d",
+                __func__, ts->conn_fd);
+        errno = EINVAL;
+        return -1;
+    }
+
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
     if (ts->conn_fd == -1) {
         return -1;
@@ -846,11 +852,10 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->conn_fd != -1) {
+    if (ts != NULL && ts->conn_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->conn_fd);
         ts->conn_fd = -1;
@@ -863,11 +868,10 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
     tran_sock_t *ts;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
 
-    if (ts->listen_fd != -1) {
+    if (ts != NULL && ts->listen_fd != -1) {
         // FIXME: handle EINTR
         (void) close(ts->listen_fd);
         ts->listen_fd = -1;

@@ -565,7 +565,7 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
- *  -1:         if the GPA address span is invalid (errno=0) or
+ *  -1:         if the GPA address span is invalid (errno=ENOENT) or
  *              protection violation (errno=EACCES)
  *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
  *              entries necessary to complete this request (errno=0).

@@ -1297,7 +1297,7 @@ test_dma_addr_to_sg(void **state UNUSED)
     r->info.prot = PROT_WRITE;
     assert_int_equal(-1,
         dma_addr_to_sg(dma, (vfu_dma_addr_t)0x6000, 0x400, &sg, 1, PROT_READ));
-    assert_int_equal(0, errno);
+    assert_int_equal(ENOENT, errno);
 
     r->info.prot = PROT_READ;
     assert_int_equal(-1,

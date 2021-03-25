@@ -28,9 +28,6 @@
  *
  */
 
-// for RTLD_NEXT
-#define _GNU_SOURCE
-
 #include <dlfcn.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -53,7 +50,7 @@ struct function
     const char *name;
     bool patched;
 };
-;
+
 static int (*__real_close)(int);
 
 static struct function funcs[] = {
