@@ -33,19 +33,9 @@
 
 #include "private.h"
 
+void patch(const char *func);
+
 void unpatch_all(void);
-
-void patch(void *fn);
-
-bool is_patched(void *fn);
-
-MOCKED(int, close, int fd);
-
-MOCKED(void, free, void *);
-
-MOCKED(int, bind, int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-
-MOCKED(int, listen, int sockfd, int backlog);
 
 int
 mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len);
