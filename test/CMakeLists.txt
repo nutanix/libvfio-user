@@ -32,6 +32,7 @@ else()
   set(valgrind_path "/usr/bin/valgrind")
   set(valgrind_args "--error-exitcode=1 --leak-check=full --quiet")
   set(valgrind_args "${valgrind_args} --show-leak-kinds=all --track-origins=yes")
+  set(valgrind_args "${valgrind_args} --suppressions=${CMAKE_CURRENT_SOURCE_DIR}/valgrind.supp")
   separate_arguments(valgrind_args)
   set(valgrind ${valgrind_path} ${valgrind_args})
 endif()
@@ -45,30 +46,9 @@ add_executable(unit-tests unit-tests.c mocks.c
 		../lib/pci_caps.c
 		../lib/tran_sock.c)
 
-target_link_libraries(unit-tests PUBLIC cmocka json-c)
+target_link_libraries(unit-tests PUBLIC cmocka dl json-c)
 
 target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
-
-# No "target_link_options" in cmake2
-target_link_libraries(unit-tests PUBLIC
-                      "-Wl,--wrap=_dma_controller_do_remove_region")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_add_region")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_controller_remove_region")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=dma_map_region")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=get_next_command")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=exec_command")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=close")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=tran_sock_send_iovec")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=free")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=process_request")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=bind")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=listen")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped_and_copying")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=cmd_allowed_when_stopped_and_copying")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=device_is_stopped")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=should_exec_command")
-target_link_libraries(unit-tests PUBLIC "-Wl,--wrap=handle_dirty_pages")
 
 enable_testing()
 add_test(NAME unit-tests COMMAND ${valgrind} ${CMAKE_CURRENT_BINARY_DIR}/unit-tests)

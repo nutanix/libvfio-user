@@ -92,8 +92,8 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions)
 }
 
 void
-_dma_controller_do_remove_region(dma_controller_t *dma,
-                                 dma_memory_region_t *region)
+MOCK_DEFINE(_dma_controller_do_remove_region)(dma_controller_t *dma,
+                                              dma_memory_region_t *region)
 {
     int err;
 
@@ -113,13 +113,6 @@ _dma_controller_do_remove_region(dma_controller_t *dma,
         }
     }
 }
-UNIT_TEST_SYMBOL(_dma_controller_do_remove_region);
-/*
- * FIXME super ugly, but without this functions within the same compilation
- * unit don't call the wrapped version, making unit testing impossible.
- * Ideally we'd like the UNIT_TEST_SYMBOL macro to solve this.
- */
-#define _dma_controller_do_remove_region __wrap__dma_controller_do_remove_region
 
 /*
  * FIXME no longer used. Also, it doesn't work for addresses that span two
@@ -144,9 +137,10 @@ dma_controller_region_valid(dma_controller_t *dma, dma_addr_t dma_addr,
 
 /* FIXME not thread safe */
 int
-dma_controller_remove_region(dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size,
-                             vfu_unmap_dma_cb_t *unmap_dma, void *data)
+MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
+                                          dma_addr_t dma_addr, size_t size,
+                                          vfu_unmap_dma_cb_t *unmap_dma,
+                                          void *data)
 {
     int idx;
     dma_memory_region_t *region;
@@ -183,7 +177,6 @@ dma_controller_remove_region(dma_controller_t *dma,
     }
     return -ENOENT;
 }
-UNIT_TEST_SYMBOL(dma_controller_remove_region);
 
 static inline void
 dma_controller_remove_regions(dma_controller_t *dma)
@@ -214,9 +207,9 @@ dma_controller_destroy(dma_controller_t *dma)
 }
 
 int
-dma_controller_add_region(dma_controller_t *dma,
-                          dma_addr_t dma_addr, size_t size,
-                          int fd, off_t offset, uint32_t prot)
+MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
+                                       dma_addr_t dma_addr, size_t size,
+                                       int fd, off_t offset, uint32_t prot)
 {
     int idx;
     dma_memory_region_t *region;
@@ -320,7 +313,6 @@ dma_controller_add_region(dma_controller_t *dma,
 err:
     return -idx - 1;
 }
-UNIT_TEST_SYMBOL(dma_controller_add_region);
 
 static inline void
 mmap_round(size_t *offset, size_t *size, size_t page_size)
@@ -331,7 +323,8 @@ mmap_round(size_t *offset, size_t *size, size_t page_size)
 }
 
 void *
-dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
+MOCK_DEFINE(dma_map_region)(dma_memory_region_t *region, int prot,
+                            size_t offset, size_t len)
 {
     size_t mmap_offset, mmap_size = len;
     char *mmap_base;
@@ -357,7 +350,6 @@ dma_map_region(dma_memory_region_t *region, int prot, size_t offset, size_t len)
 
     return mmap_base + (offset - mmap_offset);
 }
-UNIT_TEST_SYMBOL(dma_map_region);
 
 int
 dma_unmap_region(dma_memory_region_t *region, void *virt_addr, size_t len)
@@ -410,7 +402,8 @@ out:
     if (!found) {
         // There is still a region which was not found.
         assert(len > 0);
-        cnt = -1;
+        errno = ENOENT;
+        return -1;
     } else if (cnt > max_sg) {
         cnt = -cnt - 1;
     }
