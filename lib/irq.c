@@ -102,12 +102,12 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
     assert(index < VFU_DEV_NUM_IRQS);
     assert(start + count <= vfu_ctx->irq_count[index]);
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u-%u)",
-            vfio_irq_idx_to_str(index), start, start + count);
-
     if (count == 0) {
         count = vfu_ctx->irq_count[index];
     }
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u-%u)",
+            vfio_irq_idx_to_str(index), start, start + count);
 
     switch (index) {
     case VFIO_PCI_INTX_IRQ_INDEX:
