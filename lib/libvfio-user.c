@@ -153,7 +153,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
-            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx-%#llx)", __func__,
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx, %#llx)", __func__,
                     i, iov->iov_base, iov_end(iov));
 
             (*fds)[i] = vfu_reg->fd;
@@ -506,19 +506,22 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
 
     for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
         struct vfio_user_dma_region *region = &dma_regions[i];
+        char rstr[1024];
 
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s DMA region [%#lx-%#lx) offset=%#lx "
-                "prot=%#x flags=%#x", map ? "adding" : "removing",
-                region->addr, region->addr + region->size,
+        snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx "
+                "prot=%#x flags=%#x", region->addr, region->addr + region->size,
                 region->offset, region->prot, region->flags);
+
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s DMA region %s",
+                map ? "adding" : "removing", rstr);
 
         if (map) {
             int fd = -1;
             if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
                 fd = consume_fd(fds, nr_fds, fdi++);
                 if (fd < 0) {
-                    vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region: "
-                            "mappable but fd not provided\n");
+                    vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: "
+                            "mappable but fd not provided", rstr);
                     ret = fd;
                     break;
                 }
@@ -531,8 +534,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                 if (fd != -1) {
                     close(fd);
                 }
-                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region: %s",
-                        strerror(-ret));
+                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %s",
+                        rstr, strerror(-ret));
                 break;
             }
 
@@ -549,8 +552,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                                vfu_ctx->dma_unregister,
                                                vfu_ctx);
             if (ret < 0) {
-                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region: %s",
-                        strerror(-ret));
+                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %s",
+                        rstr, strerror(-ret));
                 break;
             }
         }

@@ -219,7 +219,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
                          (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
                          count, &sg, 1, PROT_WRITE);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to map 0x%p-0x%p: %s\n",
+        errx(EXIT_FAILURE, "failed to map %p-%p: %s\n",
              server_data->regions[0].iova.iov_base,
              server_data->regions[0].iova.iov_base + count -1,
              strerror(-ret));
@@ -227,7 +227,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 
     memset(buf, 'A', count);
     get_md5sum(buf, count, md5sum1);
-    printf("%s: WRITE addr 0x%p count %d\n", __func__,
+    printf("%s: WRITE addr %p count %d\n", __func__,
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_write(vfu_ctx, &sg, buf);
     if (ret < 0) {
@@ -235,7 +235,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 
     memset(buf, 0, count);
-    printf("%s: READ  addr 0x%p count %d\n", __func__,
+    printf("%s: READ  addr %p count %d\n", __func__,
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_read(vfu_ctx, &sg, buf);
     if (ret < 0) {

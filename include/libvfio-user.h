@@ -330,10 +330,24 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  *   mmap(2)
  *
  * For a real example, using the gpio sample server, and a qemu configured to
- * use large pages and share its memory:
+ * use huge pages and share its memory:
  *
  * gpio: mapped DMA region iova=[0xf0000-0x10000000) vaddr=0x2aaaab0f0000
  * page_size=0x200000 mapping=[0x2aaaab000000-0x2aaabb000000)
+ *
+ *     0xf0000                    0x10000000
+ *     |                                   |
+ *     v                                   v
+ *     +-----------------------------------+
+ *     | Guest IOVA (DMA) space            |
+ *  +--+-----------------------------------+--+
+ *  |  |                                   |  |
+ *  |  +-----------------------------------+  |
+ *  |  ^ libvfio-user server address space    |
+ *  +--|--------------------------------------+
+ *  ^ vaddr=0x2aaaab0f0000                    ^
+ *  |                                         |
+ *  0x2aaaab000000               0x2aaabb000000
  *
  * This region can be directly accessed at 0x2aaaab0f0000, but the underlying
  * large page mapping is in the range [0x2aaaab000000-0x2aaabb000000).
@@ -381,7 +395,7 @@ typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
  * least @dma_unregister must be provided.
  *
  * @vfu_ctx: the libvfio-user context
- * @dma_register DMA region registration callback (optional)
+ * @dma_register: DMA region registration callback (optional)
  * @dma_unregister: DMA region unregistration callback (optional)
  */
 

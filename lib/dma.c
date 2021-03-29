@@ -103,7 +103,7 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
     err = munmap(region->info.mapping.iov_base, region->info.mapping.iov_len);
     if (err != 0) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d "
-                "mapping=[%p-%p): %m\n",
+                "mapping=[%p, %p): %m\n",
                 region->fd, region->info.mapping.iov_base,
                 iov_end(&region->info.mapping));
     }
@@ -157,7 +157,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         err = dma_unregister(data, &region->info);
         if (err != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to dma_unregister() DMA region [%#lx-%#lx): %s\n",
+                   "failed to dma_unregister() DMA region [%#lx, %#lx): %s\n",
                    region->info.iova.iov_base, iov_end(&region->info.iova),
                    strerror(err));
             return err;
@@ -187,8 +187,8 @@ dma_controller_remove_regions(dma_controller_t *dma)
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
 
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "removing DMA region iova=[%#lx-%#lx) "
-                "vaddr=%#lx mapping=[%#lx-%#lx)",
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "removing DMA region "
+                "iova=[%#lx, %#lx) vaddr=%#lx mapping=[%#lx, %#lx)",
                 region->info.iova.iov_base, iov_end(&region->info.iova),
                 region->info.vaddr,
                 region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -236,8 +236,8 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     region->info.mapping.iov_len = mmap_len;
     region->info.vaddr = mmap_base + (region->offset - offset);
 
-    vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%#lx-%#lx) "
-            "vaddr=%#lx page_size=%#lx mapping=[%#lx-%#lx)",
+    vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%#lx, %#lx) "
+            "vaddr=%#lx page_size=%#lx mapping=[%#lx, %#lx)",
             region->info.iova.iov_base, iov_end(&region->info.iova),
             region->info.vaddr, region->info.page_size,
             region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -251,12 +251,16 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, size_t size,
                                        int fd, off_t offset, uint32_t prot)
 {
-    int idx;
     dma_memory_region_t *region;
     int page_size = 0;
+    char rstr[1024];
+    int idx;
     int ret;
 
     assert(dma != NULL);
+
+    snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#lx prot=%#x",
+             dma_addr, (char *)dma_addr + size, fd, offset, prot);
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
@@ -265,9 +269,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         if (region->info.iova.iov_base == dma_addr &&
             region->info.iova.iov_len == size) {
             if (offset != region->offset) {
-                vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset=%#lx for new DMA "
-                        "region [%#lx-%#lx) existing=%#lx\n", offset,
-                       dma_addr, dma_addr + size, region->offset);
+                vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
+                        "%s; existing=%#lx\n", rstr, region->offset);
                 goto err;
             }
             if (!fds_are_same_file(region->fd, fd)) {
@@ -277,15 +280,13 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                  * the same file, however in the majority of cases we'll be
                  * using a single fd.
                  */
-                vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd=%d for new DMA region "
-                        "[%#lx-%#lx), existing=%d\n", fd, dma_addr,
-                        dma_addr + size, region->fd);
+                vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
+                        "existing=%d\n", rstr, region->fd);
                 goto err;
             }
             if (region->info.prot != prot) {
-                vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot=%#x for new DMA "
-                        "region [%#lx-%#lx), existing=%#x\n", prot, dma_addr,
-                        dma_addr + size, region->info.prot);
+                vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot for new DMA region "
+                        "%s; existing=%#x", rstr, region->info.prot);
                 goto err;
             }
             return idx;
@@ -296,9 +297,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
              dma_addr < iov_end(&region->info.iova)) ||
             (region->info.iova.iov_base >= dma_addr &&
              region->info.iova.iov_base < dma_addr + size)) {
-            vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region [%#lx-%#lx) "
-                    "overlaps with DMA region [%#lx-%#lx)\n",
-                    dma_addr, dma_addr + size, region->info.iova.iov_base,
+            vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
+                    "DMA region [%#lx, %#lx)", rstr, region->info.iova.iov_base,
                     iov_end(&region->info.iova));
             goto err;
         }
@@ -337,8 +337,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
         if (ret != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to memory map DMA region [%#lx-%#lx): %s\n",
-                   region->info.iova.iov_base, iov_end(&region->info.iova),
+                   "failed to memory map DMA region %s: %s\n", rstr,
                    strerror(-ret));
 
             if (close(region->fd) == -1) {
