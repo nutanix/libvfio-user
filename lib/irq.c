@@ -113,7 +113,7 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
     case VFIO_PCI_INTX_IRQ_INDEX:
     case VFIO_PCI_MSI_IRQ_INDEX:
     case VFIO_PCI_MSIX_IRQ_INDEX:
-        efds = vfu_ctx->irqs[index].efds;
+        efds = vfu_ctx->irqs->efds;
         break;
     case VFIO_PCI_ERR_IRQ_INDEX:
         efds = &vfu_ctx->irqs->err_efd;
