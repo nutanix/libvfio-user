@@ -115,10 +115,15 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
         memcpy(CMSG_DATA(cmsg), fds, size);
     }
 
-    // FIXME: this doesn't check the entire data was sent?
-    ret = sendmsg(sock, &msg, 0);
+    ret = sendmsg(sock, &msg, MSG_NOSIGNAL);
     if (ret == -1) {
+        /* Treat a failed write due to EPIPE the same as a short write. */
+        if (errno == EPIPE) {
+            return -ECONNRESET;
+        }
         return -errno;
+    } else if ((size_t)ret < hdr.msg_size) {
+        return -ECONNRESET;
     }
 
     return 0;
