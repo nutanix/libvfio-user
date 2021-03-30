@@ -1115,6 +1115,14 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
 {
     vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
 
+    if (vfu_ctx->dma != NULL) {
+        dma_controller_remove_regions(vfu_ctx->dma);
+    }
+
+    if (vfu_ctx->irqs != NULL) {
+        irqs_reset(vfu_ctx);
+    }
+
     if (vfu_ctx->tran->detach != NULL) {
         vfu_ctx->tran->detach(vfu_ctx);
     }

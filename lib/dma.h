@@ -101,6 +101,9 @@ dma_controller_t *
 dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions);
 
 void
+dma_controller_remove_regions(dma_controller_t *dma);
+
+void
 dma_controller_destroy(dma_controller_t *dma);
 
 /* Registers a new memory region.

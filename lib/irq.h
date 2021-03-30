@@ -35,6 +35,9 @@
 
 #include "private.h"
 
+void
+irqs_reset(vfu_ctx_t *vfu_ctx);
+
 int
 handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            struct vfio_irq_info *irq_info_in,
