@@ -135,6 +135,27 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
     }
 }
 
+void
+irqs_reset(vfu_ctx_t *vfu_ctx)
+{
+    int *efds = vfu_ctx->irqs->efds;
+    size_t i;
+
+    irqs_disable(vfu_ctx, VFIO_PCI_REQ_IRQ_INDEX, 0, 0);
+    irqs_disable(vfu_ctx, VFIO_PCI_ERR_IRQ_INDEX, 0, 0);
+
+    for (i = 0; i < vfu_ctx->irqs->max_ivs; i++) {
+        if (efds[i] >= 0) {
+            if (close(efds[i]) == -1) {
+                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m",
+                        efds[i]);
+            }
+
+            efds[i] = -1;
+        }
+    }
+}
+
 static int
 irqs_set_data_none(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 {
