@@ -214,8 +214,8 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
     /* FIXME if ret == -1 then fcntl can overwrite recv's errno */
 
     ret = get_msg(hdr, sizeof(*hdr), fds, nr_fds, sock, 0);
-    if (ret == -1) {
-        return -errno;
+    if (ret < 0) {
+        return ret;
     }
     if (ret < (int)sizeof(*hdr)) {
         return -EINVAL;
