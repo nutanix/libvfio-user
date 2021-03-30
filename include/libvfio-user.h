@@ -186,7 +186,7 @@ void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...);
 
 /**
- * Setup logging information.
+ * Set up logging information.
  * @vfu_ctx: the libvfio-user context
  * @log: logging function
  * @level: logging level as defined in syslog(3)
@@ -302,15 +302,35 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 size_t
 vfu_get_migr_register_area_size(void);
 
+typedef enum vfu_reset_type {
+    /*
+     * Client requested a device reset (for example, as part of a guest VM
+     * reboot). The vfio-user context remains valid, but it's expected that all
+     * ongoing operations are completed or cancelled, and any device state is
+     * reset to a known-good initial state (including any PCI register state).
+     */
+    VFU_RESET_DEVICE,
+    /*
+     * The vfio-user socket client connection was closed or reset. The attached
+     * context is cleaned up after returning from the reset callback, and
+     * vfu_attach_ctx() must be called to establish a new client.
+     */
+    VFU_RESET_LOST_CONN
+} vfu_reset_type_t;
+
 /*
- * Callback function that is called when the guest resets the device.
+ * Callback function that is called when the device must be reset.
  */
-typedef int (vfu_reset_cb_t)(vfu_ctx_t *vfu_ctx);
+typedef int (vfu_reset_cb_t)(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type);
 
 /**
- * Setup device reset callback.
+ * Set up device reset callback.
+ *
+ * A reset should ensure that all on-going use of device IRQs or guest memory is
+ * completed or cancelled before returning from the callback.
+ *
  * @vfu_ctx: the libvfio-user context
- * @reset: device reset callback (optional)
+ * @reset: device reset callback
  */
 int
 vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
@@ -388,7 +408,7 @@ typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /**
- * Setup device DMA registration callbacks. When libvfio-user is notified of a
+ * Set up device DMA registration callbacks. When libvfio-user is notified of a
  * DMA range addition or removal, these callbacks will be invoked.
  *
  * If this function is not called, guest DMA regions are not accessible via
@@ -416,7 +436,7 @@ enum vfu_dev_irq_type {
 };
 
 /**
- * Setup device IRQ counts.
+ * Set up device IRQ counts.
  * @vfu_ctx: the libvfio-user context
  * @type: IRQ type (VFU_DEV_INTX_IRQ ... VFU_DEV_REQ_IRQ)
  * @count: number of irqs
