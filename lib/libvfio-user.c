@@ -56,6 +56,7 @@
 #include "private.h"
 #include "tran_sock.h"
 
+static void vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason);
 
 void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
@@ -698,26 +699,25 @@ MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     /* FIXME get request shouldn't set errno, it should return it as -errno */
     ret = vfu_ctx->tran->get_request(vfu_ctx, hdr, fds, nr_fds);
     if (unlikely(ret < 0)) {
-        if (ret == -EAGAIN || ret == -EWOULDBLOCK) {
+        switch (-ret) {
+        case EAGAIN:
             return 0;
-        }
-        if (ret != -EINTR) {
+
+        case ENOMSG:
+            vfu_reset_ctx(vfu_ctx, "closed");
+            return -ENOTCONN;
+
+        case ECONNRESET:
+            vfu_reset_ctx(vfu_ctx, "reset");
+            return -ENOTCONN;
+
+        default:
             vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %s",
                    strerror(-ret));
+            return ret;
         }
-        return ret;
     }
-    if (unlikely(ret == 0)) {
-        if (errno == EINTR) {
-            return -EINTR;
-        }
-        if (errno == 0) {
-            vfu_log(vfu_ctx, LOG_INFO, "vfio-user client closed connection");
-        } else {
-            vfu_log(vfu_ctx, LOG_ERR, "end of file: %m");
-        }
-        return -ENOTCONN;
-    }
+
     return ret;
 }
 
@@ -784,7 +784,13 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     if (cmd_data_size > 0) {
         ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
 
-        if (ret < 0) {
+        if (ret == -ENOMSG) {
+            vfu_reset_ctx(vfu_ctx, "closed");
+            return -ENOTCONN;
+        } else if (ret == -ECONNRESET) {
+            vfu_reset_ctx(vfu_ctx, "reset");
+            return -ENOTCONN;
+        } else if (ret < 0) {
             return ret;
         }
     }
@@ -943,6 +949,10 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %s", hdr.msg_id,
                 hdr.cmd, strerror(-ret));
+
+        if (ret == -ENOTCONN) {
+            goto out;
+        }
     } else {
         ret = 0;
     }
@@ -955,11 +965,21 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     } else {
         ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
                                    fds_out, nr_fds_out, -ret);
-        if (unlikely(ret < 0)) {
+
+        if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
+
+            if (ret == -ECONNRESET) {
+                vfu_reset_ctx(vfu_ctx, "reset");
+                ret = -ENOTCONN;
+            } else if (ret == -ENOMSG) {
+                vfu_reset_ctx(vfu_ctx, "closed");
+                ret = -ENOTCONN;
+            }
         }
     }
 
+out:
     if (iovecs != NULL) {
         if (free_iovec_data) {
             size_t i;
@@ -1087,6 +1107,16 @@ free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
     }
 }
 
+static void
+vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
+{
+    vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
+
+    if (vfu_ctx->tran->detach != NULL) {
+        vfu_ctx->tran->detach(vfu_ctx);
+    }
+}
+
 void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
@@ -1095,11 +1125,10 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
         return;
     }
 
+    vfu_reset_ctx(vfu_ctx, "destroyed");
+
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
-    if (vfu_ctx->tran->detach != NULL) {
-        vfu_ctx->tran->detach(vfu_ctx);
-    }
 
     if (vfu_ctx->tran->fini != NULL) {
         vfu_ctx->tran->fini(vfu_ctx);
@@ -1519,7 +1548,18 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
                                   &dma_send, sizeof(dma_send), NULL,
                                   dma_recv, recv_size);
-    memcpy(data, dma_recv->data, sg->length); /* FIXME no need for memcpy */
+
+    if (ret == -ENOMSG) {
+        vfu_reset_ctx(vfu_ctx, "closed");
+        ret = -ENOTCONN;
+    } else if (ret == -ECONNRESET) {
+        vfu_reset_ctx(vfu_ctx, "reset");
+        ret = -ENOTCONN;
+    } else if (ret == 0) {
+        /* FIXME no need for memcpy */
+        memcpy(data, dma_recv->data, sg->length);
+    }
+
     free(dma_recv);
 
     return ret < 0 ? ERROR_INT(-ret) : 0;
@@ -1545,6 +1585,15 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
                                   dma_send, send_size, NULL,
                                   &dma_recv, sizeof(dma_recv));
+
+    if (ret == -ENOMSG) {
+        vfu_reset_ctx(vfu_ctx, "closed");
+        ret = -ENOTCONN;
+    } else if (ret == -ECONNRESET) {
+        vfu_reset_ctx(vfu_ctx, "reset");
+        ret = -ENOTCONN;
+    }
+
     free(dma_send);
 
     return ret < 0 ? ERROR_INT(-ret) : 0;
