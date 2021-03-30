@@ -567,7 +567,7 @@ handle_device_reset(vfu_ctx_t *vfu_ctx)
 {
     vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx);
+        return vfu_ctx->reset(vfu_ctx, VFU_RESET_DEVICE);
     }
     return 0;
 }
@@ -1115,6 +1115,10 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
 {
     vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
 
+    if (vfu_ctx->reset != NULL) {
+        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    }
+
     if (vfu_ctx->dma != NULL) {
         dma_controller_remove_regions(vfu_ctx->dma);
     }
@@ -1416,10 +1420,8 @@ out:
 int
 vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 {
-
     assert(vfu_ctx != NULL);
     vfu_ctx->reset = reset;
-
     return 0;
 }
 
