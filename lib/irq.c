@@ -106,7 +106,7 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
         count = vfu_ctx->irq_count[index];
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u-%u)",
+    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u, %u)",
             vfio_irq_idx_to_str(index), start, start + count);
 
     switch (index) {
@@ -333,7 +333,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
         return 0;
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "setting IRQ %s flags=%#x range [%u-%u)",
+    vfu_log(vfu_ctx, LOG_DEBUG, "setting IRQ %s flags=%#x range [%u, %u)",
             vfio_irq_idx_to_str(irq_set->index), irq_set->flags,
             irq_set->start, irq_set->start + irq_set->count);
 
