@@ -28,16 +28,14 @@
  *
  */
 
-#include <stdbool.h>
-#include <sys/socket.h>
-
 #include "private.h"
-
-void patch(const char *func);
 
 void unpatch_all(void);
 
-int
-mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len);
+void patch(const char *name);
+
+void mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+
+int mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
