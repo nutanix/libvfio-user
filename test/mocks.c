@@ -50,16 +50,16 @@ struct function
     const char *name;
     bool patched;
 };
-;
+
 static int (*__real_close)(int);
 
 static struct function funcs[] = {
     /* mocked internal funcs */
-    { .name = "_dma_controller_do_remove_region" },
     { .name = "cmd_allowed_when_stopped_and_copying" },
     { .name = "device_is_stopped_and_copying" },
     { .name = "device_is_stopped" },
     { .name = "dma_controller_add_region" },
+    { .name = "dma_controller_unmap_region" },
     { .name = "dma_controller_remove_region" },
     { .name = "dma_map_region" },
     { .name = "exec_command" },
@@ -110,7 +110,7 @@ unpatch_all(void)
 }
 
 int
-dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
+dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
                           size_t size, int fd, off_t offset,
                           uint32_t prot)
 {
@@ -130,36 +130,26 @@ dma_controller_add_region(dma_controller_t *dma, dma_addr_t dma_addr,
 
 int
 dma_controller_remove_region(dma_controller_t *dma,
-                             dma_addr_t dma_addr, size_t size,
-                             vfu_unmap_dma_cb_t *unmap_dma, void *data)
+                             void *dma_addr, size_t size,
+                             vfu_dma_unregister_cb_t *dma_unregister,
+                             void *data)
 {
     if (!is_patched("dma_controller_remove_region")) {
         return __real_dma_controller_remove_region(dma, dma_addr, size,
-                                                   unmap_dma, data);
+                                                   dma_unregister, data);
     }
 
     check_expected(dma);
     check_expected(dma_addr);
     check_expected(size);
-    check_expected(unmap_dma);
+    check_expected(dma_unregister);
     check_expected(data);
     return mock();
 }
 
-void *
-dma_map_region(dma_memory_region_t *region, int prot, size_t offset,
-               size_t len)
-{
-    check_expected_ptr(region);
-    check_expected(prot);
-    check_expected(offset);
-    check_expected(len);
-    return mock_ptr_type(void*);
-}
-
 void
-_dma_controller_do_remove_region(dma_controller_t *dma,
-                                 dma_memory_region_t *region)
+dma_controller_unmap_region(dma_controller_t *dma,
+                            dma_memory_region_t *region)
 {
     check_expected(dma);
     check_expected(region);
@@ -291,12 +281,18 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
 }
 
 /* Always mocked. */
-int
-mock_unmap_dma(vfu_ctx_t *vfu_ctx, uint64_t iova, uint64_t len)
+void
+mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
     check_expected(vfu_ctx);
-    check_expected(iova);
-    check_expected(len);
+    check_expected(info);
+}
+
+int
+mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
+{
+    check_expected(vfu_ctx);
+    check_expected(info);
     return mock();
 }
 
