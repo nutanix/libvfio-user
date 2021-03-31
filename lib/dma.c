@@ -100,12 +100,16 @@ MOCK_DEFINE(_dma_controller_do_remove_region)(dma_controller_t *dma,
     assert(dma != NULL);
     assert(region != NULL);
 
-    err = dma_unmap_region(region, region->virt_addr, region->size);
-    if (err != 0) {
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d vaddr=%p-%p\n",
-               region->fd, region->virt_addr,
-               region->virt_addr + region->size - 1);
+    if (region->virt_addr != NULL) {
+        err = dma_unmap_region(region, region->virt_addr, region->size);
+        if (err != 0) {
+            vfu_log(dma->vfu_ctx, LOG_DEBUG,
+                    "failed to unmap fd=%d vaddr=%p-%p\n",
+                    region->fd, region->virt_addr,
+                    region->virt_addr + region->size - 1);
+        }
     }
+
     if (region->fd != -1) {
         if (close(region->fd) == -1) {
             vfu_log(dma->vfu_ctx, LOG_DEBUG,
