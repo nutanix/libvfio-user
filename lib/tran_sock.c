@@ -140,7 +140,10 @@ tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
                                 ARRAY_SIZE(iovecs), NULL, 0, 0);
 }
 
-int
+/*
+ * Send an empty reply back to the other end with the given errno.
+ */
+static int
 tran_sock_send_error(int sock, uint16_t msg_id,
                      enum vfio_user_command cmd,
                      int error)
@@ -204,7 +207,7 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
  * when we're going to return > 0 on success, and even then "errno" might be
  * better.
  */
-int
+static int
 tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
                    uint16_t *msg_id, void *data, size_t *len, int *fds,
                    size_t *nr_fds)
