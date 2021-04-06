@@ -311,7 +311,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 
 invalid:
     vfu_log(vfu_ctx, LOG_DEBUG, "invalid SET_IRQS (%d): action=%u data_type=%u "
-            "index=%u start=%u count=%u nr_fds=%u", line, a_type, d_type,
+            "index=%u start=%u count=%u nr_fds=%zu", line, a_type, d_type,
             irq_set->index, irq_set->start, irq_set->count, nr_fds);
     return -EINVAL;
 }
