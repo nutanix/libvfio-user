@@ -68,7 +68,7 @@ struct server_data {
 static void
 _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
 {
-    fprintf(stderr, "server%d: %s\n", getpid(), msg);
+    fprintf(stderr, "server[%d]: %s\n", getpid(), msg);
 }
 
 static int
