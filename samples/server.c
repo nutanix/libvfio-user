@@ -68,7 +68,7 @@ struct server_data {
 static void
 _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
 {
-    fprintf(stderr, "server: %s\n", msg);
+    fprintf(stderr, "server[%d]: %s\n", getpid(), msg);
 }
 
 static int
@@ -227,7 +227,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 
     memset(buf, 'A', count);
     get_md5sum(buf, count, md5sum1);
-    printf("%s: WRITE addr %p count %d\n", __func__,
+    vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p count %d", __func__,
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_write(vfu_ctx, &sg, buf);
     if (ret < 0) {
@@ -235,7 +235,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 
     memset(buf, 0, count);
-    printf("%s: READ  addr %p count %d\n", __func__,
+    vfu_log(vfu_ctx, LOG_DEBUG, "%s: READ  addr %p count %d", __func__,
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_read(vfu_ctx, &sg, buf);
     if (ret < 0) {
@@ -251,8 +251,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 
 static int device_reset(vfu_ctx_t *vfu_ctx UNUSED)
 {
-    printf("device reset callback\n");
-
+    vfu_log(vfu_ctx, LOG_DEBUG, "device reset callback");
     return 0;
 }
 
@@ -263,7 +262,8 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     int ret;
     struct itimerval new = { { 0 }, };
 
-    printf("migration: transition to device state %d\n", state);
+    vfu_log(vfu_ctx, LOG_DEBUG, "migration: transition to device state %d",
+            state);
 
     switch (state) {
         case VFU_MIGR_STATE_STOP_AND_COPY:
