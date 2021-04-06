@@ -19,5 +19,6 @@ while [ ! -S ${sock} ]; do
 done
 ${valgrind} ../samples/client ${sock} || {
     kill $(jobs -p)
+    exit 1
 }
 wait
