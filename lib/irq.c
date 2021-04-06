@@ -92,7 +92,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
     return dev_get_irqinfo(vfu_ctx, irq_info_in, irq_info_out);
 }
 
-static long
+static void
 irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
 {
     size_t i;
@@ -106,7 +106,7 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
         count = vfu_ctx->irq_count[index];
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u-%u)",
+    vfu_log(vfu_ctx, LOG_DEBUG, "disabling IRQ type %s range [%u, %u)",
             vfio_irq_idx_to_str(index), start, start + count);
 
     switch (index) {
@@ -133,8 +133,6 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
             efds[i] = -1;
         }
     }
-
-    return 0;
 }
 
 static int
@@ -331,11 +329,11 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     if ((data_type == VFIO_IRQ_SET_DATA_NONE && irq_set->count == 0) ||
         (data_type == VFIO_IRQ_SET_DATA_EVENTFD && nr_fds == 0)) {
-        return irqs_disable(vfu_ctx, irq_set->index,
-                            irq_set->start, irq_set->count);
+        irqs_disable(vfu_ctx, irq_set->index, irq_set->start, irq_set->count);
+        return 0;
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "setting IRQ %s flags=%#x range [%u-%u)",
+    vfu_log(vfu_ctx, LOG_DEBUG, "setting IRQ %s flags=%#x range [%u, %u)",
             vfio_irq_idx_to_str(irq_set->index), irq_set->flags,
             irq_set->start, irq_set->start + irq_set->count);
 

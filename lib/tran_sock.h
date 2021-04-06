@@ -72,13 +72,6 @@ tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
                enum vfio_user_command cmd, void *data, size_t data_len);
 
 /*
- * Send an empty reply back to the other end with the given errno.
- */
-int
-tran_sock_send_error(int sock, uint16_t msg_id,
-                     enum vfio_user_command cmd, int error);
-
-/*
  * Receive a message from the other end, and place the data into the given
  * buffer. If data is supplied by the other end, it must be exactly *len in
  * size.
@@ -86,15 +79,6 @@ tran_sock_send_error(int sock, uint16_t msg_id,
 int
 tran_sock_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
                uint16_t *msg_id, void *data, size_t *len);
-
-/*
- * Same as tran_sock_recv except it receives passed file descriptors. See
- * tran_sock_msg on the semantics of @fds and @nr_fds.
- */
-int
-tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
-                   uint16_t *msg_id, void *data, size_t *len, int *fds,
-                   size_t *nr_fds);
 
 /*
  * Receive a message from the other end, but automatically allocate a buffer for
