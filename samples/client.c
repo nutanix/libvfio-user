@@ -65,6 +65,8 @@ vfu_log(UNUSED vfu_ctx_t *vfu_ctx, UNUSED int level,
 {
     va_list ap;
 
+    printf("client: ");
+
     va_start(ap, fmt);
     vprintf(fmt, ap);
     va_end(ap);
@@ -218,11 +220,11 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
         switch (header->id) {
             case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
                 *sparse = (struct vfio_region_info_cap_sparse_mmap *)header;
-                printf("%s: Sparse cap nr_mmap_areas %d\n", __func__,
+                printf("client: %s: Sparse cap nr_mmap_areas %d\n", __func__,
                        (*sparse)->nr_areas);
                 for (i = 0; i < (*sparse)->nr_areas; i++) {
-                    printf("%s: area %d offset %#llx size %llu\n", __func__,
-                           i, (*sparse)->areas[i].offset,
+                    printf("client: %s: area %d offset %#llx size %llu\n",
+                           __func__, i, (*sparse)->areas[i].offset,
                            (*sparse)->areas[i].size);
                 }
                 break;
@@ -234,7 +236,7 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
                          type->subtype);
                 }
                 migr = true;
-                printf("migration region\n");
+                printf("client: migration region\n");
                 break;
             default:
                 errx(EXIT_FAILURE, "bad VFIO cap ID %#x", header->id);
@@ -319,7 +321,7 @@ get_device_region_info(int sock, uint32_t index)
     }
 
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
-    printf("%s: region_info[%d] offset %#llx flags %#x size %llu "
+    printf("client: %s: region_info[%d] offset %#llx flags %#x size %llu "
            "cap_sz %lu #FDs %lu\n", __func__, index, region_info->offset,
            region_info->flags, region_info->size, cap_sz, nr_fds);
     if (cap_sz) {
@@ -379,7 +381,7 @@ get_device_info(int sock, struct vfio_device_info *dev_info)
              dev_info->num_regions);
     }
 
-    printf("devinfo: flags %#x, num_regions %d, num_irqs %d\n",
+    printf("client: devinfo: flags %#x, num_regions %d, num_irqs %d\n",
            dev_info->flags, dev_info->num_regions, dev_info->num_irqs);
 }
 
@@ -407,7 +409,7 @@ configure_irqs(int sock)
                  strerror(-ret));
         }
         if (vfio_irq_info.count > 0) {
-            printf("IRQ %s: count=%d flags=%#x\n",
+            printf("client: IRQ %s: count=%d flags=%#x\n",
                    irq_to_str[i], vfio_irq_info.count, vfio_irq_info.flags);
         }
     }
@@ -526,14 +528,14 @@ access_bar0(int sock, time_t *t)
         errx(EXIT_FAILURE, "failed to write to BAR0: %s", strerror(-ret));
     }
 
-    printf("wrote to BAR0: %ld\n", *t);
+    printf("client: wrote to BAR0: %ld\n", *t);
 
     ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, false, 0, t, sizeof(*t));
     if (ret < 0) {
         errx(EXIT_FAILURE, "failed to read from BAR0: %s", strerror(-ret));
     }
 
-    printf("read from BAR0: %ld\n", *t);
+    printf("client: read from BAR0: %ld\n", *t);
 }
 
 static void
@@ -544,7 +546,7 @@ wait_for_irq(int irq_fd)
     if (read(irq_fd, &val, sizeof(val)) == -1) {
         err(EXIT_FAILURE, "failed to read from irqfd");
     }
-    printf("INTx triggered!\n");
+    printf("client: INTx triggered!\n");
 }
 
 static void
@@ -695,7 +697,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("%#llx-%#llx\t%hhu\n", bitmaps[i].iova,
+        printf("client: %s: %#llx-%#llx\t%hhu\n", __func__, bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
 }
@@ -707,9 +709,10 @@ enum migration {
 };
 
 static void
-usage(char *path) {
+usage(char *argv0)
+{
     fprintf(stderr, "Usage: %s [-h] [-m src|dst] /path/to/socket\n",
-            basename(path));
+            basename(argv0));
 }
 
 /*
@@ -878,7 +881,7 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
 
     _nr_iters = do_migrate(sock, migr_reg_index, 1, *migr_iters);
     assert(_nr_iters == 1);
-    printf("stopping fake guest thread\n");
+    printf("client: stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
     ret = pthread_join(thread, NULL);
@@ -887,7 +890,7 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
         err(EXIT_FAILURE, "failed to join fake guest pthread");
     }
 
-    printf("setting device state to stop-and-copy\n");
+    printf("client: setting device state to stop-and-copy\n");
 
     device_state = VFIO_DEVICE_STATE_SAVING;
     ret = access_region(sock, migr_reg_index, true,
@@ -936,6 +939,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     assert(old_sock_path != NULL);
 
+    printf("client: starting destination server\n");
+
     ret = asprintf(&sock_path, "%s_migrated", old_sock_path);
     if (ret == -1) {
         err(EXIT_FAILURE, "failed to asprintf");
@@ -954,7 +959,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         };
         ret = execvp(_argv[0] , _argv);
         if (ret != 0) {
-            err(EXIT_FAILURE, "failed to start destination sever (%s)",
+            err(EXIT_FAILURE, "failed to start destination server (%s)",
                               path_to_server);
         }
     }
@@ -1003,8 +1008,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
          * TODO write half of migration data via regular write and other half via
          * memopy map.
          */
-        printf("writing migration device data %#llx-%#llx\n", data_offset,
-               data_offset + migr_iters[i].iov_len - 1);
+        printf("client: writing migration device data %#llx-%#llx\n",
+               data_offset, data_offset + migr_iters[i].iov_len - 1);
         ret = access_region(sock, migr_reg_index, true,
                             data_offset, migr_iters[i].iov_base,
                             migr_iters[i].iov_len);
@@ -1045,7 +1050,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     if (strncmp((char*)src_md5sum, (char*)dst_md5sum, MD5_DIGEST_LENGTH) != 0) {
         int i;
-        fprintf(stderr, "md5sum mismatch: ");
+        fprintf(stderr, "client: md5sum mismatch: ");
         for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
             fprintf(stderr, "%02x", src_md5sum[i]);
         }
