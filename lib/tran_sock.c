@@ -116,7 +116,7 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
     }
 
     // FIXME: this doesn't check the entire data was sent?
-    ret = sendmsg(sock, &msg, 0);
+    ret = sendmsg(sock, &msg, MSG_NOSIGNAL);
     if (ret == -1) {
         return -errno;
     }
@@ -754,6 +754,11 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
+
+    if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
+        return -ENOTCONN;
+    }
 
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
