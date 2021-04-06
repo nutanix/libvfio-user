@@ -177,7 +177,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
     return -ENOENT;
 }
 
-static inline void
+void
 dma_controller_remove_regions(dma_controller_t *dma)
 {
     int i;
