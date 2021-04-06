@@ -13,7 +13,7 @@ fi
 
 sock="/tmp/vfio-user.sock"
 rm -f ${sock}*
-${valgrind} ../samples/server ${sock} &
+${valgrind} ../samples/server -v ${sock} &
 while [ ! -S ${sock} ]; do
 	sleep 0.1
 done

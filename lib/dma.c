@@ -199,6 +199,9 @@ dma_controller_remove_regions(dma_controller_t *dma)
             assert(region->fd == -1);
         }
     }
+
+    memset(dma->regions, 0, dma->max_regions * sizeof(dma->regions[0]));
+    dma->nregions = 0;
 }
 
 void

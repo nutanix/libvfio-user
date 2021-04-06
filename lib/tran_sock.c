@@ -116,6 +116,7 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
     }
 
     ret = sendmsg(sock, &msg, MSG_NOSIGNAL);
+
     if (ret == -1) {
         /* Treat a failed write due to EPIPE the same as a short write. */
         if (errno == EPIPE) {
@@ -764,6 +765,11 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     assert(vfu_ctx->tran_data != NULL);
 
     ts = vfu_ctx->tran_data;
+
+    if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
+        return -ENOTCONN;
+    }
 
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
