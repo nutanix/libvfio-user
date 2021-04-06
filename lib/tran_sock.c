@@ -755,6 +755,11 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
     ts = vfu_ctx->tran_data;
 
+    if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
+        return -ENOTCONN;
+    }
+
     /*
      * TODO ideally we should set O_NONBLOCK on the fd so that the syscall is
      * faster (?). I tried that and get short reads, so we need to store the
