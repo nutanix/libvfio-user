@@ -179,6 +179,8 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
         return -errno;
     } else if (ret == 0) {
         return -ENOMSG;
+    } else if ((size_t)ret < len) {
+        return -ECONNRESET;
     }
 
     if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
@@ -228,9 +230,6 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
     if (ret < 0) {
         return ret;
     }
-    if (ret < (int)sizeof(*hdr)) {
-        return -EINVAL;
-    }
 
     if (is_reply) {
         if (msg_id != NULL && hdr->msg_id != *msg_id) {
@@ -263,11 +262,12 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
             return -errno;
         } else if (ret == 0) {
             return -ENOMSG;
-        } else if (*len != (size_t)ret) { /* FIXME we should allow receiving less */
-            return -EINVAL;
+        } else if (*len != (size_t)ret) {
+            return -ECONNRESET;
         }
         *len = ret;
     }
+
     return 0;
 }
 
@@ -324,7 +324,7 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
         return -ENOMSG;
     } else if (len != (size_t)ret) {
         free(data);
-        return -EINVAL;
+        return -ECONNRESET;
     }
 
     *datap = data;
@@ -824,7 +824,7 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%d, actual=%d",
                 hdr->msg_id, body_size, ret);
         free(data);
-        return -EINVAL;
+        return -ECONNRESET;
     }
 
     *datap = data;
