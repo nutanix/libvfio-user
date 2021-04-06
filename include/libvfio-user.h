@@ -152,6 +152,7 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  *
  * EAGAIN/EWOULDBLOCK: no more commands to process
  * ENOTCONN: client closed connection, vfu_attach_ctx() should be called again
+ * Other errno values are also possible.
  */
 int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx);
