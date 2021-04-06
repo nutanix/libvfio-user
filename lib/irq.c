@@ -64,7 +64,7 @@ dev_get_irqinfo(vfu_ctx_t *vfu_ctx, struct vfio_irq_info *irq_info_in,
     // Ensure provided argsz is sufficiently big and index is within bounds.
     if ((irq_info_in->argsz < sizeof(struct vfio_irq_info)) ||
         (irq_info_in->index >= VFU_DEV_NUM_IRQS)) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad irq_info (size=%d index=%d)\n",
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad irq_info (size=%d index=%d)",
                 irq_info_in->argsz, irq_info_in->index);
         return -EINVAL;
     }
@@ -380,7 +380,7 @@ validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     }
 
     if ((subindex >= vfu_ctx->irqs->max_ivs)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad IRQ %d, max=%d\n", subindex,
+        vfu_log(vfu_ctx, LOG_ERR, "bad IRQ %d, max=%d", subindex,
                vfu_ctx->irqs->max_ivs);
         return false;
     }
@@ -398,7 +398,7 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     }
 
     if (vfu_ctx->irqs->efds[subindex] == -1) {
-        vfu_log(vfu_ctx, LOG_ERR, "no fd for interrupt %d\n", subindex);
+        vfu_log(vfu_ctx, LOG_ERR, "no fd for interrupt %d", subindex);
         return ERROR_INT(ENOENT);
     }
 

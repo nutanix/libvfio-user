@@ -60,7 +60,7 @@ pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 
     cfg_addr = *(uint32_t *) buf;
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "BAR%d addr 0x%x\n", bar_index, cfg_addr);
+    vfu_log(vfu_ctx, LOG_DEBUG, "BAR%d addr 0x%x", bar_index, cfg_addr);
 
     if (cfg_addr == 0xffffffff) {
         cfg_addr = ~(reg_info[bar_index].size) + 1;
@@ -87,7 +87,7 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
     assert(ctx != NULL);
 
     if (count != 2) {
-        vfu_log(ctx, LOG_ERR, "bad write command size %lu\n", count);
+        vfu_log(ctx, LOG_ERR, "bad write command size %lu", count);
         return -EINVAL;
     }
 
@@ -99,72 +99,72 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
     if ((v & PCI_COMMAND_IO) == PCI_COMMAND_IO) {
         if (!pci->hdr.cmd.iose) {
             pci->hdr.cmd.iose = 0x1;
-            vfu_log(ctx, LOG_INFO, "I/O space enabled\n");
+            vfu_log(ctx, LOG_INFO, "I/O space enabled");
         }
         v &= ~PCI_COMMAND_IO;
     } else {
         if (pci->hdr.cmd.iose) {
             pci->hdr.cmd.iose = 0x0;
-            vfu_log(ctx, LOG_INFO, "I/O space disabled\n");
+            vfu_log(ctx, LOG_INFO, "I/O space disabled");
         }
     }
 
     if ((v & PCI_COMMAND_MEMORY) == PCI_COMMAND_MEMORY) {
         if (!pci->hdr.cmd.mse) {
             pci->hdr.cmd.mse = 0x1;
-            vfu_log(ctx, LOG_INFO, "memory space enabled\n");
+            vfu_log(ctx, LOG_INFO, "memory space enabled");
         }
         v &= ~PCI_COMMAND_MEMORY;
     } else {
         if (pci->hdr.cmd.mse) {
             pci->hdr.cmd.mse = 0x0;
-            vfu_log(ctx, LOG_INFO, "memory space disabled\n");
+            vfu_log(ctx, LOG_INFO, "memory space disabled");
         }
     }
 
     if ((v & PCI_COMMAND_MASTER) == PCI_COMMAND_MASTER) {
         if (!pci->hdr.cmd.bme) {
             pci->hdr.cmd.bme = 0x1;
-            vfu_log(ctx, LOG_INFO, "bus master enabled\n");
+            vfu_log(ctx, LOG_INFO, "bus master enabled");
         }
         v &= ~PCI_COMMAND_MASTER;
     } else {
         if (pci->hdr.cmd.bme) {
             pci->hdr.cmd.bme = 0x0;
-            vfu_log(ctx, LOG_INFO, "bus master disabled\n");
+            vfu_log(ctx, LOG_INFO, "bus master disabled");
         }
     }
 
     if ((v & PCI_COMMAND_SERR) == PCI_COMMAND_SERR) {
         if (!pci->hdr.cmd.see) {
             pci->hdr.cmd.see = 0x1;
-            vfu_log(ctx, LOG_INFO, "SERR# enabled\n");
+            vfu_log(ctx, LOG_INFO, "SERR# enabled");
         }
         v &= ~PCI_COMMAND_SERR;
     } else {
         if (pci->hdr.cmd.see) {
             pci->hdr.cmd.see = 0x0;
-            vfu_log(ctx, LOG_INFO, "SERR# disabled\n");
+            vfu_log(ctx, LOG_INFO, "SERR# disabled");
         }
     }
 
     if ((v & PCI_COMMAND_INTX_DISABLE) == PCI_COMMAND_INTX_DISABLE) {
         if (!pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x1;
-            vfu_log(ctx, LOG_INFO, "INTx emulation disabled\n");
+            vfu_log(ctx, LOG_INFO, "INTx emulation disabled");
         }
         v &= ~PCI_COMMAND_INTX_DISABLE;
     } else {
         if (pci->hdr.cmd.id) {
             pci->hdr.cmd.id = 0x0;
-            vfu_log(ctx, LOG_INFO, "INTx emulation enabled\n");
+            vfu_log(ctx, LOG_INFO, "INTx emulation enabled");
         }
     }
 
     if ((v & PCI_COMMAND_INVALIDATE) == PCI_COMMAND_INVALIDATE) {
         if (!pci->hdr.cmd.mwie) {
             pci->hdr.cmd.mwie = 1U;
-            vfu_log(ctx, LOG_INFO, "memory write and invalidate enabled\n");
+            vfu_log(ctx, LOG_INFO, "memory write and invalidate enabled");
         }
         v &= ~PCI_COMMAND_INVALIDATE;
     } else {
@@ -175,12 +175,12 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
     }
 
     if ((v & PCI_COMMAND_VGA_PALETTE) == PCI_COMMAND_VGA_PALETTE) {
-        vfu_log(ctx, LOG_INFO, "enabling VGA palette snooping ignored\n");
+        vfu_log(ctx, LOG_INFO, "enabling VGA palette snooping ignored");
         v &= ~PCI_COMMAND_VGA_PALETTE;
     }
 
     if (v != 0) {
-        vfu_log(ctx, LOG_ERR, "unconsumed command flags %x\n", v);
+        vfu_log(ctx, LOG_ERR, "unconsumed command flags %x", v);
         return -EINVAL;
     }
 
@@ -197,20 +197,20 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
     assert(pci != NULL);
 
     if (count != 0x4) {
-        vfu_log(ctx, LOG_ERR, "bad EROM count %lu\n", count);
+        vfu_log(ctx, LOG_ERR, "bad EROM count %lu", count);
         return -EINVAL;
     }
     v = *(uint32_t*)buf;
 
     if (v == (uint32_t)PCI_ROM_ADDRESS_MASK) {
-        vfu_log(ctx, LOG_INFO, "write mask to EROM ignored\n");
+        vfu_log(ctx, LOG_INFO, "write mask to EROM ignored");
     } else if (v == 0) {
-        vfu_log(ctx, LOG_INFO, "cleared EROM\n");
+        vfu_log(ctx, LOG_INFO, "cleared EROM");
         pci->hdr.erom = 0;
     } else if (v == (uint32_t)~PCI_ROM_ADDRESS_ENABLE) {
-        vfu_log(ctx, LOG_INFO, "EROM disable ignored\n");
+        vfu_log(ctx, LOG_INFO, "EROM disable ignored");
     } else {
-        vfu_log(ctx, LOG_ERR, "bad write to EROM 0x%x bytes\n", v);
+        vfu_log(ctx, LOG_ERR, "bad write to EROM 0x%x bytes", v);
         return -EINVAL;
     }
     return 0;
@@ -232,19 +232,19 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         ret = handle_command_write(vfu_ctx, cfg_space, buf, count);
         break;
     case PCI_STATUS:
-        vfu_log(vfu_ctx, LOG_INFO, "write to status ignored\n");
+        vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
         break;
     case PCI_INTERRUPT_PIN:
-        vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN\n");
+        vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN");
         ret = -EINVAL;
         break;
     case PCI_INTERRUPT_LINE:
         cfg_space->hdr.intr.iline = buf[0];
-        vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x\n", cfg_space->hdr.intr.iline);
+        vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x", cfg_space->hdr.intr.iline);
         break;
     case PCI_LATENCY_TIMER:
         cfg_space->hdr.mlt = (uint8_t)buf[0];
-        vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx\n",
+        vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx",
                 cfg_space->hdr.mlt);
         break;
     case PCI_BASE_ADDRESS_0:
@@ -259,7 +259,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         ret = handle_erom_write(vfu_ctx, cfg_space, buf, count);
         break;
     default:
-        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#x-%#lx not handled\n",
+        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#x-%#lx not handled",
                 offset, offset + count);
         ret = -EINVAL;
     }
@@ -316,7 +316,7 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
     if (is_write) {
         vfu_log(vfu_ctx, LOG_ERR, "no callback for write to config space "
-                "offset %u size %zu\n", offset, count);
+                "offset %u size %zu", offset, count);
         return -EINVAL;
     }
 

@@ -203,7 +203,7 @@ send_device_reset(int sock)
     int ret = tran_sock_msg(sock, 1, VFIO_USER_DEVICE_RESET,
                             NULL, 0, NULL, NULL, 0);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to reset device: %s\n", strerror(-ret));
+        errx(EXIT_FAILURE, "failed to reset device: %s", strerror(-ret));
     }
 }
 
@@ -904,7 +904,7 @@ migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
     _nr_iters += do_migrate(sock, migr_reg_index, 1, (*migr_iters) + _nr_iters);
     if (_nr_iters != 2) {
         errx(EXIT_FAILURE,
-             "expected 2 iterations instead of %ld while in stop-and-copy state\n",
+             "expected 2 iterations instead of %ld while in stop-and-copy state",
              _nr_iters);
     }
 
@@ -1155,7 +1155,7 @@ int main(int argc, char *argv[])
     ret = access_region(sock, VFU_PCI_DEV_CFG_REGION_IDX, false, 0, &config_space,
                         sizeof(config_space));
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to read PCI configuration space: %s\n",
+        errx(EXIT_FAILURE, "failed to read PCI configuration space: %s",
              strerror(-ret));
     }
 
