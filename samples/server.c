@@ -249,7 +249,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 }
 
-static int device_reset(vfu_ctx_t *vfu_ctx UNUSED)
+static int device_reset(vfu_ctx_t *vfu_ctx UNUSED, vfu_reset_type_t type UNUSED)
 {
     vfu_log(vfu_ctx, LOG_DEBUG, "device reset callback");
     return 0;
