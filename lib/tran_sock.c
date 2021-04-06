@@ -116,7 +116,7 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
     }
 
     // FIXME: this doesn't check the entire data was sent?
-    ret = sendmsg(sock, &msg, 0);
+    ret = sendmsg(sock, &msg, MSG_NOSIGNAL);
     if (ret == -1) {
         return -errno;
     }
