@@ -216,6 +216,9 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
 
     if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
+        if (ret == -1) {
+            ret = -errno;
+        }
     } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {

@@ -139,18 +139,18 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
     switch (offset - cap->off) {
     case offsetof(struct pmcap, pc):
         if (count != sizeof(struct pc)) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
         assert(false); /* FIXME implement */
         break;
     case offsetof(struct pmcap, pmcs):
         if (count != sizeof(struct pmcs)) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
         handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
         return sizeof(struct pmcs);
     }
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 static ssize_t
@@ -192,11 +192,11 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
         default:
             vfu_log(vfu_ctx, LOG_ERR,
                     "invalid MSI-X write offset %ld", offset);
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
     }
     vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu", count);
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 static int
@@ -279,7 +279,7 @@ handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
     case offsetof(struct pxcap, pxdc):
         return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
     }
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 static ssize_t
@@ -287,11 +287,14 @@ cap_write_px(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
              size_t count, loff_t offset)
 {
     struct pxcap *px = cap_data(vfu_ctx, cap);
+    int err;
 
-    int err = -EINVAL;
     switch (count) {
     case 2:
         err = handle_px_write_2_bytes(vfu_ctx, px, buf, offset - cap->off);
+        break;
+    default:
+        err = ERROR_INT(EINVAL);
         break;
     }
     if (err != 0) {
@@ -313,7 +316,7 @@ ext_cap_write_dsn(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf UNUSED,
                   size_t count UNUSED, loff_t offset UNUSED)
 {
     vfu_log(vfu_ctx, LOG_ERR, "%s capability is read-only", cap->name);
-    return -EPERM;
+    return ERROR_INT(EPERM);
 }
 
 static ssize_t
@@ -364,7 +367,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
     if (is_write && (cap->flags & VFU_CAP_FLAG_READONLY)) {
         vfu_log(vfu_ctx, LOG_ERR, "write of %zu bytes to read-only capability "
                 "%u (%s)", count, cap->id, cap->name);
-        return -EPERM;
+        return ERROR_INT(EPERM);
     }
 
     if (cap->flags & VFU_CAP_FLAG_CALLBACK) {
@@ -380,7 +383,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
         vfu_log(vfu_ctx, LOG_ERR,
                 "disallowed write to header for cap %d (%s)",
                 cap->id, cap->name);
-        return -EPERM;
+        return ERROR_INT(EPERM);
     }
 
     return cap->cb(vfu_ctx, cap, buf, count, offset);
@@ -410,13 +413,13 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         if (cap->off < PCI_STD_HEADER_SIZEOF) {
             vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
                     "%u (%s)", cap->off, cap->id, cap->name);
-            return EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         if (cap_find_by_offset(vfu_ctx, cap->off, cap->size) != NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "overlap found for capability "
                     "%u (%s)", cap->id, cap->name);
-            return EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         while (*prevp != 0) {
@@ -443,7 +446,7 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
                 "%u (%s) of size %zu bytes at offset %#lx", cap->id,
                 cap->name, cap->size, cap->off);
-        return ENOSPC;
+        return ERROR_INT(ENOSPC);
     }
 
     memcpy(cap_data(vfu_ctx, cap), data, cap->size);
@@ -474,19 +477,19 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         if (cap->off < PCI_CFG_SPACE_SIZE) {
             vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
                     "%u (%s)", cap->off, cap->id, cap->name);
-            return EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         if (cap_find_by_offset(vfu_ctx, cap->off, cap->size) != NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "overlap found for capability "
                     "%u (%s)", cap->id, cap->name);
-            return EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         if (hdr->id == 0x0 && cap->off != PCI_CFG_SPACE_SIZE) {
             vfu_log(vfu_ctx, LOG_ERR, "first extended capability must be at "
                     "%#x", PCI_CFG_SPACE_SIZE);
-            return EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         while (hdr->next != 0) {
@@ -508,7 +511,7 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
                 "%u (%s) of size %zu bytes at offset %#lx", cap->id,
                 cap->name, cap->size, cap->off);
-        return ENOSPC;
+        return ERROR_INT(ENOSPC);
     }
 
     memcpy(cap_data(vfu_ctx, cap), data, cap->size);
@@ -627,7 +630,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
     }
 
     if (ret != 0) {
-        return ERROR_INT(ret);
+        return ret;
     }
 
     if (extended) {
