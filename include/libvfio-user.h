@@ -181,7 +181,8 @@ vfu_get_private(vfu_ctx_t *vfu_ctx);
 typedef void (vfu_log_fn_t)(vfu_ctx_t *vfu_ctx, int level, const char *msg);
 
 /**
- * Log to the logging function configured for this context.
+ * Log to the logging function configured for this context. The format should
+ * not include a new line.
  */
 void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...) \
@@ -192,6 +193,9 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...) \
  * @vfu_ctx: the libvfio-user context
  * @log: logging function
  * @level: logging level as defined in syslog(3)
+ *
+ * The log handler is expected to add a newline (that is, log messages do not
+ * include a newline).
  */
 int
 vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int level);

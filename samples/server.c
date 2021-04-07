@@ -162,7 +162,7 @@ dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
             break;
     }
     if (idx >= NR_DMA_REGIONS) {
-        errx(EXIT_FAILURE, "Failed to add dma region, slots full\n");
+        errx(EXIT_FAILURE, "Failed to add dma region, slots full");
     }
 
     server_data->regions[idx].iova = info->iova;
@@ -219,7 +219,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
                          (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
                          count, &sg, 1, PROT_WRITE);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to map %p-%p: %s\n",
+        errx(EXIT_FAILURE, "failed to map %p-%p: %s",
              server_data->regions[0].iova.iov_base,
              server_data->regions[0].iova.iov_base + count -1,
              strerror(-ret));
@@ -231,7 +231,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_write(vfu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "vfu_dma_write failed: %s\n", strerror(-ret));
+        errx(EXIT_FAILURE, "vfu_dma_write failed: %s", strerror(-ret));
     }
 
     memset(buf, 0, count);
@@ -239,12 +239,12 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_read(vfu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "vfu_dma_read failed: %s\n", strerror(-ret));
+        errx(EXIT_FAILURE, "vfu_dma_read failed: %s", strerror(-ret));
     }
     get_md5sum(buf, count, md5sum2);
     for(i = 0; i < MD5_DIGEST_LENGTH; i++) {
         if (md5sum2[i] != md5sum1[i]) {
-            errx(EXIT_FAILURE, "DMA write and DMA read mismatch\n");
+            errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
         }
     }
 }
@@ -445,7 +445,7 @@ int main(int argc, char *argv[])
                 verbose = true;
                 break;
             default: /* '?' */
-                errx(EXIT_FAILURE, "Usage: %s [-v] <socketpath>\n", argv[0]);
+                errx(EXIT_FAILURE, "Usage: %s [-v] <socketpath>", argv[0]);
         }
     }
 
@@ -461,7 +461,7 @@ int main(int argc, char *argv[])
     vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, &server_data,
                              VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
-        err(EXIT_FAILURE, "failed to initialize device emulation\n");
+        err(EXIT_FAILURE, "failed to initialize device emulation");
     }
 
     ret = vfu_setup_log(vfu_ctx, _log, verbose ? LOG_DEBUG : LOG_ERR);

@@ -88,7 +88,7 @@ cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
         case PCI_EXT_CAP_ID_VNDR:
             return ((struct pcie_ext_cap_vsc_hdr *)data)->len;
         default:
-            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u\n", id);
+            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u", id);
             abort();
         }
     } else {
@@ -104,7 +104,7 @@ cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
         case PCI_CAP_ID_VNDR:
             return ((struct vsc *)data)->size;
         default:
-            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u\n", id);
+            vfu_log(vfu_ctx, LOG_ERR, "invalid cap id %u", id);
             abort();
         }
     }
@@ -115,16 +115,16 @@ handle_pmcs_write(vfu_ctx_t *vfu_ctx, struct pmcap *pm,
                   const struct pmcs *const pmcs)
 {
     if (pm->pmcs.ps != pmcs->ps) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "power state set to %#x\n", pmcs->ps);
+        vfu_log(vfu_ctx, LOG_DEBUG, "power state set to %#x", pmcs->ps);
     }
     if (pm->pmcs.pmee != pmcs->pmee) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "PME enable set to %#x\n", pmcs->pmee);
+        vfu_log(vfu_ctx, LOG_DEBUG, "PME enable set to %#x", pmcs->pmee);
     }
     if (pm->pmcs.dse != pmcs->dse) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "data select set to %#x\n", pmcs->dse);
+        vfu_log(vfu_ctx, LOG_DEBUG, "data select set to %#x", pmcs->dse);
     }
     if (pm->pmcs.pmes != pmcs->pmes) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "PME status set to %#x\n", pmcs->pmes);
+        vfu_log(vfu_ctx, LOG_DEBUG, "PME status set to %#x", pmcs->pmes);
     }
     pm->pmcs = *pmcs;
     return 0;
@@ -161,17 +161,17 @@ handle_mxc_write(vfu_ctx_t *vfu_ctx, struct msixcap *msix,
     assert(mxc != NULL);
 
     if (mxc->mxe != msix->mxc.mxe) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X\n",
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X",
                 mxc->mxe ? "enable" : "disable");
         msix->mxc.mxe = mxc->mxe;
     }
 
     if (mxc->fm != msix->mxc.fm) {
         if (mxc->fm) {
-            vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked\n");
+            vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked");
         } else {
             vfu_log(vfu_ctx, LOG_DEBUG,
-                   "vector's mask bit determines whether vector is masked\n");
+                   "vector's mask bit determines whether vector is masked");
         }
         msix->mxc.fm = mxc->fm;
     }
@@ -191,11 +191,11 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
             return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
         default:
             vfu_log(vfu_ctx, LOG_ERR,
-                    "invalid MSI-X write offset %ld\n", offset);
+                    "invalid MSI-X write offset %ld", offset);
             return -EINVAL;
         }
     }
-    vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu\n", count);
+    vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu", count);
     return -EINVAL;
 }
 
@@ -208,64 +208,64 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
 
     if (p->cere != px->pxdc.cere) {
         px->pxdc.cere = p->cere;
-        vfu_log(vfu_ctx, LOG_DEBUG, "CERE %s\n", p->cere ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "CERE %s", p->cere ? "enable" : "disable");
     }
 
     if (p->nfere != px->pxdc.nfere) {
         px->pxdc.nfere = p->nfere;
-        vfu_log(vfu_ctx, LOG_DEBUG, "NFERE %s\n",
+        vfu_log(vfu_ctx, LOG_DEBUG, "NFERE %s",
                 p->nfere ? "enable" : "disable");
     }
 
     if (p->fere != px->pxdc.fere) {
         px->pxdc.fere = p->fere;
-        vfu_log(vfu_ctx, LOG_DEBUG, "FERE %s\n", p->fere ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "FERE %s", p->fere ? "enable" : "disable");
     }
 
     if (p->urre != px->pxdc.urre) {
         px->pxdc.urre = p->urre;
-        vfu_log(vfu_ctx, LOG_DEBUG, "URRE %s\n", p->urre ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "URRE %s", p->urre ? "enable" : "disable");
     }
 
     if (p->ero != px->pxdc.ero) {
         px->pxdc.ero = p->ero;
-        vfu_log(vfu_ctx, LOG_DEBUG, "ERO %s\n", p->ero ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "ERO %s", p->ero ? "enable" : "disable");
     }
 
     if (p->mps != px->pxdc.mps) {
         px->pxdc.mps = p->mps;
-        vfu_log(vfu_ctx, LOG_DEBUG, "MPS set to %d\n", p->mps);
+        vfu_log(vfu_ctx, LOG_DEBUG, "MPS set to %d", p->mps);
     }
 
     if (p->ete != px->pxdc.ete) {
         px->pxdc.ete = p->ete;
-        vfu_log(vfu_ctx, LOG_DEBUG, "ETE %s\n", p->ete ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "ETE %s", p->ete ? "enable" : "disable");
     }
 
     if (p->pfe != px->pxdc.pfe) {
         px->pxdc.pfe = p->pfe;
-        vfu_log(vfu_ctx, LOG_DEBUG, "PFE %s\n", p->pfe ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "PFE %s", p->pfe ? "enable" : "disable");
     }
 
     if (p->appme != px->pxdc.appme) {
         px->pxdc.appme = p->appme;
-        vfu_log(vfu_ctx, LOG_DEBUG, "APPME %s\n",
+        vfu_log(vfu_ctx, LOG_DEBUG, "APPME %s",
                 p->appme ? "enable" : "disable");
     }
 
     if (p->ens != px->pxdc.ens) {
         px->pxdc.ens = p->ens;
-        vfu_log(vfu_ctx, LOG_DEBUG, "ENS %s\n", p->ens ? "enable" : "disable");
+        vfu_log(vfu_ctx, LOG_DEBUG, "ENS %s", p->ens ? "enable" : "disable");
     }
 
     if (p->mrrs != px->pxdc.mrrs) {
         px->pxdc.mrrs = p->mrrs;
-        vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d\n", p->mrrs);
+        vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d", p->mrrs);
     }
 
     if (p->iflr) {
         vfu_log(vfu_ctx, LOG_DEBUG,
-            "initiate function level reset\n");
+            "initiate function level reset");
     }
 
     return 0;
@@ -312,7 +312,7 @@ static ssize_t
 ext_cap_write_dsn(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf UNUSED,
                   size_t count UNUSED, loff_t offset UNUSED)
 {
-    vfu_log(vfu_ctx, LOG_ERR, "%s capability is read-only\n", cap->name);
+    vfu_log(vfu_ctx, LOG_ERR, "%s capability is read-only", cap->name);
     return -EPERM;
 }
 
@@ -363,7 +363,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
 
     if (is_write && (cap->flags & VFU_CAP_FLAG_READONLY)) {
         vfu_log(vfu_ctx, LOG_ERR, "write of %zu bytes to read-only capability "
-                "%u (%s)\n", count, cap->id, cap->name);
+                "%u (%s)", count, cap->id, cap->name);
         return -EPERM;
     }
 
@@ -378,7 +378,7 @@ pci_cap_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count, loff_t offset,
 
     if (offset - cap->off < cap->hdr_size) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "disallowed write to header for cap %d (%s)\n",
+                "disallowed write to header for cap %d (%s)",
                 cap->id, cap->name);
         return -EPERM;
     }
@@ -409,13 +409,13 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
     if (cap->off != 0) {
         if (cap->off < PCI_STD_HEADER_SIZEOF) {
             vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
-                    "%u (%s)\n", cap->off, cap->id, cap->name);
+                    "%u (%s)", cap->off, cap->id, cap->name);
             return EINVAL;
         }
 
         if (cap_find_by_offset(vfu_ctx, cap->off, cap->size) != NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "overlap found for capability "
-                    "%u (%s)\n", cap->id, cap->name);
+                    "%u (%s)", cap->id, cap->name);
             return EINVAL;
         }
 
@@ -441,7 +441,7 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
-                "%u (%s) of size %zu bytes at offset %#lx\n", cap->id,
+                "%u (%s) of size %zu bytes at offset %#lx", cap->id,
                 cap->name, cap->size, cap->off);
         return ENOSPC;
     }
@@ -473,19 +473,19 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
     if (cap->off != 0) {
         if (cap->off < PCI_CFG_SPACE_SIZE) {
             vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
-                    "%u (%s)\n", cap->off, cap->id, cap->name);
+                    "%u (%s)", cap->off, cap->id, cap->name);
             return EINVAL;
         }
 
         if (cap_find_by_offset(vfu_ctx, cap->off, cap->size) != NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "overlap found for capability "
-                    "%u (%s)\n", cap->id, cap->name);
+                    "%u (%s)", cap->id, cap->name);
             return EINVAL;
         }
 
         if (hdr->id == 0x0 && cap->off != PCI_CFG_SPACE_SIZE) {
             vfu_log(vfu_ctx, LOG_ERR, "first extended capability must be at "
-                    "%#x\n", PCI_CFG_SPACE_SIZE);
+                    "%#x", PCI_CFG_SPACE_SIZE);
             return EINVAL;
         }
 
@@ -506,7 +506,7 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
-                "%u (%s) of size %zu bytes at offset %#lx\n", cap->id,
+                "%u (%s) of size %zu bytes at offset %#lx", cap->id,
                 cap->name, cap->size, cap->off);
         return ENOSPC;
     }
@@ -574,7 +574,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
             cap.hdr_size = sizeof(struct pcie_ext_cap_vsc_hdr);
             break;
         default:
-            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
+            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x", cap.id);
             return ERROR_INT(ENOTSUP);
         }
 
@@ -613,7 +613,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
             cap.hdr_size = sizeof(struct vsc);
             break;
         default:
-            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x\n", cap.id);
+            vfu_log(vfu_ctx, LOG_ERR, "unsupported capability %#x", cap.id);
             return ERROR_INT(ENOTSUP);
         }
 

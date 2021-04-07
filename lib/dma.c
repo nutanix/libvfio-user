@@ -103,7 +103,7 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
     err = munmap(region->info.mapping.iov_base, region->info.mapping.iov_len);
     if (err != 0) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to unmap fd=%d "
-                "mapping=[%p, %p): %m\n",
+                "mapping=[%p, %p): %m",
                 region->fd, region->info.mapping.iov_base,
                 iov_end(&region->info.mapping));
     }
@@ -111,7 +111,7 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
     assert(region->fd != -1);
 
     if (close(region->fd) == -1) {
-        vfu_log(dma->vfu_ctx, LOG_WARNING, "failed to close fd %d: %m\n",
+        vfu_log(dma->vfu_ctx, LOG_WARNING, "failed to close fd %d: %m",
                 region->fd);
     }
 }
@@ -157,7 +157,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         err = dma_unregister(data, &region->info);
         if (err != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to dma_unregister() DMA region [%p, %p): %s\n",
+                   "failed to dma_unregister() DMA region [%p, %p): %s",
                    region->info.iova.iov_base, iov_end(&region->info.iova),
                    strerror(err));
             return err;
@@ -273,7 +273,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             region->info.iova.iov_len == size) {
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
-                        "%s; existing=%#lx\n", rstr, region->offset);
+                        "%s; existing=%#lx", rstr, region->offset);
                 goto err;
             }
             if (!fds_are_same_file(region->fd, fd)) {
@@ -284,7 +284,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                  * using a single fd.
                  */
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
-                        "existing=%d\n", rstr, region->fd);
+                        "existing=%d", rstr, region->fd);
                 goto err;
             }
             if (region->info.prot != prot) {
@@ -309,8 +309,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
     if (dma->nregions == dma->max_regions) {
         idx = dma->max_regions;
-        vfu_log(dma->vfu_ctx, LOG_ERR, "hit max regions %d\n",
-                dma->max_regions);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "hit max regions %d", dma->max_regions);
         goto err;
     }
 
@@ -320,7 +319,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     if (fd != -1) {
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
-            vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d\n", page_size);
+            vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
             goto err;
         }
     }
@@ -340,12 +339,12 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
         if (ret != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to memory map DMA region %s: %s\n", rstr,
+                   "failed to memory map DMA region %s: %s", rstr,
                    strerror(-ret));
 
             if (close(region->fd) == -1) {
                 vfu_log(dma->vfu_ctx, LOG_WARNING,
-                        "failed to close fd %d: %m\n", region->fd);
+                        "failed to close fd %d: %m", region->fd);
             }
             goto err;
         }
