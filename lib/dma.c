@@ -156,11 +156,11 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 
         err = dma_unregister(data, &region->info);
         if (err != 0) {
+            err = errno;
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to dma_unregister() DMA region [%p, %p): %s",
-                   region->info.iova.iov_base, iov_end(&region->info.iova),
-                   strerror(err));
-            return -err;
+                   "failed to dma_unregister() DMA region [%p, %p): %m",
+                   region->info.iova.iov_base, iov_end(&region->info.iova));
+            return ERROR_INT(err);
         }
 
         assert(region->refcnt == 0);
@@ -174,7 +174,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         array_remove(&dma->regions, sizeof (*region), idx, &dma->nregions);
         return 0;
     }
-    return -ENOENT;
+    return ERROR_INT(ENOENT);
 }
 
 void
@@ -229,7 +229,7 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
                      region->fd, offset);
 
     if (mmap_base == MAP_FAILED) {
-        return -errno;
+        return -1;
     }
 
     // Do not dump.
@@ -258,7 +258,6 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     int page_size = 0;
     char rstr[1024];
     int idx;
-    int ret;
 
     assert(dma != NULL);
 
@@ -274,8 +273,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
                         "%s; existing=%#lx", rstr, region->offset);
-                ret = -EINVAL;
-                goto out;
+                return ERROR_INT(EINVAL);
             }
             if (!fds_are_same_file(region->fd, fd)) {
                 /*
@@ -286,14 +284,12 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                  */
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
                         "existing=%d", rstr, region->fd);
-                ret = -EINVAL;
-                goto out;
+                return ERROR_INT(EINVAL);
             }
             if (region->info.prot != prot) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot for new DMA region "
                         "%s; existing=%#x", rstr, region->info.prot);
-                ret = -EINVAL;
-                goto out;
+                return ERROR_INT(EINVAL);
             }
             return idx;
         }
@@ -306,15 +302,13 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
                     "DMA region [%p, %p)", rstr, region->info.iova.iov_base,
                     iov_end(&region->info.iova));
-            ret = -EINVAL;
-            goto out;
+            return ERROR_INT(EINVAL);
         }
     }
 
     if (dma->nregions == dma->max_regions) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "hit max regions %d", dma->max_regions);
-        ret = -EINVAL;
-        goto out;
+        return ERROR_INT(EINVAL);
     }
 
     idx = dma->nregions;
@@ -324,8 +318,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
-            ret = -EINVAL;
-            goto out;
+            return ERROR_INT(EINVAL);
         }
     }
     page_size = MAX(page_size, getpagesize());
@@ -340,26 +333,24 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     region->fd = fd;
 
     if (fd != -1) {
-        ret = dma_map_region(dma, region);
+        int ret = dma_map_region(dma, region);
 
         if (ret != 0) {
+            ret = errno;
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to memory map DMA region %s: %s", rstr,
-                   strerror(-ret));
+                   "failed to memory map DMA region %s: %m", rstr);
 
             if (close(region->fd) == -1) {
                 vfu_log(dma->vfu_ctx, LOG_WARNING,
                         "failed to close fd %d: %m", region->fd);
             }
-            goto out;
+
+            return ERROR_INT(ret);
         }
     }
 
-    ret = idx;
     dma->nregions++;
-
-out:
-    return ret;
+    return idx;
 }
 
 int
@@ -407,8 +398,7 @@ out:
     if (!found) {
         // There is still a region which was not found.
         assert(len > 0);
-        errno = ENOENT;
-        return -1;
+        return ERROR_INT(ENOENT);
     } else if (cnt > max_sg) {
         cnt = -cnt - 1;
     }
@@ -420,10 +410,10 @@ static ssize_t
 get_bitmap_size(size_t region_size, size_t pgsize)
 {
     if (pgsize == 0) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
     if (region_size < pgsize) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
     size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
     return (nr_pages / CHAR_BIT) + (nr_pages % CHAR_BIT != 0);
@@ -431,22 +421,22 @@ get_bitmap_size(size_t region_size, size_t pgsize)
 
 int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
-    int i;
+    size_t i;
 
     assert(dma != NULL);
 
     if (pgsize == 0) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (dma->dirty_pgsize > 0) {
         if (dma->dirty_pgsize != pgsize) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
         return 0;
     }
 
-    for (i = 0; i < dma->nregions; i++) {
+    for (i = 0; i < (size_t)dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
         ssize_t bitmap_size;
 
@@ -457,27 +447,30 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
         }
         region->dirty_bitmap = calloc(bitmap_size, sizeof(char));
         if (region->dirty_bitmap == NULL) {
-            int j, ret = -errno;
+            int ret = errno;
+            size_t j;
+
             for (j = 0; j < i; j++) {
                 region = &dma->regions[j];
                 free(region->dirty_bitmap);
                 region->dirty_bitmap = NULL;
             }
-            return ret;
+            return ERROR_INT(ret);
         }
     }
     dma->dirty_pgsize = pgsize;
     return 0;
 }
 
-int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
+void
+dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 {
     int i;
 
     assert(dma != NULL);
 
     if (dma->dirty_pgsize == 0) {
-        return 0;
+        return;
     }
 
     for (i = 0; i < dma->nregions; i++) {
@@ -485,7 +478,6 @@ int dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
         dma->regions[i].dirty_bitmap = NULL;
     }
     dma->dirty_pgsize = 0;
-    return 0;
 }
 
 int
@@ -507,11 +499,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      */
     ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
     if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
-        return -ENOTSUP;
+        return ERROR_INT(ENOTSUP);
     }
 
     if (pgsize != dma->dirty_pgsize) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     bitmap_size = get_bitmap_size(len, pgsize);
@@ -524,7 +516,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * expects to receive.
      */
     if (size != (size_t)bitmap_size) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     region = &dma->regions[sg.region];

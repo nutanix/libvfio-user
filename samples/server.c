@@ -45,6 +45,7 @@
 
 #include "common.h"
 #include "libvfio-user.h"
+#include "private.h"
 #include "tran_sock.h"
 
 struct dma_regions {
@@ -184,7 +185,7 @@ dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
         }
     }
 
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 static void
@@ -219,10 +220,9 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
                          (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
                          count, &sg, 1, PROT_WRITE);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to map %p-%p: %s",
-             server_data->regions[0].iova.iov_base,
-             server_data->regions[0].iova.iov_base + count -1,
-             strerror(-ret));
+        err(EXIT_FAILURE, "failed to map %p-%p",
+            server_data->regions[0].iova.iov_base,
+            server_data->regions[0].iova.iov_base + count -1);
     }
 
     memset(buf, 'A', count);
@@ -231,7 +231,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_write(vfu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "vfu_dma_write failed: %s", strerror(-ret));
+        err(EXIT_FAILURE, "vfu_dma_write failed");
     }
 
     memset(buf, 0, count);
@@ -239,7 +239,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_read(vfu_ctx, &sg, buf);
     if (ret < 0) {
-        errx(EXIT_FAILURE, "vfu_dma_read failed: %s", strerror(-ret));
+        err(EXIT_FAILURE, "vfu_dma_read failed");
     }
     get_md5sum(buf, count, md5sum2);
     for(i = 0; i < MD5_DIGEST_LENGTH; i++) {

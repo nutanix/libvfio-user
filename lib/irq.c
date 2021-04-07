@@ -30,8 +30,10 @@
  *
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <sys/eventfd.h>
 
 #include "irq.h"
