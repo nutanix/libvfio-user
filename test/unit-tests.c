@@ -74,7 +74,8 @@ test_dma_map_mappable_without_fd(void **state UNUSED)
     };
     int fd;
 
-    assert_int_equal(-EINVAL, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &dma_region));
+    assert_int_equal(-1, handle_dma_map_or_unmap(&vfu_ctx, size, true, &fd, 0, &dma_region));
+    assert_int_equal(errno, EINVAL);
 }
 
 static void
@@ -260,10 +261,11 @@ test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
     expect_value(close, fd, 0xb);
     will_return(close, 0);
 
-    assert_int_equal(-EREMOTEIO,
+    assert_int_equal(-1,
                      handle_dma_map_or_unmap(&vfu_ctx,
                                              ARRAY_SIZE(r) * sizeof(struct vfio_user_dma_region),
                                              true, fds, 2, r));
+    assert_int_equal(EREMOTEIO, errno);
 }
 
 /*
@@ -615,16 +617,18 @@ test_get_region_info(UNUSED void **state)
     size_t nr_fds;
 
     /* bad argsz */
-    assert_int_equal(-EINVAL,
+    assert_int_equal(-1,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
+    assert_int_equal(EINVAL, errno);
 
     /* bad region */
     index = vfu_ctx.nr_regions;
     argsz = sizeof(struct vfio_region_info);
-    assert_int_equal(-EINVAL,
+    assert_int_equal(-1,
                      dev_get_reginfo(&vfu_ctx, index, argsz, &vfio_reg,
                                      &fds, &nr_fds));
+    assert_int_equal(EINVAL, errno);
 
     /* no region caps */
     index = 1;
@@ -1189,9 +1193,10 @@ test_device_get_info_compat(void **state UNUSED)
     assert_int_equal(VFU_DEV_NUM_IRQS, d_out.num_irqs);
 
     /* fewer fields */
-    assert_int_equal(-EINVAL,
+    assert_int_equal(-1,
                      handle_device_get_info(&vfu_ctx, (sizeof(d_in)) - 1,
                                             &d_in, &d_out));
+    assert_int_equal(EINVAL, errno);
 }
 
 
@@ -1676,7 +1681,8 @@ test_exec_command(UNUSED void **state)
     expect_value(should_exec_command, cmd, 0xbeef);
     r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL, &_iovecs,
                      &iovecs, &nr_iovecs, &free_iovec_data);
-    assert_int_equal(-EINVAL, r);
+    assert_int_equal(-1, r);
+    assert_int_equal(EINVAL, errno);
 
     /* XXX should execute command */
     struct transport_ops tran = { .recv_body = recv_body };
@@ -1686,7 +1692,8 @@ test_exec_command(UNUSED void **state)
     expect_value(should_exec_command, cmd, 0xbeef);
     r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL, &_iovecs,
                      &iovecs, &nr_iovecs, &free_iovec_data);
-    assert_int_equal(-ENOBUFS, r);
+    assert_int_equal(-1, r);
+    assert_int_equal(ENOBUFS, errno);
 }
 
 static void

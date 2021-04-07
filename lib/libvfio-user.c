@@ -144,7 +144,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
 
         *fds = malloc(nr_mmap_areas * sizeof(int));
         if (*fds == NULL) {
-            return -ENOMEM;
+            return ERROR_INT(ENOMEM);
         }
         sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
         sparse->header.version = 1;
@@ -217,12 +217,12 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
     if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
-            ret = -errno;
+            return ret;
         }
     } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
-            ret = -errno;
+            return ret;
         }
     } else {
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
@@ -230,7 +230,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         if (cb == NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "no callback for region %zu",
                     region_index);
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         ret = cb(vfu_ctx, buf, count, offset, is_write);
@@ -303,7 +303,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     assert(ra != NULL);
 
     if (!is_valid_region_access(vfu_ctx, size, cmd, ra)) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (ra->count == 0) {
@@ -316,7 +316,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
     }
     *data = calloc(1, *len);
     if (*data == NULL) {
-        return -ENOMEM;
+        return -1;
     }
     if (cmd == VFIO_USER_REGION_READ) {
         buf = (char *)(((struct vfio_user_region_access*)(*data)) + 1);
@@ -333,7 +333,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
                 ra->count, ra->offset + ra->count - 1, strerror(-ret));
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
-            ret = -EINVAL;
+            ret = ERROR_INT(EINVAL);
         }
         return ret;
     }
@@ -352,7 +352,7 @@ region_to_offset(uint32_t region)
     return (uint64_t)region << VFU_REGION_SHIFT;
 }
 
-long
+int
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
                 struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds)
 {
@@ -367,12 +367,12 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     if (index >= vfu_ctx->nr_regions) {
         vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
                 index);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (argsz < sizeof(struct vfio_region_info)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "bad argsz %d", argsz);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     /*
@@ -380,7 +380,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
      */
     *vfio_reg = calloc(1, argsz);
     if (!*vfio_reg) {
-        return -ENOMEM;
+        return -1;
     }
     caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index), vfu_reg);
     (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
@@ -426,7 +426,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                               int **fds, size_t *nr_fds)
 {
     if (size < sizeof(*reg_info_in)) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_in->argsz,
@@ -444,7 +444,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
 
     if (in_size < sizeof(*in_dev_info) ||
         in_dev_info->argsz < sizeof(*in_dev_info)) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     out_dev_info->argsz = sizeof(*in_dev_info);
@@ -465,7 +465,7 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
    int fd;
 
    if (index >= nr_fds) {
-       return -EINVAL;
+       return ERROR_INT(EINVAL);
    }
 
    fd = fds[index];
@@ -483,7 +483,7 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
  * @nr_fds: size of above array.
  * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
  *
- * @returns 0 on success, -errno on failure.
+ * @returns 0 on success, -1 and errno on failure.
  */
 int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
@@ -503,7 +503,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
 
     if (size % sizeof(struct vfio_user_dma_region) != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA regions %d", size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
@@ -529,8 +529,7 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                 if (fd < 0) {
                     vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: "
                             "mappable but fd not provided", rstr);
-                    ret = fd;
-                    break;
+                    return -1;
                 }
             }
 
@@ -538,13 +537,13 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                             region->size, fd, region->offset,
                                             region->prot);
             if (ret < 0) {
-                ret = -errno;
+                ret = errno;
                 vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m",
                         rstr);
                 if (fd != -1) {
                     close(fd);
                 }
-                break;
+                return ERROR_INT(ret);
             }
 
             if (vfu_ctx->dma_register != NULL) {
@@ -560,10 +559,10 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                                vfu_ctx->dma_unregister,
                                                vfu_ctx);
             if (ret < 0) {
-                ret = -errno;
+                ret = errno;
                 vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %m",
                         rstr);
-                break;
+                return ERROR_INT(ret);
             }
         }
     }
@@ -586,7 +585,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
                        struct vfio_iommu_type1_dirty_bitmap_get *ranges,
                        uint32_t size)
 {
-    int ret = -EINVAL;
+    int err = EINVAL;
     size_t i;
 
     assert(vfu_ctx != NULL);
@@ -595,35 +594,38 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     assert(ranges != NULL);
 
     if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
     *nr_iovecs = 1 + size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
-        return -ENOMEM;
+        return -1;
     }
 
     for (i = 1; i < *nr_iovecs; i++) {
         struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+        err = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)r->iova,
                                             r->size, r->bitmap.pgsize,
                                             r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
-        if (ret != 0) {
-            ret = -errno;
+        if (err != 0) {
+            err = errno;
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
     }
+
 out:
-    if (ret != 0) {
+    if (err != 0) {
         if (*iovecs != NULL) {
             free(*iovecs);
             *iovecs = NULL;
         }
+        return ERROR_INT(err);
     }
-    return ret;
+
+    return 0;
 }
 
 int
@@ -640,15 +642,12 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     if (size < sizeof(*dirty_bitmap) || size != dirty_bitmap->argsz) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid header size %u", size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
         ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
                                                       migration_get_pgsize(vfu_ctx->migration));
-        if (ret == -1) {
-            ret = -errno;
-        }
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
         dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
         ret = 0;
@@ -658,50 +657,42 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, uint32_t size,
                                      size - sizeof(*dirty_bitmap));
     } else {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_bitmap->flags);
-        ret = -EINVAL;
+        ret = ERROR_INT(EINVAL);
     }
 
     return ret;
 }
 
-/*
- * FIXME return value is messed up, sometimes we return -1 and set errno while
- * other times we return -errno. Fix.
- */
-
-/*
- * Returns 0 if the header is valid, -errno otherwise.
- */
-static int
-validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
+static bool
+is_header_valid(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
 {
     assert(hdr != NULL);
 
     if (size < sizeof(hdr)) {
         vfu_log(vfu_ctx, LOG_ERR, "short header read %ld", size);
-        return -EINVAL;
+        return false;
     }
 
     if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", hdr->msg_id);
-        return -EINVAL;
+        return false;
     }
 
     if (hdr->msg_size < sizeof(hdr)) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
                 hdr->msg_id, hdr->msg_size);
-        return -EINVAL;
+        return false;
     }
 
-    return 0;
+    return true;
 }
 
 /*
  * Populates @hdr to contain the header for the next command to be processed.
  * Stores any passed FDs into @fds and the number in @nr_fds.
  *
- * Returns 0 if there is no command to process, -errno on error, or the number
- * of bytes read.
+ * Returns 0 if there is no command to process, -1 and errno on error, or the
+ * number of bytes read.
  */
 int
 MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
@@ -717,15 +708,15 @@ MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
         case ENOMSG:
             vfu_reset_ctx(vfu_ctx, "closed");
-            return -ENOTCONN;
+            return ERROR_INT(ENOTCONN);
 
         case ECONNRESET:
             vfu_reset_ctx(vfu_ctx, "reset");
-            return -ENOTCONN;
+            return ERROR_INT(ENOTCONN);
 
         default:
             vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %m");
-            return -errno;
+            return -1;
         }
     }
 
@@ -781,13 +772,12 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     assert(iovecs != NULL);
     assert(free_iovec_data != NULL);
 
-    ret = validate_header(vfu_ctx, hdr, size);
-    if (ret < 0) {
-        return ret;
+    if (!is_header_valid(vfu_ctx, hdr, size)) {
+        return ERROR_INT(EINVAL);
     }
 
     if (!should_exec_command(vfu_ctx, hdr->cmd)) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     cmd_data_size = hdr->msg_size - sizeof(*hdr);
@@ -798,12 +788,12 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
         if (ret < 0) {
             if (errno == ENOMSG) {
                 vfu_reset_ctx(vfu_ctx, "closed");
-                return -ENOTCONN;
+                return ERROR_INT(ENOTCONN);
             } else if (errno == ECONNRESET) {
                 vfu_reset_ctx(vfu_ctx, "reset");
-                return -ENOTCONN;
+                return ERROR_INT(ENOTCONN);
             } else {
-                return -errno;
+                return -1;
             }
         }
     }
@@ -819,7 +809,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DEVICE_GET_INFO:
         dev_info = calloc(1, sizeof(*dev_info));
         if (dev_info == NULL) {
-            ret = -ENOMEM;
+            ret = ERROR_INT(errno);
             break;
         }
         ret = handle_device_get_info(vfu_ctx, cmd_data_size, cmd_data,
@@ -851,7 +841,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DEVICE_GET_IRQ_INFO:
         irq_info = calloc(1, sizeof(*irq_info));
         if (irq_info == NULL) {
-            ret = -ENOMEM;
+            ret = ERROR_INT(errno);
             break;
         }
         ret = handle_device_get_irq_info(vfu_ctx, cmd_data_size, cmd_data,
@@ -862,7 +852,6 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
-            ret = -errno;
             free(irq_info);
         }
         break;
@@ -870,9 +859,6 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DEVICE_SET_IRQS:
         ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
                                      cmd_data);
-        if (ret < 0) {
-            ret = -errno;
-        }
         break;
 
     case VFIO_USER_REGION_READ:
@@ -906,7 +892,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
     default:
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
-        ret = -EINVAL;
+        ret = ERROR_INT(EINVAL);
         break;
     }
 
@@ -918,7 +904,6 @@ int
 MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
 {
     struct vfio_user_header hdr = { 0, };
-    int ret;
     int *fds = NULL, *fds_out = NULL;
     size_t nr_fds, i;
     size_t nr_fds_out = 0;
@@ -926,6 +911,8 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     bool free_iovec_data = true;
+    int saved_errno;
+    int ret;
 
     assert(vfu_ctx != NULL);
 
@@ -949,6 +936,8 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     ret = exec_command(vfu_ctx, &hdr, ret, fds, nr_fds, &fds_out, &nr_fds_out,
                        _iovecs, &iovecs, &nr_iovecs, &free_iovec_data);
 
+    saved_errno = errno;
+
     for (i = 0; i < nr_fds; i++) {
         if (fds[i] != -1) {
             vfu_log(vfu_ctx, LOG_DEBUG,
@@ -958,16 +947,13 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
         }
     }
 
-    /*
-     * TODO: In case of error during command handling set errno respectively
-     * in the reply message.
-     */
+    errno = saved_errno;
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %s", hdr.msg_id,
-                hdr.cmd, strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", hdr.msg_id,
+                hdr.cmd);
 
-        if (ret == -ENOTCONN) {
+        if (errno == ENOTCONN) {
             goto out;
         }
     } else {
@@ -981,24 +967,23 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
         ret = 0;
     } else {
         ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
-                                   fds_out, nr_fds_out, -ret);
+                                   fds_out, nr_fds_out, ret == 0 ? 0 : errno);
 
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
 
             if (errno == ECONNRESET) {
                 vfu_reset_ctx(vfu_ctx, "reset");
-                ret = -ENOTCONN;
+                errno = ENOTCONN;
             } else if (errno == ENOMSG) {
                 vfu_reset_ctx(vfu_ctx, "closed");
-                ret = -ENOTCONN;
-            } else {
-                ret = -errno;
+                errno = ENOTCONN;
             }
         }
     }
 
 out:
+    saved_errno = errno;
     if (iovecs != NULL) {
         if (free_iovec_data) {
             size_t i;
@@ -1011,7 +996,9 @@ out:
         }
     }
     free(fds_out);
-    return ret;
+    errno = saved_errno;
+
+    return ret == 0 ? 0 : ERROR_INT(errno);
 }
 
 int
@@ -1068,7 +1055,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         vfu_ctx->irqs = calloc(1, sizeof(vfu_irqs_t) + size);
         if (vfu_ctx->irqs == NULL) {
             // vfu_ctx->pci.config_space should be free'ed by vfu_destroy_ctx().
-            return ERROR_INT(ENOMEM);
+            return -1;
         }
 
         // Set context irq information.
@@ -1111,7 +1098,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
         err = process_request(vfu_ctx);
     } while (err == 0 && blocking);
 
-    return err == 0 ? 0 : ERROR_INT(-err);
+    return err;
 }
 
 static void
@@ -1204,7 +1191,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
     if (vfu_ctx == NULL) {
-        return ERROR_PTR(ENOMEM);
+        return NULL;
     }
 
     vfu_ctx->dev_type = dev_type;
@@ -1216,7 +1203,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     vfu_ctx->uuid = strdup(path);
     if (vfu_ctx->uuid == NULL) {
-        err = -errno;
         goto err_out;
     }
 
@@ -1228,23 +1214,19 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;
     vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof(*vfu_ctx->reg_info));
     if (vfu_ctx->reg_info == NULL) {
-        err = -ENOMEM;
         goto err_out;
     }
 
     if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_ERR_IRQ, 1) == -1) {
-        err = -errno;
         goto err_out;
     }
     if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_REQ_IRQ, 1) == -1) {
-        err = -errno;
         goto err_out;
     }
 
     if (vfu_ctx->tran->init != NULL) {
         err = vfu_ctx->tran->init(vfu_ctx);
         if (err < 0) {
-            err = -errno;
             goto err_out;
         }
     }
@@ -1256,9 +1238,11 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     return vfu_ctx;
 
 err_out:
+    err = errno;
+
     vfu_destroy_ctx(vfu_ctx);
 
-    return ERROR_PTR(-err);
+    return ERROR_PTR(err);
 }
 
 int
@@ -1306,7 +1290,7 @@ copyin_mmap_areas(vfu_reg_info_t *reg_info,
     reg_info->mmap_areas = malloc(size);
 
     if (reg_info->mmap_areas == NULL) {
-        return -ENOMEM;
+        return -1;
     }
 
     memcpy(reg_info->mmap_areas, mmap_areas, size);
@@ -1407,7 +1391,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (nr_mmap_areas > 0) {
         ret = copyin_mmap_areas(reg, mmap_areas, nr_mmap_areas);
         if (ret < 0) {
-            goto out;
+            goto err;
         }
     }
 
@@ -1415,8 +1399,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         if (!validate_sparse_mmaps_for_migr_reg(reg)) {
             vfu_log(vfu_ctx, LOG_ERR,
                     "migration registers cannot be memory mapped");
-            ret = -EINVAL;
-            goto out;
+            errno = EINVAL;
+            goto err;
         }
 
         /*
@@ -1425,13 +1409,14 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
          */
         vfu_ctx->migr_reg = reg;
     }
-out:
-    if (ret < 0) {
-        free(reg->mmap_areas);
-        memset(reg, 0, sizeof(*reg));
-        return ERROR_INT(-ret);
-    }
+
     return 0;
+
+err:
+    ret = errno;
+    free(reg->mmap_areas);
+    memset(reg, 0, sizeof(*reg));
+    return ERROR_INT(ret);
 }
 
 int
@@ -1452,7 +1437,7 @@ vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
     // Create the internal DMA controller.
     vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
     if (vfu_ctx->dma == NULL) {
-        return ERROR_INT(ENOMEM);
+        return ERROR_INT(errno);
     }
 
     vfu_ctx->dma_register = dma_register;

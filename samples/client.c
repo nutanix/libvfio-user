@@ -1286,12 +1286,7 @@ int main(int argc, char *argv[])
      * it's the client that creates and provides the FD. Do we need to save some
      * state in the migration data?
      */
-    ret = configure_irqs(sock);
-    if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to configure IRQs on destination server: %s",
-             strerror(-ret));
-    }
-    irq_fd = ret;
+    irq_fd = configure_irqs(sock);
 
     wait_for_irq(irq_fd);
 
