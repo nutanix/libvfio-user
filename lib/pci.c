@@ -259,7 +259,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         ret = handle_erom_write(vfu_ctx, cfg_space, buf, count);
         break;
     default:
-        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#x-%#lx not handled",
+        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx-%#lx not handled",
                 offset, offset + count);
         ret = -EINVAL;
     }
@@ -316,7 +316,7 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
     if (is_write) {
         vfu_log(vfu_ctx, LOG_ERR, "no callback for write to config space "
-                "offset %u size %zu", offset, count);
+                "offset %lu size %zu", offset, count);
         return -EINVAL;
     }
 

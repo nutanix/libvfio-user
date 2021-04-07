@@ -64,7 +64,7 @@ extern "C" {
 typedef void *vfu_dma_addr_t;
 
 typedef struct {
-    vfu_dma_addr_t *dma_addr;
+    vfu_dma_addr_t dma_addr;
     int region;
     int length;
     uint64_t offset;
@@ -184,7 +184,8 @@ typedef void (vfu_log_fn_t)(vfu_ctx_t *vfu_ctx, int level, const char *msg);
  * Log to the logging function configured for this context.
  */
 void
-vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...);
+vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...) \
+    __attribute__((format(printf, 3, 4)));
 
 /**
  * Set up logging information.

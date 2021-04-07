@@ -157,7 +157,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         err = dma_unregister(data, &region->info);
         if (err != 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to dma_unregister() DMA region [%#lx, %#lx): %s",
+                   "failed to dma_unregister() DMA region [%p, %p): %s",
                    region->info.iova.iov_base, iov_end(&region->info.iova),
                    strerror(err));
             return err;
@@ -188,7 +188,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
         dma_memory_region_t *region = &dma->regions[i];
 
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "removing DMA region "
-                "iova=[%#lx, %#lx) vaddr=%#lx mapping=[%#lx, %#lx)",
+                "iova=[%p, %p) vaddr=%p mapping=[%p, %p)",
                 region->info.iova.iov_base, iov_end(&region->info.iova),
                 region->info.vaddr,
                 region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -239,8 +239,8 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     region->info.mapping.iov_len = mmap_len;
     region->info.vaddr = mmap_base + (region->offset - offset);
 
-    vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%#lx, %#lx) "
-            "vaddr=%#lx page_size=%#lx mapping=[%#lx, %#lx)",
+    vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%p, %p) "
+            "vaddr=%p page_size=%#lx mapping=[%p, %p)",
             region->info.iova.iov_base, iov_end(&region->info.iova),
             region->info.vaddr, region->info.page_size,
             region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -301,7 +301,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             (region->info.iova.iov_base >= dma_addr &&
              region->info.iova.iov_base < dma_addr + size)) {
             vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
-                    "DMA region [%#lx, %#lx)", rstr, region->info.iova.iov_base,
+                    "DMA region [%p, %p)", rstr, region->info.iova.iov_base,
                     iov_end(&region->info.iova));
             goto err;
         }

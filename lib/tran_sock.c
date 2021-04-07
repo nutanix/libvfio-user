@@ -569,7 +569,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
     }
 
     if (hdr.cmd != VFIO_USER_VERSION) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: invalid cmd %hu (expected %hu)",
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: invalid cmd %hu (expected %u)",
                 *msg_idp, hdr.cmd, VFIO_USER_VERSION);
         ret = -EINVAL;
         goto out;
@@ -583,7 +583,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
     }
 
     if (cversion->major != LIB_VFIO_USER_MAJOR) {
-        vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %hu)",
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %u)",
                 cversion->major, LIB_VFIO_USER_MAJOR);
         ret = -ENOTSUP;
         goto out;
@@ -821,7 +821,7 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
         free(data);
         return -ENOMSG;
     } else if (ret != (int)body_size) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%d, actual=%d",
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%zu, actual=%d",
                 hdr->msg_id, body_size, ret);
         free(data);
         return -ECONNRESET;

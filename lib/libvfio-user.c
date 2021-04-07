@@ -154,7 +154,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         for (i = 0; i < nr_mmap_areas; i++) {
             struct iovec *iov = &vfu_reg->mmap_areas[i];
 
-            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%#llx, %#llx)", __func__,
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%p, %p)", __func__,
                     i, iov->iov_base, iov_end(iov));
 
             (*fds)[i] = vfu_reg->fd;
@@ -222,7 +222,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
 
         if (cb == NULL) {
-            vfu_log(vfu_ctx, LOG_ERR, "no callback for region %d",
+            vfu_log(vfu_ctx, LOG_ERR, "no callback for region %zu",
                     region_index);
             return -EINVAL;
         }
@@ -247,7 +247,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     assert(ra != NULL);
 
     if (size < sizeof(*ra)) {
-        vfu_log(vfu_ctx, LOG_ERR, "message size too small (%d)", size);
+        vfu_log(vfu_ctx, LOG_ERR, "message size too small (%zu)", size);
         return false;
     }
 
@@ -260,14 +260,14 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     index = ra->region;
 
     if (index >= vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad region index %u", index);
+        vfu_log(vfu_ctx, LOG_ERR, "bad region index %zu", index);
         return false;
     }
 
     // FIXME: need to audit later for wraparound
     if (ra->offset + ra->count > vfu_ctx->reg_info[index].size) {
         vfu_log(vfu_ctx, LOG_ERR, "out of bounds region access %#lx-%#lx "
-                "(size %#lx)", ra->offset, ra->offset + ra->count,
+                "(size %u)", ra->offset, ra->offset + ra->count,
                 vfu_ctx->reg_info[index].size);
 
         return false;
@@ -276,7 +276,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     if (device_is_stopped_and_copying(vfu_ctx->migration) &&
         !is_migr_reg(vfu_ctx, index)) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "cannot access region %u while device in stop-and-copy state",
+                "cannot access region %zu while device in stop-and-copy state",
                 index);
         return false;
     }
@@ -1361,7 +1361,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
         size < vfu_get_migr_register_area_size()) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %d", size);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %zu", size);
         return ERROR_INT(EINVAL);
     }
 
