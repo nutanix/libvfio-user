@@ -697,8 +697,8 @@ validate_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
  * Populates @hdr to contain the header for the next command to be processed.
  * Stores any passed FDs into @fds and the number in @nr_fds.
  *
- * Returns 0 if there is no command to process, -errno if an error occured, or
- * the number of bytes read.
+ * Returns 0 if there is no command to process, -errno on error, or the number
+ * of bytes read.
  */
 int
 MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
@@ -706,10 +706,9 @@ MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 {
     int ret;
 
-    /* FIXME get request shouldn't set errno, it should return it as -errno */
     ret = vfu_ctx->tran->get_request(vfu_ctx, hdr, fds, nr_fds);
     if (unlikely(ret < 0)) {
-        switch (-ret) {
+        switch (errno) {
         case EAGAIN:
             return 0;
 
@@ -722,9 +721,8 @@ MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             return -ENOTCONN;
 
         default:
-            vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %s",
-                   strerror(-ret));
-            return ret;
+            vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %m");
+            return -errno;
         }
     }
 
@@ -794,14 +792,16 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     if (cmd_data_size > 0) {
         ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
 
-        if (ret == -ENOMSG) {
-            vfu_reset_ctx(vfu_ctx, "closed");
-            return -ENOTCONN;
-        } else if (ret == -ECONNRESET) {
-            vfu_reset_ctx(vfu_ctx, "reset");
-            return -ENOTCONN;
-        } else if (ret < 0) {
-            return ret;
+        if (ret < 0) {
+            if (errno == ENOMSG) {
+                vfu_reset_ctx(vfu_ctx, "closed");
+                return -ENOTCONN;
+            } else if (errno == ECONNRESET) {
+                vfu_reset_ctx(vfu_ctx, "reset");
+                return -ENOTCONN;
+            } else {
+                return -errno;
+            }
         }
     }
 
@@ -981,14 +981,16 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
                                    fds_out, nr_fds_out, -ret);
 
         if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %s", strerror(-ret));
+            vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
 
-            if (ret == -ECONNRESET) {
+            if (errno == ECONNRESET) {
                 vfu_reset_ctx(vfu_ctx, "reset");
                 ret = -ENOTCONN;
-            } else if (ret == -ENOMSG) {
+            } else if (errno == ENOMSG) {
                 vfu_reset_ctx(vfu_ctx, "closed");
                 ret = -ENOTCONN;
+            } else {
+                ret = -errno;
             }
         }
     }
@@ -1239,6 +1241,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     if (vfu_ctx->tran->init != NULL) {
         err = vfu_ctx->tran->init(vfu_ctx);
         if (err < 0) {
+            err = -errno;
             goto err_out;
         }
     }
@@ -1564,7 +1567,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_recv = calloc(recv_size, 1);
     if (dma_recv == NULL) {
-        return ERROR_INT(ENOMEM);
+        return -1;
     }
 
     dma_send.addr = (uint64_t)sg->dma_addr;
@@ -1573,20 +1576,22 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
                                   &dma_send, sizeof(dma_send), NULL,
                                   dma_recv, recv_size);
 
-    if (ret == -ENOMSG) {
-        vfu_reset_ctx(vfu_ctx, "closed");
-        ret = -ENOTCONN;
-    } else if (ret == -ECONNRESET) {
-        vfu_reset_ctx(vfu_ctx, "reset");
-        ret = -ENOTCONN;
-    } else if (ret == 0) {
+    if (ret < 0) {
+        if (errno == ENOMSG) {
+            vfu_reset_ctx(vfu_ctx, "closed");
+            errno = ENOTCONN;
+        } else if (errno == ECONNRESET) {
+            vfu_reset_ctx(vfu_ctx, "reset");
+            errno = ENOTCONN;
+        }
+    } else {
         /* FIXME no need for memcpy */
         memcpy(data, dma_recv->data, sg->length);
     }
 
     free(dma_recv);
 
-    return ret < 0 ? ERROR_INT(-ret) : 0;
+    return ret;
 }
 
 int
@@ -1601,7 +1606,7 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     dma_send = calloc(send_size, 1);
     if (dma_send == NULL) {
-        return ERROR_INT(ENOMEM);
+        return -1;
     }
     dma_send->addr = (uint64_t)sg->dma_addr;
     dma_send->count = sg->length;
@@ -1610,17 +1615,19 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
                                   dma_send, send_size, NULL,
                                   &dma_recv, sizeof(dma_recv));
 
-    if (ret == -ENOMSG) {
-        vfu_reset_ctx(vfu_ctx, "closed");
-        ret = -ENOTCONN;
-    } else if (ret == -ECONNRESET) {
-        vfu_reset_ctx(vfu_ctx, "reset");
-        ret = -ENOTCONN;
+    if (ret < 0) {
+        if (errno == ENOMSG) {
+            vfu_reset_ctx(vfu_ctx, "closed");
+            errno = ENOTCONN;
+        } else if (errno == ECONNRESET) {
+            vfu_reset_ctx(vfu_ctx, "reset");
+            errno = ENOTCONN;
+        }
     }
 
     free(dma_send);
 
-    return ret < 0 ? ERROR_INT(-ret) : 0;
+    return ret;
 }
 
 uint64_t

@@ -121,11 +121,11 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
     if (ret == -1) {
         /* Treat a failed write due to EPIPE the same as a short write. */
         if (errno == EPIPE) {
-            return -ECONNRESET;
+            return ERROR_INT(ECONNRESET);
         }
-        return -errno;
+        return -1;
     } else if ((size_t)ret < hdr.msg_size) {
-        return -ECONNRESET;
+        return ERROR_INT(ECONNRESET);
     }
 
     return 0;
@@ -177,15 +177,15 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
 
     ret = recvmsg(sock_fd, &msg, sock_flags);
     if (ret == -1) {
-        return -errno;
+        return -1;
     } else if (ret == 0) {
-        return -ENOMSG;
+        return ERROR_INT(ENOMSG);
     } else if ((size_t)ret < len) {
-        return -ECONNRESET;
+        return ERROR_INT(ECONNRESET);
     }
 
     if (msg.msg_flags & MSG_CTRUNC || msg.msg_flags & MSG_TRUNC) {
-        return -EFAULT;
+        return ERROR_INT(EFAULT);
     }
 
     if (nr_fds != NULL) {
@@ -194,11 +194,11 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
                 continue;
             }
             if (cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
-                return -EINVAL;
+                return ERROR_INT(EINVAL);
             }
             int size = cmsg->cmsg_len - CMSG_LEN(0);
             if (size % sizeof(int) != 0) {
-                return -EINVAL;
+                return ERROR_INT(EINVAL);
             }
             *nr_fds = (int)(size / sizeof(int));
             memcpy(fds, CMSG_DATA(cmsg), *nr_fds * sizeof(int));
@@ -234,22 +234,22 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
 
     if (is_reply) {
         if (msg_id != NULL && hdr->msg_id != *msg_id) {
-            return -EPROTO;
+            return ERROR_INT(EPROTO);
         }
 
         if (hdr->flags.type != VFIO_USER_F_TYPE_REPLY) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         if (hdr->flags.error == 1U) {
             if (hdr->error_no <= 0) {
                 hdr->error_no = EINVAL;
             }
-            return -hdr->error_no;
+            return ERROR_INT(hdr->error_no);
         }
     } else {
         if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
         if (msg_id != NULL) {
             *msg_id = hdr->msg_id;
@@ -260,11 +260,11 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
         ret = recv(sock, data, MIN(hdr->msg_size - sizeof(*hdr), *len),
                    MSG_WAITALL);
         if (ret < 0) {
-            return -errno;
+            return -1;
         } else if (ret == 0) {
-            return -ENOMSG;
+            return ERROR_INT(ENOMSG);
         } else if (*len != (size_t)ret) {
-            return -ECONNRESET;
+            return ERROR_INT(ECONNRESET);
         }
         *len = ret;
     }
@@ -312,20 +312,20 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
     data = calloc(1, len);
 
     if (data == NULL) {
-        return -errno;
+        return -1;
     }
 
     ret = recv(sock, data, len, MSG_WAITALL);
     if (ret < 0) {
-        ret = -errno;
+        ret = errno;
         free(data);
-        return ret;
+        return ERROR_INT(ret);
     } else if (ret == 0) {
         free(data);
-        return -ENOMSG;
+        return ERROR_INT(ENOMSG);
     } else if (len != (size_t)ret) {
         free(data);
-        return -ECONNRESET;
+        return ERROR_INT(ECONNRESET);
     }
 
     *datap = data;
@@ -392,7 +392,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     tran_sock_t *ts = NULL;
     mode_t mode;
-    int ret;
+    int err;
 
     assert(vfu_ctx != NULL);
 
@@ -402,7 +402,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts = calloc(1, sizeof(tran_sock_t));
 
     if (ts == NULL) {
-        ret = -errno;
+        err = errno;
         goto out;
     }
 
@@ -410,48 +410,48 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts->conn_fd = -1;
 
     if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        ret = -errno;
+        err = errno;
         goto out;
     }
 
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        ret = fcntl(ts->listen_fd, F_SETFL,
+        err = fcntl(ts->listen_fd, F_SETFL,
                     fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
-        if (ret < 0) {
-            ret = -errno;
+        if (err < 0) {
+            err = errno;
             goto out;
         }
     }
 
-    ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
-    if (ret >= (int)sizeof(addr.sun_path)) {
-        ret = -ENAMETOOLONG;
-    }
-    if (ret < 0) {
+    err = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
+    if (err >= (int)sizeof(addr.sun_path)) {
+        err = ENAMETOOLONG;
+    } else if (err < 0) {
+        err = errno;
         goto out;
     }
 
     /* start listening business */
-    ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (ret < 0) {
-        ret = -errno;
+    err = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (err < 0) {
+        err = errno;
         goto out;
     }
 
-    ret = listen(ts->listen_fd, 0);
-    if (ret < 0) {
-        ret = -errno;
+    err = listen(ts->listen_fd, 0);
+    if (err < 0) {
+        err = errno;
     }
 
 out:
     umask(mode);
 
-    if (ret != 0) {
+    if (err != 0) {
         if (ts->listen_fd != -1) {
             close(ts->listen_fd);
         }
         free(ts);
-        return ret;
+        return ERROR_INT(err);
     }
 
     vfu_ctx->tran_data = ts;
@@ -492,7 +492,7 @@ tran_parse_version_json(const char *json_str,
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
     struct json_object *jo = NULL;
-    int ret = -EINVAL;
+    int ret = EINVAL;
 
     if ((jo_top = json_tokener_parse(json_str)) == NULL) {
         goto out;
@@ -546,7 +546,10 @@ tran_parse_version_json(const char *json_str,
 out:
     /* We just need to put our top-level object. */
     json_object_put(jo_top);
-    return ret;
+    if (ret != 0) {
+        return ERROR_INT(ret);
+    }
+    return 0;
 }
 
 static int
@@ -564,29 +567,28 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
                                (void **)&cversion, &vlen);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to receive version: %s",
-                strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "failed to receive version: %m");
         return ret;
     }
 
     if (hdr.cmd != VFIO_USER_VERSION) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: invalid cmd %hu (expected %u)",
                 *msg_idp, hdr.cmd, VFIO_USER_VERSION);
-        ret = -EINVAL;
+        ret = EINVAL;
         goto out;
     }
 
     if (vlen < sizeof(*cversion)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "msg%#hx: VFIO_USER_VERSION: invalid size %lu", *msg_idp, vlen);
-        ret = -EINVAL;
+        ret = EINVAL;
         goto out;
     }
 
     if (cversion->major != LIB_VFIO_USER_MAJOR) {
         vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %u)",
                 cversion->major, LIB_VFIO_USER_MAJOR);
-        ret = -ENOTSUP;
+        ret = EINVAL;
         goto out;
     }
 
@@ -599,7 +601,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 
         if (json_str[len - 1] != '\0') {
             vfu_log(vfu_ctx, LOG_ERR, "ignoring invalid JSON from client");
-            ret = -EINVAL;
+            ret = EINVAL;
             goto out;
         }
 
@@ -614,6 +616,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 #else
             vfu_log(vfu_ctx, LOG_ERR, "failed to parse client JSON");
 #endif
+            ret = errno;
             goto out;
         }
 
@@ -623,6 +626,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
             if (ret != 0) {
                 vfu_log(vfu_ctx, LOG_ERR, "refusing client page size of %zu",
                         pgsize);
+                ret = -ret;
                 goto out;
             }
         }
@@ -632,7 +636,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
             vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_FDS_LIMIT) {
             vfu_log(vfu_ctx, LOG_ERR, "refusing client max_fds of %d",
                     vfu_ctx->client_max_fds);
-            ret = -EINVAL;
+            ret = EINVAL;
             goto out;
         }
     }
@@ -642,11 +646,12 @@ out:
         // FIXME: spec, is it OK to just have the header?
         (void) tran_sock_send_error(sock, *msg_idp, hdr.cmd, ret);
         free(cversion);
-        cversion = NULL;
+        *versionp = NULL;
+        return ERROR_INT(ret);
     }
 
     *versionp = cversion;
-    return ret;
+    return 0;
 }
 
 static int
@@ -706,7 +711,7 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
     ret = recv_version(vfu_ctx, sock, &msg_id, &client_version);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to recv version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "failed to recv version: %m");
         return ret;
     }
 
@@ -715,7 +720,7 @@ negotiate(vfu_ctx_t *vfu_ctx, int sock)
     free(client_version);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to send version: %s", strerror(-ret));
+        vfu_log(vfu_ctx, LOG_ERR, "failed to send version: %m");
     }
 
     return ret;
@@ -735,8 +740,7 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
     if (ts->conn_fd != -1) {
         vfu_log(vfu_ctx, LOG_ERR, "%s: already attached with fd=%d",
                 __func__, ts->conn_fd);
-        errno = EINVAL;
-        return -1;
+        return ERROR_INT(EINVAL);
     }
 
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
@@ -746,10 +750,10 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ret = negotiate(vfu_ctx, ts->conn_fd);
     if (ret < 0) {
+        ret = errno;
         close(ts->conn_fd);
         ts->conn_fd = -1;
-        errno = -ret;
-        return -1;
+        return ERROR_INT(ret);
     }
 
     return 0;
@@ -769,7 +773,7 @@ tran_sock_get_request(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 
     if (ts->conn_fd == -1) {
         vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
-        return -ENOTCONN;
+        return ERROR_INT(ENOTCONN);
     }
 
     /*
@@ -799,7 +803,7 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
     if (hdr->msg_size > SERVER_MAX_MSG_SIZE) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
                 hdr->msg_id, hdr->msg_size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     ts = vfu_ctx->tran_data;
@@ -809,23 +813,23 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, const struct vfio_user_header *hdr,
     data = malloc(body_size);
 
     if (data == NULL) {
-        return -errno;
+        return -1;
     }
 
     ret = recv(ts->conn_fd, data, body_size, 0);
 
     if (ret < 0) {
-        ret = -errno;
+        ret = errno;
         free(data);
-        return ret;
+        return ERROR_INT(ret);
     } else if (ret == 0) {
         free(data);
-        return -ENOMSG;
+        return ERROR_INT(ENOMSG);
     } else if (ret != (int)body_size) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%zu, actual=%d",
                 hdr->msg_id, body_size, ret);
         free(data);
-        return -ECONNRESET;
+        return ERROR_INT(ECONNRESET);
     }
 
     *datap = data;

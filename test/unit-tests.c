@@ -1648,6 +1648,7 @@ recv_body(UNUSED vfu_ctx_t *vfu_ctx, UNUSED const struct vfio_user_header *hdr,
           UNUSED void **datap)
 {
     /* hack to avoid having to refactor the rest of exec_command */
+    errno = ENOBUFS;
     return -1;
 }
 
@@ -1685,7 +1686,7 @@ test_exec_command(UNUSED void **state)
     expect_value(should_exec_command, cmd, 0xbeef);
     r = exec_command(&vfu_ctx, &hdr, size, &fds, 0, NULL, NULL, &_iovecs,
                      &iovecs, &nr_iovecs, &free_iovec_data);
-    assert_int_equal(-1, r);
+    assert_int_equal(-ENOBUFS, r);
 }
 
 static void

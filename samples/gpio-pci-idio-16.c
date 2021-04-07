@@ -44,7 +44,6 @@
 
 #include "common.h"
 #include "libvfio-user.h"
-#include "tran_sock.h"
 
 static void
 _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
