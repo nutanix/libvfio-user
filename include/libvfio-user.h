@@ -64,7 +64,7 @@ extern "C" {
 typedef void *vfu_dma_addr_t;
 
 typedef struct {
-    vfu_dma_addr_t *dma_addr;
+    vfu_dma_addr_t dma_addr;
     int region;
     int length;
     uint64_t offset;
