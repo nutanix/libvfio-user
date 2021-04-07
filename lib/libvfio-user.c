@@ -221,6 +221,9 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         }
     } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
+        if (ret == -1) {
+            ret = -errno;
+        }
     } else {
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
 

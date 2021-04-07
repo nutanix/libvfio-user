@@ -620,7 +620,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
             if (ret != 0) {
                 vfu_log(vfu_ctx, LOG_ERR, "refusing client page size of %zu",
                         pgsize);
-                ret = -ret;
+                ret = errno;
                 goto out;
             }
         }
