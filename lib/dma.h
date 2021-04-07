@@ -270,7 +270,7 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
             return -EFAULT;
         }
 
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %#lx-%#lx\n",
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p\n",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
         iov[i].iov_base = region->info.vaddr + sg[i].offset;
@@ -301,8 +301,9 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             /* bad region */
             continue;
         }
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %#lx-%#lx\n",
-               sg[i].dma_addr + sg[i].offset, sg[i].dma_addr + sg[i].offset + sg[i].length);
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p\n",
+                sg[i].dma_addr + sg[i].offset,
+                sg[i].dma_addr + sg[i].offset + sg[i].length);
         r->refcnt--;
     }
     return;
