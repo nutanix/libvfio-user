@@ -194,12 +194,26 @@ the emulated GPIO device's pins:
     cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
     for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
 
-Mailing List
-============
+Mailing List & Chat
+===================
 
 libvfio-user development is discussed in libvfio-user-devel@nongnu.org.
 Subscribe here: https://lists.gnu.org/mailman/listinfo/libvfio-user-devel.
 
+We are on Slack at [libvfio-user.slack.com](https://libvfio-user.slack.com);
+or IRC at [#qemu on OFTC](https://oftc.net/).
+
+Contributing
+============
+
+Contributions are welcome; please file an
+[issue](https://github.com/nutanix/libvfio-user/issues/) or
+[open a PR](https://github.com/nutanix/libvfio-user/pulls). Anything substantial
+is worth discussing with us first.
+
+Please make sure to mark any commits with `Signed-off-by` (`git commit -s`),
+which signals agreement with the [Developer Certificate of Origin
+v1.1](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin).
 
 History
 =======
