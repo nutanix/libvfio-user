@@ -418,7 +418,7 @@ int main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
-    char opt;
+    int opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     const size_t bar1_size = 0x3000;
     size_t migr_regs_size, migr_data_size, migr_size;
