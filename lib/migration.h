@@ -66,7 +66,7 @@ int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
 
 bool
-vfio_migr_state_transition_is_valid(__u32 from, __u32 to);
+vfio_migr_state_transition_is_valid(uint32_t from, uint32_t to);
 
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 

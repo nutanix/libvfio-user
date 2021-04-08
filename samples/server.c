@@ -60,7 +60,7 @@ struct server_data {
     size_t bar1_size;
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
-        __u64 pending_bytes;
+        uint64_t pending_bytes;
         vfu_migr_state_t state;
     } migration;
 };
@@ -296,7 +296,7 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     return 0;
 }
 
-static __u64
+static uint64_t
 migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
@@ -304,7 +304,7 @@ migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
 }
 
 static int
-migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
+migration_prepare_data(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
@@ -316,7 +316,8 @@ migration_prepare_data(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size)
 }
 
 static ssize_t
-migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
+migration_read_data(vfu_ctx_t *vfu_ctx, void *buf,
+                    uint64_t size, uint64_t offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
@@ -354,7 +355,8 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, __u64 size, __u64 offset)
 }
 
 static ssize_t
-migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
+migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
+                     uint64_t size, uint64_t offset)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
     char *buf = data;
@@ -364,7 +366,7 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
     assert(data != NULL);
 
     if (offset != 0 || size < server_data->bar1_size) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
+        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#lx-%#lx",
                 offset, offset + size - 1);
         errno = EINVAL;
         return -1;
@@ -389,7 +391,7 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, __u64 size, __u64 offset)
 
 
 static int
-migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED __u64 count)
+migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED uint64_t count)
 {
     /*
      * We apply migration state directly in the migration_write_data callback,

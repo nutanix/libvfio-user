@@ -39,11 +39,8 @@
 #include "private.h"
 #include "migration_priv.h"
 
-/* FIXME no need to use __u32 etc., use uint32_t etc */
-
-
 bool
-vfio_migr_state_transition_is_valid(__u32 from, __u32 to)
+vfio_migr_state_transition_is_valid(uint32_t from, uint32_t to)
 {
     return migr_states[from].state & (1 << to);
 }
@@ -111,7 +108,7 @@ migr_state_transition(struct migration *migr, enum migr_iter_state state)
 
 static ssize_t
 handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                    __u32 *device_state, bool is_write) {
+                    uint32_t *device_state, bool is_write) {
 
     int ret;
 
@@ -178,7 +175,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
 static ssize_t
 handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                     __u64 *pending_bytes, bool is_write)
+                     uint64_t *pending_bytes, bool is_write)
 {
     assert(migr != NULL);
     assert(pending_bytes != NULL);
@@ -273,7 +270,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
 static ssize_t
 handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                   __u64 *offset, bool is_write)
+                   uint64_t *offset, bool is_write)
 {
     int ret;
 
@@ -331,7 +328,7 @@ handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
 static ssize_t
 handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                               __u64 size, bool is_write)
+                               uint64_t size, bool is_write)
 {
     assert(migr != NULL);
 
@@ -343,7 +340,7 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
 
 static ssize_t
 handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                 __u64 *size, bool is_write)
+                 uint64_t *size, bool is_write)
 {
     int ret;
 
@@ -382,7 +379,7 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                     "bad device_state access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_device_state(vfu_ctx, migr, (__u32*)buf, is_write);
+        ret = handle_device_state(vfu_ctx, migr, (uint32_t *)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
@@ -390,7 +387,7 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                     "bad pending_bytes access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_pending_bytes(vfu_ctx, migr, (__u64*)buf, is_write);
+        ret = handle_pending_bytes(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
@@ -398,7 +395,7 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                     "bad data_offset access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_data_offset(vfu_ctx, migr, (__u64*)buf, is_write);
+        ret = handle_data_offset(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
     case offsetof(struct vfio_device_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
@@ -406,7 +403,7 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                     "bad data_size access size %ld", count);
             return -EINVAL;
         }
-        ret = handle_data_size(vfu_ctx, migr, (__u64*)buf, is_write);
+        ret = handle_data_size(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
     default:
         vfu_log(vfu_ctx, LOG_ERR, "bad migration region register offset %#lx",
