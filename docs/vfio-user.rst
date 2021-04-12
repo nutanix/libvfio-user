@@ -1175,54 +1175,56 @@ improvements where an underlying sub-system (such as KVM) supports communication
 across such file descriptors to the vfio-user server, without needing to
 round-trip through the client.
 
-The server returns an array describing sub-regions of the given region along
-with the server specifies a set of sub-regions and the requested file descriptor
-notification mechanism to use for that sub-region.  Each sub-region in the
+The server returns an array of sub-regions for the requested region. Each
+sub-region describes a span (offset and size) of a region, along with the
+requested file descriptor notification mechanism to use.  Each sub-region in the
 response message may choose to use a different method, as defined below.  The
 two mechanisms supported in this specification are ioeventfds and ioregionfds.
 
-A client should then hook up the returned file descriptors with the notification
-method requested.
+The server in addition returns a file descriptor in the ancillary data; clients
+are expected to configure each sub-region's file descriptor with the requested
+notification method. For example, a client could configure KVM with the
+requested ioeventfd via a KVM_IOEVENTFD ioctl().
 
 Region IO FD info format
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-+------------+--------+------+
-| Name       | Offset | Size |
-+============+========+======+
-| argsz      | 16     | 4    |
-+------------+--------+------+
-| flags      | 20     | 4    |
-+------------+--------+------+
-| index      | 24     | 4    |
-+------------+--------+------+
-| count      | 28     | 4    |
-+------------+--------+------+
-| subregions | 32     | ...  |
-+------------+--------+------+
++-------------+--------+------+
+| Name        | Offset | Size |
++=============+========+======+
+| argsz       | 16     | 4    |
++-------------+--------+------+
+| flags       | 20     | 4    |
++-------------+--------+------+
+| index       | 24     | 4    |
++-------------+--------+------+
+| count       | 28     | 4    |
++-------------+--------+------+
+| sub-regions | 32     | ...  |
++-------------+--------+------+
 
 * *argsz* is the size of the region IO FD info structure plus the
-  total size of the subregion array. Thus, each array entry "i" is at offset
+  total size of the sub-region array. Thus, each array entry "i" is at offset
   i * ((argsz - 32) / count). Note that currently this is 40 bytes for both IO
   FD types, but this is not to be relied on.
 * *flags* must be zero
 * *index* is the index of memory region being queried
 * *count* is the number of sub-regions in the array
-* *subregions* is the array of Sub-Region IO FD info structures
+* *sub-regions* is the array of Sub-Region IO FD info structures
 
 The client must set ``flags`` to zero and specify the region being queried in
 the ``index``.
 
 The client sets the ``argsz`` field to indicate the maximum size of the response
 that the server can send, which must be at least the size of the response header
-plus space for the subregion array. If the full response size exceeds ``argsz``,
+plus space for the sub-region array. If the full response size exceeds ``argsz``,
 then the server must respond only with the response header and the Region IO FD
 info structure, setting in ``argsz`` the buffer size required to store the full
 response. In this case, no file descriptors are passed back.  The client then
 retries the operation with a larger receive buffer.
 
 The reply message will additionally include at least one file descriptor in the
-ancillary data. Note that more than one subregion may share the same file
+ancillary data. Note that more than one sub-region may share the same file
 descriptor.
 
 Each sub-region given in the response has one of two possible structures,
@@ -1291,7 +1293,7 @@ Sub-Region IO FD info format (ioregionfd)
   requested ("physical address offset" for the region)
 * *size* is the length of the sub-region. This may be zero if the access size is
   not relevant, which may allow for optimizations; `KVM_IOREGION_POSTED_WRITES`
-must be set in *flags* in this case
+  must be set in *flags* in this case
 * *fd_index* is the index in the ancillary data of the FD to use for ioregionfd
   messages; it may be shared
 * *type* is `VFIO_USER_IO_FD_TYPE_IOREGIONFD`
