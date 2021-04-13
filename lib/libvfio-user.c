@@ -751,6 +751,18 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     return true;
 }
 
+/*
+ * Theoretically, there are still situations in which free() might change errno.
+ * See https://sourceware.org/bugzilla/show_bug.cgi?id=17924
+ */
+static void
+sfree(void *data)
+{
+    int saved_errno = errno;
+    free(data);
+    errno = saved_errno;
+}
+
 int
 MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
                           size_t size, int *fds, size_t nr_fds, int **fds_out,
@@ -820,7 +832,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
-            free(dev_info);
+            sfree(dev_info);
         }
         break;
 
@@ -852,7 +864,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
-            free(irq_info);
+            sfree(irq_info);
         }
         break;
 
@@ -896,7 +908,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
         break;
     }
 
-    free(cmd_data);
+    sfree(cmd_data);
     return ret;
 }
 
