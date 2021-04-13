@@ -391,7 +391,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     tran_sock_t *ts = NULL;
-    int err;
+    int ret;
 
     assert(vfu_ctx != NULL);
 
@@ -411,7 +411,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     }
 
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        err = fcntl(ts->listen_fd, F_SETFL,
+        ret = fcntl(ts->listen_fd, F_SETFL,
                     fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
         if (ret < 0) {
             ret = errno;
