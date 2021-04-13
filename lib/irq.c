@@ -37,7 +37,6 @@
 #include <sys/eventfd.h>
 
 #include "irq.h"
-#include "tran_sock.h"
 
 #define LM2VFIO_IRQT(type) (type - 1)
 

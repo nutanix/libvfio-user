@@ -39,11 +39,11 @@
 
 #include <cmocka.h>
 
-#include "mocks.h"
 #include "dma.h"
 #include "migration.h"
-#include "../lib/private.h"
-#include "../lib/tran_sock.h"
+#include "mocks.h"
+#include "private.h"
+#include "tran_sock.h"
 
 struct function
 {
