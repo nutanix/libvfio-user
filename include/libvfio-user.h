@@ -512,7 +512,7 @@ typedef struct {
      * function returns 0 then migration has finished and this function won't
      * be called again.
      */
-    __u64 (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
+    uint64_t (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
     /*
      * Function that is called to instruct the device to prepare migration data
@@ -525,7 +525,7 @@ typedef struct {
      * When in resuming state, @offset must be set to where migration data must
      * written. @size points to NULL.
      */
-    int (*prepare_data)(vfu_ctx_t *vfu_ctx, __u64 *offset, __u64 *size);
+    int (*prepare_data)(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size);
 
     /*
      * Function that is called to read migration data. offset and size can be
@@ -539,7 +539,7 @@ typedef struct {
      * Does this mean that reading data_offset/data_size updates the values?
      */
     ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
-                         __u64 count, __u64 offset);
+                         uint64_t count, uint64_t offset);
 
     /* Callbacks for restoring device state */
 
@@ -548,14 +548,14 @@ typedef struct {
      * function must return the amount of data written or -1 on error, setting
      * errno.
      */
-    ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, __u64 count,
-                          __u64 offset);
+    ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count,
+                          uint64_t offset);
 
     /*
      * Function that is called when client has written some previously stored
      * device state.
      */
-    int (*data_written)(vfu_ctx_t *vfu_ctx, __u64 count);
+    int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
 
