@@ -349,7 +349,6 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         }
     }
 
-    ret = idx;
     dma->nregions++;
     return idx;
 }
