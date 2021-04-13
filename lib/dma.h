@@ -76,6 +76,7 @@
 
 #include "libvfio-user.h"
 #include "common.h"
+#include "private.h"
 
 #define iov_end(iov) ((iov)->iov_base + (iov)->iov_len)
 
@@ -89,7 +90,7 @@ typedef struct {
     char *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
 
-typedef struct {
+typedef struct dma_controller {
     int max_regions;
     int nregions;
     struct vfu_ctx *vfu_ctx;
@@ -187,8 +188,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
     const dma_memory_region_t *const region = &dma->regions[region_index];
 
     if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {
-        errno = EACCES;
-        return -1;
+        return ERROR_INT(EACCES);
     }
 
     sg->dma_addr = region->info.iova.iov_base;
@@ -260,12 +260,12 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
 
     for (i = 0; i < cnt; i++) {
         if (sg[i].region >= dma->nregions) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
         region = &dma->regions[sg[i].region];
 
         if (region->info.vaddr == NULL) {
-            return -EFAULT;
+            return ERROR_INT(EFAULT);
         }
 
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
@@ -304,13 +304,12 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
                 sg[i].dma_addr + sg[i].offset + sg[i].length);
         r->refcnt--;
     }
-    return;
 }
 
 int
 dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize);
 
-int
+void
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
 int

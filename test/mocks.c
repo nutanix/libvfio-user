@@ -125,6 +125,7 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
     check_expected(fd);
     check_expected(offset);
     check_expected(prot);
+    errno = mock();
     return mock();
 }
 

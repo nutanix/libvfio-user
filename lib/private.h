@@ -33,8 +33,10 @@
 #ifndef LIB_VFIO_USER_PRIVATE_H
 #define LIB_VFIO_USER_PRIVATE_H
 
+#include <errno.h>
+
 #include "pci_caps.h"
-#include "dma.h"
+#include "common.h"
 
 static inline int
 ERROR_INT(int err)
@@ -109,9 +111,11 @@ struct pci_dev {
     size_t                  nr_ext_caps;
 };
 
+struct dma_controller;
+
 struct vfu_ctx {
     void                    *pvt;
-    dma_controller_t        *dma;
+    struct dma_controller   *dma;
     vfu_reset_cb_t          *reset;
     int           log_level;
     vfu_log_fn_t            *log;
