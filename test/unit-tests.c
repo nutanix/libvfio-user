@@ -95,6 +95,7 @@ test_dma_map_without_fd(void **state UNUSED)
 
     patch("dma_controller_add_region");
     will_return(dma_controller_add_region, 0);
+    will_return(dma_controller_add_region, 0);
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, r.addr);
     expect_value(dma_controller_add_region, size, r.size);
@@ -164,6 +165,7 @@ test_dma_add_regions_mixed(void **state UNUSED)
     patch("dma_controller_add_region");
     /* 1st region */
     will_return(dma_controller_add_region, 0);
+    will_return(dma_controller_add_region, 0);
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, r[0].addr);
     expect_value(dma_controller_add_region, size, r[0].size);
@@ -174,6 +176,7 @@ test_dma_add_regions_mixed(void **state UNUSED)
     expect_check(mock_dma_register, info, check_dma_info,
                  &dma->regions[0].info);
     /* 2nd region */
+    will_return(dma_controller_add_region, 0);
     will_return(dma_controller_add_region, 1);
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, r[1].addr);
@@ -231,6 +234,7 @@ test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
     expect_value(dma_controller_add_region, offset, r[0].offset);
     expect_value(dma_controller_add_region, prot, r[0].prot);
     will_return(dma_controller_add_region, 0);
+    will_return(dma_controller_add_region, 0);
 
     /* 2nd region */
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
@@ -240,6 +244,7 @@ test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
     expect_value(dma_controller_add_region, offset, r[1].offset);
     expect_value(dma_controller_add_region, prot, r[1].prot);
     will_return(dma_controller_add_region, 0);
+    will_return(dma_controller_add_region, 0);
 
     /* 3rd region */
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
@@ -248,13 +253,14 @@ test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
     expect_value(dma_controller_add_region, fd, fds[1]);
     expect_value(dma_controller_add_region, offset, r[2].offset);
     expect_value(dma_controller_add_region, prot, r[2].prot);
-    will_return(dma_controller_add_region, -0x1234);
+    will_return(dma_controller_add_region, EREMOTEIO);
+    will_return(dma_controller_add_region, -1);
 
     patch("close");
     expect_value(close, fd, 0xb);
     will_return(close, 0);
 
-    assert_int_equal(-0x1234,
+    assert_int_equal(-EREMOTEIO,
                      handle_dma_map_or_unmap(&vfu_ctx,
                                              ARRAY_SIZE(r) * sizeof(struct vfio_user_dma_region),
                                              true, fds, 2, r));
@@ -280,6 +286,7 @@ test_dma_map_return_value(void **state UNUSED)
     expect_value(dma_controller_add_region, fd, -1);
     expect_value(dma_controller_add_region, offset, r.offset);
     expect_value(dma_controller_add_region, prot, r.prot);
+    will_return(dma_controller_add_region, 0);
     will_return(dma_controller_add_region, 2);
 
     assert_int_equal(0,
@@ -1254,11 +1261,13 @@ test_dma_map_sg(void **state UNUSED)
     dma->nregions = 1;
 
     /* bad region */
-    assert_int_equal(-EINVAL, dma_map_sg(dma, &sg, &iovec, 1));
+    assert_int_equal(-1, dma_map_sg(dma, &sg, &iovec, 1));
+    assert_int_equal(EINVAL, errno);
 
     /* w/o fd */
     sg.region = 0;
-    assert_int_equal(-EFAULT, dma_map_sg(dma, &sg, &iovec, 1));
+    assert_int_equal(-1, dma_map_sg(dma, &sg, &iovec, 1));
+    assert_int_equal(EFAULT, errno);
 
     /* w/ fd */
     dma->regions[0].info.vaddr = (void *)0xdead0000;
@@ -1737,34 +1746,39 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, 0, NULL, 0, &irq_set);
     /* bad message size */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.argsz = 3;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad .argsz */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.argsz = sizeof (irq_set);
     irq_set.index = VFU_DEV_NUM_IRQS;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad .index */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.index = VFU_DEV_MSIX_IRQ;
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_ACTION_UNMASK;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad flags, MASK and UNMASK */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE |
                     VFIO_IRQ_SET_DATA_BOOL;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad flags, DATA_NONE and DATA_BOOL */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
     irq_set.start = 2047;
@@ -1772,14 +1786,16 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad start, count range */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.start = 2049;
     irq_set.count = 1;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad start, count range */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.start = 0;
     irq_set.count = 1;
@@ -1787,13 +1803,15 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad action for err irq */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.index = VFU_DEV_REQ_IRQ;
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad action for req irq */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.start = 1;
     irq_set.count = 0;
@@ -1801,7 +1819,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad start for count == 0 */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
     irq_set.count = 0;
@@ -1809,7 +1828,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad action for count == 0 */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
     irq_set.count = 0;
@@ -1817,7 +1837,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), NULL, 0, &irq_set);
     /* bad action and data type for count == 0 */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
     irq_set.count = 1;
@@ -1825,7 +1846,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
     /* bad fds for DATA_BOOL */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
     irq_set.count = 1;
@@ -1833,7 +1855,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
     /* bad fds for DATA_NONE */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
     irq_set.count = 2;
@@ -1841,7 +1864,8 @@ test_device_set_irqs(UNUSED void **state)
 
     ret = handle_device_set_irqs(&vfu_ctx, sizeof (irq_set), &fd, 1, &irq_set);
     /* bad fds for count == 2 */
-    assert_int_equal(-EINVAL, ret);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
 
     irqs->err_efd = irqs->req_efd = -1;
 

@@ -532,11 +532,12 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                             region->size, fd, region->offset,
                                             region->prot);
             if (ret < 0) {
+                ret = -errno;
+                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m",
+                        rstr);
                 if (fd != -1) {
                     close(fd);
                 }
-                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %s",
-                        rstr, strerror(-ret));
                 break;
             }
 
@@ -553,8 +554,9 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                                                vfu_ctx->dma_unregister,
                                                vfu_ctx);
             if (ret < 0) {
-                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %s",
-                        rstr, strerror(-ret));
+                ret = -errno;
+                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %m",
+                        rstr);
                 break;
             }
         }
@@ -603,6 +605,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
                                             r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
         if (ret != 0) {
+            ret = -errno;
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
@@ -637,8 +640,12 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, uint32_t size,
     if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
         ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
                                                       migration_get_pgsize(vfu_ctx->migration));
+        if (ret == -1) {
+            ret = -errno;
+        }
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
-        ret = dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
+        dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
+        ret = 0;
     } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
         ret = handle_dirty_pages_get(vfu_ctx, iovecs, nr_iovecs,
                                      (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
@@ -849,6 +856,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
+            ret = -errno;
             free(irq_info);
         }
         break;
@@ -856,6 +864,9 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DEVICE_SET_IRQS:
         ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
                                      cmd_data);
+        if (ret < 0) {
+            ret = -errno;
+        }
         break;
 
     case VFIO_USER_REGION_READ:
@@ -1520,7 +1531,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
-        return ERROR_INT(-ret);
+        return -1;
     }
 
     return 0;

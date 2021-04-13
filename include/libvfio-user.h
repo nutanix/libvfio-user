@@ -404,9 +404,9 @@ typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
  * This is required if you want to be able to access guest memory directly via
  * a mapping.
  *
- * The callback should return 0 on success, errno on failure (although
- * unregister should not fail: this will not stop a guest from unregistering the
- * region).
+ * The callback should return 0 on success, -1 with errno set on failure
+ * (although unregister should not fail: this will not stop a guest from
+ * unregistering the region).
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
