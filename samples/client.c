@@ -1136,7 +1136,7 @@ int main(int argc, char *argv[])
     ret = access_region(sock, VFU_PCI_DEV_CFG_REGION_IDX, false, 0, &config_space,
                         sizeof(config_space));
     if (ret < 0) {
-        errx(EXIT_FAILURE, "failed to read PCI configuration space");
+        err(EXIT_FAILURE, "failed to read PCI configuration space");
     }
 
     assert(config_space.id.vid == 0xdead);
