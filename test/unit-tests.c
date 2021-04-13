@@ -1335,8 +1335,8 @@ test_vfu_setup_device_dma(void **state UNUSED)
 static void
 test_migration_state_transitions(void **state UNUSED)
 {
-    bool (*f)(__u32, __u32) = vfio_migr_state_transition_is_valid;
-    __u32 i, j;
+    bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
+    uint32_t i, j;
 
     /* from stopped (000b): all transitions are invalid */
     assert_true(f(0, 0));

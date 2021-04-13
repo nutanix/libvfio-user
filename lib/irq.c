@@ -162,7 +162,7 @@ static int
 irqs_set_data_none(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 {
     int efd;
-    __u32 i;
+    uint32_t i;
     long ret;
     eventfd_t val;
 
@@ -187,7 +187,7 @@ irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 {
     uint8_t *d8;
     int efd;
-    __u32 i;
+    uint32_t i;
     long ret;
     eventfd_t val;
 
@@ -214,7 +214,7 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
                       int *data)
 {
     int efd;
-    __u32 i;
+    uint32_t i;
     size_t j;
 
     assert(data != NULL);

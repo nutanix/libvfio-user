@@ -59,14 +59,14 @@ struct migration {
      */
     struct {
         enum migr_iter_state state;
-        __u64 pending_bytes;
-        __u64 offset;
-        __u64 size;
+        uint64_t pending_bytes;
+        uint64_t offset;
+        uint64_t size;
     } iter;
 };
 
 struct migr_state_data {
-    __u32 state;
+    uint32_t state;
     const char *name;
 };
 
