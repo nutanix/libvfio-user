@@ -160,7 +160,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
                    "failed to dma_unregister() DMA region [%p, %p): %s",
                    region->info.iova.iov_base, iov_end(&region->info.iova),
                    strerror(err));
-            return err;
+            return -err;
         }
 
         assert(region->refcnt == 0);
@@ -274,7 +274,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
                         "%s; existing=%#lx", rstr, region->offset);
-                goto err;
+                ret = -EINVAL;
+                goto out;
             }
             if (!fds_are_same_file(region->fd, fd)) {
                 /*
@@ -285,12 +286,14 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                  */
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
                         "existing=%d", rstr, region->fd);
-                goto err;
+                ret = -EINVAL;
+                goto out;
             }
             if (region->info.prot != prot) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot for new DMA region "
                         "%s; existing=%#x", rstr, region->info.prot);
-                goto err;
+                ret = -EINVAL;
+                goto out;
             }
             return idx;
         }
@@ -303,14 +306,15 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
                     "DMA region [%p, %p)", rstr, region->info.iova.iov_base,
                     iov_end(&region->info.iova));
-            goto err;
+            ret = -EINVAL;
+            goto out;
         }
     }
 
     if (dma->nregions == dma->max_regions) {
-        idx = dma->max_regions;
         vfu_log(dma->vfu_ctx, LOG_ERR, "hit max regions %d", dma->max_regions);
-        goto err;
+        ret = -EINVAL;
+        goto out;
     }
 
     idx = dma->nregions;
@@ -320,7 +324,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
-            goto err;
+            ret = -EINVAL;
+            goto out;
         }
     }
     page_size = MAX(page_size, getpagesize());
@@ -346,16 +351,15 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                 vfu_log(dma->vfu_ctx, LOG_WARNING,
                         "failed to close fd %d: %m", region->fd);
             }
-            goto err;
+            goto out;
         }
     }
 
+    ret = idx;
     dma->nregions++;
 
-    return idx;
-
-err:
-    return -idx - 1;
+out:
+    return ret;
 }
 
 int
