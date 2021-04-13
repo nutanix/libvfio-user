@@ -89,7 +89,7 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 
     if (count != 2) {
         vfu_log(ctx, LOG_ERR, "bad write command size %lu", count);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     assert(pci != NULL);
@@ -182,7 +182,7 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 
     if (v != 0) {
         vfu_log(ctx, LOG_ERR, "unconsumed command flags %x", v);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     return 0;
@@ -199,7 +199,7 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 
     if (count != 0x4) {
         vfu_log(ctx, LOG_ERR, "bad EROM count %lu", count);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
     v = *(uint32_t*)buf;
 
@@ -212,7 +212,7 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
         vfu_log(ctx, LOG_INFO, "EROM disable ignored");
     } else {
         vfu_log(ctx, LOG_ERR, "bad write to EROM 0x%x bytes", v);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
     return 0;
 }
@@ -237,7 +237,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         break;
     case PCI_INTERRUPT_PIN:
         vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN");
-        ret = -EINVAL;
+        ret = ERROR_INT(EINVAL);
         break;
     case PCI_INTERRUPT_LINE:
         cfg_space->hdr.intr.iline = buf[0];
@@ -262,7 +262,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
     default:
         vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx-%#lx not handled",
                 offset, offset + count);
-        ret = -EINVAL;
+        ret = ERROR_INT(EINVAL);
     }
 
 #ifdef VFU_VERBOSE_LOGGING
@@ -286,8 +286,7 @@ pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     if (is_write) {
         ret = pci_hdr_write(vfu_ctx, buf, count, offset);
         if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to write to PCI header: %s",
-                    strerror(-ret));
+            vfu_log(vfu_ctx, LOG_ERR, "failed to write to PCI header: %m");
         } else {
             dump_buffer("buffer write", buf, count);
             ret = count;
@@ -318,7 +317,7 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     if (is_write) {
         vfu_log(vfu_ctx, LOG_ERR, "no callback for write to config space "
                 "offset %lu size %zu", offset, count);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     memcpy(buf, pci_config_space_ptr(vfu_ctx, offset), count);
@@ -368,7 +367,7 @@ pci_config_space_next_segment(vfu_ctx_t *ctx, size_t count, loff_t offset,
  * that; otherwise, writes are not allowed, and reads are satisfied with
  * memcpy().
  *
- * Returns the number of bytes handled, or -errno on error.
+ * Returns the number of bytes handled, or -1 and errno on error.
  */
 ssize_t
 pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
@@ -469,7 +468,7 @@ vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi)
     vfu_ctx->pci.config_space->hdr.cc.pi = pi;
 }
 
-inline vfu_pci_config_space_t *
+vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);

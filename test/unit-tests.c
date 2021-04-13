@@ -910,7 +910,8 @@ test_pci_caps(void **state UNUSED)
     ret = pci_config_space_access(&vfu_ctx, "ced", 3,
                                   expoffsets[1] + offsetof(struct vsc, data),
                                   true);
-    assert_int_equal(ret, -EPERM);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EPERM, errno);
 
     /* check capability callback */
 
@@ -1126,7 +1127,8 @@ test_pci_ext_caps(void **state UNUSED)
     ret = pci_config_space_access(&vfu_ctx, "ced", 3,
                                   expoffsets[1] + offsetof(struct pcie_ext_cap_vsc_hdr, data),
                                   true);
-    assert_int_equal(ret, -EPERM);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EPERM, errno);
 
     /* check capability callback */
 
