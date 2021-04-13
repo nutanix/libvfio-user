@@ -391,13 +391,9 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     tran_sock_t *ts = NULL;
-    mode_t mode;
     int ret;
 
     assert(vfu_ctx != NULL);
-
-    /* FIXME SPDK can't easily run as non-root */
-    mode = umask(0000);
 
     ts = calloc(1, sizeof(tran_sock_t));
 
@@ -444,8 +440,6 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     }
 
 out:
-    umask(mode);
-
     if (ret != 0) {
         if (ts->listen_fd != -1) {
             close(ts->listen_fd);
