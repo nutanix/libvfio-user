@@ -141,7 +141,7 @@ main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
-    char opt;
+    int opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
     size_t migr_regs_size = vfu_get_migr_register_area_size();
