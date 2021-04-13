@@ -856,6 +856,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
             *iovecs = _iovecs;
             *nr_iovecs = 2;
         } else {
+            ret = -errno;
             free(irq_info);
         }
         break;
@@ -863,6 +864,9 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DEVICE_SET_IRQS:
         ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
                                      cmd_data);
+        if (ret < 0) {
+            ret = -errno;
+        }
         break;
 
     case VFIO_USER_REGION_READ:

@@ -55,7 +55,7 @@ vfio_irq_idx_to_str(int index)
     }
 }
 
-static long
+static int
 dev_get_irqinfo(vfu_ctx_t *vfu_ctx, struct vfio_irq_info *irq_info_in,
                 struct vfio_irq_info *irq_info_out)
 {
@@ -68,7 +68,7 @@ dev_get_irqinfo(vfu_ctx_t *vfu_ctx, struct vfio_irq_info *irq_info_in,
         (irq_info_in->index >= VFU_DEV_NUM_IRQS)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "bad irq_info (size=%d index=%d)",
                 irq_info_in->argsz, irq_info_in->index);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     irq_info_out->count = vfu_ctx->irq_count[irq_info_in->index];
@@ -88,7 +88,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     if (size != sizeof(*irq_info_in) || size != irq_info_in->argsz) {
         vfu_log(vfu_ctx, LOG_WARNING, "IRQ info size %d", size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     return dev_get_irqinfo(vfu_ctx, irq_info_in, irq_info_out);
@@ -174,7 +174,7 @@ irqs_set_data_none(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
             if (ret == -1) {
                 vfu_log(vfu_ctx, LOG_DEBUG,
                         "IRQ: failed to set data to none: %m");
-                return -errno;
+                return -1;
             }
         }
     }
@@ -201,7 +201,7 @@ irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
             if (ret == -1) {
                 vfu_log(vfu_ctx, LOG_DEBUG,
                         "IRQ: failed to set data to bool: %m");
-                return -errno;
+                return -1;
             }
         }
     }
@@ -240,7 +240,7 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
     return 0;
 }
 
-static long
+static int
 device_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
                          size_t nr_fds)
 {
@@ -315,7 +315,7 @@ invalid:
     vfu_log(vfu_ctx, LOG_DEBUG, "invalid SET_IRQS (%d): action=%u data_type=%u "
             "index=%u start=%u count=%u nr_fds=%zu", line, a_type, d_type,
             irq_set->index, irq_set->start, irq_set->count, nr_fds);
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 int
@@ -330,7 +330,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
 
     if (size < sizeof(*irq_set) || size != irq_set->argsz) {
         vfu_log(vfu_ctx, LOG_ERR, "%s: bad size %u", __func__, size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     ret = device_set_irqs_validate(vfu_ctx, irq_set, nr_fds);
