@@ -729,7 +729,7 @@ do_migrate(int sock, int migr_reg_index, size_t nr_iters,
            struct iovec *migr_iter)
 {
     int ret;
-    __u64 pending_bytes, data_offset, data_size;
+    uint64_t pending_bytes, data_offset, data_size;
     size_t i = 0;
 
     assert(nr_iters > 0);
@@ -833,7 +833,7 @@ static size_t
 migrate_from(int sock, int migr_reg_index, size_t *nr_iters,
              struct iovec **migr_iters, unsigned char *md5sum, size_t bar1_size)
 {
-    __u32 device_state;
+    uint32_t device_state;
     int ret;
     size_t _nr_iters;
     pthread_t thread;
@@ -917,8 +917,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     int ret, sock;
     char *sock_path;
     struct stat sb;
-    __u32 device_state = VFIO_DEVICE_STATE_RESUMING;
-    __u64 data_offset, data_len;
+    uint32_t device_state = VFIO_DEVICE_STATE_RESUMING;
+    uint64_t data_offset, data_len;
     size_t i;
 	MD5_CTX md5_ctx;
     char buf[bar1_size];
@@ -993,7 +993,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
          * TODO write half of migration data via regular write and other half via
          * memopy map.
          */
-        printf("client: writing migration device data %#llx-%#llx\n",
+        printf("client: writing migration device data %#lx-%#lx\n",
                data_offset, data_offset + migr_iters[i].iov_len - 1);
         ret = access_region(sock, migr_reg_index, true,
                             data_offset, migr_iters[i].iov_base,
