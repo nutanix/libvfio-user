@@ -110,7 +110,7 @@ dma_controller_destroy(dma_controller_t *dma);
 /* Registers a new memory region.
  * Returns:
  * - On success, a non-negative region number
- * - On failure, -errno.
+ * - On failure, -1 with errno set.
  */
 MOCK_DECLARE(int, dma_controller_add_region, dma_controller_t *dma,
              vfu_dma_addr_t dma_addr, size_t size, int fd, off_t offset,

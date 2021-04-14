@@ -495,7 +495,7 @@ typedef struct {
     /*
      * Migration state transition callback.
      *
-     * Returns -1 on error, setting errno.
+     * The callback should return -1 on error, setting errno.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -524,6 +524,8 @@ typedef struct {
      *
      * When in resuming state, @offset must be set to where migration data must
      * written. @size points to NULL.
+     *
+     * The callback should return -1 on error, setting errno.
      */
     int (*prepare_data)(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size);
 
@@ -554,6 +556,8 @@ typedef struct {
     /*
      * Function that is called when client has written some previously stored
      * device state.
+     *
+     * The callback should return -1 on error, setting errno.
      */
     int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 

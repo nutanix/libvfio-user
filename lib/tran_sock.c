@@ -391,14 +391,14 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     tran_sock_t *ts = NULL;
-    int err;
+    int ret;
 
     assert(vfu_ctx != NULL);
 
     ts = calloc(1, sizeof(tran_sock_t));
 
     if (ts == NULL) {
-        err = errno;
+        ret = errno;
         goto out;
     }
 
@@ -406,46 +406,46 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts->conn_fd = -1;
 
     if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        err = errno;
+        ret = errno;
         goto out;
     }
 
     if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        err = fcntl(ts->listen_fd, F_SETFL,
+        ret = fcntl(ts->listen_fd, F_SETFL,
                     fcntl(ts->listen_fd, F_GETFL, 0) | O_NONBLOCK);
-        if (err < 0) {
-            err = errno;
+        if (ret < 0) {
+            ret = errno;
             goto out;
         }
     }
 
-    err = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
-    if (err >= (int)sizeof(addr.sun_path)) {
-        err = ENAMETOOLONG;
-    } else if (err < 0) {
-        err = errno;
+    ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
+    if (ret >= (int)sizeof(addr.sun_path)) {
+        ret = ENAMETOOLONG;
+    } else if (ret < 0) {
+        ret = EINVAL;
         goto out;
     }
 
     /* start listening business */
-    err = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (err < 0) {
-        err = errno;
+    ret = bind(ts->listen_fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (ret < 0) {
+        ret = errno;
         goto out;
     }
 
-    err = listen(ts->listen_fd, 0);
-    if (err < 0) {
-        err = errno;
+    ret = listen(ts->listen_fd, 0);
+    if (ret < 0) {
+        ret = errno;
     }
 
 out:
-    if (err != 0) {
+    if (ret != 0) {
         if (ts->listen_fd != -1) {
             close(ts->listen_fd);
         }
         free(ts);
-        return ERROR_INT(err);
+        return ERROR_INT(ret);
     }
 
     vfu_ctx->tran_data = ts;
