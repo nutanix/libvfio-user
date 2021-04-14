@@ -582,7 +582,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
                        struct vfio_iommu_type1_dirty_bitmap_get *ranges,
                        uint32_t size)
 {
-    int err = EINVAL;
+    int ret = EINVAL;
     size_t i;
 
     assert(vfu_ctx != NULL);
@@ -601,25 +601,25 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
 
     for (i = 1; i < *nr_iovecs; i++) {
         struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
-        err = dma_controller_dirty_page_get(vfu_ctx->dma,
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)r->iova,
                                             r->size, r->bitmap.pgsize,
                                             r->bitmap.size,
                                             (char**)&((*iovecs)[i].iov_base));
-        if (err != 0) {
-            err = errno;
+        if (ret != 0) {
+            ret = errno;
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
     }
 
 out:
-    if (err != 0) {
+    if (ret != 0) {
         if (*iovecs != NULL) {
             free(*iovecs);
             *iovecs = NULL;
         }
-        return ERROR_INT(err);
+        return ERROR_INT(ret);
     }
 
     return 0;
