@@ -192,12 +192,6 @@ dump_buffer(const char *prefix UNUSED, const char *buf UNUSED,
 #endif
 }
 
-static bool
-is_migr_reg(vfu_ctx_t *vfu_ctx, int index)
-{
-    return &vfu_ctx->reg_info[index] == vfu_ctx->migr_reg;
-}
-
 static ssize_t
 region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
               size_t count, uint64_t offset, bool is_write)
@@ -219,7 +213,11 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         if (ret == -1) {
             ret = -errno;
         }
-    } else if (is_migr_reg(vfu_ctx, region_index) && vfu_ctx->migration != NULL) {
+    } else if (region_index == VFU_PCI_DEV_MIGR_REGION_IDX) {
+        if (vfu_ctx->migration == NULL) {
+            return -EINVAL;
+        }
+
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
             ret = -errno;
@@ -280,7 +278,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     }
 
     if (device_is_stopped_and_copying(vfu_ctx->migration) &&
-        !is_migr_reg(vfu_ctx, index)) {
+        index != VFU_PCI_DEV_MIGR_REGION_IDX) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "cannot access region %zu while device in stop-and-copy state",
                 index);
@@ -382,7 +380,8 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     if (!*vfio_reg) {
         return -ENOMEM;
     }
-    caps_size = get_vfio_caps_size(is_migr_reg(vfu_ctx, index), vfu_reg);
+    caps_size = get_vfio_caps_size(index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                                   vfu_reg);
     (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
     (*vfio_reg)->index = index;
     (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
@@ -405,7 +404,7 @@ dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
     if (caps_size > 0) {
         (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
         if (argsz >= (*vfio_reg)->argsz) {
-            dev_get_caps(vfu_ctx, vfu_reg, is_migr_reg(vfu_ctx, index),
+            dev_get_caps(vfu_ctx, vfu_reg, index == VFU_PCI_DEV_MIGR_REGION_IDX,
                          *vfio_reg, fds, nr_fds);
         }
     }
@@ -1418,12 +1417,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
             ret = -EINVAL;
             goto out;
         }
-
-        /*
-         * FIXME keeping for now until we're sure we're OK with fixing the
-         * migration region index.
-         */
-        vfu_ctx->migr_reg = reg;
     }
 out:
     if (ret < 0) {
@@ -1488,7 +1481,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     assert(vfu_ctx != NULL);
     assert(callbacks != NULL);
 
-    if (vfu_ctx->migr_reg == NULL) {
+    if (vfu_ctx->reg_info[VFU_PCI_DEV_MIGR_REGION_IDX].size == 0) {
         vfu_log(vfu_ctx, LOG_ERR, "no device migration region");
         return ERROR_INT(EINVAL);
     }
