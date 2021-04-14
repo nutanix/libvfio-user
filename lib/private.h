@@ -131,7 +131,6 @@ struct vfu_ctx {
 
     int                     client_max_fds;
 
-    vfu_reg_info_t          *migr_reg;
     struct migration        *migration;
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];
