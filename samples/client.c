@@ -434,7 +434,7 @@ static int
 access_region(int sock, int region, bool is_write, uint64_t offset,
             void *data, size_t data_len)
 {
-    static int msg_id = -1;
+    static int msg_id = 0xf00f;
     struct vfio_user_region_access send_region_access = {
         .offset = offset,
         .region = region,

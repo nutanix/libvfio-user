@@ -265,6 +265,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
+    // FIXME: ->count unbounded (alloc), except for region size
     // FIXME: need to audit later for wraparound
     if (ra->offset + ra->count > vfu_ctx->reg_info[index].size) {
         vfu_log(vfu_ctx, LOG_ERR, "out of bounds region access %#lx-%#lx "
@@ -286,46 +287,51 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
 }
 
 static int
-handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
-                     void **data, size_t *len,
-                     struct vfio_user_region_access *ra)
+handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    struct vfio_user_region_access *in_ra = msg->in_data;
+    struct vfio_user_region_access *out_ra;
     ssize_t ret;
     char *buf;
 
     assert(vfu_ctx != NULL);
-    assert(data != NULL);
-    assert(ra != NULL);
+    assert(msg != NULL);
 
-    if (!is_valid_region_access(vfu_ctx, size, cmd, ra)) {
+    if (!is_valid_region_access(vfu_ctx, msg->in_size, msg->hdr.cmd, in_ra)) {
         return ERROR_INT(EINVAL);
     }
 
-    if (ra->count == 0) {
+    if (in_ra->count == 0) {
         return 0;
     }
 
-    *len = sizeof(*ra);
-    if (cmd == VFIO_USER_REGION_READ) {
-        *len += ra->count;
+    msg->out_size = sizeof(*in_ra);
+    if (msg->hdr.cmd == VFIO_USER_REGION_READ) {
+        msg->out_size += in_ra->count;
     }
-    *data = calloc(1, *len);
-    if (*data == NULL) {
+    msg->out_data = calloc(1, msg->out_size);
+    if (msg->out_data == NULL) {
         return -1;
     }
-    if (cmd == VFIO_USER_REGION_READ) {
-        buf = (char *)(((struct vfio_user_region_access*)(*data)) + 1);
+
+    out_ra = msg->out_data;
+    out_ra->region = in_ra->region;
+    out_ra->offset = in_ra->offset;
+    out_ra->count = in_ra->count;
+
+    if (msg->hdr.cmd == VFIO_USER_REGION_READ) {
+        buf = (char *)(&out_ra->data);
     } else {
-        buf = (char *)(ra + 1);
+        buf = (char *)(&in_ra->data);
     }
 
-    ret = region_access(vfu_ctx, ra->region, buf, ra->count, ra->offset,
-                        cmd == VFIO_USER_REGION_WRITE);
+    ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
+                        in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
 
-    if (ret != ra->count) {
+    if (ret != in_ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %s",
-                cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
-                ra->count, ra->offset + ra->count - 1, strerror(-ret));
+                msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
+                in_ra->count, in_ra->offset + in_ra->count - 1, strerror(-ret));
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
             ret = ERROR_INT(EINVAL);
@@ -333,8 +339,42 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
         return ret;
     }
 
-    ra = *data;
-    ra->count = ret;
+    out_ra->count = ret;
+
+    return 0;
+}
+
+int
+handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_device_info *in_info;
+    struct vfio_device_info *out_info;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    in_info = msg->in_data;
+
+    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*in_info)) {
+        return ERROR_INT(EINVAL);
+    }
+
+    msg->out_size = sizeof (*out_info);
+    msg->out_data = calloc(1, sizeof(*out_info));
+
+    if (msg->out_data == NULL) {
+        return -1;
+    }
+
+    out_info = msg->out_data;
+    out_info->argsz = sizeof(*in_info);
+    out_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
+    out_info->num_regions = vfu_ctx->nr_regions;
+    out_info->num_irqs = VFU_DEV_NUM_IRQS;
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "devinfo flags %#x, num_regions %d, "
+            "num_irqs %d", out_info->flags, out_info->num_regions,
+            out_info->num_irqs);
 
     return 0;
 }
@@ -348,109 +388,75 @@ region_to_offset(uint32_t region)
 }
 
 int
-dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
-                struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds)
+handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    struct vfio_region_info *in_info;
+    struct vfio_region_info *out_info;
     vfu_reg_info_t *vfu_reg;
     size_t caps_size;
 
     assert(vfu_ctx != NULL);
-    assert(vfio_reg != NULL);
+    assert(msg != NULL);
 
-    vfu_reg = &vfu_ctx->reg_info[index];
+    in_info = msg->in_data;
 
-    if (index >= vfu_ctx->nr_regions) {
+    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*in_info)) {
+        return ERROR_INT(EINVAL);
+    }
+
+    if (in_info->index >= vfu_ctx->nr_regions) {
         vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
-                index);
+                in_info->index);
         return ERROR_INT(EINVAL);
     }
 
-    if (argsz < sizeof(struct vfio_region_info)) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad argsz %d", argsz);
-        return ERROR_INT(EINVAL);
-    }
+    // FIXME: we don't cap client-provided in_info->argsz
+    msg->out_size = in_info->argsz;
+    msg->out_data = calloc(1, msg->out_size);
 
-    /*
-     * TODO We assume that the client expects to receive argsz bytes.
-     */
-    *vfio_reg = calloc(1, argsz);
-    if (!*vfio_reg) {
+    if (msg->out_data == NULL) {
         return -1;
     }
-    caps_size = get_vfio_caps_size(index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                                   vfu_reg);
-    (*vfio_reg)->argsz = caps_size + sizeof(struct vfio_region_info);
-    (*vfio_reg)->index = index;
-    (*vfio_reg)->offset = region_to_offset((*vfio_reg)->index);
-    (*vfio_reg)->size = vfu_reg->size;
 
-    (*vfio_reg)->flags = 0;
+    out_info = msg->out_data;
+
+    vfu_reg = &vfu_ctx->reg_info[in_info->index];
+
+    caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                                   vfu_reg);
+
+    /* This might be more than the buffer we actually return. */
+    out_info->argsz = sizeof(*out_info) + caps_size;
+    out_info->index = in_info->index;
+    out_info->offset = region_to_offset(out_info->index);
+    out_info->size = vfu_reg->size;
+
+    out_info->flags = 0;
 
     if (vfu_reg->flags & VFU_REGION_FLAG_READ) {
-        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_READ;
+        out_info->flags |= VFIO_REGION_INFO_FLAG_READ;
     }
     if (vfu_reg->flags & VFU_REGION_FLAG_WRITE) {
-        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_WRITE;
+        out_info->flags |= VFIO_REGION_INFO_FLAG_WRITE;
     }
 
     if (vfu_reg->fd != -1) {
-        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_MMAP;
+        out_info->flags |= VFIO_REGION_INFO_FLAG_MMAP;
     }
 
-    *nr_fds = 0;
     if (caps_size > 0) {
-        (*vfio_reg)->flags |= VFIO_REGION_INFO_FLAG_CAPS;
-        if (argsz >= (*vfio_reg)->argsz) {
-            dev_get_caps(vfu_ctx, vfu_reg, index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                         *vfio_reg, fds, nr_fds);
+        out_info->flags |= VFIO_REGION_INFO_FLAG_CAPS;
+        /* Only actually provide the caps if they fit. */
+        if (in_info->argsz >= out_info->argsz) {
+            dev_get_caps(vfu_ctx, vfu_reg,
+                         in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                         out_info, &msg->out_fds, &msg->nr_out_fds);
         }
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "region_info[%d] offset %#llx flags %#x size %llu "
-            "argsz %u",
-            (*vfio_reg)->index, (*vfio_reg)->offset, (*vfio_reg)->flags,
-            (*vfio_reg)->size, (*vfio_reg)->argsz);
-
-    return 0;
-}
-
-/* TODO merge with dev_get_reginfo */
-static int
-handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                              struct vfio_region_info *reg_info_in,
-                              struct vfio_region_info **reg_info_out,
-                              int **fds, size_t *nr_fds)
-{
-    if (size < sizeof(*reg_info_in)) {
-        return ERROR_INT(EINVAL);
-    }
-
-    return dev_get_reginfo(vfu_ctx, reg_info_in->index, reg_info_in->argsz,
-                           reg_info_out, fds, nr_fds);
-}
-
-int
-handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
-                       struct vfio_device_info *in_dev_info,
-                       struct vfio_device_info *out_dev_info)
-{
-    assert(vfu_ctx != NULL);
-    assert(in_dev_info != NULL);
-    assert(out_dev_info != NULL);
-
-    if (in_size < sizeof(*in_dev_info) ||
-        in_dev_info->argsz < sizeof(*in_dev_info)) {
-        return ERROR_INT(EINVAL);
-    }
-
-    out_dev_info->argsz = sizeof(*in_dev_info);
-    out_dev_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
-    out_dev_info->num_regions = vfu_ctx->nr_regions;
-    out_dev_info->num_irqs = VFU_DEV_NUM_IRQS;
-
-    vfu_log(vfu_ctx, LOG_DEBUG, "devinfo flags %#x, num_regions %d, "
-            "num_irqs %d", out_dev_info->flags, out_dev_info->num_regions,
-            out_dev_info->num_irqs);
+    vfu_log(vfu_ctx, LOG_DEBUG, "region_info[%d] offset %#llx flags %#x "
+            "size %llu " "argsz %u", out_info->index, out_info->offset,
+            out_info->flags, out_info->size, out_info->argsz);
 
     return 0;
 }
@@ -469,40 +475,28 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
    return fd;
 }
 
-/*
- * Handles a DMA map/unmap request.
- *
- * @vfu_ctx: LM context
- * @size: size, in bytes, of the memory pointed to be @dma_regions
- * @map: whether this is a DMA map operation
- * @fds: array of file descriptors.
- * @nr_fds: size of above array.
- * @dma_regions: memory that contains the DMA regions to be mapped/unmapped
- *
- * @returns 0 on success, -1 and errno on failure.
- */
 int
-handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
-                        int *fds, size_t nr_fds,
-                        struct vfio_user_dma_region *dma_regions)
+handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    int nr_dma_regions;
-    int ret, i;
+    struct vfio_user_dma_region *dma_regions = msg->in_data;
+    bool is_map = (msg->hdr.cmd == VFIO_USER_DMA_MAP);
+    size_t nr_dma_regions;
     size_t fdi;
+    size_t i;
+    int ret;
 
     assert(vfu_ctx != NULL);
-    assert(nr_fds == 0 || fds != NULL);
+
+    if (msg->in_size % sizeof(struct vfio_user_dma_region) != 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA regions %zu", msg->in_size);
+        return ERROR_INT(EINVAL);
+    }
 
     if (vfu_ctx->dma == NULL) {
         return 0;
     }
 
-    if (size % sizeof(struct vfio_user_dma_region) != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA regions %d", size);
-        return ERROR_INT(EINVAL);
-    }
-
-    nr_dma_regions = (int)(size / sizeof(struct vfio_user_dma_region));
+    nr_dma_regions = msg->in_size / sizeof(struct vfio_user_dma_region);
     if (nr_dma_regions == 0) {
         return 0;
     }
@@ -516,12 +510,12 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                 region->offset, region->prot, region->flags);
 
         vfu_log(vfu_ctx, LOG_DEBUG, "%s DMA region %s",
-                map ? "adding" : "removing", rstr);
+                is_map ? "adding" : "removing", rstr);
 
-        if (map) {
+        if (is_map) {
             int fd = -1;
             if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                fd = consume_fd(fds, nr_fds, fdi++);
+                fd = consume_fd(msg->in_fds, msg->nr_in_fds, fdi++);
                 if (fd < 0) {
                     vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: "
                             "mappable but fd not provided", rstr);
@@ -592,19 +586,18 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
         return ERROR_INT(EINVAL);
     }
-    *nr_iovecs = 1 + size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    *nr_iovecs = size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
         return -1;
     }
 
-    for (i = 1; i < *nr_iovecs; i++) {
-        struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[(i - 1)]; /* FIXME ugly indexing */
+    for (i = 0; i < *nr_iovecs; i++) {
+        struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[i];
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                            (vfu_dma_addr_t)r->iova,
-                                            r->size, r->bitmap.pgsize,
-                                            r->bitmap.size,
-                                            (char**)&((*iovecs)[i].iov_base));
+                                            (vfu_dma_addr_t)r->iova, r->size,
+                                            r->bitmap.pgsize, r->bitmap.size,
+                                            (char **)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             ret = errno;
             goto out;
@@ -625,82 +618,147 @@ out:
 }
 
 int
-MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, uint32_t size,
-                                struct iovec **iovecs, size_t *nr_iovecs,
-                                struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap = msg->in_data;
     int ret;
 
     assert(vfu_ctx != NULL);
-    assert(iovecs != NULL);
-    assert(nr_iovecs != NULL);
-    assert(dirty_bitmap != NULL);
+    assert(msg != NULL);
 
-    if (size < sizeof(*dirty_bitmap) || size != dirty_bitmap->argsz) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid header size %u", size);
+    if (msg->in_size < sizeof(*dirty_bitmap) ||
+        msg->in_size != dirty_bitmap->argsz) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid header size %zu", msg->in_size);
         return ERROR_INT(EINVAL);
     }
 
-    if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
+    switch (dirty_bitmap->flags) {
+    case VFIO_IOMMU_DIRTY_PAGES_FLAG_START:
         ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
-                                                      migration_get_pgsize(vfu_ctx->migration));
-    } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP) {
+                  migration_get_pgsize(vfu_ctx->migration));
+        break;
+
+    case VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP:
         dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
         ret = 0;
-    } else if (dirty_bitmap->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP) {
-        ret = handle_dirty_pages_get(vfu_ctx, iovecs, nr_iovecs,
-                                     (struct vfio_iommu_type1_dirty_bitmap_get*)(dirty_bitmap + 1),
-                                     size - sizeof(*dirty_bitmap));
-    } else {
+        break;
+
+    case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP: {
+        struct vfio_iommu_type1_dirty_bitmap_get *get;
+        get = (void *)(dirty_bitmap + 1);
+
+        ret = handle_dirty_pages_get(vfu_ctx, &msg->out_iovecs,
+                                     &msg->nr_out_iovecs, get,
+                                     msg->in_size - sizeof(*dirty_bitmap));
+        break;
+    }
+
+    default:
         vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_bitmap->flags);
         ret = ERROR_INT(EINVAL);
+        break;
     }
 
     return ret;
 }
 
-static bool
-is_header_valid(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr, size_t size)
+static vfu_msg_t *
+alloc_msg(struct vfio_user_header *hdr, int *fds, size_t nr_fds)
 {
-    assert(hdr != NULL);
+    vfu_msg_t *msg;
+    size_t i;
 
-    if (size < sizeof(hdr)) {
-        vfu_log(vfu_ctx, LOG_ERR, "short header read %ld", size);
-        return false;
+    msg = calloc(1, sizeof(*msg));
+
+    if (msg == NULL) {
+        return NULL;
     }
 
-    if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", hdr->msg_id);
-        return false;
+    msg->hdr = *hdr;
+    msg->nr_in_fds = nr_fds;
+
+    if (nr_fds > 0) {
+        msg->in_fds = calloc(msg->nr_in_fds, sizeof(int));
+
+        if (msg->in_fds == NULL) {
+            free(msg);
+            return NULL;
+        }
+
+        for (i = 0; i < msg->nr_in_fds; i++) {
+            msg->in_fds[i] = fds[i];
+        }
     }
 
-    if (hdr->msg_size < sizeof(hdr)) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
-                hdr->msg_id, hdr->msg_size);
-        return false;
+    return msg;
+}
+
+static void
+free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    int saved_errno = errno;
+    size_t i;
+
+    if (msg == NULL) {
+        return;
     }
 
-    return true;
+    free(msg->in_data);
+
+    for (i = 0; i < msg->nr_in_fds; i++) {
+        if (msg->in_fds[i] != -1) {
+            if (msg->processed_cmd) {
+                vfu_log(vfu_ctx, LOG_DEBUG,
+                        "closing unexpected fd %d (index %zu) from cmd %u",
+                        msg->in_fds[i], i, msg->hdr.cmd);
+            }
+            close(msg->in_fds[i]);
+        }
+    }
+
+    free(msg->in_fds);
+
+    for (i = 0; i < msg->nr_out_fds; i++) {
+        assert(msg->out_fds[i] != -1);
+        close(msg->out_fds[i]);
+    }
+
+    free(msg->out_fds);
+
+    assert(msg->out_data == NULL || msg->out_iovecs == NULL);
+
+    free(msg->out_data);
+
+    /*
+     * Each iov_base refers to data we don't want to free, but we *do* want to
+     * free the allocated array of iovecs if there is one.
+     */
+    free(msg->out_iovecs);
+
+    free(msg);
+
+    errno = saved_errno;
 }
 
 /*
- * Populates @hdr to contain the header for the next command to be processed.
- * Stores any passed FDs into @fds and the number in @nr_fds.
- *
- * Returns 0 if there is no command to process, -1 and errno on error, or the
- * number of bytes read.
+ * Note that we avoid any malloc() before we see data, as this is used for
+ * polling by SPDK.
  */
 int
-MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                              int *fds, size_t *nr_fds)
+MOCK_DEFINE(get_request_header)(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
+    int fds[VFIO_USER_CLIENT_MAX_FDS_LIMIT] = { 0 };
+    struct vfio_user_header hdr = { 0, };
+    size_t nr_fds = VFIO_USER_CLIENT_MAX_FDS_LIMIT;
+    size_t i;
     int ret;
 
-    ret = vfu_ctx->tran->get_request(vfu_ctx, hdr, fds, nr_fds);
+    ret = vfu_ctx->tran->get_request_header(vfu_ctx, &hdr, fds, &nr_fds);
+
     if (unlikely(ret < 0)) {
         switch (errno) {
         case EAGAIN:
-            return 0;
+            return -1;
 
         case ENOMSG:
             vfu_reset_ctx(vfu_ctx, "closed");
@@ -716,7 +774,48 @@ MOCK_DEFINE(get_next_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
         }
     }
 
+    *msgp = alloc_msg(&hdr, fds, nr_fds);
+
+    if (*msgp == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    return 0;
+
+out:
+    if (ret != 0) {
+        int saved_errno = errno;
+        for (i = 0; i < nr_fds; i++) {
+            close(fds[i]);
+        }
+        errno = saved_errno;
+    }
+
     return ret;
+}
+
+static bool
+is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    if (msg->hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", msg->hdr.msg_id);
+        return false;
+    }
+
+    if (msg->hdr.msg_size < sizeof(msg->hdr)) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
+                msg->hdr.msg_id, msg->hdr.msg_size);
+        return false;
+    }
+
+    if (msg->hdr.msg_size > SERVER_MAX_MSG_SIZE) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
+                msg->hdr.msg_id, msg->hdr.msg_size);
+        return false;
+    }
+
+    return true;
 }
 
 bool
@@ -730,8 +829,6 @@ MOCK_DEFINE(cmd_allowed_when_stopped_and_copying)(uint16_t cmd)
 bool
 MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 {
-    assert(vfu_ctx != NULL);
-
     if (device_is_stopped_and_copying(vfu_ctx->migration)) {
         if (!cmd_allowed_when_stopped_and_copying(cmd)) {
             vfu_log(vfu_ctx, LOG_ERR,
@@ -747,138 +844,38 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     return true;
 }
 
-/*
- * Theoretically, there are still situations in which free() might change errno.
- * See https://sourceware.org/bugzilla/show_bug.cgi?id=17924
- */
-static void
-sfree(void *data)
-{
-    int saved_errno = errno;
-    free(data);
-    errno = saved_errno;
-}
-
 int
-MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                          size_t size, int *fds, size_t nr_fds, int **fds_out,
-                          size_t *nr_fds_out, struct iovec *_iovecs,
-                          struct iovec **iovecs, size_t *nr_iovecs,
-                          bool *free_iovec_data)
+MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    int ret;
-    struct vfio_irq_info *irq_info;
-    struct vfio_device_info *dev_info;
-    struct vfio_region_info *dev_region_info_in, *dev_region_info_out = NULL;
-    void *cmd_data = NULL;
-    size_t cmd_data_size;
+    int ret = 0;
 
-    assert(vfu_ctx != NULL);
-    assert(hdr != NULL);
-    assert(fds != NULL);
-    assert(_iovecs != NULL);
-    assert(iovecs != NULL);
-    assert(free_iovec_data != NULL);
+    msg->processed_cmd = true;
 
-    if (!is_header_valid(vfu_ctx, hdr, size)) {
-        return ERROR_INT(EINVAL);
-    }
-
-    if (!should_exec_command(vfu_ctx, hdr->cmd)) {
-        return ERROR_INT(EINVAL);
-    }
-
-    cmd_data_size = hdr->msg_size - sizeof(*hdr);
-
-    if (cmd_data_size > 0) {
-        ret = vfu_ctx->tran->recv_body(vfu_ctx, hdr, &cmd_data);
-
-        if (ret < 0) {
-            if (errno == ENOMSG) {
-                vfu_reset_ctx(vfu_ctx, "closed");
-                return ERROR_INT(ENOTCONN);
-            } else if (errno == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, "reset");
-                return ERROR_INT(ENOTCONN);
-            } else {
-                return -1;
-            }
-        }
-    }
-
-    switch (hdr->cmd) {
+    switch (msg->hdr.cmd) {
     case VFIO_USER_DMA_MAP:
     case VFIO_USER_DMA_UNMAP:
-        ret = handle_dma_map_or_unmap(vfu_ctx, cmd_data_size,
-                                      hdr->cmd == VFIO_USER_DMA_MAP,
-                                      fds, nr_fds, cmd_data);
+        ret = handle_dma_map_or_unmap(vfu_ctx, msg);
         break;
 
     case VFIO_USER_DEVICE_GET_INFO:
-        dev_info = calloc(1, sizeof(*dev_info));
-        if (dev_info == NULL) {
-            ret = ERROR_INT(errno);
-            break;
-        }
-        ret = handle_device_get_info(vfu_ctx, cmd_data_size, cmd_data,
-                                     dev_info);
-        if (ret >= 0) {
-            _iovecs[1].iov_base = dev_info;
-            _iovecs[1].iov_len = dev_info->argsz;
-            *iovecs = _iovecs;
-            *nr_iovecs = 2;
-        } else {
-            sfree(dev_info);
-        }
+        ret = handle_device_get_info(vfu_ctx, msg);
         break;
 
     case VFIO_USER_DEVICE_GET_REGION_INFO:
-        dev_region_info_in = cmd_data;
-        ret = handle_device_get_region_info(vfu_ctx, cmd_data_size,
-                                            dev_region_info_in,
-                                            &dev_region_info_out, fds_out,
-                                            nr_fds_out);
-        if (ret == 0) {
-            _iovecs[1].iov_base = dev_region_info_out;
-            _iovecs[1].iov_len = dev_region_info_in->argsz;
-            *iovecs = _iovecs;
-            *nr_iovecs = 2;
-        }
+        ret = handle_device_get_region_info(vfu_ctx, msg);
         break;
 
     case VFIO_USER_DEVICE_GET_IRQ_INFO:
-        irq_info = calloc(1, sizeof(*irq_info));
-        if (irq_info == NULL) {
-            ret = ERROR_INT(errno);
-            break;
-        }
-        ret = handle_device_get_irq_info(vfu_ctx, cmd_data_size, cmd_data,
-                                         irq_info);
-        if (ret == 0) {
-            _iovecs[1].iov_base = irq_info;
-            _iovecs[1].iov_len = sizeof(*irq_info);
-            *iovecs = _iovecs;
-            *nr_iovecs = 2;
-        } else {
-            sfree(irq_info);
-        }
+        ret = handle_device_get_irq_info(vfu_ctx, msg);
         break;
 
     case VFIO_USER_DEVICE_SET_IRQS:
-        ret = handle_device_set_irqs(vfu_ctx, cmd_data_size, fds, nr_fds,
-                                     cmd_data);
+        ret = handle_device_set_irqs(vfu_ctx, msg);
         break;
 
     case VFIO_USER_REGION_READ:
     case VFIO_USER_REGION_WRITE:
-        ret = handle_region_access(vfu_ctx, cmd_data_size, hdr->cmd,
-                                   &(_iovecs[1].iov_base),
-                                   &(_iovecs[1].iov_len),
-                                   cmd_data);
-        if (ret == 0) {
-            *iovecs = _iovecs;
-            *nr_iovecs = 2;
-        }
+        ret = handle_region_access(vfu_ctx, msg);
         break;
 
     case VFIO_USER_DEVICE_RESET:
@@ -888,94 +885,79 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
     case VFIO_USER_DIRTY_PAGES:
         // FIXME: don't allow migration calls if migration == NULL
         if (vfu_ctx->dma != NULL) {
-            ret = handle_dirty_pages(vfu_ctx, cmd_data_size, iovecs,
-                                     nr_iovecs, cmd_data);
+            ret = handle_dirty_pages(vfu_ctx, msg);
         } else {
             ret = 0;
-        }
-        if (ret >= 0) {
-            *free_iovec_data = false;
         }
         break;
 
     default:
-        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", hdr->cmd);
+        msg->processed_cmd = false;
+        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);
         ret = ERROR_INT(EINVAL);
         break;
     }
 
-    sfree(cmd_data);
     return ret;
 }
 
+/*
+ * Handle requests over the vfio-user socket. This can return immediately if we
+ * are non-blocking, and there is no request from the client ready to read from
+ * the socket. Otherwise, we synchronously process the request in place, and
+ * possibly reply.
+ */
 int
 MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
 {
-    struct vfio_user_header hdr = { 0, };
-    int *fds = NULL, *fds_out = NULL;
-    size_t nr_fds, i;
-    size_t nr_fds_out = 0;
-    struct iovec _iovecs[2] = { { 0, } };
-    struct iovec *iovecs = NULL;
-    size_t nr_iovecs = 0;
-    bool free_iovec_data = true;
-    int saved_errno;
+    vfu_msg_t *msg = NULL;
     int ret;
 
     assert(vfu_ctx != NULL);
 
-    /*
-     * FIXME if migration device state is VFIO_DEVICE_STATE_STOP then only
-     * migration-related operations should execute. However, some operations
-     * are harmless (e.g. get region info). At the minimum we should fail
-     * accesses to device regions other than the migration region. I'd expect
-     * DMA unmap and get dirty pages to be required even in the stop-and-copy
-     * state.
-     */
-
-    nr_fds = vfu_ctx->client_max_fds;
-    fds = alloca(nr_fds * sizeof(int));
-
-    ret = get_next_command(vfu_ctx, &hdr, fds, &nr_fds);
-    if (ret <= 0) {
-        return ret;
-    }
-
-    ret = exec_command(vfu_ctx, &hdr, ret, fds, nr_fds, &fds_out, &nr_fds_out,
-                       _iovecs, &iovecs, &nr_iovecs, &free_iovec_data);
-
-    saved_errno = errno;
-
-    for (i = 0; i < nr_fds; i++) {
-        if (fds[i] != -1) {
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                    "closing unexpected fd %d (index %zu) from cmd %u",
-                    fds[i], i, hdr.cmd);
-            close(fds[i]);
-        }
-    }
-
-    errno = saved_errno;
+    ret = get_request_header(vfu_ctx, &msg);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", hdr.msg_id,
-                hdr.cmd);
-
-        if (errno == ENOTCONN) {
-            goto out;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            ret = 0;
         }
-    } else {
-        ret = 0;
+        goto out;
     }
 
-    if (hdr.flags.no_reply) {
+    if (!is_valid_header(vfu_ctx, msg)) {
+        ret = ERROR_INT(EINVAL);
+        goto out;
+    }
+
+    msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
+
+    if (msg->in_size > 0) {
+        ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
+
+        if (ret < 0) {
+            goto out;
+        }
+    }
+
+    if (!should_exec_command(vfu_ctx, msg->hdr.cmd)) {
+        ret = ERROR_INT(EINVAL);
+        goto out;
+    }
+
+    ret = exec_command(vfu_ctx, msg);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
+                msg->hdr.cmd);
+    }
+
+    if (msg->hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
          */
         ret = 0;
     } else {
-        ret = vfu_ctx->tran->reply(vfu_ctx, hdr.msg_id, iovecs, nr_iovecs,
-                                   fds_out, nr_fds_out, ret == 0 ? 0 : errno);
+        ret = vfu_ctx->tran->reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
 
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
@@ -991,22 +973,8 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     }
 
 out:
-    saved_errno = errno;
-    if (iovecs != NULL) {
-        if (free_iovec_data) {
-            size_t i;
-            for (i = 1; i < nr_iovecs; i++) {
-                free(iovecs[i].iov_base);
-            }
-        }
-        if (iovecs != _iovecs) {
-            free(iovecs);
-        }
-    }
-    free(fds_out);
-    errno = saved_errno;
-
-    return ret == 0 ? 0 : ERROR_INT(errno);
+    free_msg(vfu_ctx, msg);
+    return ret;
 }
 
 int
@@ -1168,7 +1136,6 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
-    // FIXME: Maybe close any open irq efds? Unmap stuff?
 }
 
 void *
