@@ -215,7 +215,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         }
     } else if (region_index == VFU_PCI_DEV_MIGR_REGION_IDX) {
         if (vfu_ctx->migration == NULL) {
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
         }
 
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
