@@ -95,7 +95,7 @@ typedef enum {
  *
  * @trans: transport type
  * @path: path to socket file.
- * @flags: context flags
+ * @flags: context flags (LIBVFIO_USER_FLAG_*)
  * @pvt: private data
  * @dev_type: device type
  *

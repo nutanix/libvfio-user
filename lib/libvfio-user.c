@@ -1187,14 +1187,16 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     int err = 0;
     size_t i;
 
-    //FIXME: Validate arguments.
+    if ((flags & ~(LIBVFIO_USER_FLAG_ATTACH_NB)) != 0) {
+        return ERROR_PTR(EINVAL);
+    }
 
     if (trans != VFU_TRANS_SOCK) {
         return ERROR_PTR(ENOTSUP);
     }
 
     if (dev_type != VFU_DEV_TYPE_PCI) {
-        return ERROR_PTR(EINVAL);
+        return ERROR_PTR(ENOTSUP);
     }
 
     vfu_ctx = calloc(1, sizeof(vfu_ctx_t));
