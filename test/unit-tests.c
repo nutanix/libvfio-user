@@ -608,7 +608,6 @@ test_get_region_info(UNUSED void **state)
         .client_max_fds = 1,
         .nr_regions = ARRAY_SIZE(reg_info),
         .reg_info = reg_info,
-        .migr_reg = &reg_info[VFU_PCI_DEV_MIGR_REGION_IDX]
     };
     uint32_t index = 0;
     uint32_t argsz = 0;
