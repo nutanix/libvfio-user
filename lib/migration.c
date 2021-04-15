@@ -171,8 +171,6 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return ret;
 }
 
-// FIXME: no need to use __u* type variants
-
 static ssize_t
 handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
                      uint64_t *pending_bytes, bool is_write)
