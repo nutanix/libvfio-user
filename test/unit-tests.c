@@ -699,9 +699,6 @@ test_get_region_info(UNUSED void **state)
     /* FIXME add check  for multiple sparse areas */
 }
 
-/*
- * FIXME expand and validate
- */
 static void
 test_vfu_ctx_create(void **state UNUSED)
 {
@@ -710,6 +707,18 @@ test_vfu_ctx_create(void **state UNUSED)
 
     pm.hdr.id = PCI_CAP_ID_PM;
     pm.pmcs.nsfrst = 0x1;
+
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK + 1, "", 0, NULL, VFU_DEV_TYPE_PCI);
+    assert_null(vfu_ctx);
+    assert_int_equal(ENOTSUP, errno);
+
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", 0, NULL, VFU_DEV_TYPE_PCI + 4);
+    assert_null(vfu_ctx);
+    assert_int_equal(ENOTSUP, errno);
+
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", 999, NULL, VFU_DEV_TYPE_PCI);
+    assert_null(vfu_ctx);
+    assert_int_equal(EINVAL, errno);
 
     vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
                              NULL, VFU_DEV_TYPE_PCI);
