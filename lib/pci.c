@@ -48,12 +48,11 @@ pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
     unsigned long mask;
-    vfu_reg_info_t *reg_info = vfu_get_region_info(vfu_ctx);
     vfu_pci_hdr_t *hdr;
 
     assert(vfu_ctx != NULL);
 
-    if (reg_info[bar_index].size == 0) {
+    if (vfu_ctx->reg_info[bar_index].size == 0) {
         return;
     }
 
@@ -64,10 +63,10 @@ pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
     vfu_log(vfu_ctx, LOG_DEBUG, "BAR%d addr 0x%x", bar_index, cfg_addr);
 
     if (cfg_addr == 0xffffffff) {
-        cfg_addr = ~(reg_info[bar_index].size) + 1;
+        cfg_addr = ~(vfu_ctx->reg_info[bar_index].size) + 1;
     }
 
-    if ((reg_info[bar_index].flags & VFU_REGION_FLAG_MEM)) {
+    if ((vfu_ctx->reg_info[bar_index].flags & VFU_REGION_FLAG_MEM)) {
         mask = PCI_BASE_ADDRESS_MEM_MASK;
     } else {
         mask = PCI_BASE_ADDRESS_IO_MASK;

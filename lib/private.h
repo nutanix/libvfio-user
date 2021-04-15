@@ -145,9 +145,6 @@ dump_buffer(const char *prefix, const char *buf, uint32_t count);
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
-vfu_reg_info_t *
-vfu_get_region_info(vfu_ctx_t *vfu_ctx);
-
 int
 dev_get_reginfo(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t argsz,
                 struct vfio_region_info **vfio_reg, int **fds, size_t *nr_fds);
