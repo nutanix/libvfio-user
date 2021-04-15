@@ -54,13 +54,60 @@ BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
 INSTALL_PREFIX ?= /usr/local
 
-PHONY_TARGETS := all test pre-push realclean buildclean force_cmake tags
+PHONY_TARGETS := all pytest pytest-valgrind test pre-push realclean buildclean force_cmake tags
 .PHONY: $(PHONY_TARGETS)
 
 all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
 	+$(MAKE) -C $(BUILD_DIR) $@
 
-test: all
+#
+# NB: add --capture=no to get a C-level assert failure output.
+#
+PYTESTCMD = \
+	$(shell which -a pytest-3 /bin/true 2>/dev/null | head -1) \
+	-rP \
+	--quiet
+
+PYTEST = \
+    BUILD_TYPE=$(BUILD_TYPE) \
+	$(PYTESTCMD)
+
+#
+# In our tests, we make sure to destroy the ctx at the end of each test; this is
+# enough for these settings to detect (most?) library leaks as "definite",
+# without all the noise from the rest of the Python runtime.
+#
+# As running under valgrind is very slow, we don't run this unless requested.
+#
+PYTESTVALGRIND = \
+	BUILD_TYPE=$(BUILD_TYPE) \
+	PYTHONMALLOC=malloc \
+	valgrind \
+	--suppressions=$(CURDIR)/test/py/valgrind.supp \
+	--quiet \
+	--errors-for-leak-kinds=definite \
+	--show-leak-kinds=definite \
+	--leak-check=full \
+	--error-exitcode=1 \
+	$(PYTESTCMD)
+
+ifdef WITH_ASAN
+
+pytest pytest-valgrind:
+
+else
+
+pytest: all
+	@echo "=== Running python tests ==="
+	$(PYTEST)
+
+pytest-valgrind: all
+	@echo "=== Running python tests with valgrind ==="
+	$(PYTESTVALGRIND)
+
+endif
+
+test: all pytest
 	cd $(BUILD_DIR)/test; ctest --verbose
 
 pre-push: realclean
@@ -71,6 +118,7 @@ pre-push: realclean
 	make realclean
 	make test CC=gcc BUILD_TYPE=rel
 	make test CC=gcc
+	make pytest-valgrind
 
 realclean:
 	rm -rf $(BUILD_DIR_BASE)
