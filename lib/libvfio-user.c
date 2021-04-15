@@ -1497,13 +1497,6 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
-vfu_reg_info_t *
-vfu_get_region_info(vfu_ctx_t *vfu_ctx)
-{
-    assert(vfu_ctx != NULL);
-    return vfu_ctx->reg_info;
-}
-
 int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                size_t len, dma_sg_t *sg, int max_sg, int prot)
