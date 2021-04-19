@@ -1013,7 +1013,6 @@ int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 {
     vfu_reg_info_t *cfg_reg;
-    const vfu_reg_info_t zero_reg = { 0 };
     uint32_t max_ivs = 0, i;
     size_t size;
 
@@ -1024,8 +1023,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     cfg_reg = &vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX];
 
     // Set a default config region if none provided.
-    /* TODO should it be enough to check that the size of region is 0? */
-    if (memcmp(cfg_reg, &zero_reg, sizeof(*cfg_reg)) == 0) {
+    if (cfg_reg->size == 0) {
         cfg_reg->flags = VFU_REGION_FLAG_RW;
         cfg_reg->size = PCI_CFG_SPACE_SIZE;
     }
@@ -1227,6 +1225,10 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto err_out;
     }
 
+    for (i = 0; i < vfu_ctx->nr_regions; i++) {
+        vfu_ctx->reg_info[i].fd = -1;
+    }
+
     if (vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_ERR_IRQ, 1) == -1) {
         goto err_out;
     }
@@ -1239,10 +1241,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         if (err < 0) {
             goto err_out;
         }
-    }
-
-    for (i = 0; i< vfu_ctx->nr_regions; i++) {
-        vfu_ctx->reg_info[i].fd = -1;
     }
 
     return vfu_ctx;

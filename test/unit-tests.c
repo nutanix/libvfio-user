@@ -737,6 +737,18 @@ test_vfu_ctx_create(void **state UNUSED)
     will_return(close, 0);
 
     vfu_destroy_ctx(vfu_ctx);
+
+    /* Test "bare" vfu_create_ctx(). */
+    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
+                             NULL, VFU_DEV_TYPE_PCI);
+    assert_non_null(vfu_ctx);
+
+    assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
+
+    expect_value(close, fd, ((tran_sock_t *)vfu_ctx->tran_data)->fd);
+    will_return(close, 0);
+
+    vfu_destroy_ctx(vfu_ctx);
 }
 
 bool pci_caps_writing = true;
