@@ -1225,7 +1225,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto err_out;
     }
 
-    for (i = 0; i< vfu_ctx->nr_regions; i++) {
+    for (i = 0; i < vfu_ctx->nr_regions; i++) {
         vfu_ctx->reg_info[i].fd = -1;
     }
 
