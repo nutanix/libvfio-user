@@ -95,7 +95,7 @@ def test_vfu_realize_ctx_caps():
     assert ret == 0
 
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=struct.pack(
-            "ccHH", PCI_CAP_ID_PM, b'\0', 0, 0))
+            "ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == PCI_STD_HEADER_SIZEOF
 
     ret = vfu_realize_ctx(ctx)

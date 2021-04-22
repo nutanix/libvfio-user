@@ -326,6 +326,10 @@ handle_region_access(vfu_ctx_t *vfu_ctx, uint32_t size, uint16_t cmd,
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %m",
                 cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
                 ra->count, ra->offset + ra->count - 1);
+
+        free(*data);
+        *data = NULL;
+
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
             ret = ERROR_INT(EINVAL);
