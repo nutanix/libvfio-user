@@ -1181,8 +1181,8 @@ static void
 test_device_get_info(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof(d_in) };
-    struct vfio_device_info d_out;
+    struct vfio_user_device_info d_in = { .argsz = sizeof(d_in) };
+    struct vfio_user_device_info d_out;
 
     assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in),
                                                &d_in, &d_out));
@@ -1194,15 +1194,15 @@ test_device_get_info(void **state UNUSED)
 }
 
 /*
- * Checks that handle_device_get_info handles correctly struct vfio_device_info
- * with more fields.
+ * Checks that handle_device_get_info handles correctly struct
+ * vfio_user_device_info with more fields.
  */
 static void
 test_device_get_info_compat(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof(d_in) + 1 };
-    struct vfio_device_info d_out;
+    struct vfio_user_device_info d_in = { .argsz = sizeof(d_in) + 1 };
+    struct vfio_user_device_info d_out;
 
     assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in) + 1,
                                                &d_in, &d_out));

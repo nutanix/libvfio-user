@@ -156,10 +156,10 @@ Device-Specific Regions
 """""""""""""""""""""""
 
 A device can define regions additional to the standard ones (e.g. PCI indexes
-0-8). This is achieved by including a VFIO_REGION_INFO_CAP_TYPE capability
-in the region info reply of a device-specific region. Such regions are reflected
-in ``struct vfio_device_info.num_regions``. Thus, for PCI devices this value can
-be equal to, or higher than, VFIO_PCI_NUM_REGIONS.
+0-8). This is achieved by including a VFIO_REGION_INFO_CAP_TYPE capability in
+the region info reply of a device-specific region. Such regions are reflected in
+``struct vfio_user_device_info.num_regions``. Thus, for PCI devices this value
+can be equal to, or higher than, VFIO_PCI_NUM_REGIONS.
 
 Region I/O via file descriptors
 -------------------------------
@@ -737,8 +737,7 @@ Message format
 +--------------+----------------------------+
 
 This command message is sent by the client to the server to query for basic
-information about the device. The VFIO device info structure is defined in
-``<linux/vfio.h>`` (``struct vfio_device_info``).
+information about the device.
 
 VFIO device info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -765,7 +764,8 @@ VFIO device info format
 
 * *argsz* is the size of the VFIO device info structure. This is the only field
 that should be set to non-zero in the request, identifying the client's expected
-size. Currently this is a fixed value.
+size. This must be at least the size of the struct above; it will be set to
+actual size filled in in the reply.
 * *flags* contains the following device attributes.
 
   * VFIO_DEVICE_FLAGS_RESET indicates that the device supports the

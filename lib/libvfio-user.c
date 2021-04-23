@@ -431,8 +431,8 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
 
 int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
-                       struct vfio_device_info *in_dev_info,
-                       struct vfio_device_info *out_dev_info)
+                       struct vfio_user_device_info *in_dev_info,
+                       struct vfio_user_device_info *out_dev_info)
 {
     assert(vfu_ctx != NULL);
     assert(in_dev_info != NULL);
@@ -768,7 +768,7 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
 {
     int ret;
     struct vfio_irq_info *irq_info;
-    struct vfio_device_info *dev_info;
+    struct vfio_user_device_info *dev_info;
     struct vfio_region_info *dev_region_info_in, *dev_region_info_out = NULL;
     void *cmd_data = NULL;
     size_t cmd_data_size;
