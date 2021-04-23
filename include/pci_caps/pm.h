@@ -39,6 +39,9 @@
 extern "C" {
 #endif
 
+/*
+ * Power Management Capabilities Register
+ */
 struct pc {
     unsigned int vs:3;
     unsigned int pmec:1;
@@ -51,29 +54,34 @@ struct pc {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
 
+/*
+ * Power Management Status and Control Register
+ */
 struct pmcs {
     union {
         uint16_t raw;
         struct {
-            unsigned int ps:2;
-            unsigned int res1:1;
-            unsigned int nsfrst:1;
-            unsigned int res2:4;
-            unsigned int pmee:1;
-            unsigned int dse:4;
-            unsigned int dsc:2;
-            unsigned int pmes:1;
+            unsigned short ps:2;
+            unsigned short res1:1;
+            unsigned short nsfrst:1;
+            unsigned short res2:4;
+            unsigned short pmee:1;
+            unsigned short dse:4;
+            unsigned short dsc:2;
+            unsigned short pmes:1;
         };
     };
 } __attribute__((packed));
-_Static_assert(sizeof(struct pc) == 0x2, "bad PMCS size");
+_Static_assert(sizeof(struct pmcs) == 0x2, "bad PMCS size");
 
 struct pmcap {
     struct cap_hdr hdr;
     struct pc pc;
     struct pmcs pmcs;
-} __attribute__((packed)) __attribute__ ((aligned(8))); /* FIXME why does it need to be aligned? */
-_Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad PC size");
+    uint8_t pmcsr_bse;
+    uint8_t data;
+} __attribute__((packed));
+_Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad pmcap size");
 _Static_assert(offsetof(struct pmcap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus

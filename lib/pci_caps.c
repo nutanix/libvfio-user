@@ -141,7 +141,7 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
         if (count != sizeof(struct pc)) {
             return ERROR_INT(EINVAL);
         }
-        vfu_log(vfu_ctx, LOG_ERR, "FIXME: write to pmcp::pc unimplemented");
+        vfu_log(vfu_ctx, LOG_ERR, "FIXME: write to pmcap::pc unimplemented");
         return ERROR_INT(ENOTSUP);
     case offsetof(struct pmcap, pmcs):
         if (count != sizeof(struct pmcs)) {
@@ -149,6 +149,19 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
         }
         handle_pmcs_write(vfu_ctx, pm, (struct pmcs *)buf);
         return sizeof(struct pmcs);
+    case offsetof(struct pmcap, pmcsr_bse):
+        if (count != 1) {
+            return ERROR_INT(EINVAL);
+        }
+        vfu_log(vfu_ctx, LOG_ERR,
+                "FIXME: write to pmcap::pmcsr_bse unimplemented");
+        return ERROR_INT(ENOTSUP);
+    case offsetof(struct pmcap, data):
+        if (count != 1) {
+            return ERROR_INT(EINVAL);
+        }
+        vfu_log(vfu_ctx, LOG_ERR, "FIXME: write to pmcap::data unimplemented");
+        return ERROR_INT(ENOTSUP);
     }
     return ERROR_INT(EINVAL);
 }
