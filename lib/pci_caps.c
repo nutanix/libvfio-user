@@ -141,8 +141,8 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
         if (count != sizeof(struct pc)) {
             return ERROR_INT(EINVAL);
         }
-        assert(false); /* FIXME implement */
-        break;
+        vfu_log(vfu_ctx, LOG_ERR, "FIXME: write to pmcp::pc unimplemented");
+        return ERROR_INT(ENOTSUP);
     case offsetof(struct pmcap, pmcs):
         if (count != sizeof(struct pmcs)) {
             return ERROR_INT(EINVAL);
