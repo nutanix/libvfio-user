@@ -65,6 +65,11 @@ PCI_EXT_CAP_DSN_SIZEOF = 12
 
 PCI_EXT_CAP_VNDR_HDR_SIZEOF = 8
 
+# from linux/vfio.h
+
+VFIO_DEVICE_FLAGS_RESET = (1 << 0)
+VFIO_DEVICE_FLAGS_PCI = (1 << 1)
+
 # libvfio-user defines
 
 VFU_TRANS_SOCK = 0

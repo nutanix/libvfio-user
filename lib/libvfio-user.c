@@ -433,7 +433,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, uint32_t size,
                            reg_info_out, fds, nr_fds);
 }
 
-int
+static int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t in_size,
                        struct vfio_device_info *in_dev_info,
                        struct vfio_device_info *out_dev_info)

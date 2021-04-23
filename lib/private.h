@@ -155,11 +155,6 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, uint32_t size, bool map,
                         struct vfio_user_dma_region *dma_regions);
 
 int
-handle_device_get_info(vfu_ctx_t *vfu_ctx, uint32_t size,
-                       struct vfio_device_info *in_dev_info,
-                       struct vfio_device_info *out_dev_info);
-
-int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, uint32_t size,
                        int *fds, size_t nr_fds, struct vfio_irq_set *irq_set);
 

@@ -654,49 +654,6 @@ test_get_region_info(UNUSED void **state)
     /* FIXME add check  for multiple sparse areas */
 }
 
-static void
-test_device_get_info(void **state UNUSED)
-{
-    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof(d_in) };
-    struct vfio_device_info d_out;
-
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in),
-                                               &d_in, &d_out));
-    assert_int_equal(sizeof(d_out), d_out.argsz);
-    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
-                     d_out.flags);
-    assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
-    assert_int_equal(VFU_DEV_NUM_IRQS, d_out.num_irqs);
-}
-
-/*
- * Checks that handle_device_get_info handles correctly struct vfio_device_info
- * with more fields.
- */
-static void
-test_device_get_info_compat(void **state UNUSED)
-{
-    vfu_ctx_t vfu_ctx = { .nr_regions = 0xdeadbeef };
-    struct vfio_device_info d_in = { .argsz = sizeof(d_in) + 1 };
-    struct vfio_device_info d_out;
-
-    assert_int_equal(0, handle_device_get_info(&vfu_ctx, sizeof(d_in) + 1,
-                                               &d_in, &d_out));
-    assert_int_equal(sizeof(d_out), d_out.argsz);
-    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
-                     d_out.flags);
-    assert_int_equal(vfu_ctx.nr_regions, d_out.num_regions);
-    assert_int_equal(VFU_DEV_NUM_IRQS, d_out.num_irqs);
-
-    /* fewer fields */
-    assert_int_equal(-1,
-                     handle_device_get_info(&vfu_ctx, (sizeof(d_in)) - 1,
-                                            &d_in, &d_out));
-    assert_int_equal(EINVAL, errno);
-}
-
-
 /*
  * Performs various checks when adding sparse memory regions.
  */
@@ -1427,8 +1384,6 @@ main(void)
         cmocka_unit_test_setup(test_handle_dma_unmap, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
         cmocka_unit_test_setup(test_run_ctx, setup),
-        cmocka_unit_test_setup(test_device_get_info, setup),
-        cmocka_unit_test_setup(test_device_get_info_compat, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
