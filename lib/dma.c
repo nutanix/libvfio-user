@@ -423,7 +423,7 @@ get_bitmap_size(size_t region_size, size_t pgsize)
         return ERROR_INT(EINVAL);
     }
     size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
-    return (nr_pages / CHAR_BIT) + (nr_pages % CHAR_BIT != 0);
+    return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
 }
 
 int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)

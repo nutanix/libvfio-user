@@ -652,7 +652,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
         }
     };
     struct vfio_user_header hdr = {0};
-    char data[ARRAY_SIZE(bitmaps)];
+    uint64_t data[ARRAY_SIZE(bitmaps)];
 
     assert(dma_regions != NULL);
     //FIXME: Is below assert correct?
@@ -661,7 +661,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
         bitmaps[i].iova = dma_regions[i].addr;
         bitmaps[i].size = dma_regions[i].size;
-        bitmaps[i].bitmap.size = 1; /* FIXME calculate based on page and IOVA size, don't hardcode */
+        bitmaps[i].bitmap.size = sizeof(uint64_t); /* FIXME calculate based on page and IOVA size, don't hardcode */
         bitmaps[i].bitmap.pgsize = sysconf(_SC_PAGESIZE);
         iovecs[(i + 2)].iov_base = &bitmaps[i]; /* FIXME the +2 is because iovecs[0] is the vfio_user_header and iovecs[1] is vfio_iommu_type1_dirty_bitmap */
         iovecs[(i + 2)].iov_len = sizeof(struct vfio_user_bitmap_range);
@@ -676,13 +676,13 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     ret = tran_sock_msg_iovec(sock, 0, VFIO_USER_DIRTY_PAGES,
                               iovecs, ARRAY_SIZE(iovecs),
                               NULL, 0,
-                              &hdr, data, ARRAY_SIZE(data), NULL, 0);
+                              &hdr, data, ARRAY_SIZE(data) * sizeof(uint64_t), NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to start dirty page logging");
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("client: %s: %#lx-%#lx\t%hhu\n", __func__, bitmaps[i].iova,
+        printf("client: %s: %#lx-%#lx\t%#lx\n", __func__, bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
 }
