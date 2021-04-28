@@ -133,6 +133,20 @@ struct vfio_user_irq_info {
     uint32_t    subindex;
 } __attribute__((packed));
 
+/* based on struct vfio_bitmap */
+struct vfio_user_bitmap {
+    uint64_t pgsize;
+    uint64_t size;
+    char data[];
+} __attribute__((packed));
+
+/* based on struct vfio_iommu_type1_dirty_bitmap_get */
+struct vfio_user_bitmap_range {
+    uint64_t iova;
+    uint64_t size;
+    struct vfio_user_bitmap bitmap;
+} __attribute__((packed));
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)
 
 /* copied from <linux/vfio.h> */

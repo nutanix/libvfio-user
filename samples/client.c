@@ -642,7 +642,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
                   UNUSED int nr_dma_regions)
 {
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = { 0 };
-    struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2] = { { 0 }, };
+    struct vfio_user_bitmap_range bitmaps[2] = { { 0 }, };
     int ret;
     size_t i;
     struct iovec iovecs[4] = {
@@ -664,14 +664,14 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
         bitmaps[i].bitmap.size = 1; /* FIXME calculate based on page and IOVA size, don't hardcode */
         bitmaps[i].bitmap.pgsize = sysconf(_SC_PAGESIZE);
         iovecs[(i + 2)].iov_base = &bitmaps[i]; /* FIXME the +2 is because iovecs[0] is the vfio_user_header and iovecs[1] is vfio_iommu_type1_dirty_bitmap */
-        iovecs[(i + 2)].iov_len = sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+        iovecs[(i + 2)].iov_len = sizeof(struct vfio_user_bitmap_range);
     }
 
     /*
      * FIXME there should be at least two IOVAs. Send single message for two
      * IOVAs and ensure only one bit is set in first IOVA.
      */
-    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_user_bitmap_range);
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
     ret = tran_sock_msg_iovec(sock, 0, VFIO_USER_DIRTY_PAGES,
                               iovecs, ARRAY_SIZE(iovecs),
@@ -682,7 +682,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("client: %s: %#llx-%#llx\t%hhu\n", __func__, bitmaps[i].iova,
+        printf("client: %s: %#lx-%#lx\t%hhu\n", __func__, bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
 }
