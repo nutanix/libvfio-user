@@ -133,6 +133,10 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return ERROR_INT(EINVAL);
     }
 
+    vfu_log(vfu_ctx, LOG_DEBUG, "migration: transition from state %s to state %s",
+           migr_states[migr->info.device_state].name,
+           migr_states[*device_state].name);
+
     switch (*device_state) {
         case VFIO_DEVICE_STATE_STOP:
             ret = migr->callbacks.transition(vfu_ctx, VFU_MIGR_STATE_STOP);
