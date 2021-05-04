@@ -1440,9 +1440,10 @@ test_migration_state_transitions(void **state UNUSED)
     bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
     uint32_t i, j;
 
-    /* from stopped (000b): all transitions are invalid */
+    /* from stopped (000b): all transitions are invalid except to running */
     assert_true(f(0, 0));
-    for (i = 1; i < 8; i++) {
+    assert_true(f(0, 1));
+    for (i = 2; i < 8; i++) {
         assert_false(f(0, i));
     }
 
@@ -1458,7 +1459,7 @@ test_migration_state_transitions(void **state UNUSED)
 
     /* from stop-and-copy (010b) */
     assert_true(f(2, 0));
-    assert_false(f(2, 1));
+    assert_true(f(2, 1));
     assert_true(f(2, 2));
     assert_false(f(2, 3));
     assert_false(f(2, 4));

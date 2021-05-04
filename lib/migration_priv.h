@@ -75,7 +75,9 @@ struct migr_state_data {
 /* valid migration state transitions */
 static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
     [VFIO_DEVICE_STATE_STOP] = {
-        .state = 1 << VFIO_DEVICE_STATE_STOP,
+        .state =
+            (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_RUNNING),
         .name = "stopped"
     },
     [VFIO_DEVICE_STATE_RUNNING] = {
@@ -91,6 +93,7 @@ static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = 
     [VFIO_DEVICE_STATE_SAVING] = {
         .state =
             (1 << VFIO_DEVICE_STATE_STOP) |
+            (1 << VFIO_DEVICE_STATE_RUNNING) |
             (1 << VFIO_DEVICE_STATE_SAVING) |
             (1 << VFIO_DEVICE_STATE_ERROR),
         .name = "stop-and-copy"
