@@ -832,7 +832,7 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
             return false;
         }
     } else if (device_is_stopped(vfu_ctx->migration) &&
-               cmd != VFIO_USER_DIRTY_PAGES) {
+               !(cmd == VFIO_USER_REGION_READ || cmd == VFIO_USER_REGION_WRITE || cmd == VFIO_USER_DIRTY_PAGES)) {
         vfu_log(vfu_ctx, LOG_ERR,
                "bad command %d while device in stopped state", cmd);
         return false;
