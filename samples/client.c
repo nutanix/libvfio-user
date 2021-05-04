@@ -338,7 +338,7 @@ get_device_region_info(int sock, uint32_t index)
 }
 
 static void
-get_device_regions_info(int sock, struct vfio_device_info *client_dev_info)
+get_device_regions_info(int sock, struct vfio_user_device_info *client_dev_info)
 {
     unsigned int i;
 
@@ -348,7 +348,7 @@ get_device_regions_info(int sock, struct vfio_device_info *client_dev_info)
 }
 
 static void
-get_device_info(int sock, struct vfio_device_info *dev_info)
+get_device_info(int sock, struct vfio_user_device_info *dev_info)
 {
     uint16_t msg_id = 0xb10c;
     int ret;
@@ -1063,7 +1063,7 @@ int main(int argc, char *argv[])
 {
 	int ret, sock, irq_fd;
     struct vfio_user_dma_region *dma_regions;
-    struct vfio_device_info client_dev_info = {0};
+    struct vfio_user_device_info client_dev_info = {0};
     int *dma_region_fds;
     int i;
     FILE *fp;

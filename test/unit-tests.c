@@ -1237,8 +1237,8 @@ test_pci_ext_caps(void **state UNUSED)
 static void
 test_device_get_info(void **state UNUSED)
 {
-    struct vfio_device_info d_in = { .argsz = sizeof(d_in) + 1 };
-    struct vfio_device_info *d_out;
+    struct vfio_user_device_info d_in = { .argsz = sizeof(d_in) + 1 };
+    struct vfio_user_device_info *d_out;
     int ret;
 
     vfu_ctx.nr_regions = 0xdeadbeef;
