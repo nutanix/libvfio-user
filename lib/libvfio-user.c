@@ -330,7 +330,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (ret != in_ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#x-%#lx: %m",
-                cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
+                msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
                 in_ra->count, in_ra->offset + in_ra->count - 1);
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
