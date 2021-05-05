@@ -59,11 +59,10 @@ static struct function funcs[] = {
     { .name = "device_is_stopped_and_copying" },
     { .name = "device_is_stopped" },
     { .name = "dma_controller_add_region" },
-    { .name = "dma_controller_unmap_region" },
     { .name = "dma_controller_remove_region" },
-    { .name = "dma_map_region" },
+    { .name = "dma_controller_unmap_region" },
     { .name = "exec_command" },
-    { .name = "get_next_command" },
+    { .name = "get_request_header" },
     { .name = "handle_dirty_pages" },
     { .name = "process_request" },
     { .name = "should_exec_command" },
@@ -156,53 +155,6 @@ dma_controller_unmap_region(dma_controller_t *dma,
     check_expected(region);
 }
 
-bool
-device_is_stopped(struct migration *migration)
-{
-    if (!is_patched("device_is_stopped")) {
-        return __real_device_is_stopped(migration);
-    }
-    check_expected(migration);
-    return mock();
-}
-
-int
-get_next_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                 int *fds, size_t *nr_fds)
-{
-    check_expected(vfu_ctx);
-    check_expected(hdr);
-    check_expected(fds);
-    check_expected(nr_fds);
-    return mock();
-}
-
-int
-exec_command(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-             size_t size, int *fds, size_t nr_fds, int **fds_out,
-             size_t *nr_fds_out, struct iovec *_iovecs,
-             struct iovec **iovecs, size_t *nr_iovecs,
-             bool *free_iovec_data)
-{
-    if (!is_patched("exec_command")) {
-        return __real_exec_command(vfu_ctx, hdr, size, fds, nr_fds, fds_out,
-                                   nr_fds_out, _iovecs, iovecs, nr_iovecs,
-                                   free_iovec_data);
-    }
-    check_expected(vfu_ctx);
-    check_expected(hdr);
-    check_expected(size);
-    check_expected(fds);
-    check_expected(nr_fds);
-    check_expected(fds_out);
-    check_expected(nr_fds_out);
-    check_expected(_iovecs);
-    check_expected(iovecs);
-    check_expected(nr_iovecs);
-    check_expected(free_iovec_data);
-    return mock();
-}
-
 int
 tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                      enum vfio_user_command cmd,
@@ -218,6 +170,36 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     check_expected(fds);
     check_expected(count);
     check_expected(err);
+    return mock();
+}
+
+bool
+device_is_stopped(struct migration *migration)
+{
+    if (!is_patched("device_is_stopped")) {
+        return __real_device_is_stopped(migration);
+    }
+    check_expected(migration);
+    return mock();
+}
+
+int
+get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
+{
+    check_expected(vfu_ctx);
+    check_expected(msgp);
+    return mock();
+}
+
+int
+exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    if (!is_patched("exec_command")) {
+        return __real_exec_command(vfu_ctx, msg);
+    }
+    check_expected(vfu_ctx);
+    check_expected(msg);
+    errno = mock();
     return mock();
 }
 
@@ -265,19 +247,14 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 }
 
 int
-handle_dirty_pages(vfu_ctx_t *vfu_ctx, uint32_t size,
-                   struct iovec **iovecs, size_t *nr_iovecs,
-                   struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap)
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     if (!is_patched("handle_dirty_pages")) {
-        return __real_handle_dirty_pages(vfu_ctx, size, iovecs, nr_iovecs,
-                                         dirty_bitmap);
+        return __real_handle_dirty_pages(vfu_ctx, msg);
     }
     check_expected(vfu_ctx);
-    check_expected(size);
-    check_expected(iovecs);
-    check_expected(nr_iovecs);
-    check_expected(dirty_bitmap);
+    check_expected(msg);
+    errno = mock();
     return mock();
 }
 

@@ -2,7 +2,7 @@ libvfio-user
 ============
 
 vfio-user is a framework that allows implementing PCI devices in userspace.
-Clients (such as [qemu](https://qemu.org) talk the [vfio-user
+Clients (such as [qemu](https://qemu.org)) talk the [vfio-user
 protocol](https://lists.gnu.org/archive/html/qemu-devel/2020-11/msg02458.html)
 over a UNIX socket to a server. This library, `libvfio-user`, provides an API
 for implementing such servers.
