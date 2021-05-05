@@ -747,9 +747,9 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 int
 MOCK_DEFINE(get_request_header)(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
-    int fds[VFIO_USER_CLIENT_MAX_FDS_LIMIT] = { 0 };
+    int fds[VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT] = { 0 };
     struct vfio_user_header hdr = { 0, };
-    size_t nr_fds = VFIO_USER_CLIENT_MAX_FDS_LIMIT;
+    size_t nr_fds = VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT;
     size_t i;
     int ret;
 
