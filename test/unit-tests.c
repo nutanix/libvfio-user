@@ -545,82 +545,10 @@ test_vfu_setup_device_dma(void **state UNUSED)
     free(vfu_ctx.dma);
 }
 
-static void
-test_realize_ctx(void **state UNUSED)
-{
-    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS + 1] = { { 0 } };
-    vfu_reg_info_t *cfg_reg;
-
-    vfu_ctx.reg_info = reg_info;
-    vfu_ctx.nr_regions = VFU_PCI_DEV_NUM_REGIONS + 1;
-
-    assert_int_equal(0, vfu_realize_ctx(&vfu_ctx));
-    assert_true(vfu_ctx.realized);
-
-    cfg_reg = &vfu_ctx.reg_info[VFU_PCI_DEV_CFG_REGION_IDX];
-    assert_int_equal(VFU_REGION_FLAG_RW, cfg_reg->flags);
-    assert_int_equal(PCI_CFG_SPACE_SIZE, cfg_reg->size);
-
-    assert_non_null(vfu_ctx.pci.config_space);
-    assert_non_null(vfu_ctx.irqs);
-    assert_int_equal(0, vfu_ctx.pci.nr_caps);
-    assert_int_equal(0, vfu_ctx.pci.nr_ext_caps);
-
-    free(vfu_ctx.irqs);
-    free(vfu_ctx.pci.config_space);
-}
-
 typedef struct {
     int fd;
     int conn_fd;
 } tran_sock_t;
-
-static int
-dummy_attach(vfu_ctx_t *vfu_ctx)
-{
-    assert(vfu_ctx != NULL);
-
-    return 0;
-}
-
-static void
-test_attach_ctx(void **state UNUSED)
-{
-    struct transport_ops transport_ops = {
-        .attach = &dummy_attach,
-    };
-
-    vfu_ctx.tran = &transport_ops;
-
-    assert_int_equal(0, vfu_attach_ctx(&vfu_ctx));
-}
-
-static void
-test_run_ctx(UNUSED void **state)
-{
-    vfu_ctx.realized = false;
-
-    // device un-realized
-    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
-
-    // device realized, with NB vfu_ctx
-    vfu_ctx.realized = true;
-    vfu_ctx.flags = LIBVFIO_USER_FLAG_ATTACH_NB;
-
-    patch("process_request");
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, 0);
-    assert_int_equal(0, vfu_run_ctx(&vfu_ctx));
-
-    // device realized, with blocking vfu_ctx
-    vfu_ctx.flags = 0;
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, 0);
-
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, -1);
-    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
-}
 
 static void
 test_get_region_info(UNUSED void **state)
@@ -766,58 +694,6 @@ test_get_region_info(UNUSED void **state)
     msg.out_data = NULL;
 
     /* FIXME add check  for multiple sparse areas */
-}
-
-static void
-test_vfu_ctx_create(void **state UNUSED)
-{
-    vfu_ctx_t *vfu_ctx = NULL;
-    struct pmcap pm = { { 0 } };
-
-    pm.hdr.id = PCI_CAP_ID_PM;
-    pm.pmcs.nsfrst = 0x1;
-
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK + 1, "", 0, NULL, VFU_DEV_TYPE_PCI);
-    assert_null(vfu_ctx);
-    assert_int_equal(ENOTSUP, errno);
-
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", 0, NULL, VFU_DEV_TYPE_PCI + 4);
-    assert_null(vfu_ctx);
-    assert_int_equal(ENOTSUP, errno);
-
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", 999, NULL, VFU_DEV_TYPE_PCI);
-    assert_null(vfu_ctx);
-    assert_int_equal(EINVAL, errno);
-
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
-                             NULL, VFU_DEV_TYPE_PCI);
-    assert_non_null(vfu_ctx);
-
-    assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_ERR_IRQ]);
-    assert_int_equal(1, vfu_ctx->irq_count[VFU_DEV_REQ_IRQ]);
-    assert_int_equal(0, vfu_pci_init(vfu_ctx, VFU_PCI_TYPE_CONVENTIONAL,
-                        PCI_HEADER_TYPE_NORMAL, 0));
-    assert_int_equal(PCI_STD_HEADER_SIZEOF,
-                     vfu_pci_add_capability(vfu_ctx, 0, 0, &pm));
-    assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
-
-    patch("close");
-    expect_value(close, fd, ((tran_sock_t *)vfu_ctx->tran_data)->fd);
-    will_return(close, 0);
-
-    vfu_destroy_ctx(vfu_ctx);
-
-    /* Test "bare" vfu_create_ctx(). */
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "", LIBVFIO_USER_FLAG_ATTACH_NB,
-                             NULL, VFU_DEV_TYPE_PCI);
-    assert_non_null(vfu_ctx);
-
-    assert_int_equal(0, vfu_realize_ctx(vfu_ctx));
-
-    expect_value(close, fd, ((tran_sock_t *)vfu_ctx->tran_data)->fd);
-    will_return(close, 0);
-
-    vfu_destroy_ctx(vfu_ctx);
 }
 
 static void
@@ -1543,11 +1419,7 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
-        cmocka_unit_test_setup(test_realize_ctx, setup),
-        cmocka_unit_test_setup(test_attach_ctx, setup),
-        cmocka_unit_test_setup(test_run_ctx, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
-        cmocka_unit_test_setup(test_vfu_ctx_create, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
