@@ -27,6 +27,8 @@
 #  DAMAGE.
 #
 
+import ctypes as c
+import errno
 from libvfio_user import *
 
 def test_vfu_realize_ctx_twice():
@@ -38,6 +40,16 @@ def test_vfu_realize_ctx_twice():
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
+
+    vfu_destroy_ctx(ctx)
+
+def test_vfu_unrealized_ctx():
+    ctx = vfu_create_ctx()
+    assert ctx != None
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
 
     vfu_destroy_ctx(ctx)
 

@@ -250,7 +250,7 @@ def vfu_attach_ctx(ctx, expect=0):
     return ret
 
 def vfu_run_ctx(ctx):
-    lib.vfu_run_ctx(ctx)
+    return lib.vfu_run_ctx(ctx)
 
 def vfu_destroy_ctx(ctx):
     lib.vfu_destroy_ctx(ctx)

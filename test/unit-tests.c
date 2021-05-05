@@ -512,35 +512,6 @@ test_process_command_free_passed_fds(void **state UNUSED)
 }
 
 static void
-test_run_ctx(UNUSED void **state)
-{
-    vfu_ctx_t vfu_ctx = {
-        .realized = false,
-    };
-
-    // device un-realized
-    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
-
-    // device realized, with NB vfu_ctx
-    vfu_ctx.realized = true;
-    vfu_ctx.flags = LIBVFIO_USER_FLAG_ATTACH_NB;
-
-    patch("process_request");
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, 0);
-    assert_int_equal(0, vfu_run_ctx(&vfu_ctx));
-
-    // device realized, with blocking vfu_ctx
-    vfu_ctx.flags = 0;
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, 0);
-
-    expect_value(process_request, vfu_ctx, &vfu_ctx);
-    will_return(process_request, -1);
-    assert_int_equal(-1, vfu_run_ctx(&vfu_ctx));
-}
-
-static void
 test_get_region_info(UNUSED void **state)
 {
     struct iovec iov = { .iov_base = (void*)0x8badf00, .iov_len = 0x0d15ea5e };
@@ -1852,7 +1823,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
         cmocka_unit_test_setup(test_handle_dma_unmap, setup),
         cmocka_unit_test_setup(test_process_command_free_passed_fds, setup),
-        cmocka_unit_test_setup(test_run_ctx, setup),
         cmocka_unit_test_setup(test_pci_caps, setup),
         cmocka_unit_test_setup(test_pci_ext_caps, setup),
         cmocka_unit_test_setup(test_device_get_info, setup),
