@@ -31,6 +31,7 @@
 # Note that we don't use enum here, as class.value is a little verbose
 #
 
+from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
 import json
@@ -69,6 +70,17 @@ PCI_EXT_CAP_VNDR_HDR_SIZEOF = 8
 
 VFIO_DEVICE_FLAGS_RESET = (1 << 0)
 VFIO_DEVICE_FLAGS_PCI = (1 << 1)
+
+VFIO_REGION_INFO_FLAG_READ = (1 << 0)
+VFIO_REGION_INFO_FLAG_WRITE = (1 << 1)
+VFIO_REGION_INFO_FLAG_MMAP = (1 << 2)
+VFIO_REGION_INFO_FLAG_CAPS = (1 << 3)
+
+VFIO_REGION_TYPE_MIGRATION = 3
+VFIO_REGION_SUBTYPE_MIGRATION = 1
+
+VFIO_REGION_INFO_CAP_SPARSE_MMAP = 1
+VFIO_REGION_INFO_CAP_TYPE = 2
 
 # libvfio-user defines
 
@@ -148,29 +160,6 @@ topdir = os.path.realpath(os.path.dirname(__file__) + "/../..")
 build_type = os.getenv("BUILD_TYPE", default="dbg")
 libname = "%s/build/%s/lib/libvfio-user.so" % (topdir, build_type)
 lib = c.CDLL(libname, use_errno=True)
-lib.vfu_create_ctx.argtypes = (c.c_int, c.c_char_p, c.c_int,
-                               c.c_void_p, c.c_int)
-lib.vfu_create_ctx.restype = (c.c_void_p)
-lib.vfu_setup_log.argtypes = (c.c_void_p, c.c_void_p, c.c_int)
-lib.vfu_realize_ctx.argtypes = (c.c_void_p,)
-lib.vfu_attach_ctx.argtypes = (c.c_void_p,)
-lib.vfu_run_ctx.argtypes = (c.c_void_p,)
-lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
-region_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char), c.c_long,
-                          c.c_long, c.c_int)
-lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long, region_cb_t,
-                                 c.c_int, c.c_void_p, c.c_int, c.c_int)
-lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
-lib.vfu_pci_get_config_space.restype = (c.c_void_p)
-lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_int)
-lib.vfu_pci_init.argtypes = (c.c_void_p, c.c_int, c.c_int, c.c_int)
-lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_long, c.c_int,
-                                       c.POINTER(c.c_byte))
-lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_int, c.c_int)
-lib.vfu_pci_find_capability.restype = (c.c_ulong)
-lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_int, c.c_long,
-                                             c.c_int)
-lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 
 msg_id = 1
 
@@ -216,25 +205,56 @@ class vfu_pci_hdr_t(c.Structure):
         ("mlat", c.c_byte)
     ]
 
+class iovec_t(c.Structure):
+    _fields_ = [
+        ("iov_base", c.c_void_p),
+        ("iov_len", c.c_int)
+    ]
+
 #
 # Util functions
 #
+
+lib.vfu_create_ctx.argtypes = (c.c_int, c.c_char_p, c.c_int,
+                               c.c_void_p, c.c_int)
+lib.vfu_create_ctx.restype = (c.c_void_p)
+lib.vfu_setup_log.argtypes = (c.c_void_p, c.c_void_p, c.c_int)
+lib.vfu_realize_ctx.argtypes = (c.c_void_p,)
+lib.vfu_attach_ctx.argtypes = (c.c_void_p,)
+lib.vfu_run_ctx.argtypes = (c.c_void_p,)
+lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
+region_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char), c.c_long,
+                          c.c_long, c.c_int)
+lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long, region_cb_t,
+                                 c.c_int, c.POINTER(iovec_t), c.c_int, c.c_int)
+lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
+lib.vfu_pci_get_config_space.restype = (c.c_void_p)
+lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_pci_init.argtypes = (c.c_void_p, c.c_int, c.c_int, c.c_int)
+lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_long, c.c_int,
+                                       c.POINTER(c.c_byte))
+lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_pci_find_capability.restype = (c.c_ulong)
+lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_int, c.c_long,
+                                             c.c_int)
+lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
+lib.vfu_region_to_offset.argtypes = (c.c_int,)
+lib.vfu_region_to_offset.restype = (c.c_ulong)
 
 def to_byte(val):
     """Cast an int to a byte value."""
     return val.to_bytes(1, 'little')
 
-def ext_cap_hdr(buf, offset):
-    """Read an extended cap header."""
-
-    # struct pcie_ext_cap_hdr
-    cap_id, cap_next = struct.unpack('HH', buf[offset:offset+4])
-    cap_next >>= 4
-    return cap_id, cap_next
-
-def skip(data, fmt):
+def skip(fmt, buf):
     """Return the data remaining after skipping the given elements."""
-    return data[struct.calcsize(fmt):]
+    return buf[struct.calcsize(fmt):]
+
+def unpack_prefix(fmt, fields, buf):
+    """Return a namedtuple unpacked from the start of buf, along with the
+       remaining buf if any."""
+    t = namedtuple('_', fields)
+    size = struct.calcsize(fmt)
+    return t._make(struct.unpack_from(fmt, buf)), skip(fmt, buf)
 
 def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
@@ -318,13 +338,33 @@ def access_region(ctx, sock, is_write, region, offset, count,
     if is_write:
         return None
 
-    return skip(result, "QII")
+    return skip("QII", result)
 
 def write_region(ctx, sock, region, offset, count, data, expect=0):
     access_region(ctx, sock, True, region, offset, count, data, expect=expect)
 
 def read_region(ctx, sock, region, offset, count, expect=0):
     return access_region(ctx, sock, False, region, offset, count, expect=expect)
+
+def ext_cap_hdr(buf, offset):
+    """Read an extended cap header."""
+
+    # struct pcie_ext_cap_hdr
+    cap_id, cap_next = struct.unpack_from('HH', buf, offset)
+    cap_next >>= 4
+    return cap_id, cap_next
+
+def vfio_region_info(buf):
+    return unpack_prefix("IIIIQQ", "argsz flags index cap_off size offset", buf)
+
+def vfio_region_info_cap_type(buf):
+    return unpack_prefix("HHIII", "id version next type subtype", buf)
+
+def vfio_region_info_cap_sparse_mmap(buf):
+    return unpack_prefix("HHIII", "id version next nr_areas reserved", buf)
+
+def vfio_region_sparse_mmap_area(buf):
+    return unpack_prefix("QQ", "offset size", buf)
 
 #
 # Library wrappers
@@ -377,10 +417,24 @@ def vfu_destroy_ctx(ctx):
     if os.path.exists(SOCK_PATH):
         os.remove(SOCK_PATH)
 
-def vfu_setup_region(ctx, index, size, flags=0, cb=None):
+def vfu_setup_region(ctx, index, size, cb=None, flags=0,
+                     mmap_areas=None, fd=-1):
     assert ctx != None
+
+    nr_mmap_areas = 0
+    c_mmap_areas = None
+
+    if mmap_areas:
+        nr_mmap_areas = len(mmap_areas)
+        c_mmap_areas = (iovec_t * nr_mmap_areas)(*mmap_areas)
+
+    # We're sending a file descriptor to ourselves; to pretend the server is
+    # separate, we need to dup() here.
+    if fd != -1:
+        fd = os.dup(fd)
+
     ret = lib.vfu_setup_region(ctx, index, size, c.cast(cb, region_cb_t),
-                               flags, None, 0, -1)
+                               flags, c_mmap_areas, nr_mmap_areas, fd)
     return ret
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
@@ -407,3 +461,6 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
+
+def vfu_region_to_offset(region):
+    return lib.vfu_region_to_offset(region)
