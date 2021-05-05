@@ -365,9 +365,10 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return ERROR_INT(EINVAL);
 }
 
-static ssize_t
-migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                                  loff_t pos, bool is_write)
+ssize_t
+MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
+                                               size_t count, loff_t pos,
+                                               bool is_write)
 {
     struct migration *migr = vfu_ctx->migration;
     int ret;
@@ -434,6 +435,9 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     if (pos + count <= sizeof(struct vfio_device_migration_info)) {
         ret = migration_region_access_registers(vfu_ctx, buf, count,
                                                 pos, is_write);
+        if (ret < 0) {
+            return ERROR_INT(-ret);
+        }
     } else {
 
         if (pos < (loff_t)migr->data_offset) {

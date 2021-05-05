@@ -1817,6 +1817,26 @@ test_process_request_free_passed_fds(void **state UNUSED)
     assert_int_equal(0, process_request(&vfu_ctx));
 }
 
+static void
+test_migration_region_access(UNUSED void **state)
+{
+    struct migration migration = { { 0 },  };
+    vfu_ctx_t vfu_ctx = { .migration = &migration };
+    ssize_t ret;
+
+    patch("migration_region_access_registers");
+    expect_value(migration_region_access_registers, vfu_ctx, &vfu_ctx);
+    expect_value(migration_region_access_registers, buf, 0xdeadbeef);
+    expect_value(migration_region_access_registers, pos, 0);
+    expect_value(migration_region_access_registers, count, 0);
+    expect_value(migration_region_access_registers, is_write, false);
+    will_return(migration_region_access_registers, -1);
+
+    ret = migration_region_access(&vfu_ctx, (void*)0xdeadbeef, 0, 0,
+                                            false);
+    assert_int_equal(-1, ret);
+}
+
 int
 main(void)
 {
@@ -1870,6 +1890,7 @@ main(void)
         cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_should_exec_command, setup),
         cmocka_unit_test_setup(test_process_request_free_passed_fds, setup),
+        cmocka_unit_test_setup(test_migration_region_access, setup)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
