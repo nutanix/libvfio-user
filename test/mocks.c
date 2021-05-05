@@ -69,6 +69,7 @@ static struct function funcs[] = {
     { .name = "should_exec_command" },
     { .name = "tran_sock_send_iovec" },
     { .name = "migration_region_access_registers" },
+    { .name = "handle_dirty_pages_get" },
     /* system libs */
     { .name = "bind" },
     { .name = "close" },
@@ -273,6 +274,23 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     check_expected(count);
     check_expected(pos);
     check_expected(is_write);
+    return mock();
+}
+
+int
+handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
+                       struct iovec **iovecs, size_t *nr_iovecs,
+                       struct vfio_user_bitmap_range *ranges, uint32_t size)
+{
+    if (!is_patched("handle_dirty_pages_get")) {
+        return __real_handle_dirty_pages_get(vfu_ctx, iovecs, nr_iovecs,
+                                             ranges, size);
+    }
+    check_expected(vfu_ctx);
+    check_expected(iovecs);
+    check_expected(nr_iovecs);
+    check_expected(ranges);
+    check_expected(size);
     return mock();
 }
 

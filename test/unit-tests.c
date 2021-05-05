@@ -1406,6 +1406,75 @@ test_migration_region_access(UNUSED void **state)
     assert_int_equal(-1, ret);
 }
 
+static void
+test_handle_dirty_pages_get(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx;
+    struct iovec *iovecs = NULL;
+    size_t nr_iovecs = 0;
+    struct vfio_user_bitmap_range ranges;
+    uint32_t size = sizeof(struct vfio_user_bitmap_range);
+
+    /* bad size */ 
+    ret = handle_dirty_pages_get(&vfu_ctx, &iovecs, &nr_iovecs, &ranges, size - 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+    ret = handle_dirty_pages_get(&vfu_ctx, &iovecs, &nr_iovecs, &ranges, size - 1);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+}
+
+/*
+ * FIXME
+ *  dma_controller_dirty_page_get
+ *  test bitmap_size
+ *  dma_controller_dirty_page_get,
+ *  dma_controller_dirty_page_logging_start
+ *  dma_controller_dirty_page_logging_stop
+ */
+
+static void
+test_handle_dirty_pages(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {
+        .flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP
+    };
+    vfu_msg_t msg = { .in_data = &dirty_bitmap };
+
+    /* bad message size */
+    msg.in_size = sizeof(dirty_bitmap) - 1;
+    ret = handle_dirty_pages(&vfu_ctx, &msg);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    /* bad argsz */
+    msg.in_size = sizeof(dirty_bitmap);
+    dirty_bitmap.argsz = msg.in_size + 1;
+    ret = handle_dirty_pages(&vfu_ctx, &msg);
+    assert_int_equal(-1, ret);
+    assert_int_equal(EINVAL, errno);
+
+    /* XXX VFIO_IOMMU_DIRTY_PAGES_FLAG_START */
+    dirty_bitmap.argsz = msg.in_size;
+    patch("handle_dirty_pages_get");
+    expect_value(handle_dirty_pages_get, vfu_ctx, &vfu_ctx);
+    expect_value(handle_dirty_pages_get, iovecs, &msg.out_iovecs);
+    expect_value(handle_dirty_pages_get, nr_iovecs, &msg.nr_out_iovecs);
+    expect_value(handle_dirty_pages_get, ranges, &dirty_bitmap + 1);
+    expect_value(handle_dirty_pages_get, size, msg.in_size - sizeof(dirty_bitmap));
+    will_return(handle_dirty_pages_get, 0xdeadbeef);
+
+    ret = handle_dirty_pages(&vfu_ctx, &msg);
+    assert_int_equal((int)0xdeadbeef, ret);
+
+    /*
+     * FIXME for testing VFIO_IOMMU_DIRTY_PAGES_FLAG_START and
+     * VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP we must first figure out whether the DMA
+     * controller will be tracking dirty pages.
+     */
+}
+
 int
 main(void)
 {
@@ -1457,7 +1526,9 @@ main(void)
         cmocka_unit_test_setup(test_should_exec_command, setup),
         cmocka_unit_test_setup(test_process_request_free_passed_fds, setup),
         cmocka_unit_test_setup(test_dma_controller_dirty_page_get, setup),
-        cmocka_unit_test_setup(test_migration_region_access, setup)
+        cmocka_unit_test_setup(test_migration_region_access, setup),
+        cmocka_unit_test_setup(test_handle_dirty_pages_get, setup),
+        cmocka_unit_test_setup(test_handle_dirty_pages, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
