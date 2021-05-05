@@ -1086,12 +1086,13 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
 {
     vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    if (vfu_ctx->dma != NULL) {
+        dma_controller_remove_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
+                                      vfu_ctx);
     }
 
-    if (vfu_ctx->dma != NULL) {
-        dma_controller_remove_regions(vfu_ctx->dma);
+    if (vfu_ctx->reset != NULL) {
+        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
     }
 
     if (vfu_ctx->irqs != NULL) {
