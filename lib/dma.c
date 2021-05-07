@@ -510,11 +510,13 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize != dma->dirty_pgsize) {
+        vfu_log(dma->vfu_ctx, LOG_WARNING, "bad page size %ld", pgsize);
         return ERROR_INT(EINVAL);
     }
 
     bitmap_size = get_bitmap_size(len, pgsize);
     if (bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_WARNING, "failed to get bitmap size");
         return bitmap_size;
     }
 
@@ -523,6 +525,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * expects to receive.
      */
     if (size != (size_t)bitmap_size) {
+        vfu_log(dma->vfu_ctx, LOG_WARNING, "bad bitmap size %ld != %ld", size,
+                bitmap_size);
         return ERROR_INT(EINVAL);
     }
 
