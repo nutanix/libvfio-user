@@ -1906,6 +1906,158 @@ test_handle_dirty_pages(UNUSED void **state)
      */
 }
 
+/* FIXME test that exec_command calls handle_device_reset */
+
+static void
+test_state_trans_notify(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    uint32_t vfio_device_state = 0xcafebabe;
+    vfu_migr_state_t vfu_migr_state = 0xdeadbeef;
+
+    patch("migr_state_vfio_to_vfu");
+    expect_value(migr_state_vfio_to_vfu, vfio_device_state, vfio_device_state);
+    will_return(migr_state_vfio_to_vfu, vfu_migr_state);
+    expect_value(mock_notify_migr_state_trans_cb, vfu_ctx, &vfu_ctx);
+    expect_value(mock_notify_migr_state_trans_cb, vfu_state, vfu_migr_state);
+    will_return(mock_notify_migr_state_trans_cb, 0x8badf00d);
+    assert_int_equal((int)0x8badf00d,
+        state_trans_notify(&vfu_ctx, mock_notify_migr_state_trans_cb,
+            vfio_device_state));
+}
+
+static void
+test_migr_trans_to_valid_state(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    struct migration migration = {
+        .callbacks.transition = (void *)0xcafebabe
+    };
+
+    patch("state_trans_notify");
+    patch("migr_state_transition");
+
+    /*
+     * XXX check that migr_trans_to_valid_state doesn't call the client
+     * callback if told not do so.
+     */
+    expect_value(migr_state_transition, migr, &migration);
+    expect_value(migr_state_transition, state,
+                 VFIO_USER_MIGR_ITER_STATE_INITIAL);
+    assert_int_equal(0, migr_trans_to_valid_state(&vfu_ctx, &migration,
+                                                  0xdeadbeef, false));
+    assert_int_equal(0xdeadbeef, migration.info.device_state);
+
+    /*
+     * TODO we should check that other members of struct migration aren't
+     * modified. This requires making struct migration private to
+     * lib/migration.c and providing functions for accessing its members.
+     */
+
+    /*
+     * XXX check that migr_trans_to_valid_state fails if the client callback
+     * fails.
+     */
+    migration.info.device_state = 0;
+    expect_value(state_trans_notify, vfu_ctx, &vfu_ctx);
+    expect_value(state_trans_notify, fn, 0xcafebabe);
+    expect_value(state_trans_notify, vfio_device_state, 0xdeadbeef);
+    will_return(state_trans_notify, -EINVAL);
+    assert_int_equal(-1, migr_trans_to_valid_state(&vfu_ctx, &migration,
+                                                   0xdeadbeef, true));
+    assert_int_equal(EINVAL, errno);
+    assert_int_equal(0, migration.info.device_state);
+
+    /*
+     * XXX check that migr_trans_to_valid succeeds if the client callback
+     * suceeds.
+     */
+    migration.info.device_state = 0;
+    expect_value(state_trans_notify, vfu_ctx, &vfu_ctx);
+    expect_value(state_trans_notify, fn, 0xcafebabe);
+    expect_value(state_trans_notify, vfio_device_state, 0xdeadbeef);
+    will_return(state_trans_notify, 0);
+    expect_value(migr_state_transition, migr, &migration);
+    expect_value(migr_state_transition, state,
+                 VFIO_USER_MIGR_ITER_STATE_INITIAL);
+    assert_int_equal(0, migr_trans_to_valid_state(&vfu_ctx, &migration,
+                                                  0xdeadbeef, true));
+    assert_int_equal(0xdeadbeef, migration.info.device_state);
+}
+
+static void
+test_handle_device_state(UNUSED void **state)
+{
+    vfu_ctx_t vfu_ctx = { 0 };
+    struct migration migration = {
+        .info.device_state = 0xdeadbeef,
+    };
+
+    patch("vfio_migr_state_transition_is_valid");
+    patch("migr_trans_to_valid_state");
+
+    /*
+     * XXX check that handle_device_state fails
+     * if vfio_migr_state_transition_is_valid fails.
+     */
+    expect_value(vfio_migr_state_transition_is_valid, from,
+                 0xdeadbeef);
+    expect_value(vfio_migr_state_transition_is_valid, to,
+                 0xcafebabe);
+    will_return(vfio_migr_state_transition_is_valid, false);
+    assert_int_equal(-1, handle_device_state(&vfu_ctx, &migration,
+                                             0xcafebabe, true));
+    assert_int_equal(EINVAL, errno);
+    assert_int_equal(0xdeadbeef, migration.info.device_state);
+
+    /*
+     * XXX check that handle_device_state calls migr_trans_to_valid_state if
+     * vfio_migr_state_transisition_is_valid succeeds.
+     */
+    expect_value(vfio_migr_state_transition_is_valid, from,
+                 0xdeadbeef);
+    expect_value(vfio_migr_state_transition_is_valid, to,
+                 0xcafebabe);
+    will_return(vfio_migr_state_transition_is_valid, true);
+    expect_value(migr_trans_to_valid_state, vfu_ctx, &vfu_ctx);
+    expect_value(migr_trans_to_valid_state, migr, &migration);
+    expect_value(migr_trans_to_valid_state, device_state, 0xcafebabe);
+    expect_value(migr_trans_to_valid_state, notify, false);
+    will_return(migr_trans_to_valid_state, 0xfacefeed);
+    assert_int_equal(0xfacefeed, handle_device_state(&vfu_ctx, &migration,
+                                                     0xcafebabe, false));
+}
+
+static void
+test_handle_device_reset(UNUSED void **state)
+{
+    struct migration migration = { { 0 } };
+    vfu_ctx_t vfu_ctx = { 0 };
+
+    patch("handle_device_state");
+
+    /* w/o reset callback, w/o migration */
+    assert_int_equal(0, handle_device_reset(&vfu_ctx, 0xdeadbeef));
+
+    /* w/ reset callback, w/o migration */
+    vfu_ctx.reset = mock_reset_cb;
+    expect_value(mock_reset_cb, vfu_ctx, &vfu_ctx);
+    expect_value(mock_reset_cb, type, 0xdeadbeef);
+    will_return(mock_reset_cb, 0);
+    assert_int_equal(0, handle_device_reset(&vfu_ctx, 0xdeadbeef));
+
+    /* w/o reset callback, w/ migration */
+    vfu_ctx.reset = NULL;
+    vfu_ctx.migration = &migration;
+    patch("handle_device_state");
+    expect_value(handle_device_state, vfu_ctx, &vfu_ctx);
+    expect_value(handle_device_state, migr, &migration);
+    expect_value(handle_device_state, device_state, VFIO_DEVICE_STATE_RUNNING);
+    expect_value(handle_device_state, notify, false);
+    will_return(handle_device_state, 0);
+    assert_int_equal(0, handle_device_reset(&vfu_ctx, 0xdeadbeef));
+}
+
 int
 main(void)
 {
@@ -1962,6 +2114,10 @@ main(void)
         cmocka_unit_test_setup(test_migration_region_access, setup),
         cmocka_unit_test_setup(test_handle_dirty_pages_get, setup),
         cmocka_unit_test_setup(test_handle_dirty_pages, setup),
+        cmocka_unit_test_setup(test_handle_device_state, setup),
+        cmocka_unit_test_setup(test_handle_device_reset, setup),
+        cmocka_unit_test_setup(test_migr_trans_to_valid_state, setup),
+        cmocka_unit_test_setup(test_state_trans_notify, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
