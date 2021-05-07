@@ -70,6 +70,12 @@ static struct function funcs[] = {
     { .name = "tran_sock_send_iovec" },
     { .name = "migration_region_access_registers" },
     { .name = "handle_dirty_pages_get" },
+    { .name = "handle_device_state" },
+    {. name = "vfio_migr_state_transition_is_valid" },
+    { .name = "state_trans_notify" },
+    { .name = "migr_trans_to_valid_state" },
+    { .name = "migr_state_vfio_to_vfu" },
+    { .name = "migr_state_transition" },
     /* system libs */
     { .name = "bind" },
     { .name = "close" },
@@ -294,6 +300,81 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     return mock();
 }
 
+ssize_t
+handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
+                    uint32_t device_state, bool notify) {
+
+    if (!is_patched("handle_device_state")) {
+        return __real_handle_device_state(vfu_ctx, migr, device_state,
+                                          notify);
+    }
+    check_expected(vfu_ctx);
+    check_expected(migr);
+    check_expected(device_state);
+    check_expected(notify);
+    return mock();
+}
+
+void
+migr_state_transition(struct migration *migr, enum migr_iter_state state)
+{
+    if (!is_patched("migr_state_transition")) {
+        __real_migr_state_transition(migr, state);
+        return;
+    }
+    check_expected(migr);
+    check_expected(state);
+}
+
+bool
+vfio_migr_state_transition_is_valid(uint32_t from, uint32_t to)
+{
+    if (!is_patched("vfio_migr_state_transition_is_valid")) {
+        return __real_vfio_migr_state_transition_is_valid(from, to);
+    }
+    check_expected(from);
+    check_expected(to);
+    return mock();
+}
+
+int
+state_trans_notify(vfu_ctx_t *vfu_ctx, int (*fn)(vfu_ctx_t*, vfu_migr_state_t),
+                   uint32_t vfio_device_state)
+{
+    if (!is_patched("state_trans_notify")) {
+        return __real_state_trans_notify(vfu_ctx, fn, vfio_device_state);
+    }
+    check_expected(vfu_ctx);
+    check_expected(fn);
+    check_expected(vfio_device_state);
+    return mock();
+}
+
+ssize_t
+migr_trans_to_valid_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
+                          uint32_t device_state, bool notify)
+{
+    if (!is_patched("migr_trans_to_valid_state")) {
+        return __real_migr_trans_to_valid_state(vfu_ctx, migr, device_state,
+                                                notify);
+    }
+    check_expected(vfu_ctx);
+    check_expected(migr);
+    check_expected(device_state);
+    check_expected(notify);
+    return mock();
+}
+
+vfu_migr_state_t
+migr_state_vfio_to_vfu(uint32_t vfio_device_state)
+{
+    if (!is_patched("migr_state_vfio_to_vfu")) {
+        return __real_migr_state_vfio_to_vfu(vfio_device_state);
+    }
+    check_expected(vfio_device_state);
+    return mock();
+}
+
 /* Always mocked. */
 void
 mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
@@ -307,6 +388,23 @@ mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
     check_expected(vfu_ctx);
     check_expected(info);
+    return mock();
+}
+
+int
+mock_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type)
+{
+    check_expected(vfu_ctx);
+    check_expected(type);
+    return mock();
+}
+
+
+int
+mock_notify_migr_state_trans_cb(vfu_ctx_t *vfu_ctx, vfu_migr_state_t vfu_state)
+{
+    check_expected(vfu_ctx);
+    check_expected(vfu_state);
     return mock();
 }
 

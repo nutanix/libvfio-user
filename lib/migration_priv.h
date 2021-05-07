@@ -118,6 +118,18 @@ static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = 
 MOCK_DECLARE(ssize_t, migration_region_access_registers, vfu_ctx_t *vfu_ctx,
              char *buf, size_t count, loff_t pos,  bool is_write);
 
+MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
+             enum migr_iter_state state);
+
+MOCK_DECLARE(vfu_migr_state_t, migr_state_vfio_to_vfu, uint32_t device_state);
+
+MOCK_DECLARE(int, state_trans_notify, vfu_ctx_t *vfu_ctx,
+             int (*fn)(vfu_ctx_t*, vfu_migr_state_t),
+             uint32_t vfio_device_state);
+
+MOCK_DECLARE(ssize_t, migr_trans_to_valid_state, vfu_ctx_t *vfu_ctx,
+             struct migration *migr, uint32_t device_state, bool notify);
+
 #endif
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

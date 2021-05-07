@@ -559,12 +559,20 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return ret;
 }
 
-static int
-handle_device_reset(vfu_ctx_t *vfu_ctx)
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
-    vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
+    int ret;
+
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx, VFU_RESET_DEVICE);
+        ret = vfu_ctx->reset(vfu_ctx, reason);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    if (vfu_ctx->migration != NULL) {
+        return handle_device_state(vfu_ctx, vfu_ctx->migration,
+                                   VFIO_DEVICE_STATE_RUNNING, false);
     }
     return 0;
 }
@@ -875,7 +883,8 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_USER_DEVICE_RESET:
-        ret = handle_device_reset(vfu_ctx);
+        vfu_log(vfu_ctx, LOG_INFO, "devie reset by client");
+        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
         break;
 
     case VFIO_USER_DIRTY_PAGES:
@@ -1092,6 +1101,8 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
         dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
                                           vfu_ctx);
     }
+
+    handle_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->reset != NULL) {
         vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);

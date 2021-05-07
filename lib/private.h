@@ -196,6 +196,9 @@ MOCK_DECLARE(int, handle_dirty_pages_get, vfu_ctx_t *vfu_ctx,
              struct iovec **iovecs, size_t *nr_iovecs,
              struct vfio_user_bitmap_range *ranges, uint32_t size);
 
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
+
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
