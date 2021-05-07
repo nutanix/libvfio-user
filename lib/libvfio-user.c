@@ -717,12 +717,6 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     free(msg->in_fds);
-
-    for (i = 0; i < msg->nr_out_fds; i++) {
-        assert(msg->out_fds[i] != -1);
-        close(msg->out_fds[i]);
-    }
-
     free(msg->out_fds);
 
     assert(msg->out_data == NULL || msg->out_iovecs == NULL);
