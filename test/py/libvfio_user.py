@@ -246,6 +246,7 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_int, c.c_long,
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_region_to_offset.argtypes = (c.c_int,)
 lib.vfu_region_to_offset.restype = (c.c_ulong)
+lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 
 def to_byte(val):
     """Cast an int to a byte value."""
@@ -484,3 +485,8 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
 
 def vfu_region_to_offset(region):
     return lib.vfu_region_to_offset(region)
+
+def vfu_irq_trigger(ctx, subindex):
+    assert ctx != None
+
+    return lib.vfu_irq_trigger(ctx, subindex)
