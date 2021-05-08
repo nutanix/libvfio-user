@@ -66,6 +66,15 @@ def test_short_write():
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
 
+def test_long_write():
+    sock = connect_sock()
+    hdr = vfio_user_header(VFIO_USER_VERSION, size=SERVER_MAX_MSG_SIZE + 1)
+    sock.send(hdr)
+
+    ret = vfu_attach_ctx(ctx, expect=errno.EINVAL)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
 def test_bad_command():
     sock = connect_sock()
 
@@ -152,7 +161,7 @@ def test_valid_negotiate_no_json():
     assert minor == LIBVFIO_USER_MINOR
     json = parse_json(json_str)
     assert json.capabilities.max_msg_fds == SERVER_MAX_FDS
-    assert json.capabilities.max_msg_size == SERVER_MAX_MSG_SIZE
+    assert json.capabilities.max_transfer_size == SERVER_MAX_TRANSFER_SIZE
     # FIXME: migration object checks
 
     disconnect_client(ctx, sock)
@@ -164,8 +173,10 @@ def test_valid_negotiate_empty_json():
     vfu_run_ctx(ctx)
 
 def test_valid_negotiate_json():
-    client_version_json(json=bytes('{ "capabilities": { "max_msg_fds": %s } }' %
-                        VFIO_USER_CLIENT_MAX_FDS_LIMIT, "utf-8"))
+    client_version_json(json=bytes(
+        '{ "capabilities": { "max_msg_fds": %s, "max_transfer_size": %u } }' %
+        (VFIO_USER_CLIENT_MAX_FDS_LIMIT, VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE),
+         "utf-8"))
 
     # notice client closed connection
     vfu_run_ctx(ctx)

@@ -37,6 +37,7 @@
 
 #include "common.h"
 #include "pci_caps.h"
+#include "vfio-user.h"
 
 /*
  * The main reason we limit the size of an individual DMA region from the client
@@ -46,7 +47,14 @@
 #define MAX_DMA_SIZE (8 * ONE_TB)
 #define MAX_DMA_REGIONS 16
 
-#define SERVER_MAX_MSG_SIZE 65536
+#define SERVER_MAX_TRANSFER_SIZE (VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE)
+
+/*
+ * Enough to receive a VFIO_USER_REGION_WRITE of SERVER_MAX_TRANSFER_SIZE.
+ */
+#define SERVER_MAX_MSG_SIZE (SERVER_MAX_TRANSFER_SIZE + \
+                             sizeof(struct vfio_user_header) + \
+                             sizeof(struct vfio_user_region_access))
 
 /*
  * Structure used to hold an in-flight request+reply.
@@ -155,6 +163,7 @@ struct vfu_ctx {
     vfu_dma_unregister_cb_t *dma_unregister;
 
     int                     client_max_fds;
+    size_t                  client_max_transfer_size;
 
     struct migration        *migration;
 

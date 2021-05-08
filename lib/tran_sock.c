@@ -63,7 +63,7 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                      int *fds, int count, int err)
 {
     int ret;
-    struct vfio_user_header hdr = {.msg_id = msg_id};
+    struct vfio_user_header hdr = { .msg_id = msg_id };
     struct msghdr msg;
     size_t i;
     size_t size = count * sizeof(*fds);
@@ -250,6 +250,10 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
         }
     }
 
+    if (hdr->msg_size < sizeof(*hdr) || hdr->msg_size > SERVER_MAX_MSG_SIZE) {
+        return ERROR_INT(EINVAL);
+    }
+
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof(*hdr)) {
         ret = recv(sock, data, MIN(hdr->msg_size - sizeof(*hdr), *len),
                    MSG_WAITALL);
@@ -276,8 +280,6 @@ tran_sock_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
 
 /*
  * Like tran_sock_recv(), but will automatically allocate reply data.
- *
- * FIXME: this does an unconstrained alloc of client-supplied data.
  */
 int
 tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
@@ -294,6 +296,7 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     assert(hdr->msg_size >= sizeof(*hdr));
+    assert(hdr->msg_size <= SERVER_MAX_MSG_SIZE);
 
     len = hdr->msg_size - sizeof(*hdr);
 
@@ -464,6 +467,7 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  * {
  *     "capabilities": {
  *         "max_msg_fds": 32,
+ *         "max_transfer_size": 1048576
  *         "migration": {
  *             "pgsize": 4096
  *         }
@@ -474,8 +478,8 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  * available in newer library versions, so we don't use it.
  */
 int
-tran_parse_version_json(const char *json_str,
-                        int *client_max_fdsp, size_t *pgsizep)
+tran_parse_version_json(const char *json_str, int *client_max_fdsp,
+                        size_t *client_max_transfer_sizep, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -508,6 +512,18 @@ tran_parse_version_json(const char *json_str,
         }
     }
 
+    if (json_object_object_get_ex(jo_caps, "max_transfer_size", &jo)) {
+        if (json_object_get_type(jo) != json_type_int) {
+            goto out;
+        }
+
+        errno = 0;
+        *client_max_transfer_sizep = (int)json_object_get_int64(jo);
+
+        if (errno != 0) {
+            goto out;
+        }
+    }
     if (json_object_object_get_ex(jo_caps, "migration", &jo)) {
         struct json_object *jo2 = NULL;
 
@@ -581,6 +597,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
     }
 
     vfu_ctx->client_max_fds = 1;
+    vfu_ctx->client_max_transfer_size = VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE;
 
     if (vlen > sizeof(*cversion)) {
         const char *json_str = (const char *)cversion->data;
@@ -594,6 +611,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         }
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
+                                      &vfu_ctx->client_max_transfer_size,
                                       &pgsize);
 
         if (ret < 0) {
@@ -656,20 +674,20 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_msg_size\":%u"
+                    "\"max_transfer_size\":%u"
                 "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE);
+             "}", SERVER_MAX_FDS, SERVER_MAX_TRANSFER_SIZE);
     } else {
         slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_msg_size\":%u,"
+                    "\"max_transfer_size\":%u,"
                     "\"migration\":{"
                         "\"pgsize\":%zu"
                     "}"
                 "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE,
+             "}", SERVER_MAX_FDS, SERVER_MAX_TRANSFER_SIZE,
                   migration_get_pgsize(vfu_ctx->migration));
     }
 
@@ -786,6 +804,8 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     ts = vfu_ctx->tran_data;
+
+    assert(msg->in_size <= SERVER_MAX_MSG_SIZE);
 
     msg->in_data = malloc(msg->in_size);
 
