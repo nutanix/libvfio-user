@@ -66,6 +66,15 @@ def test_short_write():
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
 
+def test_long_write():
+    sock = connect_sock()
+    hdr = vfio_user_header(VFIO_USER_VERSION, size=SERVER_MAX_MSG_SIZE)
+    sock.send(hdr)
+
+    ret = vfu_attach_ctx(ctx, expect=errno.EINVAL)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
 def test_bad_command():
     sock = connect_sock()
 

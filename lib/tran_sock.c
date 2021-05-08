@@ -250,6 +250,10 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
         }
     }
 
+    if (hdr->msg_size < sizeof(*hdr) || hdr->msg_size > SERVER_MAX_MSG_SIZE) {
+        return ERROR_INT(EINVAL);
+    }
+
     if (len != NULL && *len > 0 && hdr->msg_size > sizeof(*hdr)) {
         ret = recv(sock, data, MIN(hdr->msg_size - sizeof(*hdr), *len),
                    MSG_WAITALL);
@@ -276,8 +280,6 @@ tran_sock_recv(int sock, struct vfio_user_header *hdr, bool is_reply,
 
 /*
  * Like tran_sock_recv(), but will automatically allocate reply data.
- *
- * FIXME: this does an unconstrained alloc of client-supplied data.
  */
 int
 tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
@@ -294,6 +296,7 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
     }
 
     assert(hdr->msg_size >= sizeof(*hdr));
+    assert(hdr->msg_size < SERVER_MAX_MSG_SIZE);
 
     len = hdr->msg_size - sizeof(*hdr);
 
@@ -786,6 +789,8 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     ts = vfu_ctx->tran_data;
+
+    assert(msg->in_size < SERVER_MAX_MSG_SIZE);
 
     msg->in_data = malloc(msg->in_size);
 
