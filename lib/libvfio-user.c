@@ -751,8 +751,8 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
  * Note that we avoid any malloc() before we see data, as this is used for
  * polling by SPDK.
  */
-int
-MOCK_DEFINE(get_request_header)(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
+static int
+get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
     int fds[VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT] = { 0 };
     struct vfio_user_header hdr = { 0, };
@@ -806,7 +806,8 @@ static bool
 is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     if (msg->hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req", msg->hdr.msg_id);
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req",
+                msg->hdr.msg_id);
         return false;
     }
 
@@ -814,9 +815,12 @@ is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: bad size %d in header",
                 msg->hdr.msg_id, msg->hdr.msg_size);
         return false;
-    }
-
-    if (msg->hdr.msg_size > SERVER_MAX_MSG_SIZE) {
+    } else if (msg->hdr.msg_size == sizeof(msg->hdr) &&
+               msg->hdr.cmd != VFIO_USER_DEVICE_RESET) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: no payload for cmd%u",
+                msg->hdr.msg_id, msg->hdr.cmd);
+        return false;
+    } else if (msg->hdr.msg_size > SERVER_MAX_MSG_SIZE) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
                 msg->hdr.msg_id, msg->hdr.msg_size);
         return false;
@@ -853,7 +857,7 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 }
 
 int
-MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     int ret = 0;
 
@@ -928,9 +932,9 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
 
     if (ret < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            ret = 0;
+            return 0;
         }
-        goto out;
+        return ret;
     }
 
     if (!is_valid_header(vfu_ctx, msg)) {
@@ -960,6 +964,7 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
                 msg->hdr.cmd);
     }
 
+out:
     if (msg->hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
@@ -981,7 +986,6 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
         }
     }
 
-out:
     free_msg(vfu_ctx, msg);
     return ret;
 }

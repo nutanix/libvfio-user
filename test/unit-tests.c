@@ -69,6 +69,7 @@ static vfu_msg_t *
 mkmsg(enum vfio_user_command cmd, void *data, size_t size)
 {
     msg.hdr.cmd = cmd;
+    msg.hdr.msg_size = size;
     msg.in_data = data;
     msg.in_size = size;
 
@@ -839,91 +840,6 @@ test_should_exec_command(UNUSED void **state)
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 }
 
-static int
-check_request_header_msg(const LargestIntegralType value,
-                         const LargestIntegralType cvalue UNUSED)
-{
-    vfu_msg_t **msgp = (vfu_msg_t **)value;
-
-    *msgp = malloc(sizeof(msg));
-
-    assert_non_null(*msgp);
-
-    memcpy(*msgp, &msg, sizeof(msg));
-
-    return 1;
-}
-
-static int
-check_exec_command_msg(const LargestIntegralType value,
-                       const LargestIntegralType cvalue UNUSED)
-{
-    vfu_msg_t *cmsg = (vfu_msg_t *)value;
-
-    int ret = cmsg->nr_in_fds == ARRAY_SIZE(fds) &&
-              cmsg->in_fds[0] == fds[0] &&
-              cmsg->in_fds[1] == fds[1] &&
-              cmsg->in_data == NULL &&
-              cmsg->in_size == 0 &&
-              memcmp(&cmsg->hdr, &msg.hdr, sizeof (msg.hdr)) == 0;
-
-    consume_fd(cmsg->in_fds, cmsg->nr_in_fds, 0);
-
-    return ret;
-}
-
-/*
- * Tests that if if exec_command fails then process_request() frees passed file
- * descriptors.
- */
-static void
-test_process_request_free_passed_fds(void **state UNUSED)
-{
-    tran_sock_t ts = { .fd = 23, .conn_fd = 24 };
-
-    mkmsg(VFIO_USER_DMA_MAP, NULL, 0);
-
-    fds[0] = 0xab;
-    fds[1] = 0xcd;
-    msg.nr_in_fds = 2;
-    msg.in_fds = malloc(sizeof(int) * msg.nr_in_fds);
-    assert_non_null(msg.in_fds);
-    msg.in_fds[0] = fds[0];
-    msg.in_fds[1] = fds[1];
-
-    vfu_ctx.tran = &tran_sock_ops;
-    vfu_ctx.tran_data = &ts;
-
-    patch("get_request_header");
-    expect_value(get_request_header, vfu_ctx, &vfu_ctx);
-    expect_check(get_request_header, msgp, check_request_header_msg, NULL);
-    will_return(get_request_header, 0);
-
-    patch("exec_command");
-    expect_value(exec_command, vfu_ctx, &vfu_ctx);
-    expect_check(exec_command, msg, check_exec_command_msg, NULL);
-    will_return(exec_command, -1);
-    will_return(exec_command, EREMOTEIO);
-
-    patch("close");
-    expect_value(close, fd, fds[1]);
-    will_return(close, 0);
-
-    patch("tran_sock_send_iovec");
-    expect_value(tran_sock_send_iovec, sock, ts.conn_fd);
-    expect_any(tran_sock_send_iovec, msg_id);
-    expect_value(tran_sock_send_iovec, is_reply, true);
-    expect_any(tran_sock_send_iovec, cmd);
-    expect_any(tran_sock_send_iovec, iovecs);
-    expect_any(tran_sock_send_iovec, nr_iovecs);
-    expect_any(tran_sock_send_iovec, fds);
-    expect_any(tran_sock_send_iovec, count);
-    expect_any(tran_sock_send_iovec, err);
-    will_return(tran_sock_send_iovec, 0);
-
-    assert_int_equal(0, process_request(&vfu_ctx));
-}
-
 static void
 test_dma_controller_dirty_page_get(void **state UNUSED)
 {
@@ -979,7 +895,6 @@ main(void)
         cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_should_exec_command, setup),
-        cmocka_unit_test_setup(test_process_request_free_passed_fds, setup),
         cmocka_unit_test_setup(test_dma_controller_dirty_page_get, setup),
     };
 
