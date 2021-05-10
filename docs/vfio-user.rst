@@ -859,9 +859,9 @@ VFIO region info format
   The data structure it points is a VFIO cap header defined in
   ``<linux/vfio.h>``.
 * *size* is the size of the region.
-* *offset* is the offset given to the mmap() system call for regions with the
-  MMAP attribute. It is also used as the base offset when mapping a VFIO
-  sparse mmap area, described below.
+* *offset* is the offset that should be given to the mmap() system call for
+  regions with the MMAP attribute. It is also used as the base offset when
+  mapping a VFIO sparse mmap area, described below.
 
 The client sets the ``argsz`` field to indicate the maximum size of the
 response that the server can send, which must be at least the size of the

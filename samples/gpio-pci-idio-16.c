@@ -201,13 +201,13 @@ main(int argc, char *argv[])
     vfu_pci_set_id(vfu_ctx, 0x494f, 0x0dc8, 0x0, 0x0);
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
-                           &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
+                           &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup region");
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1);
+                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup migration region");
     }

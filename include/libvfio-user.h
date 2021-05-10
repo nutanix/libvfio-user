@@ -292,6 +292,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * @fd: file descriptor of the file backing the region if the region is
  *  mappable; it is the server's responsibility to create a file suitable for
  *  memory mapping by the client.
+ * @offset: offset of the region within the fd, or zero.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -299,7 +300,7 @@ int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 int fd);
+                 int fd, uint64_t offset);
 
 /*
  * Returns the size of the area needed to hold the migration registers at the
@@ -856,16 +857,6 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t pos, int cap_id);
-
-/**
- * Returns the memory offset where the specific region starts in device memory.
- *
- * @region: the region to translate
- *
- * @returns the absolute offset
- */
-uint64_t
-vfu_region_to_offset(uint32_t region);
 
 #ifdef __cplusplus
 }

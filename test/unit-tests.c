@@ -560,6 +560,7 @@ test_get_region_info(UNUSED void **state)
         },
         {
             .flags = VFU_REGION_FLAG_RW,
+            .offset = 0x8000,
             .size = 0xdeadbeef,
             .fd = 0x12345
         },
@@ -611,7 +612,7 @@ test_get_region_info(UNUSED void **state)
     assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
                      VFIO_REGION_INFO_FLAG_MMAP, out_info->flags);
     assert_int_equal(1, out_info->index);
-    assert_int_equal(0x10000000000, out_info->offset);
+    assert_int_equal(0x8000, out_info->offset);
     assert_int_equal(0xdeadbeef, out_info->size);
     assert_int_equal(0, msg.nr_out_fds);
 
@@ -1167,18 +1168,18 @@ test_setup_sparse_region(void **state UNUSED)
 
     /* invalid mappable settings */
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, -1);
+                           0x2000, NULL, 0, mmap_areas, 2, -1, 0);
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 0, 1);
+                           0x2000, NULL, 0, mmap_areas, 0, 1, 0);
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
     /* default mmap area if not given */
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, NULL, 0, 1);
+                           0x2000, NULL, 0, NULL, 0, 1, 0);
     assert_int_equal(0, ret);
 
     free(reg_info.mmap_areas);
@@ -1186,14 +1187,14 @@ test_setup_sparse_region(void **state UNUSED)
     /* sparse region exceeds region size */
     mmap_areas[1].iov_len = 0x1001;
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                            0x2000, NULL, 0, mmap_areas, 2, 0);
+                            0x2000, NULL, 0, mmap_areas, 2, 0, 0);
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
     /* sparse region within region size */
     mmap_areas[1].iov_len = 0x1000;
     ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, 0);
+                           0x2000, NULL, 0, mmap_areas, 2, 0, 0);
     assert_int_equal(0, ret);
 
     free(reg_info.mmap_areas);
@@ -1554,7 +1555,7 @@ test_setup_migration_region_too_small(void **state)
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
         vfu_get_migr_register_area_size() - 1, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(-1, r);
     assert_int_equal(EINVAL, errno);
 }
@@ -1565,7 +1566,7 @@ test_setup_migration_region_size_ok(void **state)
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
         vfu_get_migr_register_area_size(), NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
 }
 
@@ -1575,7 +1576,7 @@ test_setup_migration_region_fully_mappable(void **state)
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s,
         NULL, VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0,
-        0xdeadbeef);
+        0xdeadbeef, 0);
     assert_int_equal(-1, r);
     assert_int_equal(EINVAL, errno);
 }
@@ -1591,7 +1592,8 @@ test_setup_migration_region_sparsely_mappable_over_migration_registers(void **st
         }
     };
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1, 0xdeadbeef);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
+        0xdeadbeef, 0);
     assert_int_equal(-1, r);
     assert_int_equal(EINVAL, errno);
 }
@@ -1608,7 +1610,7 @@ test_setup_migration_region_sparsely_mappable_valid(void **state)
     };
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
-        0xdeadbeef);
+        0xdeadbeef, 0);
     assert_int_equal(0, r);
 }
 
@@ -1625,7 +1627,7 @@ test_setup_migration_callbacks_bad_data_offset(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size() - 1);
@@ -1637,7 +1639,7 @@ test_setup_migration_callbacks(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size());

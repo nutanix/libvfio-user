@@ -115,6 +115,8 @@ typedef struct  {
     int nr_mmap_areas;
     /* fd for a mappable region, or -1. */
     int fd;
+    /* offset of region within fd. */
+    uint64_t offset;
 } vfu_reg_info_t;
 
 struct pci_dev {

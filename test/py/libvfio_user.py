@@ -131,7 +131,8 @@ lib.vfu_attach_ctx.argtypes = (c.c_void_p,)
 lib.vfu_run_ctx.argtypes = (c.c_void_p,)
 lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long, c.c_void_p,
-                                 c.c_int, c.c_void_p, c.c_int, c.c_int)
+                                 c.c_int, c.c_void_p, c.c_int, c.c_int,
+                                 c.c_ulong)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
 lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_int)
@@ -259,7 +260,7 @@ def vfu_destroy_ctx(ctx):
 
 def vfu_setup_region(ctx, index, size, flags=0):
     assert ctx != None
-    ret = lib.vfu_setup_region(ctx, index, size, None, flags, None, 0, -1)
+    ret = lib.vfu_setup_region(ctx, index, size, None, flags, None, 0, -1, 0)
     return ret
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
