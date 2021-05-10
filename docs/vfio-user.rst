@@ -468,8 +468,8 @@ Capabilities:
 | Name               | Type             | Description                         |
 +====================+==================+=====================================+
 | ``"max_msg_fds"``  | number           | Maximum number of file descriptors  |
-|                    |                  | the can be received by the sender   |
-|                    |                  | in one sender. Optional. If not     |
+|                    |                  | that can be received by the sender  |
+|                    |                  | in one message. Optional. If not    |
 |                    |                  | specified then the receiver must    |
 |                    |                  | assume ``"max_msg_fds"=1``.         |
 +--------------------+------------------+-------------------------------------+
@@ -1506,7 +1506,7 @@ REGION Read/Write Data
 
 +--------+--------+----------+
 | Name   | Offset | Size     |
- +========+========+==========+
++========+========+==========+
 | Offset | 16     | 8        |
 +--------+--------+----------+
 | Region | 24     | 4        |
