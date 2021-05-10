@@ -1,3 +1,4 @@
-build/
+.cache
+build
 cscope.out
 tags
