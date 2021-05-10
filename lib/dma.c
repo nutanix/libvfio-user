@@ -218,6 +218,7 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 void
 dma_controller_destroy(dma_controller_t *dma)
 {
+    assert(dma->nregions == 0);
     free(dma);
 }
 
