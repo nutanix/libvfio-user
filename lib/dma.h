@@ -126,7 +126,7 @@ MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
 // Helper for dma_addr_to_sg() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   vfu_dma_addr_t dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_sg, int prot);
 
 static bool
@@ -183,7 +183,7 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
 
 static inline int
 dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
-            uint32_t len, int prot, int region_index)
+            uint64_t len, int prot, int region_index)
 {
     const dma_memory_region_t *const region = &dma->regions[region_index];
 

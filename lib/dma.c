@@ -355,7 +355,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   vfu_dma_addr_t dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
