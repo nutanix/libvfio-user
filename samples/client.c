@@ -682,8 +682,8 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("client: %s: %#llx-%#llx\t%hhu\n", __func__, bitmaps[i].iova,
-               bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
+        printf("client: %s: %"PRIx64"-%"PRIx64"\t%hhu\n", __func__,
+                bitmaps[i].iova, bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
 }
 
