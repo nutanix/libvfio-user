@@ -264,7 +264,6 @@ def get_reply(sock, expect=0):
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
     assert errno == expect
-    msg_size -= 16
     return buf[16:]
 
 def get_pci_header(ctx):
