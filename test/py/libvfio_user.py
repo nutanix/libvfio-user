@@ -178,6 +178,18 @@ libc = c.CDLL("libc.so.6", use_errno=True)
 #
 # Structures
 #
+
+class Structure(c.Structure):
+    def bytes(self):
+        """Handy method to return bytes for a ctypes Structure."""
+        return bytes(self)
+
+    @classmethod
+    def pop_from_buffer(cls, buf):
+        """"Pop a new object from the given bytes buffer."""
+        obj = cls.from_buffer_copy(buf)
+        return obj, buf[c.sizeof(obj):]
+
 class vfu_bar_t(c.Union):
     _pack_ = 1
     _fields_ = [
@@ -185,14 +197,14 @@ class vfu_bar_t(c.Union):
         ("io", c.c_int)
     ]
 
-class vfu_pci_hdr_intr_t(c.Structure):
+class vfu_pci_hdr_intr_t(Structure):
     _pack_ = 1
     _fields_ = [
         ("iline", c.c_byte),
         ("ipin", c.c_byte)
     ]
 
-class vfu_pci_hdr_t(c.Structure):
+class vfu_pci_hdr_t(Structure):
     _pack_ = 1
     _fields_ = [
         ("id", c.c_int),
@@ -217,10 +229,61 @@ class vfu_pci_hdr_t(c.Structure):
         ("mlat", c.c_byte)
     ]
 
-class iovec_t(c.Structure):
+class iovec_t(Structure):
     _fields_ = [
         ("iov_base", c.c_void_p),
         ("iov_len", c.c_int)
+    ]
+
+class vfio_irq_set(Structure):
+    _fields_ = [
+        ("argsz", c.c_uint),
+        ("flags", c.c_uint),
+        ("index", c.c_uint),
+        ("start", c.c_uint),
+        ("count", c.c_uint),
+    ]
+
+class vfio_user_device_info(Structure):
+    _fields_ = [
+        ("argsz", c.c_uint),
+        ("flags", c.c_uint),
+        ("num_regions", c.c_uint),
+        ("num_irqs", c.c_uint),
+    ]
+
+class vfio_region_info(Structure):
+    _fields_ = [
+        ("argsz", c.c_uint),
+        ("flags", c.c_uint),
+        ("index", c.c_uint),
+        ("cap_offset", c.c_uint),
+        ("size", c.c_ulong),
+        ("offset", c.c_ulong),
+    ]
+
+class vfio_region_info_cap_type(Structure):
+    _fields_ = [
+        ("id", c.c_ushort),
+        ("version", c.c_ushort),
+        ("next", c.c_uint),
+        ("type", c.c_uint),
+        ("subtype", c.c_uint),
+    ]
+
+class vfio_region_info_cap_sparse_mmap(Structure):
+    _fields_ = [
+        ("id", c.c_ushort),
+        ("version", c.c_ushort),
+        ("next", c.c_uint),
+        ("nr_areas", c.c_uint),
+        ("reserved", c.c_uint),
+    ]
+
+class vfio_region_sparse_mmap_area(Structure):
+    _fields_ = [
+        ("offset", c.c_ulong),
+        ("size", c.c_ulong),
     ]
 
 #
@@ -364,18 +427,6 @@ def ext_cap_hdr(buf, offset):
     cap_id, cap_next = struct.unpack_from('HH', buf, offset)
     cap_next >>= 4
     return cap_id, cap_next
-
-def vfio_region_info(buf):
-    return unpack_prefix("IIIIQQ", "argsz flags index cap_off size offset", buf)
-
-def vfio_region_info_cap_type(buf):
-    return unpack_prefix("HHIII", "id version next type subtype", buf)
-
-def vfio_region_info_cap_sparse_mmap(buf):
-    return unpack_prefix("HHIII", "id version next nr_areas reserved", buf)
-
-def vfio_region_sparse_mmap_area(buf):
-    return unpack_prefix("QQ", "offset size", buf)
 
 #
 # Library wrappers
