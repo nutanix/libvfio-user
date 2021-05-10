@@ -486,7 +486,7 @@ test_dma_map_sg(void **state UNUSED)
     sg.length = 0xcafebabe;
     assert_int_equal(0, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
     assert_int_equal(0xdeadbeef, iovec.iov_base);
-    assert_int_equal((int)0x00000000cafebabe, iovec.iov_len);
+    assert_int_equal(0x00000000cafebabe, iovec.iov_len);
 }
 
 static void

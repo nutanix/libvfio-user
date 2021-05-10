@@ -314,7 +314,8 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
-                              int len, size_t pgsize, size_t size, char **data);
+                              uint64_t len, size_t pgsize, size_t size,
+                              char **data);
 
 #endif /* LIB_VFIO_USER_DMA_H */
 
