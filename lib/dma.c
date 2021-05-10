@@ -178,9 +178,9 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 }
 
 void
-dma_controller_remove_regions(dma_controller_t *dma,
-                              vfu_dma_unregister_cb_t *dma_unregister,
-                              void *data)
+dma_controller_remove_all_regions(dma_controller_t *dma,
+                                  vfu_dma_unregister_cb_t *dma_unregister,
+                                  void *data)
 {
     int i;
 

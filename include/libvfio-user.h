@@ -657,7 +657,7 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 /**
  * Read from the dma region exposed by the client. This can be used as an
  * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
- * callbacks have not been provided.
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -671,7 +671,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 /**
  * Write to the dma region exposed by the client.  This can be used as an
  * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
- * callbacks have not been provided.
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
