@@ -85,6 +85,7 @@ PYTESTVALGRIND = \
 	valgrind \
 	--suppressions=$(CURDIR)/test/py/valgrind.supp \
 	--quiet \
+	--track-origins=yes \
 	--errors-for-leak-kinds=definite \
 	--show-leak-kinds=definite \
 	--leak-check=full \
