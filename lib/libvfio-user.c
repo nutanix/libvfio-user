@@ -543,6 +543,11 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
             ret = 0;
         } else {
+
+            if (region->flags != 0) {
+                vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
+                return ERROR_INT(ENOTSUP);
+            }
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                (void *)region->addr,
                                                region->size,
