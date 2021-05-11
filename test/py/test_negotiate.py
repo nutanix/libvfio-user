@@ -108,15 +108,15 @@ def test_invalid_json_bad_capabilities_object():
 
 def test_invalid_json_bad_max_fds():
     client_version_json(errno.EINVAL,
-                        b'{ "capabilities": { "max_fds": "foo" } }')
+                        b'{ "capabilities": { "max_msg_fds": "foo" } }')
 
 def test_invalid_json_bad_max_fds():
     client_version_json(errno.EINVAL,
-                        b'{ "capabilities": { "max_fds": -1 } }')
+                        b'{ "capabilities": { "max_msg_fds": -1 } }')
 
 def test_invalid_json_bad_max_fds2():
     client_version_json(errno.EINVAL,
-                        b'{ "capabilities": { "max_fds": %d } }' %
+                        b'{ "capabilities": { "max_msg_fds": %d } }' %
                         (VFIO_USER_CLIENT_MAX_FDS_LIMIT + 1))
 
 def test_invalid_json_bad_migration_object():
@@ -151,7 +151,7 @@ def test_valid_negotiate_no_json():
     assert major == LIBVFIO_USER_MAJOR
     assert minor == LIBVFIO_USER_MINOR
     json = parse_json(json_str)
-    assert json.capabilities.max_fds == SERVER_MAX_FDS
+    assert json.capabilities.max_msg_fds == SERVER_MAX_FDS
     assert json.capabilities.max_msg_size == SERVER_MAX_MSG_SIZE
     # FIXME: migration object checks
 
@@ -167,7 +167,7 @@ def test_valid_negotiate_empty_json():
     vfu_run_ctx(ctx)
 
 def test_valid_negotiate_json():
-    client_version_json(json=bytes('{ "capabilities": { "max_fds": %s } }' %
+    client_version_json(json=bytes('{ "capabilities": { "max_msg_fds": %s } }' %
                         VFIO_USER_CLIENT_MAX_FDS_LIMIT, "utf-8"))
 
     # notice client closed connection
