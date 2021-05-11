@@ -630,14 +630,14 @@ Message Format
 | Table        | array of table entries |
 +--------------+------------------------+
 
-This command message is sent by the client to the server to inform it that a
-DMA region, previously made available via a VFIO_USER_DMA_MAP command message,
-is no longer available for DMA. It typically occurs when memory is subtracted
-from the client or if the client uses a vIOMMU. If the client does not expect
-the server to perform DMA then it does not need to send to the server
-VFIO_USER_DMA_UNMAP commands. If the server does not need to perform DMA then
-it can ignore such commands but it must still reply to them. The table is an
-array of the following structure:
+This command message is sent by the client to the server to inform it that one
+or more DMA regions, previously made available via a VFIO_USER_DMA_MAP command
+message, are no longer available for DMA. It typically occurs when memory is
+subtracted from the client or if the client uses a vIOMMU. If the client does
+not expect the server to perform DMA then it does not need to send to the
+server VFIO_USER_DMA_UNMAP commands. If the server does not need to perform DMA
+then it can ignore such commands but it must still reply to them. Each DMA
+region is described by a table entry in an array of the following structure:
 
 Table entry format
 ^^^^^^^^^^^^^^^^^^
@@ -661,32 +661,34 @@ Table entry format
 |              | | 0   | VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP | |
 |              | +-----+--------------------------------------+ |
 +--------------+--------+---------------------------------------+
-| VFIO Bitmaps | 32     | variable                              |
+| VFIO Bitmap  | 32     | 24                                    |
 +--------------+--------+---------------------------------------+
 
-* *Address* is the base DMA address of the region.
-* *Size* is the size of the region.
+* *Address* is the base DMA address of the DMA region.
+* *Size* is the size of the DMA region.
 * *Offset*: is ignored for unmap
 * *Protections* is ignored for unmap
-* *Flags* contains the following region attributes:
+* *Flags* contains the following DMA region attributes:
 
   * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
     must be populated before unmapping the DMA region. The client must provide
-    a ``struct vfio_bitmap`` in the VFIO bitmaps field for each region, with
-    the ``vfio_bitmap.pgsize`` and ``vfio_bitmap.size`` fields initialized.
+    a ``struct vfio_user_bitmap`` (explained below) in the VFIO bitmap field
+    for the DMA region, with the ``pgsize`` and ``size`` fields initialized.
 
-* *VFIO Bitmaps* contains one ``struct vfio_bitmap`` per region (explained
-  below) if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
+* *VFIO Bitmap* contains a ``struct vfio_user_bitmap`` for the DMA region if
+  ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
+
+The position of the next DMA region in the table is therefore dependant on
+whether or not the previous DMA region has the
+``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in its Flags.
+
+The size of the command message is:
+16 + (# of table entries * 32) + (# number of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` set Flags * 24).
 
 .. _VFIO bitmap format:
 
 VFIO bitmap format
 ^^^^^^^^^^^^^^^^^^
-
-If the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP bit is set in the request, the
-server must append to the header the ``struct vfio_bitmap`` received in the
-command followed by the bitmap, for each region. ``struct vfio_bitmap`` has the
-following format:
 
 +--------+--------+------+
 | Name   | Offset | Size |
@@ -702,16 +704,23 @@ following format:
 * *size* is the size for the bitmap, in bytes, excluding the VFIO bitmap header.
 * *data* This field is unused in vfio-user.
 
-The VFIO bitmap structure is defined in ``<linux/vfio.h>``
-(``struct vfio_bitmap``).
 
-Each ``struct vfio_bitmap`` entry is followed by the region's bitmap. Each bit
-in the bitmap represents one page of size ``struct vfio_bitmap.pgsize``.
+.. Note::
+   The size of the bitmap can be larger than necessary. The server must still
+   respond with the same bitmap size, zeroing the unused part.
 
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
-of the message is: 16 + (# of table entries * 32).
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags then the size of
-the message is: 16 + (# of table entries * 56) + size of all bitmaps.
+Response
+^^^^^^^^
+
+The server responds with the standard vfio-user header. For each DMA region
+that has the ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit is set in Flags in
+the command message, the server must append to the header the
+``struct vfio_user_bitmap`` received in the command message followed by the
+dirty page bitmap, where each bit in the dirty page bitmap represents one page
+of size ``struct vfio_user_bitmap.pgsize``.
+
+The size of the response message is:
+16 + (# of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` in flags * 24) + size of all bitmaps.
 
 Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
 then the server must release all references to that DMA region before replying,
