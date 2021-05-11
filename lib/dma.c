@@ -370,7 +370,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
             vfu_dma_addr_t region_end = iov_end(&region->info.iova);
 
             while (dma_addr >= region_start && dma_addr < region_end) {
-                size_t region_len = MIN(region_end - dma_addr, len);
+                size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
                 if (cnt < max_sg) {
                     ret = dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
