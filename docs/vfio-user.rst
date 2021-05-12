@@ -709,12 +709,12 @@ VFIO bitmap format
    The size of the bitmap can be larger than necessary. The server must still
    respond with the same bitmap size, zeroing the unused part.
 
-Response
-^^^^^^^^
+Reply
+^^^^^
 
 The server responds with the standard vfio-user header. For each DMA region
-that has the ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit is set in Flags in
-the command message, the server must append to the header the
+that has the ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in Flags in the
+command message, the server must append to the header the
 ``struct vfio_user_bitmap`` received in the command message followed by the
 dirty page bitmap, where each bit in the dirty page bitmap represents one page
 of size ``struct vfio_user_bitmap.pgsize``.
