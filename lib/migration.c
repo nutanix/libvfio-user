@@ -133,7 +133,7 @@ MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
 
 int
 MOCK_DEFINE(state_trans_notify)(vfu_ctx_t *vfu_ctx,
-                                 int (*fn)(vfu_ctx_t*, vfu_migr_state_t),
+                                 int (*fn)(vfu_ctx_t *, vfu_migr_state_t),
                                  uint32_t vfio_device_state)
 {
     /*
@@ -159,12 +159,13 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
     return 0;
 }
 
-/*
+/**
  * Returns 0 on success, -1 on failure setting errno.
  */
 ssize_t
 MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                                 uint32_t device_state, bool notify) {
+                                 uint32_t device_state, bool notify)
+{
 
     assert(migr != NULL);
 
@@ -335,7 +336,7 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
     assert(migr != NULL);
 
     if (is_write) {
-        return  migr->callbacks.data_written(vfu_ctx, size);
+        return migr->callbacks.data_written(vfu_ctx, size);
     }
     return 0;
 }

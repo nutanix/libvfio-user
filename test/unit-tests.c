@@ -1832,8 +1832,8 @@ test_migration_region_access(UNUSED void **state)
     expect_value(migration_region_access_registers, is_write, false);
     will_return(migration_region_access_registers, -1);
 
-    ret = migration_region_access(&vfu_ctx, (void*)0xdeadbeef, 0, 0,
-                                            false);
+    ret = migration_region_access(&vfu_ctx, (void *)0xdeadbeef, 0, 0,
+                                  false);
     assert_int_equal(-1, ret);
 }
 
