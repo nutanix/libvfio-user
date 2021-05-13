@@ -1820,8 +1820,8 @@ test_process_request_free_passed_fds(void **state UNUSED)
 static void
 test_migration_region_access(UNUSED void **state)
 {
-    struct migration migration = { { 0 },  };
-    vfu_ctx_t vfu_ctx = { .migration = &migration };
+    struct migration migration = { { 0 }, };
+    vfu_ctx.migration = &migration;
     ssize_t ret;
 
     /*
@@ -1845,7 +1845,6 @@ test_migration_region_access(UNUSED void **state)
 static void
 test_handle_dirty_pages_get(UNUSED void **state)
 {
-    vfu_ctx_t vfu_ctx;
     struct iovec *iovecs = NULL;
     size_t nr_iovecs = 0;
     struct vfio_user_bitmap_range ranges;
@@ -1916,7 +1915,6 @@ test_handle_dirty_pages(UNUSED void **state)
 static void
 test_state_trans_notify(UNUSED void **state)
 {
-    vfu_ctx_t vfu_ctx = { 0 };
     uint32_t vfio_device_state = 0xcafebabe;
     vfu_migr_state_t vfu_migr_state = 0xdeadbeef;
 
@@ -1934,7 +1932,6 @@ test_state_trans_notify(UNUSED void **state)
 static void
 test_migr_trans_to_valid_state(UNUSED void **state)
 {
-    vfu_ctx_t vfu_ctx = { 0 };
     struct migration migration = {
         .callbacks.transition = (void *)0xcafebabe
     };
@@ -1995,7 +1992,6 @@ test_migr_trans_to_valid_state(UNUSED void **state)
 static void
 test_handle_device_state(UNUSED void **state)
 {
-    vfu_ctx_t vfu_ctx = { 0 };
     struct migration migration = {
         .info.device_state = 0xdeadbeef,
     };
@@ -2039,7 +2035,6 @@ static void
 test_handle_device_reset(UNUSED void **state)
 {
     struct migration migration = { { 0 } };
-    vfu_ctx_t vfu_ctx = { 0 };
 
     patch("handle_device_state");
 
