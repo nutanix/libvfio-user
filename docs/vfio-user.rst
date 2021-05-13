@@ -678,7 +678,7 @@ Table entry format
 * *VFIO Bitmap* contains a ``struct vfio_user_bitmap`` for the DMA region if
   ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
 
-The position of the next DMA region in the table is therefore dependant on
+The position of the next DMA region in the table is therefore dependent on
 whether or not the previous DMA region has the
 ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in its Flags.
 
