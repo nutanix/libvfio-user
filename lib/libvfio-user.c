@@ -564,8 +564,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return ret;
 }
 
-int
-handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+static int
+do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
 
@@ -580,6 +580,12 @@ handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
                                    VFIO_DEVICE_STATE_RUNNING, false);
     }
     return 0;
+}
+
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    return do_device_reset(vfu_ctx, reason);
 }
 
 int
@@ -1107,7 +1113,7 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
                                           vfu_ctx);
     }
 
-    handle_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
         irqs_reset(vfu_ctx);
