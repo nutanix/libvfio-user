@@ -185,12 +185,6 @@ struct vfio_device_migration_info {
 };
 #endif /* not a RHEL kernel */
 
-struct vfio_bitmap {
-	__u64        pgsize;	/* page size for bitmap in bytes */
-	__u64        size;	/* in bytes */
-	__u64 *data;	/* one bit per page */
-};
-
 struct vfio_iommu_type1_dirty_bitmap {
 	__u32        argsz;
 	__u32        flags;
@@ -198,12 +192,6 @@ struct vfio_iommu_type1_dirty_bitmap {
 #define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP	(1 << 1)
 #define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP	(1 << 2)
 	__u8         data[];
-};
-
-struct vfio_iommu_type1_dirty_bitmap_get {
-	__u64              iova;	/* IO virtual address */
-	__u64              size;	/* Size of iova range */
-	struct vfio_bitmap bitmap;
 };
 
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */
