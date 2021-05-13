@@ -280,6 +280,7 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     check_expected(count);
     check_expected(pos);
     check_expected(is_write);
+    errno = mock();
     return mock();
 }
 
@@ -347,6 +348,7 @@ state_trans_notify(vfu_ctx_t *vfu_ctx, int (*fn)(vfu_ctx_t*, vfu_migr_state_t),
     check_expected(vfu_ctx);
     check_expected(fn);
     check_expected(vfio_device_state);
+    errno = mock();
     return mock();
 }
 

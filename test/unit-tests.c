@@ -1830,6 +1830,7 @@ test_migration_region_access(UNUSED void **state)
     expect_value(migration_region_access_registers, pos, 0);
     expect_value(migration_region_access_registers, count, 0);
     expect_value(migration_region_access_registers, is_write, false);
+    will_return(migration_region_access_registers, 0xcafebabe); /* errno */
     will_return(migration_region_access_registers, -1);
 
     ret = migration_region_access(&vfu_ctx, (void *)0xdeadbeef, 0, 0,
@@ -1962,10 +1963,11 @@ test_migr_trans_to_valid_state(UNUSED void **state)
     expect_value(state_trans_notify, vfu_ctx, &vfu_ctx);
     expect_value(state_trans_notify, fn, 0xcafebabe);
     expect_value(state_trans_notify, vfio_device_state, 0xdeadbeef);
-    will_return(state_trans_notify, -EINVAL);
+    will_return(state_trans_notify, 0x8badf00d); /* errno */
+    will_return(state_trans_notify, -1);
     assert_int_equal(-1, migr_trans_to_valid_state(&vfu_ctx, &migration,
                                                    0xdeadbeef, true));
-    assert_int_equal(EINVAL, errno);
+    assert_int_equal((int)0x8badf00d, errno);
     assert_int_equal(0, migration.info.device_state);
 
     /*
@@ -1976,6 +1978,7 @@ test_migr_trans_to_valid_state(UNUSED void **state)
     expect_value(state_trans_notify, vfu_ctx, &vfu_ctx);
     expect_value(state_trans_notify, fn, 0xcafebabe);
     expect_value(state_trans_notify, vfio_device_state, 0xdeadbeef);
+    will_return(state_trans_notify, 0x8adf00d); /* errno */
     will_return(state_trans_notify, 0);
     expect_value(migr_state_transition, migr, &migration);
     expect_value(migr_state_transition, state,

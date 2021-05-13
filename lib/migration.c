@@ -131,6 +131,9 @@ MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
     return -1;
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 int
 MOCK_DEFINE(state_trans_notify)(vfu_ctx_t *vfu_ctx,
                                  int (*fn)(vfu_ctx_t *, vfu_migr_state_t),
@@ -143,6 +146,9 @@ MOCK_DEFINE(state_trans_notify)(vfu_ctx_t *vfu_ctx,
     return fn(vfu_ctx, migr_state_vfio_to_vfu(vfio_device_state));
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 ssize_t
 MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                        uint32_t device_state, bool notify)
@@ -150,8 +156,8 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
     if (notify) {
         int ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
                                      device_state);
-        if (ret < 0) {
-            return ERROR_INT(-ret);
+        if (ret != 0) {
+            return ret;
         }
     }
     migr->info.device_state = device_state;
@@ -176,6 +182,9 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return migr_trans_to_valid_state(vfu_ctx, migr, device_state, notify);
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
                      uint64_t *pending_bytes, bool is_write)
@@ -228,6 +237,9 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
  * Make this behavior conditional.
  */
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                bool is_write)
@@ -245,7 +257,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_USER_MIGR_ITER_STATE_STARTED:
         ret = migr->callbacks.prepare_data(vfu_ctx, &migr->iter.offset,
                                            &migr->iter.size);
-        if (ret < 0) {
+        if (ret != 0) {
             return ret;
         }
         /*
@@ -271,6 +283,9 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
                    uint64_t *offset, bool is_write)
@@ -295,7 +310,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
             return ERROR_INT(EINVAL);
         }
         ret = migr->callbacks.prepare_data(vfu_ctx, offset, NULL);
-        if (ret < 0) {
+        if (ret != 0) {
             return ret;
         }
         *offset += migr->data_offset;
@@ -308,6 +323,9 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return ERROR_INT(EINVAL);
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 static ssize_t
 handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
                              bool is_write)
@@ -329,6 +347,9 @@ handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                uint64_t size, bool is_write)
@@ -341,6 +362,9 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 static ssize_t
 handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
                  uint64_t *size, bool is_write)
@@ -366,6 +390,9 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return ERROR_INT(EINVAL);
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 ssize_t
 MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
                                                size_t count, loff_t pos,
@@ -454,8 +481,8 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     if (pos + count <= sizeof(struct vfio_device_migration_info)) {
         ret = migration_region_access_registers(vfu_ctx, buf, count,
                                                 pos, is_write);
-        if (ret < 0) {
-            return ERROR_INT(-ret);
+        if (ret != 0) {
+            return ret;
         }
     } else {
 
