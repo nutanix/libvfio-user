@@ -1703,28 +1703,28 @@ test_should_exec_command(UNUSED void **state)
     patch("cmd_allowed_when_stopped_and_copying");
     patch("device_is_stopped");
 
-    /* XXX stopped and copying, command allowed */
+    /* TEST stopped and copying, command allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_value(device_is_stopped_and_copying, migration, &migration);
     will_return(cmd_allowed_when_stopped_and_copying, true);
     expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped and copying, command not allowed */
+    /* TEST stopped and copying, command not allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(cmd_allowed_when_stopped_and_copying, false);
     expect_any(cmd_allowed_when_stopped_and_copying, cmd);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped */
+    /* TEST stopped */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
     expect_value(device_is_stopped, migration, &migration);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX none of the above */
+    /* TEST none of the above */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, false);
@@ -1824,6 +1824,10 @@ test_migration_region_access(UNUSED void **state)
     vfu_ctx_t vfu_ctx = { .migration = &migration };
     ssize_t ret;
 
+    /*
+     * TEST that migration_region_access fails if
+     * migration_region_access_registers fails.
+     */
     patch("migration_region_access_registers");
     expect_value(migration_region_access_registers, vfu_ctx, &vfu_ctx);
     expect_value(migration_region_access_registers, buf, 0xdeadbeef);
@@ -1887,7 +1891,7 @@ test_handle_dirty_pages(UNUSED void **state)
     assert_int_equal(-1, ret);
     assert_int_equal(EINVAL, errno);
 
-    /* XXX VFIO_IOMMU_DIRTY_PAGES_FLAG_START */
+    /* TEST VFIO_IOMMU_DIRTY_PAGES_FLAG_START */
     dirty_bitmap.argsz = msg.in_size;
     patch("handle_dirty_pages_get");
     expect_value(handle_dirty_pages_get, vfu_ctx, &vfu_ctx);
@@ -1939,7 +1943,7 @@ test_migr_trans_to_valid_state(UNUSED void **state)
     patch("migr_state_transition");
 
     /*
-     * XXX check that migr_trans_to_valid_state doesn't call the client
+     * TEST check that migr_trans_to_valid_state doesn't call the client
      * callback if told not do so.
      */
     expect_value(migr_state_transition, migr, &migration);
@@ -1956,7 +1960,7 @@ test_migr_trans_to_valid_state(UNUSED void **state)
      */
 
     /*
-     * XXX check that migr_trans_to_valid_state fails if the client callback
+     * TEST check that migr_trans_to_valid_state fails if the client callback
      * fails.
      */
     migration.info.device_state = 0;
@@ -1971,7 +1975,7 @@ test_migr_trans_to_valid_state(UNUSED void **state)
     assert_int_equal(0, migration.info.device_state);
 
     /*
-     * XXX check that migr_trans_to_valid succeeds if the client callback
+     * TEST check that migr_trans_to_valid succeeds if the client callback
      * suceeds.
      */
     migration.info.device_state = 0;
@@ -2000,7 +2004,7 @@ test_handle_device_state(UNUSED void **state)
     patch("migr_trans_to_valid_state");
 
     /*
-     * XXX check that handle_device_state fails
+     * TEST check that handle_device_state fails
      * if vfio_migr_state_transition_is_valid fails.
      */
     expect_value(vfio_migr_state_transition_is_valid, from,
@@ -2014,7 +2018,7 @@ test_handle_device_state(UNUSED void **state)
     assert_int_equal(0xdeadbeef, migration.info.device_state);
 
     /*
-     * XXX check that handle_device_state calls migr_trans_to_valid_state if
+     * TEST check that handle_device_state calls migr_trans_to_valid_state if
      * vfio_migr_state_transisition_is_valid succeeds.
      */
     expect_value(vfio_migr_state_transition_is_valid, from,
