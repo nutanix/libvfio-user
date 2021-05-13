@@ -400,7 +400,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
 {
     struct migration *migr = vfu_ctx->migration;
     int ret;
-    uint32_t *device_state, _device_state;
+    uint32_t *device_state, old_device_state;
 
     assert(migr != NULL);
 
@@ -416,17 +416,17 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
             *device_state = migr->info.device_state;
             return 0;
         }
-        _device_state = migr->info.device_state;
+        old_device_state = migr->info.device_state;
         ret = handle_device_state(vfu_ctx, migr, *device_state , true);
         if (ret == 0) {
             vfu_log(vfu_ctx, LOG_DEBUG,
                 "migration: transition from state %s to state %s",
-                 migr_states[_device_state].name,
+                 migr_states[old_device_state].name,
                  migr_states[*device_state].name);
         } else {
             vfu_log(vfu_ctx, LOG_ERR,
                 "migration: failed to transition from state %s to state %s",
-                 migr_states[_device_state].name,
+                 migr_states[old_device_state].name,
                  migr_states[*device_state].name);
         }
         break;
