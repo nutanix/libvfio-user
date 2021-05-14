@@ -66,7 +66,7 @@ typedef void *vfu_dma_addr_t;
 typedef struct {
     vfu_dma_addr_t dma_addr;
     int region;
-    int length;
+    uint64_t length;
     uint64_t offset;
     bool mappable;
 } dma_sg_t;
@@ -655,7 +655,9 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
              struct iovec *iov, int cnt);
 
 /**
- * Read from the dma region exposed by the client.
+ * Read from the dma region exposed by the client. This can be used as an
+ * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -667,7 +669,9 @@ int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /**
- * Write to the dma region exposed by the client.
+ * Write to the dma region exposed by the client.  This can be used as an
+ * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
