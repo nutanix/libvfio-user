@@ -225,7 +225,7 @@ lib.vfu_run_ctx.argtypes = (c.c_void_p,)
 lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
 vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
                                      c.c_ulong, c.c_long, c.c_bool)
-lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long,
+lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
                                  c.c_uint32, c.c_int)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
@@ -270,7 +270,7 @@ def connect_sock():
 def connect_client(ctx):
     sock = connect_sock()
 
-    json = b'{ "capabilities": { "max_fds": 8 } }'
+    json = b'{ "capabilities": { "max_msg_fds": 8 } }'
     # struct vfio_user_version
     payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
                           LIBVFIO_USER_MINOR, json, b'\0')
