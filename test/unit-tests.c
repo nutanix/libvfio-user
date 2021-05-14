@@ -696,41 +696,6 @@ test_get_region_info(UNUSED void **state)
     /* FIXME add check  for multiple sparse areas */
 }
 
-static void
-test_device_get_info(void **state UNUSED)
-{
-    struct vfio_user_device_info d_in = { .argsz = sizeof(d_in) + 1 };
-    struct vfio_user_device_info *d_out;
-    int ret;
-
-    vfu_ctx.nr_regions = 0xdeadbeef;
-
-    ret = handle_device_get_info(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_GET_INFO,
-                                 &d_in, sizeof (d_in)));
-
-    assert_int_equal(0, ret);
-
-
-    d_out = msg.out_data;
-    assert_int_equal(sizeof(*d_out), d_out->argsz);
-    assert_int_equal(VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET,
-                     d_out->flags);
-    assert_int_equal(vfu_ctx.nr_regions, d_out->num_regions);
-    assert_int_equal(VFU_DEV_NUM_IRQS, d_out->num_irqs);
-
-    free(msg.out_data);
-    msg.out_data = NULL;
-    msg.out_size = 0;
-
-    /* bad size */
-    ret = handle_device_get_info(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_GET_INFO,
-                                 &d_in, sizeof (d_in) - 1));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-    assert_ptr_equal(NULL, msg.out_data);
-    assert_ptr_equal(0, msg.out_size);
-}
-
 /*
  * Performs various checks when adding sparse memory regions.
  */
@@ -1438,7 +1403,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_get_region_info, setup),
-        cmocka_unit_test_setup(test_device_get_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
         cmocka_unit_test_setup(test_device_set_irqs, setup),

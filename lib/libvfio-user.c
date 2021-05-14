@@ -344,7 +344,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return 0;
 }
 
-int
+static int
 handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     struct vfio_user_device_info *in_info;
