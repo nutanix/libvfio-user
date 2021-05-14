@@ -486,7 +486,7 @@ test_dma_map_sg(void **state UNUSED)
     sg.length = 0xcafebabe;
     assert_int_equal(0, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
     assert_int_equal(0xdeadbeef, iovec.iov_base);
-    assert_int_equal((int)0x00000000cafebabe, iovec.iov_len);
+    assert_int_equal(0x00000000cafebabe, iovec.iov_len);
 }
 
 static void
@@ -1816,6 +1816,24 @@ test_process_request_free_passed_fds(void **state UNUSED)
     assert_int_equal(0, process_request(&vfu_ctx));
 }
 
+static void
+test_dma_controller_dirty_page_get(void **state UNUSED)
+{
+    dma_memory_region_t *r;
+    uint64_t len = UINT32_MAX + (uint64_t)10;
+    char bp[131073];
+
+    vfu_ctx.dma->nregions = 1;
+    r = &vfu_ctx.dma->regions[0];
+    r->info.iova.iov_base = (void *)0;
+    r->info.iova.iov_len = len;
+    r->info.vaddr = (void *)0xdeadbeef;
+    vfu_ctx.dma->dirty_pgsize = 4096;
+
+    assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
+                     len, 4096, 131073, (char **)&bp));
+}
+
 int
 main(void)
 {
@@ -1869,6 +1887,7 @@ main(void)
         cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_should_exec_command, setup),
         cmocka_unit_test_setup(test_process_request_free_passed_fds, setup),
+        cmocka_unit_test_setup(test_dma_controller_dirty_page_get, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
