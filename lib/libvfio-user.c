@@ -586,7 +586,7 @@ int
 MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
                                     struct iovec **iovecs, size_t *nr_iovecs,
                                     struct vfio_user_bitmap_range *ranges,
-                                     uint32_t size)
+                                    uint32_t size)
 {
     int ret = EINVAL;
     size_t i;
