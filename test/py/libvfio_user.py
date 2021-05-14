@@ -40,7 +40,7 @@ import socket
 import struct
 import syslog
 
-# from linux/pci_regs.h
+# from linux/pci_regs.h and linux/pci_defs.h
 
 PCI_HEADER_TYPE_NORMAL = 0
 
@@ -151,19 +151,20 @@ lib.vfu_realize_ctx.argtypes = (c.c_void_p,)
 lib.vfu_attach_ctx.argtypes = (c.c_void_p,)
 lib.vfu_run_ctx.argtypes = (c.c_void_p,)
 lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
-region_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char), c.c_long,
-                          c.c_long, c.c_int)
-lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long, region_cb_t,
-                                 c.c_int, c.c_void_p, c.c_int, c.c_int)
+vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
+                                     c.c_ulong, c.c_long, c.c_bool)
+lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long,
+                                 vfu_region_access_cb_t, c.c_int, c.c_void_p,
+                                 c.c_uint32, c.c_int)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
-lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_uint32)
 lib.vfu_pci_init.argtypes = (c.c_void_p, c.c_int, c.c_int, c.c_int)
-lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_long, c.c_int,
+lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_ulong, c.c_int,
                                        c.POINTER(c.c_byte))
-lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_bool, c.c_int)
 lib.vfu_pci_find_capability.restype = (c.c_ulong)
-lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_int, c.c_long,
+lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 
@@ -373,7 +374,8 @@ def vfu_destroy_ctx(ctx):
 
 def vfu_setup_region(ctx, index, size, flags=0, cb=None):
     assert ctx != None
-    ret = lib.vfu_setup_region(ctx, index, size, c.cast(cb, region_cb_t),
+    ret = lib.vfu_setup_region(ctx, index, size,
+                               c.cast(cb, vfu_region_access_cb_t),
                                flags, None, 0, -1)
     return ret
 
