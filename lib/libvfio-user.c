@@ -1502,7 +1502,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_recv;
     struct vfio_user_dma_region_access dma_send;
-    int recv_size;
+    uint64_t recv_size;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
@@ -1543,7 +1543,7 @@ int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_send, dma_recv;
-    int send_size = sizeof(*dma_send) + sg->length;
+    uint64_t send_size = sizeof(*dma_send) + sg->length;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
