@@ -5,7 +5,7 @@ vfio-user Protocol Specification
 ********************************
 
 ------------
-Version_ 0.1
+Version_ 0.9
 ------------
 
 .. contents:: Table of Contents
@@ -29,7 +29,7 @@ been chosen as the base for this protocol for the following reasons:
    In a proof of concept implementation it has been demonstrated that using VFIO
    over a UNIX domain socket is a viable option. vfio-user is designed with
    QEMU in mind, however it could be used by other client applications. The
-   vfio-user protocol does not require that QEMU's VFIO client  implementation
+   vfio-user protocol does not require that QEMU's VFIO client implementation
    is used in QEMU.
 
 None of the VFIO kernel modules are required for supporting the protocol,
@@ -51,10 +51,14 @@ not examine such alternatives. In this protocol version we focus on using a
 UNIX domain socket and introduce basic support for the other two types of
 sockets without considering performance implications.
 
-While passing of file descriptors is desirable for performance reasons, it is
-not necessary neither for the client nor for the server to support it in order
-to implement the protocol. There is always an in-band, message-passing fall
-back mechanism.
+While passing of file descriptors is desirable for performance reasons, support
+is not necessary for either the client or the server in order to implement the
+protocol. There is always an in-band, message-passing fall back mechanism.
+
+Specification conventions
+=========================
+
+Unless otherwise specified, all sizes should be presumed to be in bytes.
 
 VFIO
 ====
@@ -95,19 +99,6 @@ apply to the session. The server replies with a compatible version and set of
 capabilities it supports, or closes the connection if it cannot support the
 advertised version.
 
-DMA Memory Configuration
-^^^^^^^^^^^^^^^^^^^^^^^^
-The client uses VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP messages to inform
-the server of the valid DMA ranges that the server can access on behalf
-of a device. DMA memory may be accessed by the server via VFIO_USER_DMA_READ
-and VFIO_USER_DMA_WRITE messages over the socket.
-
-An optimization for server access to client memory is for the client to provide
-file descriptors the server can mmap() to directly access client memory. Note
-that mmap() privileges cannot be revoked by the client, therefore file
-descriptors should only be exported in environments where the client trusts the
-server not to corrupt guest memory.
-
 Device Information
 ^^^^^^^^^^^^^^^^^^
 The client uses a VFIO_USER_DEVICE_GET_INFO message to query the server for
@@ -121,13 +112,13 @@ information about the device. This information includes:
 Region Information
 ^^^^^^^^^^^^^^^^^^
 The client uses VFIO_USER_DEVICE_GET_REGION_INFO messages to query the server
-for information about the device's memory regions. This information describes:
+for information about the device's regions. This information describes:
 
 * Read and write permissions, whether it can be memory mapped, and whether it
   supports additional capabilities (``VFIO_REGION_INFO_CAP_``).
 * Region index, size, and offset.
 
-When a region can be mapped by the client, the server provides a file
+When a device region can be mapped by the client, the server provides a file
 descriptor which the client can mmap(). The server is responsible for polling
 for client updates to memory mapped regions.
 
@@ -184,17 +175,25 @@ how the server signals an interrupt with VFIO_USER_SET_IRQS messages.
 
 Device Read and Write
 ^^^^^^^^^^^^^^^^^^^^^
-When the guest executes load or store operations to device memory, the client
-forwards these operations to the server with VFIO_USER_REGION_READ or
-VFIO_USER_REGION_WRITE messages. The server will reply with data from the
-device on read operations or an acknowledgement on write operations.
+When the guest executes load or store operations to an unmapped device region,
+the client forwards these operations to the server with VFIO_USER_REGION_READ or
+VFIO_USER_REGION_WRITE messages. The server will reply with data from the device
+on read operations or an acknowledgement on write operations.
 
-DMA
-^^^
-When a device performs DMA accesses to guest memory, the server will forward
-them to the client with VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages.
-These messages can only be used to access guest memory the client has
-configured into the server.
+Client memory access
+--------------------
+
+The client uses VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP messages to inform the
+server of the valid DMA ranges that the server can access on behalf of a device
+(typically, VM guest memory). DMA memory may be accessed by the server via
+VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages over the socket. In this
+case, the "DMA" part of the naming is a misnomer.
+
+Actual direct memory access of client memory from the server is possible if the
+client provides file descriptors the server can mmap(). Note that mmap()
+privileges cannot be revoked by the client, therefore file descriptors should
+only be exported in environments where the client trusts the server not to
+corrupt guest memory.
 
 Protocol Specification
 ======================
@@ -232,18 +231,18 @@ Command Concurrency
 A client may pipeline multiple commands without waiting for previous command
 replies.  The server will process commands in the order they are received.  A
 consequence of this is if a client issues a command with the *No_reply* bit,
-then subseqently issues a command without *No_reply*, the older command will
+then subsequently issues a command without *No_reply*, the older command will
 have been processed before the reply to the younger command is sent by the
 server.  The client must be aware of the device's capability to process
 concurrent commands if pipelining is used.  For example, pipelining allows
-multiple client threads to concurently access device memory; the client must
-ensure these acceses obey device semantics.
+multiple client threads to concurrently access device regions; the client must
+ensure these accesses obey device semantics.
 
 An example is a frame buffer device, where the device may allow concurrent
 access to different areas of video memory, but may have indeterminate behavior
-if concurrent acceses are performed to command or status registers.
+if concurrent accesses are performed to command or status registers.
 
-Note that unrelated messages sent from the sevrer to the client can appear in
+Note that unrelated messages sent from the server to the client can appear in
 between a client to server request/reply and vice versa.
 
 Socket Disconnection Behavior
@@ -277,10 +276,19 @@ can be cases where a client disconnection should not result in a server exit:
 2) A multi-process QEMU upgrading itself step by step, which is not yet
    implemented.
 
-Therefore in order for the protocol to be forward compatible the server should
-take no action when the client disconnects. If anything happens to the client
-the control stack will know about it and can clean up resources
-accordingly.
+Therefore in order for the protocol to be forward compatible, the server should
+respond to a client disconnection as follows:
+
+ - all client memory regions are unmapped and cleaned up (including closing any
+   passed file descriptors)
+ - all IRQ file descriptors passed from the old client are closed
+ - the device state should otherwise be retained
+
+The expectation is that when a client reconnects, it will re-establish IRQ and
+client memory mappings.
+
+If anything happens to the client (such as qemu really did exit), the control
+stack will know about it and can clean up resources accordingly.
 
 Request Retry and Response Timeout
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -444,7 +452,8 @@ Version Header Format
 Version Data Format
 ^^^^^^^^^^^^^^^^^^^
 
-The version data is an optional JSON byte array with the following format:
+The version data is an optional UTF-8 encoded JSON byte array with the following
+format:
 
 +--------------------+------------------+-----------------------------------+
 | Name               | Type             | Description                       |
@@ -458,11 +467,11 @@ Capabilities:
 +--------------------+------------------+-------------------------------------+
 | Name               | Type             | Description                         |
 +====================+==================+=====================================+
-| ``"max_fds"``      | number           | Maximum number of file descriptors  |
-|                    |                  | the can be received by the sender.  |
-|                    |                  | Optional. If not specified then the |
-|                    |                  | receiver must assume                |
-|                    |                  | ``"max_fds"=1``.                    |
+| ``"max_msg_fds"``  | number           | Maximum number of file descriptors  |
+|                    |                  | that can be received by the sender  |
+|                    |                  | in one message. Optional. If not    |
+|                    |                  | specified then the receiver must    |
+|                    |                  | assume ``"max_msg_fds"=1``.         |
 +--------------------+------------------+-------------------------------------+
 | ``"max_msg_size"`` | number           | Maximum message size in bytes that  |
 |                    |                  | the receiver can handle, including  |
@@ -538,11 +547,8 @@ This command message is sent by the client to the server to inform it of the
 memory regions the server can access. It must be sent before the server can
 perform any DMA to the client. It is normally sent directly after the version
 handshake is completed, but may also occur when memory is added to the client,
-or if the client uses a vIOMMU. If the client does not expect the server to
-perform DMA then it does not need to send to the server VFIO_USER_DMA_MAP
-commands. If the server does not need to perform DMA then it can ignore such
-commands but it must still reply to them. The table is an array of the
-following structure:
+or if the client uses a vIOMMU.
+The table is an array of the following structure:
 
 Table entry format
 ^^^^^^^^^^^^^^^^^^
@@ -572,7 +578,7 @@ Table entry format
 * *Offset* is the file offset of the region with respect to the associated file
   descriptor.
 * *Protections* are the region's protection attributes as encoded in
-  ``<sys/mman.h>``.
+  ``<sys/mman.h>``; only PROT_READ and PROT_WRITE are supported
 * *Flags* contains the following region attributes:
 
   * *Mappable* indicates that the region can be mapped via the mmap() system
@@ -660,10 +666,8 @@ Table entry format
 
 * *Address* is the base DMA address of the region.
 * *Size* is the size of the region.
-* *Offset* is the file offset of the region with respect to the associated file
-  descriptor.
-* *Protections* are the region's protection attributes as encoded in
-  ``<sys/mman.h>``.
+* *Offset*: is ignored for unmap
+* *Protections* is ignored for unmap
 * *Flags* contains the following region attributes:
 
   * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
@@ -801,8 +805,8 @@ Message format
 +--------------+------------------------+
 
 This command message is sent by the client to the server to query for
-information about device memory regions. The VFIO region info structure is
-defined in ``<linux/vfio.h>`` (``struct vfio_region_info``).
+information about device regions. The VFIO region info structure is defined in
+``<linux/vfio.h>`` (``struct vfio_region_info``).
 
 VFIO region info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -1007,11 +1011,11 @@ using VFIO_USER_REGION_READ/VFIO_USER_REGION_WRITE.
 * *device_state* defines the state of the device:
 
   The client initiates device state transition by writing the intended state.
-  The server must respond only after it has succesfully transitioned to the new
+  The server must respond only after it has successfully transitioned to the new
   state. If an error occurs then the server must respond to the
   VFIO_USER_REGION_WRITE operation with the Error field set accordingly and
   must remain at the previous state, or in case of internal error it must
-  transtition to the error state, defined as
+  transition to the error state, defined as
   VFIO_DEVICE_STATE_RESUMING | VFIO_DEVICE_STATE_SAVING. The client must
   re-read the device state in order to determine it afresh.
 
@@ -1057,7 +1061,7 @@ using VFIO_USER_REGION_READ/VFIO_USER_REGION_WRITE.
 
   * The source client transitions the device state from the running state to
     the pre-copy state. This transition is optional for the client but must be
-    supported by the server. The souce server starts sending device state data
+    supported by the server. The source server starts sending device state data
     to the source client through the migration region while the device is
     running.
 
@@ -1117,7 +1121,7 @@ stop-and-copy state in the following iterative manner:
      * stop-and-copy: this procedure can end and the device can now start
        resuming on the destination.
 
-  2. The client reads `data_offset`; at thich point the server must make
+  2. The client reads `data_offset`; at this point the server must make
      available a portion of migration data at this offset to be read by the
      client, which must happen *before* completing the read operation. The
      amount of data to be read must be stored in the `data_size` field, which
@@ -1139,7 +1143,7 @@ destination migration region at `data_offset` offset. The client can write the
 source migration data in an iterative manner and the server must consume this
 data before completing each write operation, updating the `data_offset` field.
 The server must apply the source migration data on the device resume state. The
-client must write data on the same order and transction size as read.
+client must write data on the same order and transaction size as read.
 
 If an error occurs then the server must fail the read or write operation. It is
 an implementation detail of the client how to handle errors.
@@ -1529,9 +1533,9 @@ DMA Read/Write Data
 +=========+========+==========+
 | Address | 16     | 8        |
 +---------+--------+----------+
-| Count   | 24     | 4        |
+| Count   | 24     | 8        |
 +---------+--------+----------+
-| Data    | 28     | variable |
+| Data    | 32     | variable |
 +---------+--------+----------+
 
 * *Address* is the area of client memory being accessed. This address must have
@@ -1769,7 +1773,7 @@ VFIO Dirty Bitmap Format
 
   * *VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP* requests from the server to return
     the dirty bitmap for a specific IOVA range. The IOVA range is specified by
-    "VFIO dirty bitmap get" structure, which must immediatelly follow the
+    "VFIO dirty bitmap get" structure, which must immediately follow the
     "VFIO dirty bitmap" structure, explained next. This operation is only valid
     if logging of dirty pages has been previously started. The server must
     respond the same way it does for ``VFIO_USER_DMA_UNMAP`` if

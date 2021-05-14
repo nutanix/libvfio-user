@@ -44,7 +44,7 @@
 
 /* The largest number of fd's we are prepared to receive. */
 // FIXME: value?
-#define VFIO_USER_CLIENT_MAX_FDS_LIMIT (1024)
+#define VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT (1024)
 
 extern struct transport_ops tran_sock_ops;
 
