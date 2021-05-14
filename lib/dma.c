@@ -478,7 +478,7 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
 
     for (i = 0; i < (size_t)dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
-        if (dirty_page_logging_start_on_region(region, dma->dirty_pgsize) < 0) {
+        if (dirty_page_logging_start_on_region(region, pgsize) < 0) {
             int _errno = errno;
             size_t j;
 
