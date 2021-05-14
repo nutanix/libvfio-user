@@ -555,8 +555,8 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                                                vfu_ctx);
             if (ret < 0) {
                 ret = errno;
-                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %m",
-                        rstr);
+                vfu_log(vfu_ctx, LOG_WARNING,
+                        "failed to remove DMA region %s: %m", rstr);
                 return ERROR_INT(ret);
             }
         }
