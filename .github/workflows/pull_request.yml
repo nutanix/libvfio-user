@@ -9,7 +9,8 @@ jobs:
       - name: pre-push
         run: |
           sudo apt-get update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind
+          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
+                                  python3-pytest debianutils
           make pre-push VERBOSE=1
   ubuntu-18:
     timeout-minutes: 5
@@ -19,7 +20,8 @@ jobs:
       - name: pre-push
         run: |
           sudo apt update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind
+          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
+                                  python3-pytest debianutils
           make pre-push VERBOSE=1
   centos-7:
     timeout-minutes: 5
@@ -31,7 +33,7 @@ jobs:
         run: |
           yum -y install make gcc-4.8.5 epel-release pciutils
           yum -y install clang cmake json-c-devel libcmocka-devel \
-              openssl-devel valgrind
+              openssl-devel valgrind python36-pytest which
           make pre-push VERBOSE=1
   fedora-34:
     timeout-minutes: 5
@@ -41,6 +43,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: pre-push
         run: |
-          dnf -y install --releasever=34 gcc make clang cmake json-c-devel libcmocka-devel \
-              openssl-devel pciutils diffutils valgrind
+          dnf -y install --releasever=34 \
+              gcc make clang cmake json-c-devel libcmocka-devel openssl-devel \
+              pciutils diffutils valgrind python3-pytest which
           make pre-push VERBOSE=1

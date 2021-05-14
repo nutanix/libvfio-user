@@ -546,11 +546,6 @@ int main(int argc, char *argv[])
     if (ftruncate(fileno(migr_fp), migr_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate migration file");
     }
-    server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fileno(bar1_fp), 0);
-    if (server_data.bar1 == MAP_FAILED) {
-        err(EXIT_FAILURE, "failed to mmap migration file");
-    }
     struct iovec migr_mmap_areas[] = {
         [0] = {
             .iov_base  = (void *)migr_regs_size,
