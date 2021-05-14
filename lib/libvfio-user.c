@@ -597,6 +597,7 @@ MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
     assert(ranges != NULL);
 
     if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
+        vfu_log(vfu_ctx, LOG_WARNING, "bad bitmap range size %#x", size);
         return ERROR_INT(EINVAL);
     }
     *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
