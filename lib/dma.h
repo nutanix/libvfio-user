@@ -288,6 +288,9 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize);
 void
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
+/**
+ * Returns 0 on sucess, -1 on error setting errno.
+ */
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
