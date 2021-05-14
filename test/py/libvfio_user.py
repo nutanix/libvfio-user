@@ -72,8 +72,6 @@ VFIO_DEVICE_FLAGS_PCI = (1 << 1)
 
 # libvfio-user defines
 
-SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
-
 VFU_TRANS_SOCK = 0
 LIBVFIO_USER_FLAG_ATTACH_NB = (1 << 0)
 VFU_DEV_TYPE_PCI = 0
