@@ -1533,9 +1533,9 @@ DMA Read/Write Data
 +=========+========+==========+
 | Address | 16     | 8        |
 +---------+--------+----------+
-| Count   | 24     | 4        |
+| Count   | 24     | 8        |
 +---------+--------+----------+
-| Data    | 28     | variable |
+| Data    | 32     | variable |
 +---------+--------+----------+
 
 * *Address* is the area of client memory being accessed. This address must have
