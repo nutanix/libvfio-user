@@ -154,7 +154,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
             continue;
         }
 
-        err = dma_unregister(data, &region->info);
+        err = dma_unregister == NULL ? 0 : dma_unregister(data, &region->info);
         if (err != 0) {
             err = errno;
             vfu_log(dma->vfu_ctx, LOG_ERR,
@@ -178,7 +178,9 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 }
 
 void
-dma_controller_remove_regions(dma_controller_t *dma)
+dma_controller_remove_all_regions(dma_controller_t *dma,
+                                  vfu_dma_unregister_cb_t *dma_unregister,
+                                  void *data)
 {
     int i;
 
@@ -186,12 +188,21 @@ dma_controller_remove_regions(dma_controller_t *dma)
 
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
+        int err;
 
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "removing DMA region "
                 "iova=[%p, %p) vaddr=%p mapping=[%p, %p)",
                 region->info.iova.iov_base, iov_end(&region->info.iova),
                 region->info.vaddr,
                 region->info.mapping.iov_base, iov_end(&region->info.mapping));
+
+        err = dma_unregister == NULL ? 0 : dma_unregister(data, &region->info);
+        if (err != 0) {
+            err = errno;
+            vfu_log(dma->vfu_ctx, LOG_ERR,
+                   "failed to dma_unregister() DMA region [%p, %p): %m",
+                   region->info.iova.iov_base, iov_end(&region->info.iova));
+        }
 
         if (region->info.vaddr != NULL) {
             dma_controller_unmap_region(dma, region);
@@ -207,11 +218,7 @@ dma_controller_remove_regions(dma_controller_t *dma)
 void
 dma_controller_destroy(dma_controller_t *dma)
 {
-    if (dma == NULL) {
-        return;
-    }
-
-    dma_controller_remove_regions(dma);
+    assert(dma->nregions == 0);
     free(dma);
 }
 
@@ -355,7 +362,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   vfu_dma_addr_t dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
@@ -370,7 +377,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
             vfu_dma_addr_t region_end = iov_end(&region->info.iova);
 
             while (dma_addr >= region_start && dma_addr < region_end) {
-                size_t region_len = MIN(region_end - dma_addr, len);
+                size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
                 if (cnt < max_sg) {
                     ret = dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
@@ -482,7 +489,8 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
-                              int len, size_t pgsize, size_t size, char **data)
+                              uint64_t len, size_t pgsize, size_t size,
+                              char **data)
 {
     int ret;
     ssize_t bitmap_size;

@@ -717,12 +717,6 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     free(msg->in_fds);
-
-    for (i = 0; i < msg->nr_out_fds; i++) {
-        assert(msg->out_fds[i] != -1);
-        close(msg->out_fds[i]);
-    }
-
     free(msg->out_fds);
 
     assert(msg->out_data == NULL || msg->out_iovecs == NULL);
@@ -747,9 +741,9 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 int
 MOCK_DEFINE(get_request_header)(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
-    int fds[VFIO_USER_CLIENT_MAX_FDS_LIMIT] = { 0 };
+    int fds[VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT] = { 0 };
     struct vfio_user_header hdr = { 0, };
-    size_t nr_fds = VFIO_USER_CLIENT_MAX_FDS_LIMIT;
+    size_t nr_fds = VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT;
     size_t i;
     int ret;
 
@@ -1092,12 +1086,13 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
 {
     vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    if (vfu_ctx->dma != NULL) {
+        dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
+                                          vfu_ctx);
     }
 
-    if (vfu_ctx->dma != NULL) {
-        dma_controller_remove_regions(vfu_ctx->dma);
+    if (vfu_ctx->reset != NULL) {
+        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
     }
 
     if (vfu_ctx->irqs != NULL) {
@@ -1507,7 +1502,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_recv;
     struct vfio_user_dma_region_access dma_send;
-    int recv_size;
+    uint64_t recv_size;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
@@ -1548,7 +1543,7 @@ int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_send, dma_recv;
-    int send_size = sizeof(*dma_send) + sg->length;
+    uint64_t send_size = sizeof(*dma_send) + sg->length;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
