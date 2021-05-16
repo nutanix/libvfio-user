@@ -318,13 +318,6 @@ def skip(fmt, buf):
     """Return the data remaining after skipping the given elements."""
     return buf[struct.calcsize(fmt):]
 
-def unpack_prefix(fmt, fields, buf):
-    """Return a namedtuple unpacked from the start of buf, along with the
-       remaining buf if any."""
-    t = namedtuple('_', fields)
-    size = struct.calcsize(fmt)
-    return t._make(struct.unpack_from(fmt, buf)), skip(fmt, buf)
-
 def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
