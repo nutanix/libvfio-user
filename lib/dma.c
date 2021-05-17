@@ -362,7 +362,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
-                   vfu_dma_addr_t dma_addr, uint32_t len,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_sg, int prot)
 {
     int idx;
@@ -377,7 +377,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
             vfu_dma_addr_t region_end = iov_end(&region->info.iova);
 
             while (dma_addr >= region_start && dma_addr < region_end) {
-                size_t region_len = MIN(region_end - dma_addr, len);
+                size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
                 if (cnt < max_sg) {
                     ret = dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
@@ -489,7 +489,8 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
-                              int len, size_t pgsize, size_t size, char **data)
+                              uint64_t len, size_t pgsize, size_t size,
+                              char **data)
 {
     int ret;
     ssize_t bitmap_size;

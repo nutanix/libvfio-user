@@ -27,43 +27,13 @@
 #  DAMAGE.
 #
 
-import ctypes as c
-import errno
 from libvfio_user import *
+import errno
 
-def test_vfu_realize_ctx_twice():
-    ctx = vfu_create_ctx()
-    assert ctx != None
+def test_device_get_info():
+    global ctx
 
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
-
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
-
-    vfu_destroy_ctx(ctx)
-
-def test_vfu_unrealized_ctx():
-    ctx = vfu_create_ctx()
-    assert ctx != None
-
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EINVAL
-
-    vfu_destroy_ctx(ctx)
-
-def test_vfu_realize_ctx_default():
-    ctx = vfu_create_ctx()
-    assert ctx != None
-
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
-
-    vfu_destroy_ctx(ctx)
-
-def test_vfu_realize_ctx_pci_bars():
-    ctx = vfu_create_ctx()
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=4096,
@@ -76,45 +46,43 @@ def test_vfu_realize_ctx_pci_bars():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    # region_type should be set non-MEM BAR, unset otherwise
-    hdr = get_pci_header(ctx)
-    assert hdr.bars[0].io == 0x1
-    assert hdr.bars[1].io == 0
+    # test short write
 
-    vfu_destroy_ctx(ctx)
+    sock = connect_client(ctx)
 
-def test_vfu_realize_ctx_irqs():
-    ctx = vfu_create_ctx()
-    assert ctx != None
+    payload = struct.pack("II", 0, 0)
 
-    ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_INTX_IRQ, 1)
-    assert ret == 0
+    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    get_reply(sock, expect=errno.EINVAL)
 
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
+    # bad argsz
 
-    # verify INTA# is available
-    hdr = get_pci_header(ctx)
-    assert hdr.intr.ipin == 0x1
+    # struct vfio_device_info
+    payload = struct.pack("IIII", 8, 0, 0, 0)
 
-    vfu_destroy_ctx(ctx)
+    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    get_reply(sock, expect=errno.EINVAL)
 
-def test_vfu_realize_ctx_caps():
-    ctx = vfu_create_ctx()
-    assert ctx != None
+    # valid with larger argsz
 
-    ret = vfu_pci_init(ctx)
-    assert ret == 0
+    payload = struct.pack("IIII", 32, 0, 0, 0)
 
-    pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=struct.pack(
-            "ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
-    assert pos == PCI_STD_HEADER_SIZEOF
+    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    result = get_reply(sock)
 
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
+    (argsz, flags, num_regions, num_irqs) = struct.unpack("IIII", result)
 
-    # hdr.sts.cl should be 0x1
-    hdr = get_pci_header(ctx)
-    assert hdr.sts == (1 << 4)
+    assert argsz == 16
+    assert flags == VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET
+    assert num_regions == VFU_PCI_DEV_NUM_REGIONS
+    assert num_irqs == VFU_DEV_NUM_IRQS
+
+    disconnect_client(ctx, sock)
 
     vfu_destroy_ctx(ctx)
