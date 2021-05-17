@@ -646,6 +646,9 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         return ret;
     }
 
+    vfu_log(vfu_ctx, LOG_DEBUG, "added PCI cap \"%s\" size=%#zx offset=%#zx",
+            cap.name, cap.size, cap.off);
+
     if (extended) {
         memcpy(&vfu_ctx->pci.ext_caps[vfu_ctx->pci.nr_ext_caps],
                &cap, sizeof(cap));
