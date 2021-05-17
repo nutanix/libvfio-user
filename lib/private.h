@@ -180,9 +180,6 @@ int
 handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 int
-handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
-
-int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 MOCK_DECLARE(int, handle_dirty_pages, vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);

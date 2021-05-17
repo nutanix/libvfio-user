@@ -66,7 +66,7 @@ typedef void *vfu_dma_addr_t;
 typedef struct {
     vfu_dma_addr_t dma_addr;
     int region;
-    int length;
+    uint64_t length;
     uint64_t offset;
     bool mappable;
 } dma_sg_t;

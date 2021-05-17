@@ -595,14 +595,15 @@ There is no payload in the reply message.
 ``VFIO_USER_DMA_UNMAP``
 -----------------------
 
-This command message is sent by the client to the server to inform it that a DMA
-region, previously made available via a ``VFIO_USER_DMA_MAP`` command message,
-is no longer available for DMA. It typically occurs when memory is subtracted
-from the client or if the client uses a vIOMMU. If the client does not expect
-the server to perform DMA then it does not need to send to the server
-``VFIO_USER_DMA_UNMAP`` commands. If the server does not need to perform DMA
-then it can ignore such commands but it must still reply to them. The table is
-an array of the following structure:
+This command message is sent by the client to the server to inform it that one
+or more DMA regions, previously made available via a ``VFIO_USER_DMA_MAP``
+command message, are no longer available for DMA. It typically occurs when
+memory is subtracted from the client or if the client uses a vIOMMU. If the
+client does not expect the server to perform DMA then it does not need to send
+to the server ``VFIO_USER_DMA_UNMAP`` commands. If the server does not need to
+perform DMA then it can ignore such commands but it must still reply to them.
+Each DMA region is described by a table entry in an array of the following
+structure:
 
 Request
 ^^^^^^^
@@ -629,32 +630,28 @@ following format:
 |              | | 0   | VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP | |
 |              | +-----+--------------------------------------+ |
 +--------------+--------+---------------------------------------+
-| VFIO Bitmaps | 32     | variable                              |
-+--------------+--------+---------------------------------------+
 
-* *Address* is the base DMA address of the region.
-* *Size* is the size of the region.
+* *Address* is the base DMA address of the DMA region.
+* *Size* is the size of the DMA region.
 * *Offset*: is ignored for unmap
 * *Protections* is ignored for unmap
-* *Flags* contains the following region attributes:
+* *Flags* contains the following DMA region attributes:
 
-  * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
+  * ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` indicates that a dirty page bitmap
     must be populated before unmapping the DMA region. The client must provide
-    a ``struct vfio_bitmap`` in the VFIO bitmaps field for each region, with
-    the ``vfio_bitmap.pgsize`` and ``vfio_bitmap.size`` fields initialized.
+    a ``struct vfio_user_bitmap`` immediately following this table entry.
 
-* *VFIO Bitmaps* contains one ``struct vfio_bitmap`` per region (explained
-  below) if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
+The position of the next DMA region in the table is therefore dependent on
+whether or not the previous DMA region has the
+``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in its Flags.
+
+The size of the total request message is:
+16 + (# of table entries * 32) + (# number of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` set Flags * 16).
 
 .. _VFIO bitmap format:
 
 VFIO bitmap format
-^^^^^^^^^^^^^^^^^^
-
-If the ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit is set in the request, the
-server must append to the header the ``struct vfio_bitmap`` received in the
-command followed by the bitmap, for each region. ``struct vfio_bitmap`` has the
-following format:
+""""""""""""""""""
 
 +--------+--------+------+
 | Name   | Offset | Size |
@@ -663,33 +660,27 @@ following format:
 +--------+--------+------+
 | size   | 8      | 8    |
 +--------+--------+------+
-| data   | 16     | 8    |
-+--------+--------+------+
 
 * *pgsize* is the page size for the bitmap, in bytes.
 * *size* is the size for the bitmap, in bytes, excluding the VFIO bitmap header.
-* *data* This field is unused in vfio-user.
-
-The VFIO bitmap structure is defined in ``<linux/vfio.h>``
-(``struct vfio_bitmap``).
-
-Each ``struct vfio_bitmap`` entry is followed by the region's bitmap. Each bit
-in the bitmap represents one page of size ``struct vfio_bitmap.pgsize``.
-
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
-of the message is: 16 + (# of table entries * 32).
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags then the size of
-the message is: 16 + (# of table entries * 56) + size of all bitmaps.
-
-Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is mapped
-then the server must release all references to that DMA region before replying,
-which includes potentially in flight DMA transactions. Removing a portion of a
-DMA region is possible.
 
 Reply
 ^^^^^
 
-FIXME: merge with thanos
+Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is
+mapped then the server must release all references to that DMA region before
+replying, which potentially includes in-flight DMA transactions. Removing a
+portion of a DMA region is possible.
+
+The server responds with a payload such that there is one ``struct
+vfio_user_bitmap`` for each region that had the
+``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in Flags in the request. Each
+``struct vfio_user_bitmap`` is followed by the corresponding dirty page bitmap,
+where each bit in the dirty page bitmap represents one page of size ``struct
+vfio_user_bitmap.pgsize``.
+
+The size of the total reply message is:
+16 + (# of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` in flags * 16) + size of all bitmaps.
 
 ``VFIO_USER_DEVICE_GET_INFO``
 -----------------------------
@@ -1421,7 +1412,7 @@ Request
 +=========+========+==========+
 | Address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 4        |
+| Count   | 8      | 8        |
 +---------+--------+----------+
 
 * *Address* is the client DMA memory address being accessed. This address must have
@@ -1436,9 +1427,9 @@ Reply
 +=========+========+==========+
 | Address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 4        |
+| Count   | 8      | 8        |
 +---------+--------+----------+
-| Data    | 12     | variable |
+| Data    | 16     | variable |
 +---------+--------+----------+
 
 * *Address* is the client DMA memory address being accessed.
@@ -1459,9 +1450,9 @@ Request
 +=========+========+==========+
 | Address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 4        |
+| Count   | 8      | 8        |
 +---------+--------+----------+
-| Data    | 12     | variable |
+| Data    | 16     | variable |
 +---------+--------+----------+
 
 * *Address* is the client DMA memory address being accessed. This address must have
