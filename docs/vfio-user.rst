@@ -633,8 +633,8 @@ following format:
 
 * *Address* is the base DMA address of the DMA region.
 * *Size* is the size of the DMA region.
-* *Offset*: is ignored for unmap
-* *Protections* is ignored for unmap
+* *Offset* must be zero (ignored)
+* *Protections* must be zero (ignored)
 * *Flags* contains the following DMA region attributes:
 
   * ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` indicates that a dirty page bitmap
@@ -1189,8 +1189,8 @@ Reply
 * index is the index of IRQ type being queried
 * count describes the number of interrupts of the queried type.
 
-VFIO_USER_DEVICE_SET_IRQS
--------------------------
+``VFIO_USER_DEVICE_SET_IRQS``
+-----------------------------
 
 This command message is sent by the client to the server to set actions for
 device interrupt types. The VFIO IRQ set structure is defined in
