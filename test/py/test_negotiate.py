@@ -155,10 +155,7 @@ def test_valid_negotiate_no_json():
     assert json.capabilities.max_msg_size == SERVER_MAX_MSG_SIZE
     # FIXME: migration object checks
 
-    sock.close()
-
-    # notice client closed connection
-    vfu_run_ctx(ctx)
+    disconnect_client(ctx, sock)
 
 def test_valid_negotiate_empty_json():
     client_version_json(json=b'{}')
