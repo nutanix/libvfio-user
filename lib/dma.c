@@ -174,7 +174,11 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         array_remove(&dma->regions, sizeof (*region), idx, &dma->nregions);
         return 0;
     }
-    return ERROR_INT(ENOENT);
+    /*
+     * FIMXE QEMU tries to remove non-existent region, this creates too much
+     * noise.
+     */
+    return 0;
 }
 
 void

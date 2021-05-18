@@ -107,13 +107,25 @@ struct vfio_user_device_info {
     uint32_t    num_irqs;
 } __attribute__((packed));
 
+/* based on struct vfio_bitmap */
+struct vfio_user_bitmap {
+    uint64_t pgsize;
+    uint64_t size;
+    char data[];
+} __attribute__((packed));
+
 struct vfio_user_dma_region {
-    uint64_t    addr;
-    uint64_t    size;
-    uint64_t    offset;
-    uint32_t    prot;
-    uint32_t    flags;
+    uint64_t                addr;
+    uint64_t                size;
+    uint64_t                offset;
+    uint32_t                prot;
+#ifndef VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP
+#define VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP (1 << 0)
+#endif
 #define VFIO_USER_F_DMA_REGION_MAPPABLE (1 << 0)
+    uint32_t                flags;
+    struct vfio_user_bitmap bitmap[];
+    
 } __attribute__((packed));
 
 struct vfio_user_region_access {
@@ -131,13 +143,6 @@ struct vfio_user_dma_region_access {
 
 struct vfio_user_irq_info {
     uint32_t    subindex;
-} __attribute__((packed));
-
-/* based on struct vfio_bitmap */
-struct vfio_user_bitmap {
-    uint64_t pgsize;
-    uint64_t size;
-    char data[];
 } __attribute__((packed));
 
 /* based on struct vfio_iommu_type1_dirty_bitmap_get */

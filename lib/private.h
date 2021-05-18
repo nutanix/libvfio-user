@@ -175,7 +175,12 @@ int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
 int
-handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+               struct vfio_user_dma_region *dma_regions);
+
+int
+handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                 struct vfio_user_dma_region *dma_regions);
 
 int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);

@@ -289,6 +289,10 @@ void
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 
 /**
+ * Retrives the dirty page bitmap for the specified DMA region. A pointer to
+ * the bitmap is stored in the address pointed to by data. This address is
+ * read only and must not be passed to free(3).
+ *
  * Returns 0 on sucess, -1 on error setting errno.
  */
 int
