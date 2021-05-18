@@ -403,7 +403,7 @@ test_handle_dma_unmap_dirty(void **state UNUSED)
     vfu_ctx.dma->regions[0].fd = -1;
 
     /*
-     * TODO Hack to avoid mockingdma_controller_dirty_page_get since we're
+     * TODO Hack to avoid mocking dma_controller_dirty_page_get since we're
      * moving testing to Python.
      */
     vfu_ctx.dma->dirty_pgsize = 0x1000;
@@ -425,6 +425,8 @@ test_handle_dma_unmap_dirty(void **state UNUSED)
     assert_int_equal(1, msg.nr_out_iovecs);
     assert_int_equal(8, msg.out_iovecs->iov_len);
     assert_int_equal(0xdeadbeef, *(uint64_t *)msg.out_iovecs->iov_base);
+    free(msg.out_iovecs->iov_base);
+    free(msg.out_iovecs);
 }
 
 
