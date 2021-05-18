@@ -1722,6 +1722,8 @@ test_should_exec_command(UNUSED void **state)
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
     expect_value(device_is_stopped, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
     /* TEST none of the above */
