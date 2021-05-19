@@ -555,7 +555,7 @@ following format:
 * *Address* is the base DMA address of the region.
 * *Size* is the size of the region.
 * *Offset* is the file offset of the region with respect to the associated file
-  descriptor.
+  descriptor, or zero if the region is not mappable
 * *Protections* are the region's protection attributes as encoded in
   ``<sys/mman.h>``; only ``PROT_READ`` and ``PROT_WRITE`` are supported
 * *Flags* contains the following region attributes:
@@ -598,12 +598,8 @@ There is no payload in the reply message.
 This command message is sent by the client to the server to inform it that one
 or more DMA regions, previously made available via a ``VFIO_USER_DMA_MAP``
 command message, are no longer available for DMA. It typically occurs when
-memory is subtracted from the client or if the client uses a vIOMMU. If the
-client does not expect the server to perform DMA then it does not need to send
-to the server ``VFIO_USER_DMA_UNMAP`` commands. If the server does not need to
-perform DMA then it can ignore such commands but it must still reply to them.
-Each DMA region is described by a table entry in an array of the following
-structure:
+memory is subtracted from the client or if the client uses a vIOMMU.  Each DMA
+region is described by a table entry in an array of the following structure:
 
 Request
 ^^^^^^^
