@@ -29,6 +29,7 @@
 
 from libvfio_user import *
 import errno
+import tempfile
 import os
 
 ctx = None
@@ -44,9 +45,8 @@ def test_device_get_region_info_setup():
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
     assert ret == 0
 
-    f = open("/tmp/vfio-user.map", "wb")
+    f = tempfile.TemporaryFile()
     f.truncate(65536)
-    os.remove("/tmp/vfio-user.map")
 
     mmap_areas = [ (0x2000, 0x1000), (0x4000, 0x2000) ]
 
@@ -55,9 +55,8 @@ def test_device_get_region_info_setup():
                            mmap_areas=mmap_areas, fd=f.fileno())
     assert ret == 0
 
-    f = open("/tmp/vfio-user.map2", "wb")
+    f = tempfile.TemporaryFile()
     f.truncate(0x2000)
-    os.remove("/tmp/vfio-user.map2")
 
     mmap_areas = [ (0x1000, 0x1000) ]
 
