@@ -1212,9 +1212,15 @@ int main(int argc, char *argv[])
      *
      * unmap the first group of the DMA regions
      */
-    ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP,
-                        dma_regions, sizeof(*dma_regions) * server_max_fds,
-                        NULL, NULL, 0);
+    {
+        struct vfio_user_dma_region r[server_max_fds];
+        memcpy(r, dma_regions, sizeof(r));
+        for (i = 0; i < (int)ARRAY_SIZE(r); i++) {
+            r[i].flags = 0;
+        }
+        ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, r, sizeof(r),
+                            NULL, NULL, 0);
+    }
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap DMA regions");
     }
