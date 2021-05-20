@@ -182,6 +182,9 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return migr_trans_to_valid_state(vfu_ctx, migr, device_state, notify);
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
                      uint64_t *pending_bytes, bool is_write)
@@ -234,6 +237,9 @@ handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
  * Make this behavior conditional.
  */
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                bool is_write)
@@ -251,7 +257,7 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     case VFIO_USER_MIGR_ITER_STATE_STARTED:
         ret = migr->callbacks.prepare_data(vfu_ctx, &migr->iter.offset,
                                            &migr->iter.size);
-        if (ret < 0) {
+        if (ret != 0) {
             return ret;
         }
         /*
@@ -277,6 +283,9 @@ handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
                    uint64_t *offset, bool is_write)
@@ -301,7 +310,7 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
             return ERROR_INT(EINVAL);
         }
         ret = migr->callbacks.prepare_data(vfu_ctx, offset, NULL);
-        if (ret < 0) {
+        if (ret != 0) {
             return ret;
         }
         *offset += migr->data_offset;
@@ -314,6 +323,9 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return ERROR_INT(EINVAL);
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 static ssize_t
 handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
                              bool is_write)
@@ -335,6 +347,9 @@ handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on error setting errno.
+ */
 static ssize_t
 handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                uint64_t size, bool is_write)
@@ -342,11 +357,14 @@ handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
     assert(migr != NULL);
 
     if (is_write) {
-        return  migr->callbacks.data_written(vfu_ctx, size);
+        return migr->callbacks.data_written(vfu_ctx, size);
     }
     return 0;
 }
 
+/**
+ * Returns 0 on success, -1 on failure setting errno.
+ */
 static ssize_t
 handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
                  uint64_t *size, bool is_write)
