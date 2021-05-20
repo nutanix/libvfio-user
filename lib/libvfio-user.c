@@ -569,11 +569,11 @@ handle_device_reset(vfu_ctx_t *vfu_ctx)
     return 0;
 }
 
-static int
-handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
-                       struct iovec **iovecs, size_t *nr_iovecs,
-                       struct vfio_iommu_type1_dirty_bitmap_get *ranges,
-                       uint32_t size)
+int
+MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
+                                    struct iovec **iovecs, size_t *nr_iovecs,
+                                    struct vfio_user_bitmap_range *ranges,
+                                     uint32_t size)
 {
     int ret = EINVAL;
     size_t i;
@@ -583,17 +583,17 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     assert(nr_iovecs != NULL);
     assert(ranges != NULL);
 
-    if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
+    if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
         return ERROR_INT(EINVAL);
     }
-    *nr_iovecs = size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
         return -1;
     }
 
     for (i = 0; i < *nr_iovecs; i++) {
-        struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[i];
+        struct vfio_user_bitmap_range *r = &ranges[i];
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)r->iova, r->size,
                                             r->bitmap.pgsize, r->bitmap.size,
@@ -644,7 +644,7 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP: {
-        struct vfio_iommu_type1_dirty_bitmap_get *get;
+        struct vfio_user_bitmap_range *get;
         get = (void *)(dirty_bitmap + 1);
 
         ret = handle_dirty_pages_get(vfu_ctx, &msg->out_iovecs,
