@@ -378,10 +378,6 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 static bool
 validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
-    if (vfu_ctx == NULL) {
-        return false;
-    }
-
     if ((subindex >= vfu_ctx->irqs->max_ivs)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad IRQ %d, max=%d", subindex,
                vfu_ctx->irqs->max_ivs);
@@ -395,6 +391,8 @@ int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     eventfd_t val = 1;
+
+    assert(vfu_ctx != NULL);
 
     if (!validate_irq_subindex(vfu_ctx, subindex)) {
         return ERROR_INT(EINVAL);
