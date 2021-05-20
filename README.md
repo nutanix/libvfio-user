@@ -194,6 +194,26 @@ the emulated GPIO device's pins:
     cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
     for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
 
+libvirt
+-------
+
+1. Add `xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'` to the `domain`
+   element.
+
+2. Enable sharing of the guest's RAM:
+
+    <memoryBacking>
+      <source type='file'/>
+      <access mode='shared'/>
+    </memoryBacking>
+
+3. Pass the vfio-user device:
+
+    <qemu:commandline>
+      <qemu:arg value='-device'/>
+      <qemu:arg value='vfio-user-pci,socket=/var/run/vfio-user.sock,x-enable-migration=on'/>
+    </qemu:commandline>
+
 Mailing List & Chat
 ===================
 
