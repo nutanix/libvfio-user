@@ -98,7 +98,7 @@ get_vfio_caps_size(bool is_migr_reg, vfu_reg_info_t *reg)
 
 /*
  * Populate the sparse mmap capability information to vfio-client.
- * Sparse mmap information stays after struct vfio_region_info and cap_offest
+ * Sparse mmap information stays after struct vfio_region_info and cap_offset
  * points accordingly.
  */
 static int
@@ -534,6 +534,11 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
             ret = 0;
         } else {
+
+            if (region->flags != 0) {
+                vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
+                return ERROR_INT(ENOTSUP);
+            }
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                (void *)region->addr,
                                                region->size,
@@ -551,20 +556,34 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 static int
-handle_device_reset(vfu_ctx_t *vfu_ctx)
+do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
-    vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
+    int ret;
+
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx, VFU_RESET_DEVICE);
+        ret = vfu_ctx->reset(vfu_ctx, reason);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    if (vfu_ctx->migration != NULL) {
+        return handle_device_state(vfu_ctx, vfu_ctx->migration,
+                                   VFIO_DEVICE_STATE_RUNNING, false);
     }
     return 0;
 }
 
-static int
-handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
-                       struct iovec **iovecs, size_t *nr_iovecs,
-                       struct vfio_iommu_type1_dirty_bitmap_get *ranges,
-                       uint32_t size)
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    return do_device_reset(vfu_ctx, reason);
+}
+
+int
+MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
+                                    struct iovec **iovecs, size_t *nr_iovecs,
+                                    struct vfio_user_bitmap_range *ranges,
+                                     uint32_t size)
 {
     int ret = EINVAL;
     size_t i;
@@ -574,23 +593,25 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     assert(nr_iovecs != NULL);
     assert(ranges != NULL);
 
-    if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
+    if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
         return ERROR_INT(EINVAL);
     }
-    *nr_iovecs = size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
         return -1;
     }
 
     for (i = 0; i < *nr_iovecs; i++) {
-        struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[i];
+        struct vfio_user_bitmap_range *r = &ranges[i];
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)r->iova, r->size,
                                             r->bitmap.pgsize, r->bitmap.size,
                                             (char **)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             ret = errno;
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "failed to get dirty bitmap from DMA controller: %m");
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
@@ -636,7 +657,7 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP: {
-        struct vfio_iommu_type1_dirty_bitmap_get *get;
+        struct vfio_user_bitmap_range *get;
         get = (void *)(dirty_bitmap + 1);
 
         ret = handle_dirty_pages_get(vfu_ctx, &msg->out_iovecs,
@@ -821,11 +842,12 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
                     "bad command %d while device in stop-and-copy state", cmd);
             return false;
         }
-    } else if (device_is_stopped(vfu_ctx->migration) &&
-               cmd != VFIO_USER_DIRTY_PAGES) {
-        vfu_log(vfu_ctx, LOG_ERR,
-               "bad command %d while device in stopped state", cmd);
-        return false;
+    } else if (device_is_stopped(vfu_ctx->migration)) {
+        if (!cmd_allowed_when_stopped_and_copying(cmd)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                   "bad command %d while device in stopped state", cmd);
+            return false;
+        }
     }
     return true;
 }
@@ -865,7 +887,8 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_USER_DEVICE_RESET:
-        ret = handle_device_reset(vfu_ctx);
+        vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
+        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
         break;
 
     case VFIO_USER_DIRTY_PAGES:
@@ -1083,9 +1106,7 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
                                           vfu_ctx);
     }
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
-    }
+    do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
         irqs_reset(vfu_ctx);

@@ -550,153 +550,6 @@ typedef struct {
     int conn_fd;
 } tran_sock_t;
 
-static void
-test_get_region_info(UNUSED void **state)
-{
-    struct iovec iov = { .iov_base = (void *)0x8badf00, .iov_len = 0x0d15ea5e };
-    vfu_reg_info_t reg_info[VFU_PCI_DEV_NUM_REGIONS] = {
-        {
-            .size = 0xcadebabe
-        },
-        {
-            .flags = VFU_REGION_FLAG_RW,
-            .offset = 0x8000,
-            .size = 0xdeadbeef,
-            .fd = 0x12345
-        },
-        [VFU_PCI_DEV_MIGR_REGION_IDX] = {
-            .flags = VFU_REGION_FLAG_RW,
-            .size = 0x1000,
-            .fd = -1
-        }
-    };
-    struct vfio_region_info_cap_sparse_mmap *sparse;
-    struct vfio_region_info_cap_type *type;
-    struct vfio_region_info in_info = {
-        .index = 0
-    };
-    struct vfio_region_info *out_info;
-    int ret;
-
-    vfu_ctx.nr_regions = ARRAY_SIZE(reg_info);
-    vfu_ctx.reg_info = reg_info;
-
-    /* bad argsz */
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, 0));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad region */
-    in_info.index = vfu_ctx.nr_regions;
-    in_info.argsz = sizeof(struct vfio_region_info);
-
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, in_info.argsz));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* no region caps */
-    in_info.index = 1;
-
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, in_info.argsz));
-    assert_int_equal(0, ret);
-
-    out_info = msg.out_data;
-
-    assert_int_equal(sizeof(struct vfio_region_info), out_info->argsz);
-    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
-                     VFIO_REGION_INFO_FLAG_MMAP, out_info->flags);
-    assert_int_equal(1, out_info->index);
-    assert_int_equal(0x8000, out_info->offset);
-    assert_int_equal(0xdeadbeef, out_info->size);
-    assert_int_equal(0, msg.nr_out_fds);
-
-    free(msg.out_data);
-    msg.out_data = NULL;
-
-    /* regions caps (sparse mmap) but argsz too small */
-    vfu_ctx.reg_info[1].mmap_areas = &iov;
-    vfu_ctx.reg_info[1].nr_mmap_areas = 1;
-
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, in_info.argsz));
-    assert_int_equal(0, ret);
-
-    out_info = msg.out_data;
-
-    assert_int_equal(in_info.argsz +
-                     sizeof(struct vfio_region_info_cap_sparse_mmap) +
-                     sizeof(struct vfio_region_sparse_mmap_area),
-                     out_info->argsz);
-    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
-                     VFIO_REGION_INFO_FLAG_MMAP | VFIO_REGION_INFO_FLAG_CAPS,
-                     out_info->flags);
-
-    free(msg.out_data);
-    msg.out_data = NULL;
-
-    /* region caps and argsz large enough */
-    in_info.argsz += sizeof(struct vfio_region_info_cap_sparse_mmap) +
-                     sizeof(struct vfio_region_sparse_mmap_area);
-
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, in_info.argsz));
-    assert_int_equal(0, ret);
-
-    out_info = msg.out_data;
-
-    sparse = (struct vfio_region_info_cap_sparse_mmap *)(out_info + 1);
-    assert_int_equal(VFIO_REGION_INFO_CAP_SPARSE_MMAP, sparse->header.id);
-    assert_int_equal(1, sparse->header.version);
-    assert_int_equal(0, sparse->header.next);
-    assert_int_equal(1, sparse->nr_areas);
-
-    assert_int_equal(1, msg.nr_out_fds);
-    assert_int_equal(0x12345, msg.out_fds[0]);
-
-    free(msg.out_fds);
-    msg.out_fds = NULL;
-    msg.nr_out_fds = 0;
-
-    free(msg.out_data);
-    msg.out_data = NULL;
-
-    /* migration cap */
-    vfu_ctx.reg_info[1].mmap_areas = NULL;
-    vfu_ctx.reg_info[1].nr_mmap_areas = 0;
-
-    in_info.index = VFU_PCI_DEV_MIGR_REGION_IDX;
-    in_info.argsz = sizeof(in_info) + sizeof(struct vfio_region_info_cap_type);
-
-    ret = handle_device_get_region_info(&vfu_ctx,
-                                        mkmsg(VFIO_USER_DEVICE_GET_REGION_INFO,
-                                        &in_info, in_info.argsz));
-    assert_int_equal(0, ret);
-
-    out_info = msg.out_data;
-
-    assert_int_equal(VFIO_REGION_INFO_FLAG_READ | VFIO_REGION_INFO_FLAG_WRITE |
-                     VFIO_REGION_INFO_FLAG_CAPS, out_info->flags);
-    type = (struct vfio_region_info_cap_type *)(out_info + 1);
-    assert_int_equal(VFIO_REGION_INFO_CAP_TYPE, type->header.id);
-    assert_int_equal(VFIO_REGION_TYPE_MIGRATION , type->type);
-    assert_int_equal(VFIO_REGION_SUBTYPE_MIGRATION, type->subtype);
-    assert_null(msg.out_fds);
-    assert_int_equal(0, msg.nr_out_fds);
-
-    free(msg.out_data);
-    msg.out_data = NULL;
-
-    /* FIXME add check  for multiple sparse areas */
-}
-
 /*
  * Performs various checks when adding sparse memory regions.
  */
@@ -992,9 +845,10 @@ test_migration_state_transitions(void **state UNUSED)
     bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
     uint32_t i, j;
 
-    /* from stopped (000b): all transitions are invalid */
+    /* from stopped (000b): all transitions are invalid except to running */
     assert_true(f(0, 0));
-    for (i = 1; i < 8; i++) {
+    assert_true(f(0, 1));
+    for (i = 2; i < 8; i++) {
         assert_false(f(0, i));
     }
 
@@ -1010,7 +864,7 @@ test_migration_state_transitions(void **state UNUSED)
 
     /* from stop-and-copy (010b) */
     assert_true(f(2, 0));
-    assert_false(f(2, 1));
+    assert_true(f(2, 1));
     assert_true(f(2, 2));
     assert_false(f(2, 3));
     assert_false(f(2, 4));
@@ -1255,28 +1109,30 @@ test_should_exec_command(UNUSED void **state)
     patch("cmd_allowed_when_stopped_and_copying");
     patch("device_is_stopped");
 
-    /* XXX stopped and copying, command allowed */
+    /* TEST stopped and copying, command allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_value(device_is_stopped_and_copying, migration, &migration);
     will_return(cmd_allowed_when_stopped_and_copying, true);
     expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped and copying, command not allowed */
+    /* TEST stopped and copying, command not allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(cmd_allowed_when_stopped_and_copying, false);
     expect_any(cmd_allowed_when_stopped_and_copying, cmd);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped */
+    /* TEST stopped */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
     expect_value(device_is_stopped, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX none of the above */
+    /* TEST none of the above */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, false);
@@ -1374,7 +1230,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
 {
     dma_memory_region_t *r;
     uint64_t len = UINT32_MAX + (uint64_t)10;
-    char bp[131073];
+    char bp[0x20008]; /* must be QWORD aligned */
 
     vfu_ctx.dma->nregions = 1;
     r = &vfu_ctx.dma->regions[0];
@@ -1384,7 +1240,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
     vfu_ctx.dma->dirty_pgsize = 4096;
 
     assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
-                     len, 4096, 131073, (char **)&bp));
+                     len, 4096, sizeof(bp), (char **)&bp));
 }
 
 int
@@ -1404,7 +1260,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
-        cmocka_unit_test_setup(test_get_region_info, setup),
         cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
         cmocka_unit_test_setup(test_device_set_irqs, setup),
