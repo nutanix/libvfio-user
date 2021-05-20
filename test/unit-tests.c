@@ -845,9 +845,10 @@ test_migration_state_transitions(void **state UNUSED)
     bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
     uint32_t i, j;
 
-    /* from stopped (000b): all transitions are invalid */
+    /* from stopped (000b): all transitions are invalid except to running */
     assert_true(f(0, 0));
-    for (i = 1; i < 8; i++) {
+    assert_true(f(0, 1));
+    for (i = 2; i < 8; i++) {
         assert_false(f(0, i));
     }
 
@@ -863,7 +864,7 @@ test_migration_state_transitions(void **state UNUSED)
 
     /* from stop-and-copy (010b) */
     assert_true(f(2, 0));
-    assert_false(f(2, 1));
+    assert_true(f(2, 1));
     assert_true(f(2, 2));
     assert_false(f(2, 3));
     assert_false(f(2, 4));
@@ -1107,28 +1108,30 @@ test_should_exec_command(UNUSED void **state)
     patch("cmd_allowed_when_stopped_and_copying");
     patch("device_is_stopped");
 
-    /* XXX stopped and copying, command allowed */
+    /* TEST stopped and copying, command allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_value(device_is_stopped_and_copying, migration, &migration);
     will_return(cmd_allowed_when_stopped_and_copying, true);
     expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped and copying, command not allowed */
+    /* TEST stopped and copying, command not allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(cmd_allowed_when_stopped_and_copying, false);
     expect_any(cmd_allowed_when_stopped_and_copying, cmd);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped */
+    /* TEST stopped */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
     expect_value(device_is_stopped, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX none of the above */
+    /* TEST none of the above */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, false);
@@ -1226,7 +1229,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
 {
     dma_memory_region_t *r;
     uint64_t len = UINT32_MAX + (uint64_t)10;
-    char bp[131073];
+    char bp[0x20008]; /* must be QWORD aligned */
 
     vfu_ctx.dma->nregions = 1;
     r = &vfu_ctx.dma->regions[0];
@@ -1236,7 +1239,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
     vfu_ctx.dma->dirty_pgsize = 4096;
 
     assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
-                     len, 4096, 131073, (char **)&bp));
+                     len, 4096, sizeof(bp), (char **)&bp));
 }
 
 int

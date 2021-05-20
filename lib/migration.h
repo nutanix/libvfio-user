@@ -65,8 +65,11 @@ migration_get_pgsize(struct migration *migr);
 int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
 
-bool
-vfio_migr_state_transition_is_valid(uint32_t from, uint32_t to);
+MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
+             uint32_t to);
+
+MOCK_DECLARE(ssize_t, handle_device_state, vfu_ctx_t *vfu_ctx,
+             struct migration *migr, uint32_t device_state, bool notify);
 
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 
