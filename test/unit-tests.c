@@ -1226,7 +1226,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
 {
     dma_memory_region_t *r;
     uint64_t len = UINT32_MAX + (uint64_t)10;
-    char bp[131073];
+    char bp[0x20008]; /* must be QWORD aligned */
 
     vfu_ctx.dma->nregions = 1;
     r = &vfu_ctx.dma->regions[0];
@@ -1236,7 +1236,7 @@ test_dma_controller_dirty_page_get(void **state UNUSED)
     vfu_ctx.dma->dirty_pgsize = 4096;
 
     assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
-                     len, 4096, 131073, (char **)&bp));
+                     len, 4096, sizeof(bp), (char **)&bp));
 }
 
 int
