@@ -46,6 +46,14 @@ set(LIBOBJS
     $<TARGET_OBJECTS:pci>
     $<TARGET_OBJECTS:tran_sock>)
 
+add_library(pci_caps OBJECT pci_caps.c)
+add_library(dma OBJECT dma.c)
+add_library(irq OBJECT irq.c)
+add_library(libvfio-user OBJECT libvfio-user.c)
+add_library(migration OBJECT migration.c)
+add_library(pci OBJECT pci.c)
+add_library(tran_sock OBJECT tran_sock.c)
+
 add_library(vfio-user-shared SHARED ${LIBOBJS})
 target_link_libraries(vfio-user-shared json-c pthread)
 set_target_properties(vfio-user-shared PROPERTIES
@@ -64,14 +72,6 @@ set_target_properties(vfio-user-static PROPERTIES
 set_target_properties(vfio-user-static PROPERTIES
                       OUTPUT_NAME vfio-user
                       CLEAN_DIRECT_OUTPUT 1)
-
-add_library(pci_caps OBJECT pci_caps.c)
-add_library(dma OBJECT OBJECT dma.c)
-add_library(irq OBJECT irq.c)
-add_library(libvfio-user OBJECT libvfio-user.c)
-add_library(migration OBJECT migration.c)
-add_library(pci OBJECT pci.c)
-add_library(tran_sock OBJECT tran_sock.c)
 
 install(TARGETS vfio-user-shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
