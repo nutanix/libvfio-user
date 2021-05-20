@@ -98,7 +98,7 @@ get_vfio_caps_size(bool is_migr_reg, vfu_reg_info_t *reg)
 
 /*
  * Populate the sparse mmap capability information to vfio-client.
- * Sparse mmap information stays after struct vfio_region_info and cap_offest
+ * Sparse mmap information stays after struct vfio_region_info and cap_offset
  * points accordingly.
  */
 static int
