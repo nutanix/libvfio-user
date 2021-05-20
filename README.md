@@ -214,6 +214,29 @@ libvirt
       <qemu:arg value='vfio-user-pci,socket=/var/run/vfio-user.sock,x-enable-migration=on'/>
     </qemu:commandline>
 
+
+nvmf/vfio-user
+--------------
+
+[SPDK v21.01](https://github.com/spdk/spdk/releases/tag/v21.01) added
+experimental support for a virtual NVMe controller. The controller can be
+used with the same command line as the one used for GPIO.
+
+To use the nvmf/vfio-user target with a libvirt quest, the guest RAM must be
+backed by hugepages:
+
+    <memoryBacking>
+      <hugepages>
+        <page size='2048' unit='KiB'/>
+      </hugepages>
+      <source type='memfd'/>
+      <access mode='shared'/>
+    </memoryBacking>
+
+Because SPDK must be run as root, either fix the vfio-user socket permissions
+or configure libvirt to run QEMU as root.
+
+
 Mailing List & Chat
 ===================
 
