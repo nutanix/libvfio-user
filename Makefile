@@ -47,7 +47,7 @@ ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
 
-CMAKE = cmake
+CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
 
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
@@ -64,13 +64,11 @@ all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
 # NB: add --capture=no to get a C-level assert failure output.
 #
 PYTESTCMD = \
-	$(shell which -a pytest-3 /bin/true 2>/dev/null | head -1) \
-	-rP \
-	--quiet
+    $(shell bash -c "command -v pytest-3 /bin/true" | head -1) \
+    -rP --quiet
 
 PYTEST = \
-    BUILD_TYPE=$(BUILD_TYPE) \
-	$(PYTESTCMD)
+    BUILD_TYPE=$(BUILD_TYPE) $(PYTESTCMD)
 
 #
 # In our tests, we make sure to destroy the ctx at the end of each test; this is
