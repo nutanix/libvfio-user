@@ -38,4 +38,9 @@ void mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 int mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
+int mock_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type);
+
+int mock_notify_migr_state_trans_cb(vfu_ctx_t *vfu_ctx,
+                                    vfu_migr_state_t vfu_state);
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
