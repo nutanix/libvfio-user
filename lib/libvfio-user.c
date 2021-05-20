@@ -565,13 +565,27 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 static int
-handle_device_reset(vfu_ctx_t *vfu_ctx)
+do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
-    vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
+    int ret;
+
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx, VFU_RESET_DEVICE);
+        ret = vfu_ctx->reset(vfu_ctx, reason);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    if (vfu_ctx->migration != NULL) {
+        return handle_device_state(vfu_ctx, vfu_ctx->migration,
+                                   VFIO_DEVICE_STATE_RUNNING, false);
     }
     return 0;
+}
+
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    return do_device_reset(vfu_ctx, reason);
 }
 
 int
@@ -836,11 +850,12 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
                     "bad command %d while device in stop-and-copy state", cmd);
             return false;
         }
-    } else if (device_is_stopped(vfu_ctx->migration) &&
-               cmd != VFIO_USER_DIRTY_PAGES) {
-        vfu_log(vfu_ctx, LOG_ERR,
-               "bad command %d while device in stopped state", cmd);
-        return false;
+    } else if (device_is_stopped(vfu_ctx->migration)) {
+        if (!cmd_allowed_when_stopped_and_copying(cmd)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                   "bad command %d while device in stopped state", cmd);
+            return false;
+        }
     }
     return true;
 }
@@ -880,7 +895,8 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_USER_DEVICE_RESET:
-        ret = handle_device_reset(vfu_ctx);
+        vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
+        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
         break;
 
     case VFIO_USER_DIRTY_PAGES:
@@ -1098,9 +1114,7 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
                                           vfu_ctx);
     }
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
-    }
+    do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
         irqs_reset(vfu_ctx);
