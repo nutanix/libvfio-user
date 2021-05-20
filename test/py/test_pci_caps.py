@@ -100,7 +100,8 @@ cap_offsets = (
     # NB: note 4-byte alignment of vsc2
     PCI_STD_HEADER_SIZEOF + PCI_PM_SIZEOF + 8,
     0x80,
-    0x90
+    0x90,
+    0xa0
 )
 
 def test_add_caps():
@@ -293,9 +294,29 @@ def test_pci_cap_write_pmcs():
 
     disconnect_client(ctx, sock)
 
+@c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
+def vfu_reset_cb(ctx, reset_type):
+    assert reset_type == VFU_RESET_PCI_FLR or reset_type == VFU_RESET_LOST_CONN
+    return 0
+
 def test_pci_cap_write_px():
-    # FIXME
-    pass
+    sock = connect_client(ctx)
+    ret = vfu_setup_device_reset_cb(ctx, vfu_reset_cb)
+    assert ret == 0
+
+    #flrc
+    cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
+                      b'\x02', *[b'\0' for _ in range(52)])
+    pos = vfu_pci_add_capability(ctx, pos=cap_offsets[5], flags=0, data=cap)
+    assert pos == cap_offsets[5]
+
+    #iflr
+    offset=cap_offsets[5] + 8
+    data=b'\x00\x80'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                 count=len(data), data=data)
+
+    disconnect_client(ctx, sock)
 
 def test_pci_cap_write_msix():
     # FIXME
