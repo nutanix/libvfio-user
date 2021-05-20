@@ -605,6 +605,8 @@ MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
                                             (char **)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             ret = errno;
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "failed to get dirty bitmap from DMA controller: %m");
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
