@@ -115,19 +115,7 @@ setup(void **state UNUSED)
     return 0;
 }
 
-static void
-test_dma_map_without_dma(void **state UNUSED)
-{
-    struct vfio_user_dma_region dma_region = {
-        .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
-    };
-
-    vfu_ctx.dma = NULL;
-
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP,
-                                  &dma_region, sizeof(dma_region)));
-    assert_int_equal(0, ret);
-}
+/* FIXME must replace test_dma_map_without_dma */
 
 static void
 test_dma_map_mappable_without_fd(void **state UNUSED)
@@ -136,8 +124,9 @@ test_dma_map_mappable_without_fd(void **state UNUSED)
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
 
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP,
-                                  &dma_region, sizeof(dma_region)));
+    ret = handle_dma_map(&vfu_ctx,
+                         mkmsg(VFIO_USER_DMA_MAP, &dma_region, sizeof(dma_region)),
+                         &dma_region);
     assert_int_equal(-1, ret);
     assert_int_equal(errno, EINVAL);
 }
@@ -161,8 +150,7 @@ test_dma_map_without_fd(void **state UNUSED)
     expect_value(dma_controller_add_region, fd, -1);
     expect_value(dma_controller_add_region, offset, r.offset);
     expect_value(dma_controller_add_region, prot, r.prot);
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP,
-                                  &r, sizeof(r)));
+    ret = handle_dma_map(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP, &r, sizeof(r)), &r);
     assert_int_equal(0, ret);
 }
 
@@ -183,156 +171,7 @@ check_dma_info(const LargestIntegralType value,
 }
 
 /*
- * Tests that adding multiple DMA regions that not all of them are mappable
- * results in only the mappable one being memory mapped.
- * FIXME this test no longer tests what it's supposed to be testing, since
- * checking that a non-mappable DMA region doesn't get mmap'ed can only be done
- * in dma_controller_add_region. We don't have such a test (we only have
- * test_dma_controller_add_region_no_fd), we should add it.
- */
-static void
-test_dma_add_regions_mixed(void **state UNUSED)
-{
-    size_t count = 0;
-    struct vfio_user_dma_region r[2] = {
-        [0] = {
-            .addr = 0xdeadbeef,
-            .size = 0x1000,
-            .offset = 0,
-            .prot = PROT_NONE
-        },
-        [1] = {
-            .addr = 0xcafebabe,
-            .size = 0x1000,
-            .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
-            .prot = PROT_READ | PROT_WRITE
-        }
-    };
-
-    vfu_ctx.dma_register = mock_dma_register;
-    vfu_ctx.pvt = &count;
-
-    fds[0] = 0x0badf00d;
-    nr_fds = 1;
-
-    vfu_ctx.dma->regions[0].info.iova.iov_base = (void *)r[0].addr;
-    vfu_ctx.dma->regions[0].info.iova.iov_len = r[0].size;
-    vfu_ctx.dma->regions[0].info.prot = r[0].prot;
-    vfu_ctx.dma->regions[1].info.iova.iov_base = (void *)r[1].addr;
-    vfu_ctx.dma->regions[1].info.iova.iov_len = r[1].size;
-    vfu_ctx.dma->regions[1].info.prot = r[1].prot;
-    vfu_ctx.dma->nregions = 2;
-
-    patch("dma_controller_add_region");
-    /* 1st region */
-    will_return(dma_controller_add_region, 0);
-    will_return(dma_controller_add_region, 0);
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
-    expect_value(dma_controller_add_region, dma_addr, r[0].addr);
-    expect_value(dma_controller_add_region, size, r[0].size);
-    expect_value(dma_controller_add_region, fd, -1);
-    expect_value(dma_controller_add_region, offset, r[0].offset);
-    expect_value(dma_controller_add_region, prot, r[0].prot);
-    expect_value(mock_dma_register, vfu_ctx, &vfu_ctx);
-    expect_check(mock_dma_register, info, check_dma_info,
-                 &vfu_ctx.dma->regions[0].info);
-    /* 2nd region */
-    will_return(dma_controller_add_region, 0);
-    will_return(dma_controller_add_region, 1);
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
-    expect_value(dma_controller_add_region, dma_addr, r[1].addr);
-    expect_value(dma_controller_add_region, size, r[1].size);
-    expect_value(dma_controller_add_region, fd, fds[0]);
-    expect_value(dma_controller_add_region, offset, r[1].offset);
-    expect_value(dma_controller_add_region, prot, r[1].prot);
-    expect_value(mock_dma_register, vfu_ctx, &vfu_ctx);
-    expect_check(mock_dma_register, info, check_dma_info,
-                 &vfu_ctx.dma->regions[1].info);
-
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP,
-                                  r, sizeof(r)));
-    assert_int_equal(0, ret);
-    assert_int_equal(-1, fds[0]);
-}
-
-/*
- * Tests that handle_dma_map_or_unmap closes unconsumed file descriptors when
- * failing halfway through.
- */
-static void
-test_dma_add_regions_mixed_partial_failure(void **state UNUSED)
-{
-    struct vfio_user_dma_region r[3] = {
-        [0] = {
-            .addr = 0xdeadbeef,
-            .size = 0x1000,
-            .offset = 0
-        },
-        [1] = {
-            .addr = 0xcafebabe,
-            .size = 0x1000,
-            .offset = 0x1000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
-            .prot = PROT_READ
-        },
-        [2] = {
-            .addr = 0xbabecafe,
-            .size = 0x1000,
-            .offset = 0x2000,
-            .flags = VFIO_USER_F_DMA_REGION_MAPPABLE,
-            .prot = PROT_READ|PROT_WRITE
-        }
-    };
-
-    fds[0] = 0xa;
-    fds[1] = 0xb;
-    nr_fds = 2;
-
-    patch("dma_controller_add_region");
-
-    /* 1st region */
-    will_return(dma_controller_add_region, 0);
-    will_return(dma_controller_add_region, 0);
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
-    expect_value(dma_controller_add_region, dma_addr, r[0].addr);
-    expect_value(dma_controller_add_region, size, r[0].size);
-    expect_value(dma_controller_add_region, fd, -1);
-    expect_value(dma_controller_add_region, offset, r[0].offset);
-    expect_value(dma_controller_add_region, prot, r[0].prot);
-
-    /* 2nd region */
-    will_return(dma_controller_add_region, 0);
-    will_return(dma_controller_add_region, 1);
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
-    expect_value(dma_controller_add_region, dma_addr, r[1].addr);
-    expect_value(dma_controller_add_region, size, r[1].size);
-    expect_value(dma_controller_add_region, fd, fds[0]);
-    expect_value(dma_controller_add_region, offset, r[1].offset);
-    expect_value(dma_controller_add_region, prot, r[1].prot);
-
-    /* 3rd region */
-    will_return(dma_controller_add_region, EREMOTEIO);
-    will_return(dma_controller_add_region, -1);
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
-    expect_value(dma_controller_add_region, dma_addr, r[2].addr);
-    expect_value(dma_controller_add_region, size, r[2].size);
-    expect_value(dma_controller_add_region, fd, fds[1]);
-    expect_value(dma_controller_add_region, offset, r[2].offset);
-    expect_value(dma_controller_add_region, prot, r[2].prot);
-
-    patch("close");
-    expect_value(close, fd, 0xb);
-    will_return(close, 0);
-
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_MAP,
-                                  r, sizeof(r)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EREMOTEIO, errno);
-}
-
-/*
- * Checks that handle_dma_map_or_unmap returns 0 when dma_controller_add_region
+ * Checks that handle_dma_map returns 0 when dma_controller_add_region
  * succeeds.
  */
 static void
@@ -353,12 +192,14 @@ test_dma_map_return_value(void **state UNUSED)
     will_return(dma_controller_add_region, 0);
     will_return(dma_controller_add_region, 2);
 
-    assert_int_equal(0, handle_dma_map_or_unmap(&vfu_ctx,
-                     mkmsg(VFIO_USER_DMA_MAP, &r, sizeof(r))));
+    assert_int_equal(0, handle_dma_map(&vfu_ctx,
+                                       mkmsg(VFIO_USER_DMA_MAP, &r,
+                                             sizeof(r)),
+                                       &r));
 }
 
 /*
- * Tests that handle_dma_map_or_unmap correctly removes a region.
+ * Tests that handle_dma_unmap correctly removes a region.
  */
 static void
 test_handle_dma_unmap(void **state UNUSED)
@@ -385,8 +226,9 @@ test_handle_dma_unmap(void **state UNUSED)
                  &vfu_ctx.dma->regions[0].info);
     will_return(mock_dma_unregister, 0);
 
-    ret = handle_dma_map_or_unmap(&vfu_ctx, mkmsg(VFIO_USER_DMA_UNMAP,
-                                  &r, sizeof(r)));
+    ret = handle_dma_unmap(&vfu_ctx,
+                           mkmsg(VFIO_USER_DMA_UNMAP, &r, sizeof(r)),
+                           &r);
 
     assert_int_equal(0, ret);
     assert_int_equal(2, vfu_ctx.dma->nregions);
@@ -1246,11 +1088,8 @@ int
 main(void)
 {
    const struct CMUnitTest tests[] = {
-        cmocka_unit_test_setup(test_dma_map_without_dma, setup),
         cmocka_unit_test_setup(test_dma_map_mappable_without_fd, setup),
         cmocka_unit_test_setup(test_dma_map_without_fd, setup),
-        cmocka_unit_test_setup(test_dma_add_regions_mixed, setup),
-        cmocka_unit_test_setup(test_dma_add_regions_mixed_partial_failure, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
         cmocka_unit_test_setup(test_handle_dma_unmap, setup),
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
