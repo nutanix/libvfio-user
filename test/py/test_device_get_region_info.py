@@ -108,7 +108,7 @@ def test_device_get_region_info_larger_argsz():
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    assert(len(result) == 32 + 8)
+    assert(len(result) == 32)
 
     info, _ = vfio_region_info(result)
 
