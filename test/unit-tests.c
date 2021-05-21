@@ -239,6 +239,52 @@ test_handle_dma_unmap(void **state UNUSED)
 }
 
 static void
+test_handle_dma_unmap_dirty(void **state UNUSED)
+{
+    uint64_t bitmap = 0xdeadbeef;
+    size_t size = sizeof(struct vfio_user_dma_region) + sizeof(struct vfio_user_bitmap);
+    struct vfio_user_dma_region *r = alloca(size);
+    r->addr= 0x0;
+    r->size = 0x1000;
+    r->offset = r->prot = 0; /* silence valgrind */
+    r->flags = VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP;
+    r->bitmap->pgsize = 0x1000;
+    r->bitmap->size = 8;
+
+    vfu_ctx.dma->nregions = 1;
+    vfu_ctx.dma->regions[0].info.iova.iov_base = (void *)0x0;
+    vfu_ctx.dma->regions[0].info.iova.iov_len = 0x1000;
+    vfu_ctx.dma->regions[0].fd = -1;
+
+    /*
+     * TODO Hack to avoid mocking dma_controller_dirty_page_get since we're
+     * moving testing to Python.
+     */
+    vfu_ctx.dma->dirty_pgsize = 0x1000;
+    vfu_ctx.dma->regions[0].dirty_bitmap = (void *)&bitmap;
+
+    vfu_ctx.dma_unregister = mock_dma_unregister;
+
+    expect_value(mock_dma_unregister, vfu_ctx, &vfu_ctx);
+    expect_check(mock_dma_unregister, info, check_dma_info,
+                 &vfu_ctx.dma->regions[0].info);
+    will_return(mock_dma_unregister, 0);
+
+    ret = handle_dma_unmap(&vfu_ctx,
+                           mkmsg(VFIO_USER_DMA_UNMAP, &r, size),
+                           r);
+
+    assert_int_equal(0, ret);
+    assert_int_equal(0, vfu_ctx.dma->nregions);
+    assert_int_equal(1, msg.nr_out_iovecs);
+    assert_int_equal(8, msg.out_iovecs->iov_len);
+    assert_int_equal(0xdeadbeef, *(uint64_t *)msg.out_iovecs->iov_base);
+    free(msg.out_iovecs->iov_base);
+    free(msg.out_iovecs);
+}
+
+
+static void
 test_dma_controller_add_region_no_fd(void **state UNUSED)
 {
     vfu_dma_addr_t dma_addr = (void *)0xdeadbeef;
@@ -1092,6 +1138,7 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_without_fd, setup),
         cmocka_unit_test_setup(test_dma_map_return_value, setup),
         cmocka_unit_test_setup(test_handle_dma_unmap, setup),
+        cmocka_unit_test_setup(test_handle_dma_unmap_dirty, setup),
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
