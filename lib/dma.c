@@ -256,6 +256,33 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     return 0;
 }
 
+static ssize_t
+get_bitmap_size(size_t region_size, size_t pgsize)
+{
+    if (pgsize == 0) {
+        return ERROR_INT(EINVAL);
+    }
+    if (region_size < pgsize) {
+        return ERROR_INT(EINVAL);
+    }
+    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
+    return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+}
+
+static int
+dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
+{
+    ssize_t size = get_bitmap_size(region->info.iova.iov_len, pgsize);
+    if (size < 0) {
+        return size;
+    }
+    region->dirty_bitmap = calloc(size, sizeof(char));
+    if (region->dirty_bitmap == NULL) {
+        return ERROR_INT(errno);
+    }
+    return 0;
+}
+
 int
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, size_t size,
@@ -340,7 +367,23 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     region->fd = fd;
 
     if (fd != -1) {
-        int ret = dma_map_region(dma, region);
+        int ret;
+
+        /*
+         * TODO introduce a function that tells whether dirty page logging is
+         * enabled
+         */
+        if (dma->dirty_pgsize != 0) {
+            if (dirty_page_logging_start_on_region(region, dma->dirty_pgsize) < 0) {
+                /*
+                 * TODO We don't necessarily have to fail, we can continue
+                 * and fail the get dirty page bitmap request later.
+                 */
+                return -1;
+            }
+        }
+
+        ret = dma_map_region(dma, region);
 
         if (ret != 0) {
             ret = errno;
@@ -351,7 +394,9 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                 vfu_log(dma->vfu_ctx, LOG_WARNING,
                         "failed to close fd %d: %m", region->fd);
             }
-
+            if (region->dirty_bitmap != NULL) {
+                free(region->dirty_bitmap);
+            }
             return ERROR_INT(ret);
         }
     }
@@ -413,19 +458,6 @@ out:
     return cnt;
 }
 
-static ssize_t
-get_bitmap_size(size_t region_size, size_t pgsize)
-{
-    if (pgsize == 0) {
-        return ERROR_INT(EINVAL);
-    }
-    if (region_size < pgsize) {
-        return ERROR_INT(EINVAL);
-    }
-    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
-    return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
-}
-
 int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
     size_t i;
@@ -445,16 +477,8 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
 
     for (i = 0; i < (size_t)dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
-        ssize_t bitmap_size;
-
-        bitmap_size = get_bitmap_size(region->info.iova.iov_len, pgsize);
-
-        if (bitmap_size < 0) {
-            return bitmap_size;
-        }
-        region->dirty_bitmap = calloc(bitmap_size, sizeof(char));
-        if (region->dirty_bitmap == NULL) {
-            int ret = errno;
+        if (dirty_page_logging_start_on_region(region, pgsize) < 0) {
+            int _errno = errno;
             size_t j;
 
             for (j = 0; j < i; j++) {
@@ -462,7 +486,7 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
                 free(region->dirty_bitmap);
                 region->dirty_bitmap = NULL;
             }
-            return ERROR_INT(ret);
+            return ERROR_INT(_errno);
         }
     }
     dma->dirty_pgsize = pgsize;
