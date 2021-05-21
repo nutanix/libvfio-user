@@ -136,8 +136,8 @@ MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
  */
 int
 MOCK_DEFINE(state_trans_notify)(vfu_ctx_t *vfu_ctx,
-                                 int (*fn)(vfu_ctx_t *, vfu_migr_state_t),
-                                 uint32_t vfio_device_state)
+                                int (*fn)(vfu_ctx_t *, vfu_migr_state_t),
+                                uint32_t vfio_device_state)
 {
     /*
      * We've already checked that device_state is valid by calling
