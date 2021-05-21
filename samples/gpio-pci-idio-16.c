@@ -141,6 +141,7 @@ main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
+    bool restart = true;
     int opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
@@ -157,13 +158,16 @@ main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "v")) != -1) {
+    while ((opt = getopt(argc, argv, "Rv")) != -1) {
         switch (opt) {
+            case 'R':
+                restart = false;
+                break;
             case 'v':
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-v] <socketpath>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-Rv] <socketpath>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
@@ -237,12 +241,19 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to attach device");
     }
 
-    ret = vfu_run_ctx(vfu_ctx);
-    if (ret != 0) {
-        if (errno != ENOTCONN && errno != EINTR) {
-            err(EXIT_FAILURE, "failed to realize device emulation");
+    do {
+        ret = vfu_run_ctx(vfu_ctx);
+        if (ret != 0) {
+            if (errno == ENOTCONN) {
+                ret = vfu_attach_ctx(vfu_ctx);
+                if (ret < 0) {
+                    err(EXIT_FAILURE, "failed to re-attach device");
+                 }
+            } else if (errno != EINTR) {
+                err(EXIT_FAILURE, "vfu_run_ctx() failed");
+            }
         }
-    }
+    } while (restart);
 
     vfu_destroy_ctx(vfu_ctx);
     return EXIT_SUCCESS;
