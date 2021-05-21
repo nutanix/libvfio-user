@@ -490,10 +490,14 @@ int main(int argc, char *argv[])
      * are mappable. The client can still mmap the 2nd page, we can't prohibit
      * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
+     *
+     * We choose to use a single file which contains both BAR1 and the migration
+     * registers. They could also be completely different files.
      */
     if ((fp = tmpfile()) == NULL) {
-        err(EXIT_FAILURE, "failed to create BAR1 file");
+        err(EXIT_FAILURE, "failed to create backing file");
     }
+
     server_data.bar1_size = bar1_size;
 
     /*
@@ -505,12 +509,8 @@ int main(int argc, char *argv[])
     migr_data_size = page_align(bar1_size + sizeof(time_t));
     migr_size = migr_regs_size + migr_data_size;
 
-    /*
-     * We choose to use a single file which contains both bar1 and the migration
-     * registers. They could also be completely different files.
-     */
     if (ftruncate(fileno(fp), server_data.bar1_size + migr_size) == -1) {
-        err(EXIT_FAILURE, "failed to truncate BAR1 file");
+        err(EXIT_FAILURE, "failed to truncate backing file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
                             MAP_SHARED, fileno(fp), 0);
