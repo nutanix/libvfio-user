@@ -174,7 +174,11 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         array_remove(&dma->regions, sizeof (*region), idx, &dma->nregions);
         return 0;
     }
-    return ERROR_INT(ENOENT);
+    /*
+     * FIMXE QEMU tries to remove non-existent region, this creates too much
+     * noise.
+     */
+    return 0;
 }
 
 void
@@ -298,6 +302,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#lx prot=%#x",
              dma_addr, (char *)dma_addr + size, fd, offset, prot);
 
+    /* TODO move this for loop into a separate function */
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];
 

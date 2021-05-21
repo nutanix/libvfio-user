@@ -648,6 +648,7 @@ MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
     assert(ranges != NULL);
 
     if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
+        vfu_log(vfu_ctx, LOG_WARNING, "bad bitmap range size %#x", size);
         return ERROR_INT(EINVAL);
     }
     *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
@@ -700,11 +701,13 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     switch (dirty_bitmap->flags) {
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_START:
+        vfu_log(vfu_ctx, LOG_DEBUG, "start logging dirty pages");
         ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
                   migration_get_pgsize(vfu_ctx->migration));
         break;
 
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP:
+        vfu_log(vfu_ctx, LOG_DEBUG, "stop logging dirty pages");
         dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
         ret = 0;
         break;
