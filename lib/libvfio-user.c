@@ -479,7 +479,7 @@ int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                struct vfio_user_dma_region *region)
 {
-    char rstr[1024]; /* TODO this can be much smaller */;
+    char rstr[1024];
     int fd = -1;
     int ret;
 
@@ -523,8 +523,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     if (vfu_ctx->dma_register != NULL) {
-        vfu_ctx->dma_register(vfu_ctx,
-                              &vfu_ctx->dma->regions[ret].info);
+        vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
     }
     return 0;
 }
@@ -534,18 +533,17 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_region *region)
 {
     int ret;
+    char rstr[1024];
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(region != NULL);
 
-    if (msg->in_size < sizeof(*region)) {
+    if (msg->in_size != sizeof(*region)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA unmap region %zu",
                 msg->in_size);
         return ERROR_INT(EINVAL);
     }
-
-    char rstr[1024];
 
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx "
             "prot=%#x flags=%#x", region->addr, region->addr + region->size,
@@ -553,12 +551,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
-    if (region->flags == 0) {
-        if (msg->in_size != sizeof(struct vfio_user_dma_region)) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad message size %#lx", msg->in_size);
-            return ERROR_INT(EINVAL);
-        }
-    } else {
+    if (region->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
         return ERROR_INT(ENOTSUP);
     }
