@@ -816,6 +816,10 @@ is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return false;
     }
 
+    /*
+     * We never solicit a reply larger than we can handle, so we can check this
+     * simply here.
+     */
     if (msg->hdr.msg_size > SERVER_MAX_MSG_SIZE) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
                 msg->hdr.msg_id, msg->hdr.msg_size);
@@ -1517,6 +1521,9 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_recv;
     struct vfio_user_dma_region_access dma_send;
+    size_t remaining;
+
+    // FIXME: break into client_max_msg_size chunks
     uint64_t recv_size;
     int msg_id = 1, ret;
 
@@ -1554,6 +1561,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     return ret;
 }
 
+// FIXME
 int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
@@ -1564,6 +1572,7 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     assert(vfu_ctx != NULL);
     assert(sg != NULL);
 
+        // FIXME
     dma_send = calloc(send_size, 1);
     if (dma_send == NULL) {
         return -1;

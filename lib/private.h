@@ -147,6 +147,7 @@ struct vfu_ctx {
     vfu_dma_unregister_cb_t *dma_unregister;
 
     int                     client_max_fds;
+    size_t                  client_max_msg_size;
 
     struct migration        *migration;
 

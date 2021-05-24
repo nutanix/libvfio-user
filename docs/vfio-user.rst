@@ -326,6 +326,12 @@ included in the reply, but the ``argsz`` field in the reply indicates the needed
 size, allowing a client to allocate a larger buffer for holding the reply before
 trying again.
 
+During negotiation, the client and server may each specify their maximum message
+size: to guard against unconstrained allocation / buffer sizes, this defines the
+maximum request *and* reply size that a peer is prepared to handle; the other
+end should be careful to heed this maximum when sending requests and soliciting
+data in replies.
+
 Protocol Specification
 ======================
 
@@ -493,9 +499,9 @@ Capabilities:
 +--------------------+------------------+-------------------------------------+
 | ``"max_msg_size"`` | number           | Maximum message size in bytes that  |
 |                    |                  | the receiver can handle, including  |
-|                    |                  | the header. Optional. If not        |
-|                    |                  | specified then the receiver must    |
-|                    |                  | assume ``"max_msg_size"=4096``.     |
+|                    |                  | the header. Optional, in which case |
+|                    |                  | a peer must presume a value of      |
+|                    |                  | 4194304 (4 MiB).                    |
 +--------------------+------------------+-------------------------------------+
 | ``"migration"``    | collection of    | Migration capability parameters. If |
 |                    | name/value pairs | missing then migration is not       |

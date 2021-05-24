@@ -63,7 +63,7 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
                                   int *fds, int count, int err)
 {
     int ret;
-    struct vfio_user_header hdr = {.msg_id = msg_id};
+    struct vfio_user_header hdr = { .msg_id = msg_id };
     struct msghdr msg;
     size_t i;
     size_t size = count * sizeof(*fds);
@@ -468,6 +468,7 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  * {
  *     "capabilities": {
  *         "max_msg_fds": 32,
+ *         "max_unsolicited_msg_size": 65536,
  *         "migration": {
  *             "pgsize": 4096
  *         }
@@ -478,8 +479,8 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  * available in newer library versions, so we don't use it.
  */
 int
-tran_parse_version_json(const char *json_str,
-                        int *client_max_fdsp, size_t *pgsizep)
+tran_parse_version_json(const char *json_str, int *client_max_fdsp,
+                        size_t *client_max_msg_sizep, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -512,6 +513,18 @@ tran_parse_version_json(const char *json_str,
         }
     }
 
+    if (json_object_object_get_ex(jo_caps, "max_unsolicited_msg_size", &jo)) {
+        if (json_object_get_type(jo) != json_type_int) {
+            goto out;
+        }
+
+        errno = 0;
+        *client_max_msg_size = (int)json_object_get_int64(jo);
+
+        if (errno != 0) {
+            goto out;
+        }
+    }
     if (json_object_object_get_ex(jo_caps, "migration", &jo)) {
         struct json_object *jo2 = NULL;
 
@@ -598,7 +611,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         }
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
-                                      &pgsize);
+                                      &vfu_ctx->client_max_msg_size, &pgsize);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
@@ -635,7 +648,6 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 
 out:
     if (ret != 0) {
-        // FIXME: spec, is it OK to just have the header?
         (void) tran_sock_send_error(sock, *msg_idp, hdr.cmd, ret);
         free(cversion);
         *versionp = NULL;
@@ -660,7 +672,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_msg_size\":%u"
+                    "\"max_unsolicited_msg_size\":%u"
                 "}"
              "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE);
     } else {
@@ -668,7 +680,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_msg_size\":%u,"
+                    "\"max_unsolicited_msg_size\":%u,"
                     "\"migration\":{"
                         "\"pgsize\":%zu"
                     "}"
