@@ -190,9 +190,6 @@ irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 
     assert(data != NULL);
 
-    // FIXME: we don't check that data is actually within ->argsz, could
-    // dereference junk
-
     for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
         efd = vfu_ctx->irqs->efds[i];
@@ -242,18 +239,30 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 }
 
 static int
-device_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
-                         size_t nr_fds)
+device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    struct vfio_irq_set *irq_set = msg->in_data;
     uint32_t a_type, d_type;
     int line;
 
     assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
+    if (msg->in_size < sizeof(*irq_set) || msg->in_size != irq_set->argsz) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in_size);
+        return ERROR_INT(EINVAL);
+    }
+
     // Separate action and data types from flags.
     a_type = (irq_set->flags & VFIO_IRQ_SET_ACTION_TYPE_MASK);
     d_type = (irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK);
+
+    // bools provided must match count
+    if (d_type == VFIO_IRQ_SET_DATA_BOOL &&
+        (msg->in_size - sizeof(*irq_set) != sizeof(uint8_t) * irq_set->count)) {
+        line = __LINE__;
+        goto invalid;
+    }
 
     // Ensure index is within bounds.
     if (irq_set->index >= VFU_DEV_NUM_IRQS) {
@@ -300,12 +309,12 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
         goto invalid;
     }
     // If fd's are provided, ensure it's only for VFIO_IRQ_SET_DATA_EVENTFD
-    if (nr_fds != 0 && d_type != VFIO_IRQ_SET_DATA_EVENTFD) {
+    if (msg->nr_in_fds != 0 && d_type != VFIO_IRQ_SET_DATA_EVENTFD) {
         line = __LINE__;
         goto invalid;
     }
     // If fd's are provided, ensure they match ->count
-    if (nr_fds != 0 && nr_fds != irq_set->count) {
+    if (msg->nr_in_fds != 0 && msg->nr_in_fds != irq_set->count) {
         line = __LINE__;
         goto invalid;
     }
@@ -315,7 +324,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 invalid:
     vfu_log(vfu_ctx, LOG_DEBUG, "invalid SET_IRQS (%d): action=%u data_type=%u "
             "index=%u start=%u count=%u nr_fds=%zu", line, a_type, d_type,
-            irq_set->index, irq_set->start, irq_set->count, nr_fds);
+            irq_set->index, irq_set->start, irq_set->count, msg->nr_in_fds);
     return ERROR_INT(EINVAL);
 }
 
@@ -329,12 +338,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (msg->in_size < sizeof(*irq_set) || msg->in_size != irq_set->argsz) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in_size);
-        return ERROR_INT(EINVAL);
-    }
-
-    ret = device_set_irqs_validate(vfu_ctx, irq_set, msg->nr_in_fds);
+    ret = device_set_irqs_validate(vfu_ctx, msg);
     if (ret != 0) {
         return ret;
     }
