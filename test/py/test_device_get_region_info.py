@@ -50,9 +50,9 @@ def test_device_get_region_info_setup():
 
     mmap_areas = [ (0x2000, 0x1000), (0x4000, 0x2000) ]
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x10000,
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x8000,
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),
-                           mmap_areas=mmap_areas, fd=f.fileno())
+                           mmap_areas=mmap_areas, fd=f.fileno(), offset=0x8000)
     assert ret == 0
 
     f = tempfile.TemporaryFile()
@@ -118,7 +118,7 @@ def test_device_get_region_info_larger_argsz():
     assert info.index == VFU_PCI_DEV_BAR1_REGION_IDX
     assert info.cap_off == 0
     assert info.size == 4096
-    assert info.offset == vfu_region_to_offset(VFU_PCI_DEV_BAR1_REGION_IDX)
+    assert info.offset == 0
 
 def test_device_get_region_info_small_argsz_caps():
     global sock
@@ -139,8 +139,8 @@ def test_device_get_region_info_small_argsz_caps():
                           VFIO_REGION_INFO_FLAG_CAPS)
     assert info.index == VFU_PCI_DEV_BAR2_REGION_IDX
     assert info.cap_off == 0
-    assert info.size == 0x10000
-    assert info.offset == vfu_region_to_offset(VFU_PCI_DEV_BAR2_REGION_IDX)
+    assert info.size == 0x8000
+    assert info.offset == 0x8000
 
     # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)
@@ -165,6 +165,8 @@ def test_device_get_region_info_caps():
 
     assert info.argsz == 80
     assert info.cap_off == 32
+    assert info.size == 0x8000
+    assert info.offset == 0x8000
 
     assert cap.id == VFIO_REGION_INFO_CAP_SPARSE_MMAP
     assert cap.version == 1
