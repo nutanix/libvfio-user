@@ -233,7 +233,7 @@ vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
                                      c.c_ulong, c.c_long, c.c_bool)
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
-                                 c.c_uint32, c.c_int)
+                                 c.c_uint32, c.c_int, c.c_ulong)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
 lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_uint32)
@@ -245,8 +245,6 @@ lib.vfu_pci_find_capability.restype = (c.c_ulong)
 lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
-lib.vfu_region_to_offset.argtypes = (c.c_int,)
-lib.vfu_region_to_offset.restype = (c.c_ulong)
 
 
 def to_byte(val):
@@ -431,7 +429,7 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
-                     mmap_areas=None, fd=-1):
+                     mmap_areas=None, fd=-1, offset=0):
     assert ctx != None
 
     nr_mmap_areas = 0
@@ -448,7 +446,7 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
 
     ret = lib.vfu_setup_region(ctx, index, size,
                                c.cast(cb, vfu_region_access_cb_t),
-                               flags, c_mmap_areas, nr_mmap_areas, fd)
+                               flags, c_mmap_areas, nr_mmap_areas, fd, offset)
     return ret
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
@@ -475,6 +473,3 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
-
-def vfu_region_to_offset(region):
-    return lib.vfu_region_to_offset(region)

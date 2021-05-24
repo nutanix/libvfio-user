@@ -379,14 +379,6 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return 0;
 }
 
-#define VFU_REGION_SHIFT 40
-
-static inline uint64_t
-region_to_offset(uint32_t region)
-{
-    return (uint64_t)region << VFU_REGION_SHIFT;
-}
-
 int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
@@ -428,7 +420,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     /* This might be more than the buffer we actually return. */
     out_info->argsz = sizeof(*out_info) + caps_size;
     out_info->index = in_info->index;
-    out_info->offset = region_to_offset(out_info->index);
+    out_info->offset = vfu_reg->offset;
     out_info->size = vfu_reg->size;
 
     out_info->flags = 0;
@@ -1325,7 +1317,8 @@ validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
-                 struct iovec *mmap_areas, uint32_t nr_mmap_areas, int fd)
+                 struct iovec *mmap_areas, uint32_t nr_mmap_areas,
+                 int fd, uint64_t offset)
 {
     struct iovec whole_region = { .iov_base = 0, .iov_len = size };
     vfu_reg_info_t *reg;
@@ -1373,6 +1366,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->size = size;
     reg->cb = cb;
     reg->fd = fd;
+    reg->offset = offset;
 
     if (mmap_areas == NULL && reg->fd != -1) {
         mmap_areas = &whole_region;
@@ -1594,12 +1588,6 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     free(dma_send);
 
     return ret;
-}
-
-uint64_t
-vfu_region_to_offset(uint32_t region)
-{
-    return region_to_offset(region);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
