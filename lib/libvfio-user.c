@@ -117,7 +117,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     header = (struct vfio_info_cap_header*)(vfio_reg + 1);
 
     if (is_migr_reg) {
-        type = (struct vfio_region_info_cap_type*)header;
+        type = (struct vfio_region_info_cap_type *)header;
         type->header.id = VFIO_REGION_INFO_CAP_TYPE;
         type->header.version = 1;
         type->header.next = 0;
@@ -355,7 +355,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in_data;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*in_info)) {
+    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -367,7 +367,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     out_info = msg->out_data;
-    out_info->argsz = sizeof(*in_info);
+    out_info->argsz = sizeof(*out_info);
     out_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
     out_info->num_regions = vfu_ctx->nr_regions;
     out_info->num_irqs = VFU_DEV_NUM_IRQS;
@@ -392,7 +392,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in_data;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*in_info)) {
+    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -402,8 +402,12 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    // FIXME: we don't cap client-provided in_info->argsz
-    msg->out_size = in_info->argsz;
+    vfu_reg = &vfu_ctx->reg_info[in_info->index];
+
+    caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                                   vfu_reg);
+
+    msg->out_size = MIN(sizeof(*out_info) + caps_size, in_info->argsz);
     msg->out_data = calloc(1, msg->out_size);
 
     if (msg->out_data == NULL) {
@@ -411,11 +415,6 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     out_info = msg->out_data;
-
-    vfu_reg = &vfu_ctx->reg_info[in_info->index];
-
-    caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                                   vfu_reg);
 
     /* This might be more than the buffer we actually return. */
     out_info->argsz = sizeof(*out_info) + caps_size;
@@ -639,6 +638,7 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
+    // FIXME: doesn't match other in_size/argsz checks
     if (msg->in_size < sizeof(*dirty_bitmap) ||
         msg->in_size != dirty_bitmap->argsz) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid header size %zu", msg->in_size);

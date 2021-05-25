@@ -114,7 +114,7 @@ def test_device_get_region_info_larger_argsz():
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    assert(len(result) == argsz + 8)
+    assert(len(result) == argsz)
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 

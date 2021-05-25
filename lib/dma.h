@@ -139,33 +139,6 @@ _dma_should_mark_dirty(const dma_controller_t *dma, int prot)
     return (prot & PROT_WRITE) == PROT_WRITE && dma->dirty_pgsize > 0;
 }
 
-static size_t
-_get_pgstart(size_t pgsize, void *base_addr, uint64_t offset)
-{
-    return (offset - (uint64_t)base_addr) / pgsize;
-}
-
-static size_t
-_get_pgend(size_t pgsize, uint64_t len, size_t start)
-{
-    return start + (len / pgsize) + (len % pgsize != 0) - 1;
-}
-
-static void
-_dma_bitmap_get_pgrange(const dma_controller_t *dma,
-                           const dma_memory_region_t *region,
-                           const dma_sg_t *sg, size_t *start, size_t *end)
-{
-    assert(dma != NULL);
-    assert(region != NULL);
-    assert(sg != NULL);
-    assert(start != NULL);
-    assert(end != NULL);
-
-    *start = _get_pgstart(dma->dirty_pgsize, region->info.iova.iov_base, sg->offset);
-    *end = _get_pgend(dma->dirty_pgsize, sg->length, *start);
-}
-
 static void
 _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
                 dma_sg_t *sg)
@@ -177,7 +150,8 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
     assert(sg != NULL);
     assert(region->dirty_bitmap != NULL);
 
-    _dma_bitmap_get_pgrange(dma, region, sg, &start, &end);
+    start = sg->offset / dma->dirty_pgsize;
+    end = start + (sg->length / dma->dirty_pgsize) + (sg->length % dma->dirty_pgsize != 0) - 1;
     for (i = start; i <= end; i++) {
         region->dirty_bitmap[i / CHAR_BIT] |= 1 << (i % CHAR_BIT);
     }
