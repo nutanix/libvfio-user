@@ -317,12 +317,18 @@ typedef enum vfu_reset_type {
      * reset to a known-good initial state (including any PCI register state).
      */
     VFU_RESET_DEVICE,
+
     /*
      * The vfio-user socket client connection was closed or reset. The attached
      * context is cleaned up after returning from the reset callback, and
      * vfu_attach_ctx() must be called to establish a new client.
      */
-    VFU_RESET_LOST_CONN
+    VFU_RESET_LOST_CONN,
+
+    /*
+     * Client requested to initiate PCI function level reset.
+     */
+    VFU_RESET_PCI_FLR
 } vfu_reset_type_t;
 
 /*
