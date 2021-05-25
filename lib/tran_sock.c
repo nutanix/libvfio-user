@@ -77,8 +77,8 @@ MOCK_DEFINE(tran_sock_send_iovec)(int sock, uint16_t msg_id, bool is_reply,
     memset(&msg, 0, sizeof(msg));
 
     if (is_reply) {
-        // FIXME: SPEC: should the reply include the command? I'd say yes?
         hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
+        hdr.cmd = cmd;
         if (err != 0) {
             hdr.flags.error = 1U;
             hdr.error_no = err;
@@ -849,8 +849,7 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
         iovecs[1].iov_len = msg->out_size;
     }
 
-    // FIXME: SPEC: should the reply include the command? I'd say yes?
-    ret = tran_sock_send_iovec(ts->conn_fd, msg->hdr.msg_id, true, 0,
+    ret = tran_sock_send_iovec(ts->conn_fd, msg->hdr.msg_id, true, msg->hdr.cmd,
                                iovecs, nr_iovecs,
                                msg->out_fds, msg->nr_out_fds, err);
 
