@@ -58,6 +58,7 @@ PCI_CAP_LIST_NEXT = 1
 
 PCI_CAP_ID_PM = 0x1
 PCI_CAP_ID_VNDR = 0x9
+PCI_CAP_ID_EXP = 0x10
 
 PCI_EXT_CAP_ID_DSN = 0x03
 PCI_EXT_CAP_ID_VNDR = 0x0b
@@ -110,13 +111,13 @@ VFIO_USER_DMA_MAP                   = 2
 VFIO_USER_DMA_UNMAP                 = 3
 VFIO_USER_DEVICE_GET_INFO           = 4
 VFIO_USER_DEVICE_GET_REGION_INFO    = 5
-VFIO_USER_DEVICE_GET_IRQ_INFO       = 6
-VFIO_USER_DEVICE_SET_IRQS           = 7
-VFIO_USER_REGION_READ               = 8
-VFIO_USER_REGION_WRITE              = 9
-VFIO_USER_DMA_READ                  = 10
-VFIO_USER_DMA_WRITE                 = 11
-VFIO_USER_VM_INTERRUPT              = 12
+VFIO_USER_DEVICE_GET_REGION_IO_FDS  = 6
+VFIO_USER_DEVICE_GET_IRQ_INFO       = 7
+VFIO_USER_DEVICE_SET_IRQS           = 8
+VFIO_USER_REGION_READ               = 9
+VFIO_USER_REGION_WRITE              = 10
+VFIO_USER_DMA_READ                  = 11
+VFIO_USER_DMA_WRITE                 = 12
 VFIO_USER_DEVICE_RESET              = 13
 VFIO_USER_DIRTY_PAGES               = 14
 VFIO_USER_MAX                       = 15
@@ -150,6 +151,11 @@ VFU_DEV_MSIX_IRQ = 2
 VFU_DEV_ERR_IRQ  = 3
 VFU_DEV_REQ_IRQ  = 4
 VFU_DEV_NUM_IRQS = 5
+
+# enum vfu_reset_type
+VFU_RESET_DEVICE = 0
+VFU_RESET_LOST_CONN = 1
+VFU_RESET_PCI_FLR = 2
 
 # vfu_pci_type_t
 VFU_PCI_TYPE_CONVENTIONAL = 0
@@ -234,6 +240,8 @@ vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
                                  c.c_uint32, c.c_int, c.c_ulong)
+vfu_reset_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
+lib.vfu_setup_device_reset_cb.argtypes = (c.c_void_p, vfu_reset_cb_t)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
 lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_uint32)
@@ -245,6 +253,7 @@ lib.vfu_pci_find_capability.restype = (c.c_ulong)
 lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
+lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 
 
 def to_byte(val):
@@ -457,6 +466,10 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
 
     return ret
 
+def vfu_setup_device_reset_cb(ctx, cb):
+    assert ctx != None
+    return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
+
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
     assert ctx != None
     return lib.vfu_setup_device_nr_irqs(ctx, irqtype, count)
@@ -481,3 +494,8 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
+
+def vfu_irq_trigger(ctx, subindex):
+    assert ctx != None
+
+    return lib.vfu_irq_trigger(ctx, subindex)

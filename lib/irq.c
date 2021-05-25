@@ -65,8 +65,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in_data;
 
-    // FIXME: don't do the ->argsz/in_size check elsewhere
-    if (msg->in_size < sizeof(*in_info) || msg->in_size != in_info->argsz) {
+    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -83,7 +82,7 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     out_info = msg->out_data;
-    out_info->argsz = sizeof (*out_info);
+    out_info->argsz = sizeof(*out_info);
     out_info->flags = VFIO_IRQ_INFO_EVENTFD;
     out_info->index = in_info->index;
     out_info->count = vfu_ctx->irq_count[in_info->index];
@@ -248,7 +247,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
-    if (msg->in_size < sizeof(*irq_set) || msg->in_size != irq_set->argsz) {
+    if (msg->in_size < sizeof(*irq_set) || irq_set->argsz < sizeof(*irq_set)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in_size);
         return ERROR_INT(EINVAL);
     }

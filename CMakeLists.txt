@@ -39,6 +39,9 @@ include(GNUInstallDirs)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSON REQUIRED json-c)
 
+# for the benefit of the gcov rules
+set(CMAKE_C_OUTPUT_EXTENSION_REPLACE 1)
+
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 include_directories(${JSON_INCLUDE_DIRS})
