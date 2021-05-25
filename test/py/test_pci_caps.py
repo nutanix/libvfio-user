@@ -315,7 +315,7 @@ def test_pci_cap_write_px():
 
     #iflr
     offset = cap_offsets[5] + 8
-    data=b'\x00\x80'
+    data = b'\x00\x80'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
     assert reset_flag == VFU_RESET_PCI_FLR
