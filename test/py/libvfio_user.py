@@ -429,15 +429,19 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
-                     mmap_areas=None, fd=-1, offset=0):
+                     mmap_areas=None, nr_mmap_areas=None, fd=-1, offset=0):
     assert ctx != None
 
-    nr_mmap_areas = 0
     c_mmap_areas = None
 
     if mmap_areas:
-        nr_mmap_areas = len(mmap_areas)
-        c_mmap_areas = (iovec_t * nr_mmap_areas)(*mmap_areas)
+        c_mmap_areas = (iovec_t * len(mmap_areas))(*mmap_areas)
+
+    if nr_mmap_areas is None:
+        if mmap_areas:
+            nr_mmap_areas = len(mmap_areas)
+        else:
+            nr_mmap_areas = 0
 
     # We're sending a file descriptor to ourselves; to pretend the server is
     # separate, we need to dup() here.
@@ -447,6 +451,10 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
     ret = lib.vfu_setup_region(ctx, index, size,
                                c.cast(cb, vfu_region_access_cb_t),
                                flags, c_mmap_areas, nr_mmap_areas, fd, offset)
+
+    if fd != -1 and ret != 0:
+        os.close(fd)
+
     return ret
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
