@@ -35,6 +35,8 @@ import os
 ctx = None
 sock = None
 
+argsz = len(vfio_region_info())
+
 def test_device_get_region_info_setup():
     global ctx, sock
 
@@ -92,7 +94,7 @@ def test_device_get_region_info_bad_argsz():
 
 def test_device_get_region_info_bad_index():
 
-    payload = vfio_region_info(argsz=32, flags=0,
+    payload = vfio_region_info(argsz=argsz, flags=0,
                                index=VFU_PCI_DEV_NUM_REGIONS, cap_offset=0,
                                size=0, offset=0)
 
@@ -103,7 +105,7 @@ def test_device_get_region_info_bad_index():
 
 def test_device_get_region_info_larger_argsz():
 
-    payload = vfio_region_info(argsz=32 + 8, flags=0,
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
                           index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
                           size=0, offset=0)
 
@@ -112,11 +114,11 @@ def test_device_get_region_info_larger_argsz():
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    assert(len(result) == 32 + 8)
+    assert(len(result) == argsz + 8)
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 
-    assert info.argsz == 32
+    assert info.argsz == argsz
     assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
                           VFIO_REGION_INFO_FLAG_WRITE)
     assert info.index == VFU_PCI_DEV_BAR1_REGION_IDX
@@ -127,7 +129,7 @@ def test_device_get_region_info_larger_argsz():
 def test_device_get_region_info_small_argsz_caps():
     global sock
 
-    payload = vfio_region_info(argsz=32, flags=0,
+    payload = vfio_region_info(argsz=argsz, flags=0,
                           index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
                           size=0, offset=0)
 
