@@ -104,7 +104,7 @@ send_version(int sock)
     slen = snprintf(client_caps, sizeof(client_caps),
         "{"
             "\"capabilities\":{"
-                "\"max_fds\":%u,"
+                "\"max_msg_fds\":%u,"
                 "\"migration\":{"
                     "\"pgsize\":%zu"
                 "}"
@@ -262,7 +262,8 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
 }
 
 static void
-mmap_sparse_areas(int *fds, struct vfio_region_info_cap_sparse_mmap *sparse)
+mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
+                  struct vfio_region_info_cap_sparse_mmap *sparse)
 {
     size_t i;
 
@@ -281,7 +282,8 @@ mmap_sparse_areas(int *fds, struct vfio_region_info_cap_sparse_mmap *sparse)
         }
         buf[ret + 1] = '\0';
         addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, fds[i], sparse->areas[i].offset);
+                    MAP_SHARED, fds[i], region_info->offset +
+                    sparse->areas[i].offset);
         if (addr == MAP_FAILED) {
             err(EXIT_FAILURE,
                 "failed to mmap sparse region #%lu in %s (%#llx-%#llx)",
@@ -331,7 +333,7 @@ get_device_region_info(int sock, uint32_t index)
                 assert((index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 2) ||
                        (index == VFU_PCI_DEV_MIGR_REGION_IDX && nr_fds == 1));
                 assert(nr_fds == sparse->nr_areas);
-                mmap_sparse_areas(fds, sparse);
+                mmap_sparse_areas(fds, region_info, sparse);
             }
         }
     }
@@ -642,7 +644,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
                   UNUSED int nr_dma_regions)
 {
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = { 0 };
-    struct vfio_iommu_type1_dirty_bitmap_get bitmaps[2] = { { 0 }, };
+    struct vfio_user_bitmap_range bitmaps[2] = { { 0 }, };
     int ret;
     size_t i;
     struct iovec iovecs[4] = {
@@ -652,7 +654,7 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
         }
     };
     struct vfio_user_header hdr = {0};
-    char data[ARRAY_SIZE(bitmaps)];
+    uint64_t data[ARRAY_SIZE(bitmaps)];
 
     assert(dma_regions != NULL);
     //FIXME: Is below assert correct?
@@ -661,28 +663,28 @@ get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
         bitmaps[i].iova = dma_regions[i].addr;
         bitmaps[i].size = dma_regions[i].size;
-        bitmaps[i].bitmap.size = 1; /* FIXME calculate based on page and IOVA size, don't hardcode */
+        bitmaps[i].bitmap.size = sizeof(uint64_t); /* FIXME calculate based on page and IOVA size, don't hardcode */
         bitmaps[i].bitmap.pgsize = sysconf(_SC_PAGESIZE);
         iovecs[(i + 2)].iov_base = &bitmaps[i]; /* FIXME the +2 is because iovecs[0] is the vfio_user_header and iovecs[1] is vfio_iommu_type1_dirty_bitmap */
-        iovecs[(i + 2)].iov_len = sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+        iovecs[(i + 2)].iov_len = sizeof(struct vfio_user_bitmap_range);
     }
 
     /*
      * FIXME there should be at least two IOVAs. Send single message for two
      * IOVAs and ensure only one bit is set in first IOVA.
      */
-    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_user_bitmap_range);
     dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
     ret = tran_sock_msg_iovec(sock, 0, VFIO_USER_DIRTY_PAGES,
                               iovecs, ARRAY_SIZE(iovecs),
                               NULL, 0,
-                              &hdr, data, ARRAY_SIZE(data), NULL, 0);
+                              &hdr, data, ARRAY_SIZE(data) * sizeof(uint64_t), NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to start dirty page logging");
     }
 
     for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("client: %s: %#llx-%#llx\t%hhu\n", __func__, bitmaps[i].iova,
+        printf("client: %s: %#lx-%#lx\t%#lx\n", __func__, bitmaps[i].iova,
                bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
     }
 }
@@ -1212,9 +1214,15 @@ int main(int argc, char *argv[])
      *
      * unmap the first group of the DMA regions
      */
-    ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP,
-                        dma_regions, sizeof(*dma_regions) * server_max_fds,
-                        NULL, NULL, 0);
+    {
+        struct vfio_user_dma_region r[server_max_fds];
+        memcpy(r, dma_regions, sizeof(r));
+        for (i = 0; i < (int)ARRAY_SIZE(r); i++) {
+            r[i].flags = 0;
+        }
+        ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, r, sizeof(r),
+                            NULL, NULL, 0);
+    }
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap DMA regions");
     }

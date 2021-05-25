@@ -30,6 +30,7 @@
 from libvfio_user import *
 import ctypes as c
 import errno
+import tempfile
 
 ctx = None
 
@@ -41,9 +42,8 @@ def test_device_set_irqs_setup():
 
 def test_setup_region_bad_mmap_areas():
 
-    f = open("/tmp/vfio-user.map", "wb")
+    f = tempfile.TemporaryFile()
     f.truncate(65536)
-    os.remove("/tmp/vfio-user.map")
 
     mmap_areas = [ (0x2000, 0x1000), (0x4000, 0x2000) ]
 
@@ -97,9 +97,8 @@ def test_setup_region_bad_migr():
     assert ret == -1
     assert c.get_errno() == errno.EINVAL
 
-    f = open("/tmp/vfio-user.map", "wb")
+    f = tempfile.TemporaryFile()
     f.truncate(0x2000)
-    os.remove("/tmp/vfio-user.map")
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),

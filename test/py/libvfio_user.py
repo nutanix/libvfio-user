@@ -41,7 +41,7 @@ import socket
 import struct
 import syslog
 
-# from linux/pci_regs.h
+# from linux/pci_regs.h and linux/pci_defs.h
 
 PCI_HEADER_TYPE_NORMAL = 0
 
@@ -105,21 +105,21 @@ SERVER_MAX_FDS = 8
 SERVER_MAX_MSG_SIZE = 65536
 
 # enum vfio_user_command
-VFIO_USER_VERSION	    			= 1
-VFIO_USER_DMA_MAP	    			= 2
-VFIO_USER_DMA_UNMAP	    			= 3
-VFIO_USER_DEVICE_GET_INFO			= 4
-VFIO_USER_DEVICE_GET_REGION_INFO	= 5
-VFIO_USER_DEVICE_GET_IRQ_INFO		= 6
-VFIO_USER_DEVICE_SET_IRQS   		= 7
-VFIO_USER_REGION_READ				= 8
-VFIO_USER_REGION_WRITE				= 9
-VFIO_USER_DMA_READ			    	= 10
-VFIO_USER_DMA_WRITE   				= 11
-VFIO_USER_VM_INTERRUPT				= 12
-VFIO_USER_DEVICE_RESET				= 13
-VFIO_USER_DIRTY_PAGES				= 14
-VFIO_USER_MAX			        	= 15
+VFIO_USER_VERSION                   = 1
+VFIO_USER_DMA_MAP                   = 2
+VFIO_USER_DMA_UNMAP                 = 3
+VFIO_USER_DEVICE_GET_INFO           = 4
+VFIO_USER_DEVICE_GET_REGION_INFO    = 5
+VFIO_USER_DEVICE_GET_IRQ_INFO       = 6
+VFIO_USER_DEVICE_SET_IRQS           = 7
+VFIO_USER_REGION_READ               = 8
+VFIO_USER_REGION_WRITE              = 9
+VFIO_USER_DMA_READ                  = 10
+VFIO_USER_DMA_WRITE                 = 11
+VFIO_USER_VM_INTERRUPT              = 12
+VFIO_USER_DEVICE_RESET              = 13
+VFIO_USER_DIRTY_PAGES               = 14
+VFIO_USER_MAX                       = 15
 
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
@@ -229,24 +229,24 @@ lib.vfu_realize_ctx.argtypes = (c.c_void_p,)
 lib.vfu_attach_ctx.argtypes = (c.c_void_p,)
 lib.vfu_run_ctx.argtypes = (c.c_void_p,)
 lib.vfu_destroy_ctx.argtypes = (c.c_void_p,)
-region_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char), c.c_long,
-                          c.c_long, c.c_int)
-lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_long, region_cb_t,
-                                 c.c_int, c.POINTER(iovec_t), c.c_int, c.c_int)
+vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
+                                     c.c_ulong, c.c_long, c.c_bool)
+lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
+                                 vfu_region_access_cb_t, c.c_int, c.c_void_p,
+                                 c.c_uint32, c.c_int, c.c_ulong)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
-lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_uint32)
 lib.vfu_pci_init.argtypes = (c.c_void_p, c.c_int, c.c_int, c.c_int)
-lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_long, c.c_int,
+lib.vfu_pci_add_capability.argtypes = (c.c_void_p, c.c_ulong, c.c_int,
                                        c.POINTER(c.c_byte))
-lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_int, c.c_int)
+lib.vfu_pci_find_capability.argtypes = (c.c_void_p, c.c_bool, c.c_int)
 lib.vfu_pci_find_capability.restype = (c.c_ulong)
-lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_int, c.c_long,
+lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
-lib.vfu_region_to_offset.argtypes = (c.c_int,)
-lib.vfu_region_to_offset.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
+
 
 def to_byte(val):
     """Cast an int to a byte value."""
@@ -279,7 +279,7 @@ def connect_sock():
 def connect_client(ctx):
     sock = connect_sock()
 
-    json = b'{ "capabilities": { "max_fds": 8 } }'
+    json = b'{ "capabilities": { "max_msg_fds": 8 } }'
     # struct vfio_user_version
     payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
                           LIBVFIO_USER_MINOR, json, b'\0')
@@ -300,7 +300,6 @@ def get_reply(sock, expect=0):
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
     assert errno == expect
-    msg_size -= 16
     return buf[16:]
 
 def get_pci_header(ctx):
@@ -431,7 +430,7 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
-                     mmap_areas=None, nr_mmap_areas=None, fd=-1):
+                     mmap_areas=None, nr_mmap_areas=None, fd=-1, offset=0):
     assert ctx != None
 
     c_mmap_areas = None
@@ -450,8 +449,9 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
     if fd != -1:
         fd = os.dup(fd)
 
-    ret = lib.vfu_setup_region(ctx, index, size, c.cast(cb, region_cb_t),
-                               flags, c_mmap_areas, nr_mmap_areas, fd)
+    ret = lib.vfu_setup_region(ctx, index, size,
+                               c.cast(cb, vfu_region_access_cb_t),
+                               flags, c_mmap_areas, nr_mmap_areas, fd, offset)
 
     if fd != -1 and ret != 0:
         os.close(fd)
@@ -482,9 +482,6 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
-
-def vfu_region_to_offset(region):
-    return lib.vfu_region_to_offset(region)
 
 def vfu_irq_trigger(ctx, subindex):
     assert ctx != None

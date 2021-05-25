@@ -430,7 +430,7 @@ int main(int argc, char *argv[])
         }
     };
     vfu_ctx_t *vfu_ctx;
-    FILE *bar1_fp, *migr_fp;
+    FILE *fp;
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
@@ -480,7 +480,7 @@ int main(int argc, char *argv[])
     vfu_pci_set_id(vfu_ctx, 0xdead, 0xbeef, 0xcafe, 0xbabe);
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX, sizeof(time_t),
-                           &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
+                           &bar0_access, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
@@ -490,16 +490,30 @@ int main(int argc, char *argv[])
      * are mappable. The client can still mmap the 2nd page, we can't prohibit
      * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
+     *
+     * We choose to use a single file which contains both BAR1 and the migration
+     * registers. They could also be completely different files.
      */
-    if ((bar1_fp = tmpfile()) == NULL) {
-        err(EXIT_FAILURE, "failed to create BAR1 file");
+    if ((fp = tmpfile()) == NULL) {
+        err(EXIT_FAILURE, "failed to create backing file");
     }
+
     server_data.bar1_size = bar1_size;
-    if (ftruncate(fileno(bar1_fp), server_data.bar1_size) == -1) {
-        err(EXIT_FAILURE, "failed to truncate BAR1 file");
+
+    /*
+     * The migration registers aren't memory mappable, so in order to make the
+     * rest of the migration region memory mappable we must effectively reserve
+     * an entire page.
+     */
+    migr_regs_size = vfu_get_migr_register_area_size();
+    migr_data_size = page_align(bar1_size + sizeof(time_t));
+    migr_size = migr_regs_size + migr_data_size;
+
+    if (ftruncate(fileno(fp), server_data.bar1_size + migr_size) == -1) {
+        err(EXIT_FAILURE, "failed to truncate backing file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fileno(bar1_fp), 0);
+                            MAP_SHARED, fileno(fp), 0);
     if (server_data.bar1 == MAP_FAILED) {
         err(EXIT_FAILURE, "failed to mmap BAR1");
     }
@@ -510,9 +524,36 @@ int main(int argc, char *argv[])
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            server_data.bar1_size, &bar1_access,
                            VFU_REGION_FLAG_RW, bar1_mmap_areas, 2,
-                           fileno(bar1_fp));
+                           fileno(fp), 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
+    }
+
+    /* setup migration */
+
+    struct iovec migr_mmap_areas[] = {
+        [0] = {
+            .iov_base  = (void *)migr_regs_size,
+            .iov_len = migr_data_size
+        },
+    };
+
+    /*
+     * The migration region comes after bar1 in the backing file, so offset is
+     * server_data.bar1_size.
+     */
+    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
+                           NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
+                           ARRAY_SIZE(migr_mmap_areas), fileno(fp),
+                           server_data.bar1_size);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup migration region");
+    }
+
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
+                                               migr_regs_size);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to setup device migration");
     }
 
     ret = vfu_setup_device_reset_cb(vfu_ctx, &device_reset);
@@ -528,45 +569,6 @@ int main(int argc, char *argv[])
     ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup irq counts");
-    }
-
-    /* setup migration */
-
-    /*
-     * The migration registers aren't memory mappable, so in order to make the
-     * rest of the migration region memory mappable we must effectively reserve
-     * an entire page.
-     */
-    migr_regs_size = vfu_get_migr_register_area_size();
-    migr_data_size = page_align(bar1_size + sizeof(time_t));
-    migr_size = migr_regs_size + migr_data_size;
-    if ((migr_fp = tmpfile()) == NULL) {
-        err(EXIT_FAILURE, "failed to create migration file");
-    }
-    if (ftruncate(fileno(migr_fp), migr_size) == -1) {
-        err(EXIT_FAILURE, "failed to truncate migration file");
-    }
-    server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fileno(bar1_fp), 0);
-    if (server_data.bar1 == MAP_FAILED) {
-        err(EXIT_FAILURE, "failed to mmap migration file");
-    }
-    struct iovec migr_mmap_areas[] = {
-        [0] = {
-            .iov_base  = (void *)migr_regs_size,
-            .iov_len = migr_data_size
-        },
-    };
-    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
-                           ARRAY_SIZE(migr_mmap_areas), fileno(migr_fp));
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup migration region");
-    }
-    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
-                                               migr_regs_size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup device migration");
     }
 
     ret = vfu_realize_ctx(vfu_ctx);
