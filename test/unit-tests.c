@@ -550,60 +550,6 @@ typedef struct {
     int conn_fd;
 } tran_sock_t;
 
-/*
- * Performs various checks when adding sparse memory regions.
- */
-static void
-test_setup_sparse_region(void **state UNUSED)
-{
-    vfu_reg_info_t reg_info = { 0 };
-    struct iovec mmap_areas[2] = {
-        [0] = {
-            .iov_base = (void*)0x0,
-            .iov_len = 0x1000
-        },
-        [1] = {
-            .iov_base = (void*)0x1000,
-            .iov_len = 0x1000
-        }
-    };
-
-    vfu_ctx.reg_info = &reg_info;
-
-    /* invalid mappable settings */
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, -1, 0);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 0, 1, 0);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* default mmap area if not given */
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, NULL, 0, 1, 0);
-    assert_int_equal(0, ret);
-
-    free(reg_info.mmap_areas);
-
-    /* sparse region exceeds region size */
-    mmap_areas[1].iov_len = 0x1001;
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                            0x2000, NULL, 0, mmap_areas, 2, 0, 0);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* sparse region within region size */
-    mmap_areas[1].iov_len = 0x1000;
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, 0, 0);
-    assert_int_equal(0, ret);
-
-    free(reg_info.mmap_areas);
-}
-
 static void
 test_dirty_pages_without_dma(UNUSED void **state)
 {
@@ -747,17 +693,6 @@ teardown_test_setup_migration_region(void **state)
 }
 
 static void
-test_setup_migration_region_too_small(void **state)
-{
-    vfu_ctx_t *v = get_vfu_ctx(state);
-    int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
-        vfu_get_migr_register_area_size() - 1, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
-}
-
-static void
 test_setup_migration_region_size_ok(void **state)
 {
     vfu_ctx_t *v = get_vfu_ctx(state);
@@ -765,34 +700,6 @@ test_setup_migration_region_size_ok(void **state)
         vfu_get_migr_register_area_size(), NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
-}
-
-static void
-test_setup_migration_region_fully_mappable(void **state)
-{
-    struct test_setup_migr_reg_dat *p = *state;
-    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s,
-        NULL, VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0,
-        0xdeadbeef, 0);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
-}
-
-static void
-test_setup_migration_region_sparsely_mappable_over_migration_registers(void **state)
-{
-    struct test_setup_migr_reg_dat *p = *state;
-    struct iovec mmap_areas[] = {
-        [0] = {
-            .iov_base = 0,
-            .iov_len = p->rs
-        }
-    };
-    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
-        0xdeadbeef, 0);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
 }
 
 static void
@@ -1052,19 +959,9 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
-        cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_too_small,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_fully_mappable,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_over_migration_registers,
             setup_test_setup_migration_region,
             teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_valid,
