@@ -294,9 +294,12 @@ def test_pci_cap_write_pmcs():
 
     disconnect_client(ctx, sock)
 
+reset_flag = -1
 @c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
 def vfu_reset_cb(ctx, reset_type):
     assert reset_type == VFU_RESET_PCI_FLR or reset_type == VFU_RESET_LOST_CONN
+    global reset_flag
+    reset_flag = reset_type
     return 0
 
 def test_pci_cap_write_px():
@@ -315,8 +318,10 @@ def test_pci_cap_write_px():
     data=b'\x00\x80'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
+    assert reset_flag == VFU_RESET_PCI_FLR
 
     disconnect_client(ctx, sock)
+    assert reset_flag == VFU_RESET_LOST_CONN
 
 def test_pci_cap_write_msix():
     # FIXME
