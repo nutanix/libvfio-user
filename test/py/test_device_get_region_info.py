@@ -35,6 +35,8 @@ import os
 ctx = None
 sock = None
 
+argsz = len(vfio_region_info())
+
 def test_device_get_region_info_setup():
     global ctx, sock
 
@@ -81,8 +83,9 @@ def test_device_get_region_info_short_write():
 
 def test_device_get_region_info_bad_argsz():
 
-    # struct vfio_region_info
-    payload = struct.pack("IIIIQQ", 8, 0, VFU_PCI_DEV_BAR1_REGION_IDX, 0, 0, 0)
+    payload = vfio_region_info(argsz=8, flags=0,
+                               index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
+                               size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -91,7 +94,9 @@ def test_device_get_region_info_bad_argsz():
 
 def test_device_get_region_info_bad_index():
 
-    payload = struct.pack("IIIIQQ", 32, 0, VFU_PCI_DEV_NUM_REGIONS, 0, 0, 0)
+    payload = vfio_region_info(argsz=argsz, flags=0,
+                               index=VFU_PCI_DEV_NUM_REGIONS, cap_offset=0,
+                               size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -100,37 +105,40 @@ def test_device_get_region_info_bad_index():
 
 def test_device_get_region_info_larger_argsz():
 
-    payload = struct.pack("IIIIQQ", 32 + 8, 0, VFU_PCI_DEV_BAR1_REGION_IDX,
-                          0, 0, 0)
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
+                          index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    assert(len(result) == 32)
+    assert(len(result) == argsz)
 
-    info, _ = vfio_region_info(result)
+    info, _ = vfio_region_info.pop_from_buffer(result)
 
-    assert info.argsz == 32
+    assert info.argsz == argsz
     assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
                           VFIO_REGION_INFO_FLAG_WRITE)
     assert info.index == VFU_PCI_DEV_BAR1_REGION_IDX
-    assert info.cap_off == 0
+    assert info.cap_offset == 0
     assert info.size == 4096
     assert info.offset == 0
 
 def test_device_get_region_info_small_argsz_caps():
     global sock
 
-    payload = struct.pack("IIIIQQ", 32, 0, VFU_PCI_DEV_BAR2_REGION_IDX, 0, 0, 0)
+    payload = vfio_region_info(argsz=argsz, flags=0,
+                          index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    info, _ = vfio_region_info(result)
+    info, _ = vfio_region_info.pop_from_buffer(result)
 
     assert info.argsz == 80
     assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
@@ -138,7 +146,7 @@ def test_device_get_region_info_small_argsz_caps():
                           VFIO_REGION_INFO_FLAG_MMAP |
                           VFIO_REGION_INFO_FLAG_CAPS)
     assert info.index == VFU_PCI_DEV_BAR2_REGION_IDX
-    assert info.cap_off == 0
+    assert info.cap_offset == 0
     assert info.size == 0x8000
     assert info.offset == 0x8000
 
@@ -150,21 +158,23 @@ def test_device_get_region_info_caps():
 
     sock = connect_client(ctx)
 
-    payload = struct.pack("IIIIQQ", 80, 0, VFU_PCI_DEV_BAR2_REGION_IDX, 0, 0, 0)
-    payload += b'\0' * (80 - 32)
+    payload = vfio_region_info(argsz=80, flags=0,
+                          index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
+    payload = bytes(payload) + b'\0' * (80 - 32)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    info, result = vfio_region_info(result)
-    cap, result = vfio_region_info_cap_sparse_mmap(result)
-    area1, result = vfio_region_sparse_mmap_area(result)
-    area2, result = vfio_region_sparse_mmap_area(result)
+    info, result = vfio_region_info.pop_from_buffer(result)
+    cap, result = vfio_region_info_cap_sparse_mmap.pop_from_buffer(result)
+    area1, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
+    area2, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
 
     assert info.argsz == 80
-    assert info.cap_off == 32
+    assert info.cap_offset == 32
     assert info.size == 0x8000
     assert info.offset == 0x8000
 
@@ -186,22 +196,23 @@ def test_device_get_region_info_migr():
 
     sock = connect_client(ctx)
 
-    payload = struct.pack("IIIIQQ", 80, 0, VFU_PCI_DEV_MIGR_REGION_IDX,
-                          0, 0, 0)
-    payload += b'\0' * (80 - 32)
+    payload = vfio_region_info(argsz=80, flags=0,
+                          index=VFU_PCI_DEV_MIGR_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
+    payload = bytes(payload) + b'\0' * (80 - 32)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     result = get_reply(sock)
 
-    info, result = vfio_region_info(result)
-    mcap, result = vfio_region_info_cap_type(result)
-    cap, result = vfio_region_info_cap_sparse_mmap(result)
-    area, result = vfio_region_sparse_mmap_area(result)
+    info, result = vfio_region_info.pop_from_buffer(result)
+    mcap, result = vfio_region_info_cap_type.pop_from_buffer(result)
+    cap, result = vfio_region_info_cap_sparse_mmap.pop_from_buffer(result)
+    area, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
 
     assert info.argsz == 80
-    assert info.cap_off == 32
+    assert info.cap_offset == 32
 
     assert mcap.id == VFIO_REGION_INFO_CAP_TYPE
     assert mcap.version == 1
