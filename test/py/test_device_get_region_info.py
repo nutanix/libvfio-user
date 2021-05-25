@@ -83,7 +83,7 @@ def test_device_get_region_info_bad_argsz():
 
     payload = vfio_region_info(argsz=8, flags=0,
                                index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
-                               size=0, offset=0).bytes()
+                               size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -94,7 +94,7 @@ def test_device_get_region_info_bad_index():
 
     payload = vfio_region_info(argsz=32, flags=0,
                                index=VFU_PCI_DEV_NUM_REGIONS, cap_offset=0,
-                               size=0, offset=0).bytes()
+                               size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -105,7 +105,7 @@ def test_device_get_region_info_larger_argsz():
 
     payload = vfio_region_info(argsz=32 + 8, flags=0,
                           index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
-                          size=0, offset=0).bytes()
+                          size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -129,7 +129,7 @@ def test_device_get_region_info_small_argsz_caps():
 
     payload = vfio_region_info(argsz=32, flags=0,
                           index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
-                          size=0, offset=0).bytes()
+                          size=0, offset=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -158,8 +158,8 @@ def test_device_get_region_info_caps():
 
     payload = vfio_region_info(argsz=80, flags=0,
                           index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
-                          size=0, offset=0).bytes()
-    payload += b'\0' * (80 - 32)
+                          size=0, offset=0)
+    payload = bytes(payload) + b'\0' * (80 - 32)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -196,8 +196,8 @@ def test_device_get_region_info_migr():
 
     payload = vfio_region_info(argsz=80, flags=0,
                           index=VFU_PCI_DEV_MIGR_REGION_IDX, cap_offset=0,
-                          size=0, offset=0).bytes()
-    payload += b'\0' * (80 - 32)
+                          size=0, offset=0)
+    payload = bytes(payload) + b'\0' * (80 - 32)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
     sock.send(hdr + payload)

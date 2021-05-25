@@ -180,9 +180,9 @@ libc = c.CDLL("libc.so.6", use_errno=True)
 #
 
 class Structure(c.Structure):
-    def bytes(self):
-        """Handy method to return bytes for a ctypes Structure."""
-        return bytes(self)
+    def __len__(self):
+        """Handy method to return length in bytes."""
+        return len(bytes(self))
 
     @classmethod
     def pop_from_buffer(cls, buf):

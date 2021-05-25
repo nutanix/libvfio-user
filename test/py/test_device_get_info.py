@@ -59,8 +59,7 @@ def test_device_get_info():
 
     # bad argsz
 
-    payload = vfio_user_device_info(argsz=8, flags=0,
-                                    num_regions=0, num_irqs=0).bytes()
+    payload = vfio_user_device_info(argsz=8, flags=0, num_regions=0, num_irqs=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
     sock.send(hdr + payload)
@@ -69,8 +68,7 @@ def test_device_get_info():
 
     # valid with larger argsz
 
-    payload = vfio_user_device_info(argsz=32, flags=0,
-                                    num_regions=0, num_irqs=0).bytes()
+    payload = vfio_user_device_info(argsz=32, flags=0, num_regions=0, num_irqs=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
     sock.send(hdr + payload)
