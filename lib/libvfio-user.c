@@ -560,7 +560,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         }
         /*
          * TODO this could be a separate function, but the implementation is
-         * temprorary anyway since we're moving dirty page tracking out of
+         * temporary anyway since we're moving dirty page tracking out of
          * the DMA controller.
          */
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
