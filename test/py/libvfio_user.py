@@ -82,6 +82,13 @@ VFIO_REGION_SUBTYPE_MIGRATION = 1
 VFIO_REGION_INFO_CAP_SPARSE_MMAP = 1
 VFIO_REGION_INFO_CAP_TYPE = 2
 
+VFIO_IRQ_SET_DATA_NONE = (1 << 0)
+VFIO_IRQ_SET_DATA_BOOL = (1 << 1)
+VFIO_IRQ_SET_DATA_EVENTFD = (1 << 2)
+VFIO_IRQ_SET_ACTION_MASK = (1 << 3)
+VFIO_IRQ_SET_ACTION_UNMASK = (1 << 4)
+VFIO_IRQ_SET_ACTION_TRIGGER = (1 << 5)
+
 # libvfio-user defines
 
 VFU_TRANS_SOCK = 0
@@ -160,8 +167,7 @@ topdir = os.path.realpath(os.path.dirname(__file__) + "/../..")
 build_type = os.getenv("BUILD_TYPE", default="dbg")
 libname = "%s/build/%s/lib/libvfio-user.so" % (topdir, build_type)
 lib = c.CDLL(libname, use_errno=True)
-
-msg_id = 1
+libc = c.CDLL("libc.so.6", use_errno=True)
 
 #
 # Structures
@@ -227,7 +233,7 @@ vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
                                      c.c_ulong, c.c_long, c.c_bool)
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
-                                 c.c_uint32, c.c_int)
+                                 c.c_uint32, c.c_int, c.c_ulong)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
 lib.vfu_pci_get_config_space.restype = (c.c_void_p)
 lib.vfu_setup_device_nr_irqs.argtypes = (c.c_void_p, c.c_int, c.c_uint32)
@@ -239,8 +245,6 @@ lib.vfu_pci_find_capability.restype = (c.c_ulong)
 lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
-lib.vfu_region_to_offset.argtypes = (c.c_int,)
-lib.vfu_region_to_offset.restype = (c.c_ulong)
 
 
 def to_byte(val):
@@ -261,6 +265,10 @@ def unpack_prefix(fmt, fields, buf):
 def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
+
+def eventfd(initval=0, flags=0):
+    libc.eventfd.argtypes = (c.c_uint, c.c_int)
+    return libc.eventfd(initval, flags)
 
 def connect_sock():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -371,6 +379,8 @@ def vfio_region_sparse_mmap_area(buf):
 # Library wrappers
 #
 
+msg_id = 1
+
 @c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_char_p)
 def log(ctx, level, msg):
     print(msg.decode("utf-8"))
@@ -419,7 +429,7 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
-                     mmap_areas=None, fd=-1):
+                     mmap_areas=None, fd=-1, offset=0):
     assert ctx != None
 
     nr_mmap_areas = 0
@@ -436,7 +446,7 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
 
     ret = lib.vfu_setup_region(ctx, index, size,
                                c.cast(cb, vfu_region_access_cb_t),
-                               flags, c_mmap_areas, nr_mmap_areas, fd)
+                               flags, c_mmap_areas, nr_mmap_areas, fd, offset)
     return ret
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
@@ -463,6 +473,3 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
-
-def vfu_region_to_offset(region):
-    return lib.vfu_region_to_offset(region)
