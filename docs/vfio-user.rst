@@ -24,7 +24,7 @@ The vfio-user specification is partly based on the
 VFIO is a mature and stable API, backed by an extensively used framework. The
 existing VFIO client implementation in QEMU (``qemu/hw/vfio/``) can be largely
 re-used, though there is nothing in this specification that requires that
-particular implementation None of the VFIO kernel modules are required for
+particular implementation. None of the VFIO kernel modules are required for
 supporting the protocol, on either the client or server side. Some source
 definitions in VFIO are re-used for vfio-user.
 
@@ -174,7 +174,7 @@ When the guest executes load or store operations to an unmapped device region,
 the client forwards these operations to the server with
 ``VFIO_USER_REGION_READ`` or ``VFIO_USER_REGION_WRITE`` messages. The server
 will reply with data from the device on read operations or an acknowledgement on
-write operations.
+write operations. See `Read and Write Operations`_.
 
 Client memory access
 --------------------
@@ -190,6 +190,8 @@ client provides file descriptors the server can ``mmap()``. Note that ``mmap()``
 privileges cannot be revoked by the client, therefore file descriptors should
 only be exported in environments where the client trusts the server not to
 corrupt guest memory.
+
+See `Read and Write Operations`_.
 
 Client/server interactions
 ==========================
@@ -1305,12 +1307,15 @@ There is no payload in the reply.
 
 .. _Read and Write Operations:
 
+Note that all of these operations must be supported by the client and/or server,
+even if the corresponding memory or device region has been shared as mappable.
+
 ``VFIO_USER_REGION_READ``
 -------------------------
 
 If a device region is not mappable, it's not directly accessible by the client
-via ``mmap()`` of the underlying fd. In this case, a client can read from a device
-region with this message.
+via ``mmap()`` of the underlying file descriptor. In this case, a client can
+read from a device region with this message.
 
 Request
 ^^^^^^^
@@ -1392,7 +1397,6 @@ Reply
 * *Offset* into the region accessed.
 * *Region* is the index of the region accessed.
 * *Count* is the size of the data transferred.
-* *Data* is the data that was written to the device region.
 
 ``VFIO_USER_DMA_READ``
 -----------------------
@@ -1570,7 +1574,7 @@ VFIO Device Migration Info
 A device may contain a migration region (of type
 ``VFIO_REGION_TYPE_MIGRATION``).  The beginning of the region must contain
 ``struct vfio_device_migration_info``, defined in ``<linux/vfio.h>``. This
-subregion is accessed like any other part of a standard vfio-user PCI region
+subregion is accessed like any other part of a standard vfio-user region
 using ``VFIO_USER_REGION_READ``/``VFIO_USER_REGION_WRITE``.
 
 +---------------+--------+-----------------------------+
