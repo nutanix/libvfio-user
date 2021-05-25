@@ -394,9 +394,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                 vfu_log(dma->vfu_ctx, LOG_WARNING,
                         "failed to close fd %d: %m", region->fd);
             }
-            if (region->dirty_bitmap != NULL) {
-                free(region->dirty_bitmap);
-            }
+            free(region->dirty_bitmap);
             return ERROR_INT(ret);
         }
     }

@@ -262,7 +262,8 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
 }
 
 static void
-mmap_sparse_areas(int *fds, struct vfio_region_info_cap_sparse_mmap *sparse)
+mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
+                  struct vfio_region_info_cap_sparse_mmap *sparse)
 {
     size_t i;
 
@@ -281,7 +282,8 @@ mmap_sparse_areas(int *fds, struct vfio_region_info_cap_sparse_mmap *sparse)
         }
         buf[ret + 1] = '\0';
         addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, fds[i], sparse->areas[i].offset);
+                    MAP_SHARED, fds[i], region_info->offset +
+                    sparse->areas[i].offset);
         if (addr == MAP_FAILED) {
             err(EXIT_FAILURE,
                 "failed to mmap sparse region #%lu in %s (%#llx-%#llx)",
@@ -331,7 +333,7 @@ get_device_region_info(int sock, uint32_t index)
                 assert((index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 2) ||
                        (index == VFU_PCI_DEV_MIGR_REGION_IDX && nr_fds == 1));
                 assert(nr_fds == sparse->nr_areas);
-                mmap_sparse_areas(fds, sparse);
+                mmap_sparse_areas(fds, region_info, sparse);
             }
         }
     }

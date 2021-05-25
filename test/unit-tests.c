@@ -392,60 +392,6 @@ typedef struct {
     int conn_fd;
 } tran_sock_t;
 
-/*
- * Performs various checks when adding sparse memory regions.
- */
-static void
-test_setup_sparse_region(void **state UNUSED)
-{
-    vfu_reg_info_t reg_info = { 0 };
-    struct iovec mmap_areas[2] = {
-        [0] = {
-            .iov_base = (void*)0x0,
-            .iov_len = 0x1000
-        },
-        [1] = {
-            .iov_base = (void*)0x1000,
-            .iov_len = 0x1000
-        }
-    };
-
-    vfu_ctx.reg_info = &reg_info;
-
-    /* invalid mappable settings */
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, -1);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 0, 1);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* default mmap area if not given */
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, NULL, 0, 1);
-    assert_int_equal(0, ret);
-
-    free(reg_info.mmap_areas);
-
-    /* sparse region exceeds region size */
-    mmap_areas[1].iov_len = 0x1001;
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                            0x2000, NULL, 0, mmap_areas, 2, 0);
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* sparse region within region size */
-    mmap_areas[1].iov_len = 0x1000;
-    ret = vfu_setup_region(&vfu_ctx, VFU_PCI_DEV_BAR0_REGION_IDX,
-                           0x2000, NULL, 0, mmap_areas, 2, 0);
-    assert_int_equal(0, ret);
-
-    free(reg_info.mmap_areas);
-}
-
 static void
 test_dirty_pages_without_dma(UNUSED void **state)
 {
@@ -473,214 +419,6 @@ test_dirty_pages_without_dma(UNUSED void **state)
 
 }
 
-static void
-test_device_set_irqs(UNUSED void **state)
-{
-    vfu_irqs_t *irqs = alloca(sizeof (*irqs) + sizeof (int));
-    struct vfio_irq_set irq_set = { 0, };
-    //int fd = 0xdead;
-
-    vfu_ctx.irq_count[VFU_DEV_MSIX_IRQ] = 2048;
-    vfu_ctx.irq_count[VFU_DEV_ERR_IRQ] = 1;
-    vfu_ctx.irq_count[VFU_DEV_REQ_IRQ] = 1;
-    vfu_ctx.irqs = irqs;
-
-    memset(irqs, 0, sizeof (*irqs) + sizeof (int));
-
-    irq_set.argsz = sizeof (irq_set);
-
-    /*
-     * Validation tests.
-     */
-
-    /* bad message size */
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, 0));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad .argsz */
-    irq_set.argsz = 3;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad .index */
-    irq_set.argsz = sizeof (irq_set);
-    irq_set.index = VFU_DEV_NUM_IRQS;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad flags, MASK and UNMASK */
-    irq_set.index = VFU_DEV_MSIX_IRQ;
-    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_ACTION_UNMASK;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad flags, DATA_NONE and DATA_BOOL */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE |
-                    VFIO_IRQ_SET_DATA_BOOL;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad start, count range */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
-    irq_set.start = 2047;
-    irq_set.count = 2;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad start, count range */
-    irq_set.start = 2049;
-    irq_set.count = 1;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad action for err irq */
-    irq_set.start = 0;
-    irq_set.count = 1;
-    irq_set.index = VFU_DEV_ERR_IRQ;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad action for req irq */
-    irq_set.index = VFU_DEV_REQ_IRQ;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad start for count == 0 */
-    irq_set.start = 1;
-    irq_set.count = 0;
-    irq_set.index = VFU_DEV_MSIX_IRQ;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad action for count == 0 */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_MASK | VFIO_IRQ_SET_DATA_NONE;
-    irq_set.count = 0;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad action and data type for count == 0 */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
-    irq_set.count = 0;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad fds for DATA_BOOL */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_BOOL;
-    irq_set.count = 1;
-    irq_set.start = 0;
-    nr_fds = 1;
-    fds[0] = 0xbeef;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad fds for DATA_NONE */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
-    irq_set.count = 1;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    /* bad fds for count == 2 */
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
-    irq_set.count = 2;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EINVAL, errno);
-
-    irqs->err_efd = irqs->req_efd = -1;
-
-    /*
-     * Basic disable functionality.
-     */
-
-    nr_fds = 0;
-
-    irq_set.index = VFU_DEV_REQ_IRQ;
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_NONE;
-    irq_set.count = 0;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(0, ret);
-
-    irq_set.index = VFU_DEV_REQ_IRQ;
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
-    irq_set.count = 1;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(0, ret);
-
-    /*
-     * Basic enable functionality.
-     */
-
-    irq_set.index = VFU_DEV_MSIX_IRQ;
-    vfu_ctx.irq_count[VFU_DEV_MSIX_IRQ] = 1;
-    irqs->efds[0] = -1;
-
-    nr_fds = 1;
-    fds[0] = 0xbeef;
-
-    irq_set.index = VFU_DEV_MSIX_IRQ;
-    irq_set.flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD;
-    irq_set.count = 1;
-    irq_set.start = 0;
-
-    ret = handle_device_set_irqs(&vfu_ctx, mkmsg(VFIO_USER_DEVICE_SET_IRQS,
-                                 &irq_set, sizeof (irq_set)));
-    assert_int_equal(0, ret);
-    assert_int_equal(0xbeef, irqs->efds[0]);
-
-}
 static void
 test_migration_state_transitions(void **state UNUSED)
 {
@@ -797,51 +535,13 @@ teardown_test_setup_migration_region(void **state)
 }
 
 static void
-test_setup_migration_region_too_small(void **state)
-{
-    vfu_ctx_t *v = get_vfu_ctx(state);
-    int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
-        vfu_get_migr_register_area_size() - 1, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
-}
-
-static void
 test_setup_migration_region_size_ok(void **state)
 {
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
         vfu_get_migr_register_area_size(), NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
-}
-
-static void
-test_setup_migration_region_fully_mappable(void **state)
-{
-    struct test_setup_migr_reg_dat *p = *state;
-    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s,
-        NULL, VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0,
-        0xdeadbeef);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
-}
-
-static void
-test_setup_migration_region_sparsely_mappable_over_migration_registers(void **state)
-{
-    struct test_setup_migr_reg_dat *p = *state;
-    struct iovec mmap_areas[] = {
-        [0] = {
-            .iov_base = 0,
-            .iov_len = p->rs
-        }
-    };
-    int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1, 0xdeadbeef);
-    assert_int_equal(-1, r);
-    assert_int_equal(EINVAL, errno);
 }
 
 static void
@@ -856,7 +556,7 @@ test_setup_migration_region_sparsely_mappable_valid(void **state)
     };
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
-        0xdeadbeef);
+        0xdeadbeef, 0);
     assert_int_equal(0, r);
 }
 
@@ -873,7 +573,7 @@ test_setup_migration_callbacks_bad_data_offset(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size() - 1);
@@ -885,7 +585,7 @@ test_setup_migration_callbacks(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size());
@@ -1098,20 +798,9 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
-        cmocka_unit_test_setup(test_setup_sparse_region, setup),
         cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
-        cmocka_unit_test_setup(test_device_set_irqs, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_too_small,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_fully_mappable,
-            setup_test_setup_migration_region,
-            teardown_test_setup_migration_region),
-        cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_over_migration_registers,
             setup_test_setup_migration_region,
             teardown_test_setup_migration_region),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_sparsely_mappable_valid,
