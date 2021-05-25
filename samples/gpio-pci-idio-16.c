@@ -141,6 +141,7 @@ main(int argc, char *argv[])
 {
     int ret;
     bool verbose = false;
+    bool restart = true;
     int opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
@@ -157,13 +158,16 @@ main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "v")) != -1) {
+    while ((opt = getopt(argc, argv, "Rv")) != -1) {
         switch (opt) {
+            case 'R':
+                restart = false;
+                break;
             case 'v':
                 verbose = true;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-v] <socketpath>\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-Rv] <socketpath>\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
@@ -201,13 +205,13 @@ main(int argc, char *argv[])
     vfu_pci_set_id(vfu_ctx, 0x494f, 0x0dc8, 0x0, 0x0);
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR2_REGION_IDX, 0x100,
-                           &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1);
+                           &bar2_access, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup region");
     }
 
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1);
+                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup migration region");
     }
@@ -237,12 +241,19 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to attach device");
     }
 
-    ret = vfu_run_ctx(vfu_ctx);
-    if (ret != 0) {
-        if (errno != ENOTCONN && errno != EINTR) {
-            err(EXIT_FAILURE, "failed to realize device emulation");
+    do {
+        ret = vfu_run_ctx(vfu_ctx);
+        if (ret != 0) {
+            if (errno == ENOTCONN) {
+                ret = vfu_attach_ctx(vfu_ctx);
+                if (ret < 0) {
+                    err(EXIT_FAILURE, "failed to re-attach device");
+                 }
+            } else if (errno != EINTR) {
+                err(EXIT_FAILURE, "vfu_run_ctx() failed");
+            }
         }
-    }
+    } while (restart);
 
     vfu_destroy_ctx(vfu_ctx);
     return EXIT_SUCCESS;

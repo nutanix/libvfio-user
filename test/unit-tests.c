@@ -486,7 +486,7 @@ test_dma_map_sg(void **state UNUSED)
     sg.length = 0xcafebabe;
     assert_int_equal(0, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
     assert_int_equal(0xdeadbeef, iovec.iov_base);
-    assert_int_equal((int)0x00000000cafebabe, iovec.iov_len);
+    assert_int_equal(0x00000000cafebabe, iovec.iov_len);
 }
 
 static void
@@ -583,9 +583,10 @@ test_migration_state_transitions(void **state UNUSED)
     bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
     uint32_t i, j;
 
-    /* from stopped (000b): all transitions are invalid */
+    /* from stopped (000b): all transitions are invalid except to running */
     assert_true(f(0, 0));
-    for (i = 1; i < 8; i++) {
+    assert_true(f(0, 1));
+    for (i = 2; i < 8; i++) {
         assert_false(f(0, i));
     }
 
@@ -601,7 +602,7 @@ test_migration_state_transitions(void **state UNUSED)
 
     /* from stop-and-copy (010b) */
     assert_true(f(2, 0));
-    assert_false(f(2, 1));
+    assert_true(f(2, 1));
     assert_true(f(2, 2));
     assert_false(f(2, 3));
     assert_false(f(2, 4));
@@ -697,7 +698,7 @@ test_setup_migration_region_size_ok(void **state)
     vfu_ctx_t *v = get_vfu_ctx(state);
     int r = vfu_setup_region(v, VFU_PCI_DEV_MIGR_REGION_IDX,
         vfu_get_migr_register_area_size(), NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
 }
 
@@ -713,7 +714,7 @@ test_setup_migration_region_sparsely_mappable_valid(void **state)
     };
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
         VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, mmap_areas, 1,
-        0xdeadbeef);
+        0xdeadbeef, 0);
     assert_int_equal(0, r);
 }
 
@@ -730,7 +731,7 @@ test_setup_migration_callbacks_bad_data_offset(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size() - 1);
@@ -742,7 +743,7 @@ test_setup_migration_callbacks(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
     int r = vfu_setup_region(p->v, VFU_PCI_DEV_MIGR_REGION_IDX, p->s, NULL,
-        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1);
+        VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE, NULL, 0, -1, 0);
     assert_int_equal(0, r);
     r = vfu_setup_device_migration_callbacks(p->v, &p->c,
         vfu_get_migr_register_area_size());
@@ -807,28 +808,30 @@ test_should_exec_command(UNUSED void **state)
     patch("cmd_allowed_when_stopped_and_copying");
     patch("device_is_stopped");
 
-    /* XXX stopped and copying, command allowed */
+    /* TEST stopped and copying, command allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_value(device_is_stopped_and_copying, migration, &migration);
     will_return(cmd_allowed_when_stopped_and_copying, true);
     expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped and copying, command not allowed */
+    /* TEST stopped and copying, command not allowed */
     will_return(device_is_stopped_and_copying, true);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(cmd_allowed_when_stopped_and_copying, false);
     expect_any(cmd_allowed_when_stopped_and_copying, cmd);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX stopped */
+    /* TEST stopped */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
     expect_value(device_is_stopped, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
 
-    /* XXX none of the above */
+    /* TEST none of the above */
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, false);
@@ -921,6 +924,24 @@ test_process_request_free_passed_fds(void **state UNUSED)
     assert_int_equal(0, process_request(&vfu_ctx));
 }
 
+static void
+test_dma_controller_dirty_page_get(void **state UNUSED)
+{
+    dma_memory_region_t *r;
+    uint64_t len = UINT32_MAX + (uint64_t)10;
+    char bp[0x20008]; /* must be QWORD aligned */
+
+    vfu_ctx.dma->nregions = 1;
+    r = &vfu_ctx.dma->regions[0];
+    r->info.iova.iov_base = (void *)0;
+    r->info.iova.iov_len = len;
+    r->info.vaddr = (void *)0xdeadbeef;
+    vfu_ctx.dma->dirty_pgsize = 4096;
+
+    assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
+                     len, 4096, sizeof(bp), (char **)&bp));
+}
+
 int
 main(void)
 {
@@ -959,6 +980,7 @@ main(void)
         cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_should_exec_command, setup),
         cmocka_unit_test_setup(test_process_request_free_passed_fds, setup),
+        cmocka_unit_test_setup(test_dma_controller_dirty_page_get, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

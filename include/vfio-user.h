@@ -125,12 +125,26 @@ struct vfio_user_region_access {
 
 struct vfio_user_dma_region_access {
     uint64_t    addr;
-    uint32_t    count;
+    uint64_t    count;
     uint8_t     data[];
 } __attribute__((packed));
 
 struct vfio_user_irq_info {
     uint32_t    subindex;
+} __attribute__((packed));
+
+/* based on struct vfio_bitmap */
+struct vfio_user_bitmap {
+    uint64_t pgsize;
+    uint64_t size;
+    char data[];
+} __attribute__((packed));
+
+/* based on struct vfio_iommu_type1_dirty_bitmap_get */
+struct vfio_user_bitmap_range {
+    uint64_t iova;
+    uint64_t size;
+    struct vfio_user_bitmap bitmap;
 } __attribute__((packed));
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)
@@ -171,12 +185,6 @@ struct vfio_device_migration_info {
 };
 #endif /* not a RHEL kernel */
 
-struct vfio_bitmap {
-	__u64        pgsize;	/* page size for bitmap in bytes */
-	__u64        size;	/* in bytes */
-	__u64 *data;	/* one bit per page */
-};
-
 struct vfio_iommu_type1_dirty_bitmap {
 	__u32        argsz;
 	__u32        flags;
@@ -184,12 +192,6 @@ struct vfio_iommu_type1_dirty_bitmap {
 #define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP	(1 << 1)
 #define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP	(1 << 2)
 	__u8         data[];
-};
-
-struct vfio_iommu_type1_dirty_bitmap_get {
-	__u64              iova;	/* IO virtual address */
-	__u64              size;	/* Size of iova range */
-	struct vfio_bitmap bitmap;
 };
 
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */

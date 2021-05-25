@@ -66,7 +66,7 @@ typedef void *vfu_dma_addr_t;
 typedef struct {
     vfu_dma_addr_t dma_addr;
     int region;
-    int length;
+    uint64_t length;
     uint64_t offset;
     bool mappable;
 } dma_sg_t;
@@ -292,6 +292,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * @fd: file descriptor of the file backing the region if the region is
  *  mappable; it is the server's responsibility to create a file suitable for
  *  memory mapping by the client.
+ * @offset: offset of the region within the fd, or zero.
  *
  * @returns 0 on success, -1 on error, Sets errno.
  */
@@ -299,7 +300,7 @@ int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
-                 int fd);
+                 int fd, uint64_t offset);
 
 /*
  * Returns the size of the area needed to hold the migration registers at the
@@ -316,12 +317,18 @@ typedef enum vfu_reset_type {
      * reset to a known-good initial state (including any PCI register state).
      */
     VFU_RESET_DEVICE,
+
     /*
      * The vfio-user socket client connection was closed or reset. The attached
      * context is cleaned up after returning from the reset callback, and
      * vfu_attach_ctx() must be called to establish a new client.
      */
-    VFU_RESET_LOST_CONN
+    VFU_RESET_LOST_CONN,
+
+    /*
+     * Client requested to initiate PCI function level reset.
+     */
+    VFU_RESET_PCI_FLR
 } vfu_reset_type_t;
 
 /*
@@ -655,7 +662,9 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
              struct iovec *iov, int cnt);
 
 /**
- * Read from the dma region exposed by the client.
+ * Read from the dma region exposed by the client. This can be used as an
+ * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -667,7 +676,9 @@ int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
 
 /**
- * Write to the dma region exposed by the client.
+ * Write to the dma region exposed by the client.  This can be used as an
+ * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
+ * notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -852,16 +863,6 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t pos, int cap_id);
-
-/**
- * Returns the memory offset where the specific region starts in device memory.
- *
- * @region: the region to translate
- *
- * @returns the absolute offset
- */
-uint64_t
-vfu_region_to_offset(uint32_t region);
 
 #ifdef __cplusplus
 }

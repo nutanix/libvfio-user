@@ -467,7 +467,7 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  *
  * {
  *     "capabilities": {
- *         "max_fds": 32,
+ *         "max_msg_fds": 32,
  *         "migration": {
  *             "pgsize": 4096
  *         }
@@ -499,7 +499,7 @@ tran_parse_version_json(const char *json_str,
         goto out;
     }
 
-    if (json_object_object_get_ex(jo_caps, "max_fds", &jo)) {
+    if (json_object_object_get_ex(jo_caps, "max_msg_fds", &jo)) {
         if (json_object_get_type(jo) != json_type_int) {
             goto out;
         }
@@ -625,8 +625,8 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
 
         // FIXME: is the code resilient against ->client_max_fds == 0?
         if (vfu_ctx->client_max_fds < 0 ||
-            vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_FDS_LIMIT) {
-            vfu_log(vfu_ctx, LOG_ERR, "refusing client max_fds of %d",
+            vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT) {
+            vfu_log(vfu_ctx, LOG_ERR, "refusing client max_msg_fds of %d",
                     vfu_ctx->client_max_fds);
             ret = EINVAL;
             goto out;
@@ -659,7 +659,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
         slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
-                    "\"max_fds\":%u,"
+                    "\"max_msg_fds\":%u,"
                     "\"max_msg_size\":%u"
                 "}"
              "}", SERVER_MAX_FDS, SERVER_MAX_MSG_SIZE);
@@ -667,7 +667,7 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
         slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
-                    "\"max_fds\":%u,"
+                    "\"max_msg_fds\":%u,"
                     "\"max_msg_size\":%u,"
                     "\"migration\":{"
                         "\"pgsize\":%zu"

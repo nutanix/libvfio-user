@@ -43,34 +43,37 @@ ifdef WITH_ASAN
 	LDFLAGS += -fsanitize=address
 endif
 
+ifeq ($(MAKECMDGOALS), gcov)
+	CFLAGS += --coverage
+	LDFLAGS += --coverage
+endif
+
 ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
 
-CMAKE = cmake
+CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
 
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
 INSTALL_PREFIX ?= /usr/local
 
-PHONY_TARGETS := all pytest pytest-valgrind test pre-push realclean buildclean force_cmake tags
-.PHONY: $(PHONY_TARGETS)
+.PHONY: all test pytest pytest-valgrind
+.PHONY: pre-push clean realclean tags gcov
 
-all $(filter-out $(PHONY_TARGETS), $(MAKECMDGOALS)): $(BUILD_DIR)/Makefile
+all: $(BUILD_DIR)/Makefile
 	+$(MAKE) -C $(BUILD_DIR) $@
 
 #
 # NB: add --capture=no to get a C-level assert failure output.
 #
 PYTESTCMD = \
-	$(shell which -a pytest-3 /bin/true 2>/dev/null | head -1) \
-	-rP \
-	--quiet
+    $(shell bash -c "command -v pytest-3 /bin/true" | head -1) \
+    -rP --quiet
 
 PYTEST = \
-    BUILD_TYPE=$(BUILD_TYPE) \
-	$(PYTESTCMD)
+    BUILD_TYPE=$(BUILD_TYPE) $(PYTESTCMD)
 
 #
 # In our tests, we make sure to destroy the ctx at the end of each test; this is
@@ -85,6 +88,7 @@ PYTESTVALGRIND = \
 	valgrind \
 	--suppressions=$(CURDIR)/test/py/valgrind.supp \
 	--quiet \
+	--track-origins=yes \
 	--errors-for-leak-kinds=definite \
 	--show-leak-kinds=definite \
 	--leak-check=full \
@@ -107,7 +111,11 @@ pytest-valgrind: all
 
 endif
 
+ifdef WITH_GCOV
 test: all pytest
+else
+test: all pytest
+endif
 	cd $(BUILD_DIR)/test; ctest --verbose
 
 pre-push: realclean
@@ -120,13 +128,16 @@ pre-push: realclean
 	make test CC=gcc
 	make pytest-valgrind
 
-realclean:
-	rm -rf $(BUILD_DIR_BASE)
+GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 
-buildclean:
+gcov: realclean test $(GCOVS)
+
+clean:
 	rm -rf $(BUILD_DIR)
 
-force_cmake: $(BUILD_DIR)/Makefile
+realclean:
+	rm -rf $(BUILD_DIR_BASE)
+	rm -rf $(GCOVS)
 
 $(BUILD_DIR)/Makefile:
 	mkdir -p $(BUILD_DIR)
@@ -140,3 +151,6 @@ $(BUILD_DIR)/Makefile:
 
 tags:
 	ctags -R --exclude=$(BUILD_DIR)
+
+lib/%.c.gcov: lib/%.c
+	cd lib && gcov -o ../build/$(BUILD_TYPE)/lib/CMakeFiles/$*.dir/$*.gcno $<

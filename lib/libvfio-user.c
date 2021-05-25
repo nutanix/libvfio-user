@@ -379,14 +379,6 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return 0;
 }
 
-#define VFU_REGION_SHIFT 40
-
-static inline uint64_t
-region_to_offset(uint32_t region)
-{
-    return (uint64_t)region << VFU_REGION_SHIFT;
-}
-
 int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
@@ -428,7 +420,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     /* This might be more than the buffer we actually return. */
     out_info->argsz = sizeof(*out_info) + caps_size;
     out_info->index = in_info->index;
-    out_info->offset = region_to_offset(out_info->index);
+    out_info->offset = vfu_reg->offset;
     out_info->size = vfu_reg->size;
 
     out_info->flags = 0;
@@ -543,6 +535,11 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
             ret = 0;
         } else {
+
+            if (region->flags != 0) {
+                vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
+                return ERROR_INT(ENOTSUP);
+            }
             ret = dma_controller_remove_region(vfu_ctx->dma,
                                                (void *)region->addr,
                                                region->size,
@@ -560,20 +557,34 @@ handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 static int
-handle_device_reset(vfu_ctx_t *vfu_ctx)
+do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
-    vfu_log(vfu_ctx, LOG_DEBUG, "Device reset called by client");
+    int ret;
+
     if (vfu_ctx->reset != NULL) {
-        return vfu_ctx->reset(vfu_ctx, VFU_RESET_DEVICE);
+        ret = vfu_ctx->reset(vfu_ctx, reason);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    if (vfu_ctx->migration != NULL) {
+        return handle_device_state(vfu_ctx, vfu_ctx->migration,
+                                   VFIO_DEVICE_STATE_RUNNING, false);
     }
     return 0;
 }
 
-static int
-handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
-                       struct iovec **iovecs, size_t *nr_iovecs,
-                       struct vfio_iommu_type1_dirty_bitmap_get *ranges,
-                       uint32_t size)
+int
+handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    return do_device_reset(vfu_ctx, reason);
+}
+
+int
+MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
+                                    struct iovec **iovecs, size_t *nr_iovecs,
+                                    struct vfio_user_bitmap_range *ranges,
+                                     uint32_t size)
 {
     int ret = EINVAL;
     size_t i;
@@ -583,23 +594,25 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
     assert(nr_iovecs != NULL);
     assert(ranges != NULL);
 
-    if (size % sizeof(struct vfio_iommu_type1_dirty_bitmap_get) != 0) {
+    if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
         return ERROR_INT(EINVAL);
     }
-    *nr_iovecs = size / sizeof(struct vfio_iommu_type1_dirty_bitmap_get);
+    *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
     *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
     if (*iovecs == NULL) {
         return -1;
     }
 
     for (i = 0; i < *nr_iovecs; i++) {
-        struct vfio_iommu_type1_dirty_bitmap_get *r = &ranges[i];
+        struct vfio_user_bitmap_range *r = &ranges[i];
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)r->iova, r->size,
                                             r->bitmap.pgsize, r->bitmap.size,
                                             (char **)&((*iovecs)[i].iov_base));
         if (ret != 0) {
             ret = errno;
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "failed to get dirty bitmap from DMA controller: %m");
             goto out;
         }
         (*iovecs)[i].iov_len = r->bitmap.size;
@@ -644,7 +657,7 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP: {
-        struct vfio_iommu_type1_dirty_bitmap_get *get;
+        struct vfio_user_bitmap_range *get;
         get = (void *)(dirty_bitmap + 1);
 
         ret = handle_dirty_pages_get(vfu_ctx, &msg->out_iovecs,
@@ -717,12 +730,6 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     free(msg->in_fds);
-
-    for (i = 0; i < msg->nr_out_fds; i++) {
-        assert(msg->out_fds[i] != -1);
-        close(msg->out_fds[i]);
-    }
-
     free(msg->out_fds);
 
     assert(msg->out_data == NULL || msg->out_iovecs == NULL);
@@ -747,9 +754,9 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 int
 MOCK_DEFINE(get_request_header)(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
-    int fds[VFIO_USER_CLIENT_MAX_FDS_LIMIT] = { 0 };
+    int fds[VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT] = { 0 };
     struct vfio_user_header hdr = { 0, };
-    size_t nr_fds = VFIO_USER_CLIENT_MAX_FDS_LIMIT;
+    size_t nr_fds = VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT;
     size_t i;
     int ret;
 
@@ -835,11 +842,12 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
                     "bad command %d while device in stop-and-copy state", cmd);
             return false;
         }
-    } else if (device_is_stopped(vfu_ctx->migration) &&
-               cmd != VFIO_USER_DIRTY_PAGES) {
-        vfu_log(vfu_ctx, LOG_ERR,
-               "bad command %d while device in stopped state", cmd);
-        return false;
+    } else if (device_is_stopped(vfu_ctx->migration)) {
+        if (!cmd_allowed_when_stopped_and_copying(cmd)) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                   "bad command %d while device in stopped state", cmd);
+            return false;
+        }
     }
     return true;
 }
@@ -879,7 +887,8 @@ MOCK_DEFINE(exec_command)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_USER_DEVICE_RESET:
-        ret = handle_device_reset(vfu_ctx);
+        vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
+        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
         break;
 
     case VFIO_USER_DIRTY_PAGES:
@@ -1092,13 +1101,12 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
 {
     vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    if (vfu_ctx->dma != NULL) {
+        dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
+                                          vfu_ctx);
     }
 
-    if (vfu_ctx->dma != NULL) {
-        dma_controller_remove_regions(vfu_ctx->dma);
-    }
+    do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
         irqs_reset(vfu_ctx);
@@ -1309,7 +1317,8 @@ validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
 int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
-                 struct iovec *mmap_areas, uint32_t nr_mmap_areas, int fd)
+                 struct iovec *mmap_areas, uint32_t nr_mmap_areas,
+                 int fd, uint64_t offset)
 {
     struct iovec whole_region = { .iov_base = 0, .iov_len = size };
     vfu_reg_info_t *reg;
@@ -1357,6 +1366,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->size = size;
     reg->cb = cb;
     reg->fd = fd;
+    reg->offset = offset;
 
     if (mmap_areas == NULL && reg->fd != -1) {
         mmap_areas = &whole_region;
@@ -1507,7 +1517,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_recv;
     struct vfio_user_dma_region_access dma_send;
-    int recv_size;
+    uint64_t recv_size;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
@@ -1548,7 +1558,7 @@ int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_send, dma_recv;
-    int send_size = sizeof(*dma_send) + sg->length;
+    uint64_t send_size = sizeof(*dma_send) + sg->length;
     int msg_id = 1, ret;
 
     assert(vfu_ctx != NULL);
@@ -1578,12 +1588,6 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     free(dma_send);
 
     return ret;
-}
-
-uint64_t
-vfu_region_to_offset(uint32_t region)
-{
-    return region_to_offset(region);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
