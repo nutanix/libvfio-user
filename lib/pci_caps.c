@@ -276,14 +276,17 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
         vfu_log(vfu_ctx, LOG_DEBUG, "MRRS set to %d", p->mrrs);
     }
 
-    if (p->iflr && vfu_ctx->reset) {
+    if (p->iflr) {
         if (px->pxdcap.flrc == 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "FLR capability is not supported\n");
+            vfu_log(vfu_ctx, LOG_ERR, "FLR capability is not supported");
             return ERROR_INT(EINVAL);
         }
-        vfu_log(vfu_ctx, LOG_DEBUG,
-            "initiate function level reset");
-        return vfu_ctx->reset(vfu_ctx, VFU_RESET_PCI_FLR);
+        if (vfu_ctx->reset != NULL) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "initiate function level reset");
+            return vfu_ctx->reset(vfu_ctx, VFU_RESET_PCI_FLR);
+        } else {
+            vfu_log(vfu_ctx, LOG_ERR, "FLR callback is not implemented");
+        }
     }
 
     return 0;
