@@ -253,6 +253,7 @@ lib.vfu_pci_find_capability.restype = (c.c_ulong)
 lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
+lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 
 
 def to_byte(val):
@@ -493,3 +494,8 @@ def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
     assert ctx != None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
+
+def vfu_irq_trigger(ctx, subindex):
+    assert ctx != None
+
+    return lib.vfu_irq_trigger(ctx, subindex)
