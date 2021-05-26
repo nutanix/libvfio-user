@@ -28,60 +28,59 @@
 #
 
 from libvfio_user import *
+import ctypes as c
 import errno
 
-def test_device_get_info():
-    global ctx
+ctx = None
+sock = None
+
+def test_irq_trigger_setup():
+    global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=4096,
-                           flags=VFU_REGION_FLAG_RW)
+    ret = vfu_pci_init(ctx)
     assert ret == 0
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR1_REGION_IDX, size=4096,
-                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
+
+    ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, 2048)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    # test short write
-
     sock = connect_client(ctx)
 
-    payload = struct.pack("II", 0, 0)
+def test_irq_trigger_bad_subindex():
+    ret = vfu_irq_trigger(ctx, 2048)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
+    ret = vfu_irq_trigger(ctx, 2049)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+def test_irq_trigger_no_interrupt():
+    ret = vfu_irq_trigger(ctx, 0)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOENT
+
+def test_irq_trigger():
+    # struct vfio_irq_set
+    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
+                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 8, 1)
+
+    fd = eventfd(initval=4)
+
+    hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
+    sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                 struct.pack("I", fd))])
     vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    get_reply(sock)
 
-    # bad argsz
+    ret = vfu_irq_trigger(ctx, 8)
 
-    payload = vfio_user_device_info(argsz=8, flags=0, num_regions=0, num_irqs=0)
+    assert struct.unpack("Q", os.read(fd, 8))[0] == 5
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
-
-    # valid with larger argsz
-
-    payload = vfio_user_device_info(argsz=32, flags=0, num_regions=0, num_irqs=0)
-
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock)
-
-    (argsz, flags, num_regions, num_irqs) = struct.unpack("IIII", result)
-
-    assert argsz == 16
-    assert flags == VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET
-    assert num_regions == VFU_PCI_DEV_NUM_REGIONS
-    assert num_irqs == VFU_DEV_NUM_IRQS
-
-    disconnect_client(ctx, sock)
-
+def test_irq_trigger_cleanup():
     vfu_destroy_ctx(ctx)

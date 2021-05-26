@@ -46,6 +46,14 @@ set(LIBOBJS
     $<TARGET_OBJECTS:pci>
     $<TARGET_OBJECTS:tran_sock>)
 
+add_library(pci_caps OBJECT pci_caps.c)
+add_library(dma OBJECT dma.c)
+add_library(irq OBJECT irq.c)
+add_library(libvfio-user OBJECT libvfio-user.c)
+add_library(migration OBJECT migration.c)
+add_library(pci OBJECT pci.c)
+add_library(tran_sock OBJECT tran_sock.c)
+
 add_library(vfio-user-shared SHARED ${LIBOBJS})
 target_link_libraries(vfio-user-shared json-c pthread)
 set_target_properties(vfio-user-shared PROPERTIES
@@ -64,25 +72,6 @@ set_target_properties(vfio-user-static PROPERTIES
 set_target_properties(vfio-user-static PROPERTIES
                       OUTPUT_NAME vfio-user
                       CLEAN_DIRECT_OUTPUT 1)
-
-set(UT_CFLAGS "-O0 -ggdb --coverage")
-set(UT_LFLAGS "--coverage")
-
-function(add_library_ut lib)
-    add_library(${lib} OBJECT ${ARGN})
-    set(lib_ut ${lib}_ut)
-    add_library(${lib_ut} ${ARGN})
-    set_target_properties(${lib_ut} PROPERTIES COMPILE_FLAGS ${UT_CFLAGS})
-    set_target_properties(${lib_ut} PROPERTIES LINK_FLAGS    ${UT_LFLAGS})
-endfunction(add_library_ut)
-
-add_library_ut(pci_caps pci_caps.c)
-add_library_ut(dma dma.c)
-add_library_ut(irq irq.c)
-add_library_ut(libvfio-user libvfio-user.c)
-add_library_ut(migration migration.c)
-add_library_ut(pci pci.c)
-add_library_ut(tran_sock tran_sock.c)
 
 install(TARGETS vfio-user-shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
