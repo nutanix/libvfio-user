@@ -1039,21 +1039,22 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 }
 
 static void
-map_dma_regions(int sock, int max_fds, struct vfio_user_dma_region *dma_regions,
+map_dma_regions(int sock, struct vfio_user_dma_region *dma_regions,
                 int *dma_region_fds, int nr_dma_regions)
 {
     int i, ret;
 
-    for (i = 0; i < nr_dma_regions / max_fds; i++) {
-        struct iovec iovecs[2] = { { 0, } };
-
-        /* [0] is for the header. */
-        iovecs[1].iov_base = dma_regions + (i * max_fds);
-        iovecs[1].iov_len = sizeof(*dma_regions) * max_fds;
-
+    for (i = 0; i < nr_dma_regions; i++) {
+        struct iovec iovecs[2] = {
+            /* [0] is for the header. */
+            [1] = {
+                .iov_base = &dma_regions[i],
+                .iov_len = sizeof(*dma_regions)
+            }
+        };
         ret = tran_sock_msg_iovec(sock, 0x1234 + i, VFIO_USER_DMA_MAP,
                                   iovecs, ARRAY_SIZE(iovecs),
-                                  dma_region_fds + (i * max_fds), max_fds,
+                                  &dma_region_fds[i], 1,
                                   NULL, NULL, 0, NULL, 0);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to map DMA regions");
@@ -1137,9 +1138,7 @@ int main(int argc, char *argv[])
     /*
      * XXX VFIO_USER_DMA_MAP
      *
-     * Tell the server we have some DMA regions it can access. Each DMA region
-     * is accompanied by a file descriptor, so let's create more (2x) DMA
-     * regions that can fit in a message that can be handled by the server.
+     * Tell the server we have some DMA regions it can access.
      */
     nr_dma_regions = server_max_fds << 1;
 
@@ -1163,8 +1162,7 @@ int main(int argc, char *argv[])
         dma_region_fds[i] = fileno(fp);
     }
 
-    map_dma_regions(sock, server_max_fds, dma_regions, dma_region_fds,
-                    nr_dma_regions);
+    map_dma_regions(sock, dma_regions, dma_region_fds, nr_dma_regions);
 
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
@@ -1219,9 +1217,10 @@ int main(int argc, char *argv[])
         memcpy(r, dma_regions, sizeof(r));
         for (i = 0; i < (int)ARRAY_SIZE(r); i++) {
             r[i].flags = 0;
+            ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r[i],
+                                sizeof(struct vfio_user_dma_region),
+                                NULL, NULL, 0);
         }
-        ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, r, sizeof(r),
-                            NULL, NULL, 0);
     }
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap DMA regions");
@@ -1268,7 +1267,7 @@ int main(int argc, char *argv[])
      * XXX reconfigure DMA regions, note that the first half of the has been
      * unmapped.
      */
-    map_dma_regions(sock, server_max_fds, dma_regions + server_max_fds,
+    map_dma_regions(sock, dma_regions + server_max_fds,
                     dma_region_fds + server_max_fds,
                     nr_dma_regions - server_max_fds);
 

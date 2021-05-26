@@ -467,90 +467,95 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
 }
 
 int
-handle_dma_map_or_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+               struct vfio_user_dma_region *region)
 {
-    struct vfio_user_dma_region *dma_regions = msg->in_data;
-    bool is_map = (msg->hdr.cmd == VFIO_USER_DMA_MAP);
-    size_t nr_dma_regions;
-    size_t fdi;
-    size_t i;
+    char rstr[1024];
+    int fd = -1;
     int ret;
 
     assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+    assert(region != NULL);
 
-    if (msg->in_size % sizeof(struct vfio_user_dma_region) != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA regions %zu", msg->in_size);
+    if (msg->in_size != sizeof(*region)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA map region %zu",
+                msg->in_size);
         return ERROR_INT(EINVAL);
     }
 
-    if (vfu_ctx->dma == NULL) {
-        return 0;
-    }
+    snprintf(rstr, sizeof(rstr),
+             "[%#lx, %#lx) offset=%#lx prot=%#x flags=%#x",
+             region->addr, region->addr + region->size, region->offset,
+             region->prot, region->flags);
 
-    nr_dma_regions = msg->in_size / sizeof(struct vfio_user_dma_region);
-    if (nr_dma_regions == 0) {
-        return 0;
-    }
+    vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
 
-    for (i = 0, fdi = 0; i < nr_dma_regions; i++) {
-        struct vfio_user_dma_region *region = &dma_regions[i];
-        char rstr[1024];
-
-        snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx "
-                "prot=%#x flags=%#x", region->addr, region->addr + region->size,
-                region->offset, region->prot, region->flags);
-
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s DMA region %s",
-                is_map ? "adding" : "removing", rstr);
-
-        if (is_map) {
-            int fd = -1;
-            if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
-                fd = consume_fd(msg->in_fds, msg->nr_in_fds, fdi++);
-                if (fd < 0) {
-                    vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: "
-                            "mappable but fd not provided", rstr);
-                    return -1;
-                }
-            }
-
-            ret = dma_controller_add_region(vfu_ctx->dma, (void *)region->addr,
-                                            region->size, fd, region->offset,
-                                            region->prot);
-            if (ret < 0) {
-                ret = errno;
-                vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m",
-                        rstr);
-                if (fd != -1) {
-                    close(fd);
-                }
-                return ERROR_INT(ret);
-            }
-
-            if (vfu_ctx->dma_register != NULL) {
-                vfu_ctx->dma_register(vfu_ctx,
-                                      &vfu_ctx->dma->regions[ret].info);
-            }
-
-            ret = 0;
-        } else {
-
-            if (region->flags != 0) {
-                vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
-                return ERROR_INT(ENOTSUP);
-            }
-            ret = dma_controller_remove_region(vfu_ctx->dma,
-                                               (void *)region->addr,
-                                               region->size,
-                                               vfu_ctx->dma_unregister,
-                                               vfu_ctx);
-            if (ret < 0) {
-                ret = errno;
-                vfu_log(vfu_ctx, LOG_ERR, "failed to remove DMA region %s: %m",
-                        rstr);
-                return ERROR_INT(ret);
-            }
+    if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+        fd = consume_fd(msg->in_fds, msg->nr_in_fds, 0);
+        if (fd < 0) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "failed to add DMA region %s: mappable but fd not provided",
+                    rstr);
+            return -1;
         }
+    }
+
+    ret = dma_controller_add_region(vfu_ctx->dma, (void *)region->addr,
+                                    region->size, fd, region->offset,
+                                    region->prot);
+    if (ret < 0) {
+        ret = errno;
+        vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
+        if (fd != -1) {
+            close(fd);
+        }
+        return ERROR_INT(ret);
+    }
+
+    if (vfu_ctx->dma_register != NULL) {
+        vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
+    }
+    return 0;
+}
+
+int
+handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                 struct vfio_user_dma_region *region)
+{
+    int ret;
+    char rstr[1024];
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+    assert(region != NULL);
+
+    if (msg->in_size != sizeof(*region)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA unmap region %zu",
+                msg->in_size);
+        return ERROR_INT(EINVAL);
+    }
+
+    snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx "
+            "prot=%#x flags=%#x", region->addr, region->addr + region->size,
+            region->offset, region->prot, region->flags);
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
+
+    if (region->flags != 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
+        return ERROR_INT(ENOTSUP);
+    }
+    ret = dma_controller_remove_region(vfu_ctx->dma,
+                                       (void *)region->addr,
+                                       region->size,
+                                       vfu_ctx->dma_unregister,
+                                       vfu_ctx);
+    if (ret < 0) {
+        ret = errno;
+        vfu_log(vfu_ctx, LOG_WARNING,
+                "failed to remove DMA region %s: %m", rstr);
+        return ERROR_INT(ret);
     }
     return ret;
 }
@@ -865,8 +870,15 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     switch (msg->hdr.cmd) {
     case VFIO_USER_DMA_MAP:
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dma_map(vfu_ctx, msg, msg->in_data);
+        }
+        break;
+
     case VFIO_USER_DMA_UNMAP:
-        ret = handle_dma_map_or_unmap(vfu_ctx, msg);
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dma_unmap(vfu_ctx, msg, msg->in_data);
+        }
         break;
 
     case VFIO_USER_DEVICE_GET_INFO:
