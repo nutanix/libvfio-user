@@ -59,6 +59,12 @@ def test_device_set_irqs_setup():
 
     sock = connect_client(ctx)
 
+def test_device_set_irqs_no_irq_set():
+    hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=0)
+    sock.send(hdr)
+    vfu_run_ctx(ctx)
+    get_reply(sock, expect=errno.EINVAL)
+
 def test_device_set_irqs_short_write():
     payload = struct.pack("II", 0, 0)
 

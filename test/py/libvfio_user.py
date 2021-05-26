@@ -452,7 +452,7 @@ def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
     global msg_id
 
     buf = struct.pack("HHIII", msg_id, cmd, SIZEOF_VFIO_USER_HEADER + size,
-                      0, error_no)
+                      VFIO_USER_F_TYPE_COMMAND, error_no)
 
     msg_id += 1
 
