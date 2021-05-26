@@ -58,12 +58,13 @@ struct pxdcap {
     uint32_t etfs:1;
     uint32_t l0sl:3;
     uint32_t l1l:3;
-    uint32_t per:1;
-    uint32_t res1:2;
+    uint32_t res1:3;
+    uint32_t rer:1;
+    uint32_t res2:2;
     uint32_t csplv:8;
     uint32_t cspls:2;
     uint32_t flrc:1;
-    uint32_t res2:3;
+    uint32_t res3:3;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdcap) == 0x4, "bad PXDCAP size");
 

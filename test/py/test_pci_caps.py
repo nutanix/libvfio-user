@@ -309,7 +309,7 @@ def test_pci_cap_write_px():
 
     #flrc
     cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
-                      b'\x02', *[b'\0' for _ in range(52)])
+                      b'\x10', *[b'\0' for _ in range(52)])
     pos = vfu_pci_add_capability(ctx, pos=cap_offsets[5], flags=0, data=cap)
     assert pos == cap_offsets[5]
 
