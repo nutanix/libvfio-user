@@ -211,10 +211,6 @@ get_msg(void *data, size_t len, int *fds, size_t *nr_fds, int sock_fd,
  * Receive a vfio-user message.  If "len" is set to non-zero, the message should
  * include data of that length, which is stored in the pre-allocated "data"
  * pointer.
- *
- * FIXME: in general, sort out negative err returns - they should only be used
- * when we're going to return > 0 on success, and even then "errno" might be
- * better.
  */
 static int
 tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
