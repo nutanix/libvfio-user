@@ -83,6 +83,8 @@ VFIO_REGION_SUBTYPE_MIGRATION = 1
 VFIO_REGION_INFO_CAP_SPARSE_MMAP = 1
 VFIO_REGION_INFO_CAP_TYPE = 2
 
+VFIO_IRQ_INFO_EVENTFD = (1 << 0)
+
 VFIO_IRQ_SET_DATA_NONE = (1 << 0)
 VFIO_IRQ_SET_DATA_BOOL = (1 << 1)
 VFIO_IRQ_SET_DATA_EVENTFD = (1 << 2)
@@ -233,6 +235,14 @@ class iovec_t(Structure):
     _fields_ = [
         ("iov_base", c.c_void_p),
         ("iov_len", c.c_int)
+    ]
+
+class vfio_irq_info(Structure):
+    _fields_ = [
+        ("argsz", c.c_uint),
+        ("flags", c.c_uint),
+        ("index", c.c_uint),
+        ("count", c.c_uint),
     ]
 
 class vfio_irq_set(Structure):
