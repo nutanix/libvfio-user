@@ -276,11 +276,9 @@ test_handle_dma_unmap_dirty(void **state UNUSED)
 
     assert_int_equal(0, ret);
     assert_int_equal(0, vfu_ctx.dma->nregions);
-    assert_int_equal(1, msg.nr_out_iovecs);
-    assert_int_equal(8, msg.out_iovecs->iov_len);
-    assert_int_equal(0xdeadbeef, *(uint64_t *)msg.out_iovecs->iov_base);
-    free(msg.out_iovecs->iov_base);
-    free(msg.out_iovecs);
+    assert_int_equal(sizeof(uint64_t), msg.out_size);
+    assert_int_equal(0xdeadbeef, *(uint64_t *)msg.out_data);
+    free(msg.out_data);
 }
 
 

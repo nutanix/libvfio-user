@@ -573,19 +573,12 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
             return -1;
         }
-        msg->out_iovecs = malloc(sizeof(struct iovec));
-        if (msg->out_iovecs == NULL) {
-            return -1;
-        }
-        msg->out_iovecs->iov_base = malloc(region->bitmap->size);
-        if (msg->out_iovecs == NULL) {
-            free(msg->out_iovecs);
-            msg->out_iovecs = NULL;
+        msg->out_data = malloc(region->bitmap->size);
+        if (msg->out_data == NULL) {
             return ERROR_INT(ENOMEM);
         }
-        memcpy(msg->out_iovecs->iov_base, bitmap, region->bitmap->size);
-        msg->out_iovecs->iov_len = region->bitmap->size;
-        msg->nr_out_iovecs = 1;
+        memcpy(msg->out_data, bitmap, region->bitmap->size);
+        msg->out_size = region->bitmap->size;
     } else if (region->flags == 0) {
         if (msg->in_size != sizeof(struct vfio_user_dma_region)) {
             vfu_log(vfu_ctx, LOG_ERR, "bad message size %#lx", msg->in_size);
