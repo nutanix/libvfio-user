@@ -115,6 +115,7 @@ struct vfio_user_bitmap {
 } __attribute__((packed));
 
 struct vfio_user_dma_region {
+    uint32_t                argsz;
     uint64_t                addr;
     uint64_t                size;
     uint64_t                offset;

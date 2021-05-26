@@ -1154,6 +1154,7 @@ int main(int argc, char *argv[])
     dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
 
     for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].argsz =  sizeof(struct vfio_user_dma_region);
         dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
         dma_regions[i].size = sysconf(_SC_PAGESIZE);
         dma_regions[i].offset = dma_regions[i].addr;

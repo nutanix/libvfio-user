@@ -122,6 +122,7 @@ static void
 test_dma_map_mappable_without_fd(void **state UNUSED)
 {
     struct vfio_user_dma_region dma_region = {
+        .argsz = sizeof(struct vfio_user_dma_region),
         .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
 
@@ -136,6 +137,7 @@ static void
 test_dma_map_without_fd(void **state UNUSED)
 {
     struct vfio_user_dma_region r = {
+        .argsz = sizeof(struct vfio_user_dma_region),
         .addr = 0xdeadbeef,
         .size = 0xcafebabe,
         .offset = 0x8badf00d,
@@ -181,7 +183,9 @@ test_dma_map_return_value(void **state UNUSED)
     dma_controller_t dma = { 0 };
     vfu_ctx_t vfu_ctx = { .dma = &dma };
     dma.vfu_ctx = &vfu_ctx;
-    struct vfio_user_dma_region r = { 0 };
+    struct vfio_user_dma_region r = {
+        .argsz = sizeof(struct vfio_user_dma_region)
+    };
 
     patch("dma_controller_add_region");
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
@@ -206,7 +210,9 @@ static void
 test_handle_dma_unmap(void **state UNUSED)
 {
     struct vfio_user_dma_region r = {
-        .addr = 0x1000, .size = 0x1000
+        .argsz = sizeof(struct vfio_user_dma_region),
+        .addr = 0x1000,
+        .size = 0x1000
     };
 
     vfu_ctx.dma->nregions = 3;
@@ -245,6 +251,7 @@ test_handle_dma_unmap_dirty(void **state UNUSED)
     uint64_t bitmap = 0xdeadbeef;
     size_t size = sizeof(struct vfio_user_dma_region) + sizeof(struct vfio_user_bitmap);
     struct vfio_user_dma_region *r = alloca(size);
+    r->argsz = size;
     r->addr= 0x0;
     r->size = 0x1000;
     r->offset = r->prot = 0; /* silence valgrind */

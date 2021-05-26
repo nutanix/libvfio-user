@@ -478,7 +478,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     assert(msg != NULL);
     assert(region != NULL);
 
-    if (msg->in_size != sizeof(*region)) {
+    if (msg->in_size < sizeof(*region)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA map region %zu",
                 msg->in_size);
         return ERROR_INT(EINVAL);
@@ -544,8 +544,10 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
     if (region->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        if (msg->in_size < sizeof(*region) + sizeof(struct vfio_user_bitmap)) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad message size %#lx", msg->in_size);
+        if (msg->in_size < sizeof(*region) + sizeof(struct vfio_user_bitmap)
+            || region->argsz < sizeof(struct vfio_user_bitmap) + region->bitmap->size) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad message size=%#lx argsz=%#x",
+                    msg->in_size, region->argsz);
             return ERROR_INT(EINVAL);
         }
         /*
