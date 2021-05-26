@@ -524,25 +524,52 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_region *region)
 {
     int ret;
+    char *bitmap;
     char rstr[1024];
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(region != NULL);
 
-    if (msg->in_size != sizeof(*region)) {
+    if (msg->in_size < sizeof(*region)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA unmap region %zu",
                 msg->in_size);
         return ERROR_INT(EINVAL);
     }
 
-    snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx "
-            "prot=%#x flags=%#x", region->addr, region->addr + region->size,
-            region->offset, region->prot, region->flags);
+    snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx prot=%#x flags=%#x",
+             region->addr, region->addr + region->size,
+             region->offset, region->prot, region->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
-    if (region->flags != 0) {
+    if (region->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
+        if (msg->in_size < sizeof(*region) + sizeof(struct vfio_user_bitmap)) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad message size %#lx", msg->in_size);
+            return ERROR_INT(EINVAL);
+        }
+        /*
+         * TODO this could be a separate function, but the implementation is
+         * temporary anyway since we're moving dirty page tracking out of
+         * the DMA controller.
+         */
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                            (vfu_dma_addr_t)region->addr,
+                                            region->size,
+                                            region->bitmap->pgsize,
+                                            region->bitmap->size,
+                                            &bitmap);
+        if (ret < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
+            return -1;
+        }
+        msg->out_data = malloc(region->bitmap->size);
+        if (msg->out_data == NULL) {
+            return ERROR_INT(ENOMEM);
+        }
+        memcpy(msg->out_data, bitmap, region->bitmap->size);
+        msg->out_size = region->bitmap->size;
+    } else if (region->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
         return ERROR_INT(ENOTSUP);
     }
