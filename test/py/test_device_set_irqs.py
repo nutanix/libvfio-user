@@ -36,6 +36,8 @@ import sys
 ctx = None
 sock = None
 
+argsz = len(vfio_irq_set())
+
 def test_device_set_irqs_setup():
     global ctx, sock
 
@@ -66,9 +68,9 @@ def test_device_set_irqs_short_write():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_argsz():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 3, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_REQ_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=3, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_REQ_IRQ,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -76,9 +78,9 @@ def test_device_set_irqs_bad_argsz():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_index():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_NUM_IRQS, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_NUM_IRQS,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -86,9 +88,9 @@ def test_device_set_irqs_bad_index():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_ACTION_UNMASK, VFU_DEV_MSIX_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_ACTION_UNMASK, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -96,10 +98,9 @@ def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_flags_DATA_NONE_and_DATA_BOOL():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_DATA_BOOL,
-                          VFU_DEV_MSIX_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_DATA_BOOL,
+                           index=VFU_DEV_MSIX_IRQ, start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -107,9 +108,9 @@ def test_device_set_irqs_bad_flags_DATA_NONE_and_DATA_BOOL():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_start_count_range():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 2047, 2)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=2047, count=2)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -117,9 +118,9 @@ def test_device_set_irqs_bad_start_count_range():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_start_count_range():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 2049, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=2049, count=1)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -127,9 +128,9 @@ def test_device_set_irqs_bad_start_count_range():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_action_for_err_irq():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_ERR_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_ERR_IRQ,
+                           start=0, count=1)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -137,9 +138,9 @@ def test_device_set_irqs_bad_action_for_err_irq():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_action_for_req_irq():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_REQ_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_REQ_IRQ,
+                           start=0, count=1)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -147,9 +148,9 @@ def test_device_set_irqs_bad_action_for_req_irq():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_start_for_count_0():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 1, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=1, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -157,9 +158,9 @@ def test_device_set_irqs_bad_start_for_count_0():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_action_for_count_0():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_MASK |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -167,9 +168,9 @@ def test_device_set_irqs_bad_action_for_count_0():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_action_and_data_type_for_count_0():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_BOOL, VFU_DEV_MSIX_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -177,9 +178,9 @@ def test_device_set_irqs_bad_action_and_data_type_for_count_0():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_bad_fds_for_DATA_BOOL():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_BOOL, VFU_DEV_MSIX_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=1)
 
     fd = eventfd()
 
@@ -192,9 +193,9 @@ def test_device_set_irqs_bad_fds_for_DATA_BOOL():
     os.close(fd)
 
 def test_device_set_irqs_bad_fds_for_DATA_NONE():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=1)
 
     fd = eventfd()
 
@@ -207,9 +208,9 @@ def test_device_set_irqs_bad_fds_for_DATA_NONE():
     os.close(fd)
 
 def test_device_set_irqs_bad_fds_for_count_2():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 0, 2)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
 
     fd = eventfd()
 
@@ -222,18 +223,18 @@ def test_device_set_irqs_bad_fds_for_count_2():
     os.close(fd)
 
 def test_device_set_irqs_disable():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_REQ_IRQ, 0, 0)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_REQ_IRQ,
+                           start=0, count=0)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     get_reply(sock)
 
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_REQ_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_REQ_IRQ,
+                           start=0, count=1)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -241,9 +242,9 @@ def test_device_set_irqs_disable():
     get_reply(sock)
 
 def test_device_set_irqs_enable():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=1)
 
     fd = eventfd()
 
@@ -254,10 +255,10 @@ def test_device_set_irqs_enable():
     get_reply(sock)
 
 def test_device_set_irqs_trigger_bool_too_small():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII?", 21, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_BOOL, VFU_DEV_MSIX_IRQ, 0, 2,
-                          False)
+    payload = vfio_irq_set(argsz=argsz + 1, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
+    payload = bytes(payload) + struct.pack("?", False)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -265,10 +266,10 @@ def test_device_set_irqs_trigger_bool_too_small():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_trigger_bool_too_large():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII???", 23, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_BOOL, VFU_DEV_MSIX_IRQ, 0, 2,
-                          False, False, False)
+    payload = vfio_irq_set(argsz=argsz + 3, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
+    payload = bytes(payload) + struct.pack("???", False, False, False)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -276,9 +277,9 @@ def test_device_set_irqs_trigger_bool_too_large():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_device_set_irqs_enable_update():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 0, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=1)
 
     fd = eventfd()
 
@@ -289,9 +290,9 @@ def test_device_set_irqs_enable_update():
     get_reply(sock)
 
 def test_device_set_irqs_enable_trigger_none():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 0, 2)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
 
     fd1 = eventfd(initval=4)
     fd2 = eventfd(initval=8)
@@ -302,9 +303,9 @@ def test_device_set_irqs_enable_trigger_none():
     vfu_run_ctx(ctx)
     get_reply(sock)
 
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_NONE, VFU_DEV_MSIX_IRQ, 1, 1)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
+                           start=1, count=1)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
@@ -315,9 +316,9 @@ def test_device_set_irqs_enable_trigger_none():
     assert struct.unpack("Q", os.read(fd2, 8))[0] == 9
 
 def test_device_set_irqs_enable_trigger_bool():
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII", 20, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_EVENTFD, VFU_DEV_MSIX_IRQ, 0, 2)
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
 
     fd1 = eventfd(initval=4)
     fd2 = eventfd(initval=8)
@@ -328,10 +329,10 @@ def test_device_set_irqs_enable_trigger_bool():
     vfu_run_ctx(ctx)
     get_reply(sock)
 
-    # struct vfio_irq_set
-    payload = struct.pack("IIIII??", 22, VFIO_IRQ_SET_ACTION_TRIGGER |
-                          VFIO_IRQ_SET_DATA_BOOL, VFU_DEV_MSIX_IRQ, 0, 2,
-                          False, True)
+    payload = vfio_irq_set(argsz=argsz + 2, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=2)
+    payload = bytes(payload) + struct.pack("??", False, True)
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
     sock.send(hdr + payload)
