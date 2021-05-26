@@ -62,12 +62,9 @@ static struct function funcs[] = {
     { .name = "dma_controller_add_region" },
     { .name = "dma_controller_remove_region" },
     { .name = "dma_controller_unmap_region" },
-    { .name = "exec_command" },
-    { .name = "get_request_header" },
     { .name = "handle_dirty_pages" },
     { .name = "process_request" },
     { .name = "should_exec_command" },
-    { .name = "tran_sock_send_iovec" },
     { .name = "migration_region_access_registers" },
     { .name = "handle_dirty_pages_get" },
     { .name = "handle_device_state" },
@@ -164,24 +161,6 @@ dma_controller_unmap_region(dma_controller_t *dma,
     check_expected(region);
 }
 
-int
-tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
-                     enum vfio_user_command cmd,
-                     struct iovec *iovecs, size_t nr_iovecs,
-                     int *fds, int count, int err)
-{
-    check_expected(sock);
-    check_expected(msg_id);
-    check_expected(is_reply);
-    check_expected(cmd);
-    check_expected(iovecs);
-    check_expected(nr_iovecs);
-    check_expected(fds);
-    check_expected(count);
-    check_expected(err);
-    return mock();
-}
-
 bool
 device_is_stopped(struct migration *migration)
 {
@@ -189,26 +168,6 @@ device_is_stopped(struct migration *migration)
         return __real_device_is_stopped(migration);
     }
     check_expected(migration);
-    return mock();
-}
-
-int
-get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
-{
-    check_expected(vfu_ctx);
-    check_expected(msgp);
-    return mock();
-}
-
-int
-exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
-{
-    if (!is_patched("exec_command")) {
-        return __real_exec_command(vfu_ctx, msg);
-    }
-    check_expected(vfu_ctx);
-    check_expected(msg);
-    errno = mock();
     return mock();
 }
 
