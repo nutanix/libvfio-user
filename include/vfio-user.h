@@ -119,6 +119,9 @@ struct vfio_user_dma_region {
     uint64_t                size;
     uint64_t                offset;
     uint32_t                prot;
+#ifndef VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP
+#define VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP (1 << 0)
+#endif
 #define VFIO_USER_F_DMA_REGION_MAPPABLE (1 << 0)
     uint32_t                flags;
     struct vfio_user_bitmap bitmap[];
