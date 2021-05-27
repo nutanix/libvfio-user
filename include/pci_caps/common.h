@@ -59,17 +59,17 @@ struct vsc {
  * PCI Express extended capability header.
  */
 struct pcie_ext_cap_hdr {
-    unsigned int id:16;
-    unsigned int version:4;
-    unsigned int next:12;
+    uint32_t id:16;
+    uint32_t version:4;
+    uint32_t next:12;
 } __attribute__((packed));
 
 /* PCI Express vendor-specific capability header (PCIE 7.19) */
 struct pcie_ext_cap_vsc_hdr {
     struct pcie_ext_cap_hdr hdr;
-    unsigned int id:16;
-    unsigned int rev:4;
-    unsigned int len:12;
+    uint32_t id:16;
+    uint32_t rev:4;
+    uint32_t len:12;
     uint8_t      data[];
 } __attribute__((packed));
 

@@ -40,22 +40,22 @@ extern "C" {
 #endif
 
 struct mxc {
-	unsigned int ts:11;
-	unsigned int reserved:3;
-	unsigned int fm:1;
-	unsigned int mxe:1;
+	uint16_t ts:11;
+	uint16_t reserved:3;
+	uint16_t fm:1;
+	uint16_t mxe:1;
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mxc) == PCI_MSIX_FLAGS, "bad MXC size");
 
 struct mtab {
-	unsigned int tbir:3;
-	unsigned int to:29;
+	uint32_t tbir:3;
+	uint32_t to:29;
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mtab) == PCI_MSIX_TABLE, "bad MTAB size");
 
 struct mpba {
-	unsigned int pbir:3;
-	unsigned int pbao:29;
+	uint32_t pbir:3;
+	uint32_t pbao:29;
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mtab) == PCI_MSIX_PBA - PCI_MSIX_TABLE,
                "bad MPBA size");
