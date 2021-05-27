@@ -44,155 +44,156 @@ extern "C" {
 #endif
 
 struct pxcaps {
-    unsigned int ver:4;
-    unsigned int dpt:4;
-    unsigned int si:1;
-    unsigned int imn:5;
-    unsigned int res1:2;
+    uint16_t ver:4;
+    uint16_t dpt:4;
+    uint16_t si:1;
+    uint16_t imn:5;
+    uint16_t res1:2;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxcaps) == 0x2, "bad PXCAPS size");
 
 struct pxdcap {
-    unsigned int mps:3;
-    unsigned int pfs:2;
-    unsigned int etfs:1;
-    unsigned int l0sl:3;
-    unsigned int l1l:3;
-    unsigned int per:1;
-    unsigned int res1:2;
-    unsigned int csplv:8;
-    unsigned int cspls:2;
-    unsigned int flrc:1;
-    unsigned int res2:3;
+    uint32_t mps:3;
+    uint32_t pfs:2;
+    uint32_t etfs:1;
+    uint32_t l0sl:3;
+    uint32_t l1l:3;
+    uint32_t res1:3;
+    uint32_t rer:1;
+    uint32_t res2:2;
+    uint32_t csplv:8;
+    uint32_t cspls:2;
+    uint32_t flrc:1;
+    uint32_t res3:3;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdcap) == 0x4, "bad PXDCAP size");
 
 union pxdc {
     uint16_t raw;
     struct {
-        unsigned int cere:1;
-        unsigned int nfere:1;
-        unsigned int fere:1;
-        unsigned int urre:1;
-        unsigned int ero:1;
-        unsigned int mps:3;
-        unsigned int ete:1;
-        unsigned int pfe:1;
-        unsigned int appme:1;
-        unsigned int ens:1;
-        unsigned int mrrs:3;
-        unsigned int iflr:1;
+        uint16_t cere:1;
+        uint16_t nfere:1;
+        uint16_t fere:1;
+        uint16_t urre:1;
+        uint16_t ero:1;
+        uint16_t mps:3;
+        uint16_t ete:1;
+        uint16_t pfe:1;
+        uint16_t appme:1;
+        uint16_t ens:1;
+        uint16_t mrrs:3;
+        uint16_t iflr:1;
      } __attribute__((packed));
 } __attribute__((packed));
 _Static_assert(sizeof(union pxdc) == 0x2, "bad PXDC size");
 
 /* TODO not defining for now since all values are 0 for reset */
 struct pxds {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxds) == 0x2, "bad PXDS size");
 
 struct pxlcap {
-    unsigned int stuff:32;
+    uint32_t stuff:32;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxlcap) == 0x4, "bad PXLCAP size");
 
 struct pxlc {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxlc) == 0x2, "bad PXLC size");
 
 struct pxls {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxls) == 0x2, "bad PXLS size");
 
 struct pxscap {
-    unsigned int stuff:32;
+    uint32_t stuff:32;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxscap) == 0x4, "bad PXSCAP size");
 
 struct pxsc {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxsc) == 0x2, "bad PXSC size");
 
 struct pxss {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxss) == 0x2, "bad PXSS size");
 
 struct pxrc {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxrc) == 0x2, "bad PXRC size");
 
 struct pxrcap {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxrcap) == 0x2, "bad PXRCAP size");
 
 struct pxrs {
-    unsigned int stuff:32;
+    uint32_t stuff:32;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxrs) == 0x4, "bad PXRS size");
 
 struct pxdcap2 {
-    unsigned int ctrs:4;
-    unsigned int ctds:1;
-    unsigned int arifs:1;
-    unsigned int aors:1;
-    unsigned int aocs32:1;
-    unsigned int aocs64:1;
-    unsigned int ccs128:1;
-    unsigned int nprpr:1;
-    unsigned int ltrs:1;
-    unsigned int tphcs:2;
-    unsigned int obffs:2;
-    unsigned int effs:1;
-    unsigned int eetps:1;
-    unsigned int meetp:2;
-    unsigned int res1:8;
+    uint32_t ctrs:4;
+    uint32_t ctds:1;
+    uint32_t arifs:1;
+    uint32_t aors:1;
+    uint32_t aocs32:1;
+    uint32_t aocs64:1;
+    uint32_t ccs128:1;
+    uint32_t nprpr:1;
+    uint32_t ltrs:1;
+    uint32_t tphcs:2;
+    uint32_t obffs:2;
+    uint32_t effs:1;
+    uint32_t eetps:1;
+    uint32_t meetp:2;
+    uint32_t res1:8;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdcap2) == 0x4, "bad PXDCAP2 size");
 
 struct pxdc2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
 
 struct pxds2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxds2) == 0x2, "bad PXDS2 size");
 
 struct pxlcap2 {
-    unsigned int stuff:32;
+    uint32_t stuff:32;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxlcap2) == 0x4, "bad PXLCAP2 size");
 
 struct pxlc2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxlc2) == 0x2, "bad PXLC2 size");
 
 struct pxls2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxls2) == 0x2, "bad PXLS2 size");
 
 struct pxscap2 {
-    unsigned int stuff:32;
+    uint32_t stuff:32;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxscap2) == 0x4, "bad PXSCAP2 size");
 
 struct pxsc2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxsc2) == 0x2, "bad PXSC2 size");
 
 struct pxss2 {
-    unsigned int stuff:16;
+    uint16_t stuff:16;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxss2) == 0x2, "bad PXSS2 size");
 

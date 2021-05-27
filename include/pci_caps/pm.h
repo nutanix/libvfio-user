@@ -43,14 +43,14 @@ extern "C" {
  * Power Management Capabilities Register
  */
 struct pc {
-    unsigned int vs:3;
-    unsigned int pmec:1;
-    unsigned int res:1;
-    unsigned int dsi:1;
-    unsigned int auxc:3;
-    unsigned int d1s:1;
-    unsigned int d2s:1;
-    unsigned int psup:5;
+    uint16_t vs:3;
+    uint16_t pmec:1;
+    uint16_t res:1;
+    uint16_t dsi:1;
+    uint16_t auxc:3;
+    uint16_t d1s:1;
+    uint16_t d2s:1;
+    uint16_t psup:5;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
 
@@ -61,14 +61,14 @@ struct pmcs {
     union {
         uint16_t raw;
         struct {
-            unsigned short ps:2;
-            unsigned short res1:1;
-            unsigned short nsfrst:1;
-            unsigned short res2:4;
-            unsigned short pmee:1;
-            unsigned short dse:4;
-            unsigned short dsc:2;
-            unsigned short pmes:1;
+            uint16_t ps:2;
+            uint16_t res1:1;
+            uint16_t nsfrst:1;
+            uint16_t res2:4;
+            uint16_t pmee:1;
+            uint16_t dse:4;
+            uint16_t dsc:2;
+            uint16_t pmes:1;
         };
     };
 } __attribute__((packed));
