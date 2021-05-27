@@ -265,8 +265,8 @@ get_bitmap_size(size_t region_size, size_t pgsize)
     if (region_size < pgsize) {
         return ERROR_INT(EINVAL);
     }
-    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
-    return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+
+    return pages_bitmap_size(region_size, pgsize);
 }
 
 static int
@@ -544,8 +544,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     /*
-     * FIXME they must be equal because this is how much data the client
-     * expects to receive.
+     * They must be equal because this is how much data the client expects to
+     * receive.
      */
     if (size != (size_t)bitmap_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %ld != %ld", size,

@@ -62,11 +62,9 @@ static struct function funcs[] = {
     { .name = "dma_controller_add_region" },
     { .name = "dma_controller_remove_region" },
     { .name = "dma_controller_unmap_region" },
-    { .name = "handle_dirty_pages" },
     { .name = "process_request" },
     { .name = "should_exec_command" },
     { .name = "migration_region_access_registers" },
-    { .name = "handle_dirty_pages_get" },
     { .name = "handle_device_state" },
     {. name = "vfio_migr_state_transition_is_valid" },
     { .name = "state_trans_notify" },
@@ -214,18 +212,6 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     return mock();
 }
 
-int
-handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
-{
-    if (!is_patched("handle_dirty_pages")) {
-        return __real_handle_dirty_pages(vfu_ctx, msg);
-    }
-    check_expected(vfu_ctx);
-    check_expected(msg);
-    errno = mock();
-    return mock();
-}
-
 ssize_t
 migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                                   loff_t pos, bool is_write)
@@ -240,23 +226,6 @@ migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     check_expected(pos);
     check_expected(is_write);
     errno = mock();
-    return mock();
-}
-
-int
-handle_dirty_pages_get(vfu_ctx_t *vfu_ctx,
-                       struct iovec **iovecs, size_t *nr_iovecs,
-                       struct vfio_user_bitmap_range *ranges, uint32_t size)
-{
-    if (!is_patched("handle_dirty_pages_get")) {
-        return __real_handle_dirty_pages_get(vfu_ctx, iovecs, nr_iovecs,
-                                             ranges, size);
-    }
-    check_expected(vfu_ctx);
-    check_expected(iovecs);
-    check_expected(nr_iovecs);
-    check_expected(ranges);
-    check_expected(size);
     return mock();
 }
 

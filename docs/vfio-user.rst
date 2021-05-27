@@ -641,7 +641,7 @@ The size of request message depends on whether or not the
 
 .. _VFIO bitmap:
 
-VFIO bitmap format
+VFIO Bitmap Format
 """"""""""""""""""
 
 +--------+--------+------+
@@ -1477,8 +1477,7 @@ Neither the request or reply have a payload.
 
 This command is analogous to ``VFIO_IOMMU_DIRTY_PAGES``. It is sent by the client
 to the server in order to control logging of dirty pages, usually during a live
-migration. The VFIO dirty bitmap structure is defined in ``<linux/vfio.h>``
-(``struct vfio_iommu_type1_dirty_bitmap``).
+migration.
 
 Dirty page tracking is optional for server implementation; clients should not
 rely on it.
@@ -1503,10 +1502,9 @@ Request
 |       | | 2   | VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP | |
 |       | +-----+----------------------------------------+ |
 +-------+--------+-----------------------------------------+
-| data  | 8      | 4                                       |
-+-------+--------+-----------------------------------------+
 
-* *argsz* is the size of the VFIO dirty bitmap info structure.
+* *argsz* is the size of the VFIO dirty bitmap info structure for
+  ``START/STOP``; and for ``GET_BITMAP``, the maximum size of the reply payload
 
 * *flags* defines the action to be performed by the server:
 
@@ -1519,20 +1517,22 @@ Request
 
   * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP`` requests from the server to return
     the dirty bitmap for a specific IOVA range. The IOVA range is specified by
-    "VFIO dirty bitmap get" structure, which must immediately follow the
-    "VFIO dirty bitmap" structure, explained next. This operation is only valid
-    if logging of dirty pages has been previously started. The server must
-    respond the same way it does for ``VFIO_USER_DMA_UNMAP`` if
-    ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in the flags field of the
-    table entry (``struct vfio_bitmap`` plus the bitmap must follow the
-    response header).
+    a "VFIO bitmap range" structure, which must immediately follow the
+    "VFIO dirty bitmap" structure. See `VFIO Bitmap Range Format`_.
+    This operation is only valid if logging of dirty pages has been previously
+    started.
 
   These flags are mutually exclusive with each other.
 
-* *data* unused, must be zero
+This part of the request is analogous to vfio's ``struct
+vfio_iommu_type1_dirty_bitmap``.
 
-VFIO Dirty Bitmap Get Format
-""""""""""""""""""""""""""""
+.. _VFIO Bitmap Range Format:
+
+VFIO Bitmap Range Format
+""""""""""""""""""""""""
+
+FIXME: share with UNMAP
 
 +--------+--------+------+
 | Name   | Offset | Size |
@@ -1550,14 +1550,42 @@ VFIO Dirty Bitmap Get Format
 
 * *bitmap* is the VFIO bitmap explained in `VFIO bitmap`_.
 
+This part of the request is analogous to vfio's ``struct
+vfio_iommu_type1_dirty_bitmap_get``.
+
 Reply
 ^^^^^
 
 For ``VFIO_IOMMU_DIRTY_PAGES_FLAG_START`` or
 ``VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP``, there is no reply payload.
 
-For ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP``, the reply payload is the
-corresponding set of dirty bitmaps.
+For ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP``, the reply payload is as follows:
+
++--------------+--------+-----------------------------------------+
+| Name         | Offset | Size                                    |
++==============+========+=========================================+
+| argsz        | 0      | 4                                       |
++--------------+--------+-----------------------------------------+
+| flags        | 4      | 4                                       |
++--------------+--------+-----------------------------------------+
+|              | +-----+----------------------------------------+ |
+|              | | Bit | Definition                             | |
+|              | +=====+========================================+ |
+|              | | 2   | VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP | |
+|              | +-----+----------------------------------------+ |
++--------------+--------+-----------------------------------------+
+| bitmap range | 8      | 40                                      |
++--------------+--------+-----------------------------------------+
+| bitmap       | 48     | variable                                |
++--------------+--------+-----------------------------------------+
+
+* *argsz* is the size required for the full reply payload (dirty pages structure
+  + bitmap range structure + actual bitmap)
+* *flags* is ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP``
+  plus the size of any region capabilities)
+* *bitmap range* is the same bitmap range struct provided in the request, as
+defined in `VFIO Bitmap Range Format`_.
+* *bitmap* is the actual dirty pages bitmap corresponding to the range request
 
 VFIO Device Migration Info
 --------------------------

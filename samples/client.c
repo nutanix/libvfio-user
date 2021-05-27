@@ -640,53 +640,43 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 }
 
 static void
-get_dirty_bitmaps(int sock, struct vfio_user_dma_map *dma_regions,
-                  UNUSED int nr_dma_regions)
+get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 {
-    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = { 0 };
-    struct vfio_user_bitmap_range bitmaps[2] = { { 0 }, };
+    uint64_t bitmap_size = pages_bitmap_size(dma_region->size,
+                                             sysconf(_SC_PAGESIZE));
+    struct vfio_user_dirty_pages *dirty_pages;
+    struct vfio_user_bitmap_range *range;
+    char *bitmap;
+    size_t size;
+    void *data;
     int ret;
-    size_t i;
-    struct iovec iovecs[4] = {
-        [1] = {
-            .iov_base = &dirty_bitmap,
-            .iov_len = sizeof(dirty_bitmap)
-        }
-    };
-    struct vfio_user_header hdr = {0};
-    uint64_t data[ARRAY_SIZE(bitmaps)];
 
-    assert(dma_regions != NULL);
-    //FIXME: Is below assert correct?
-    //assert(nr_dma_regions >= (int)ARRAY_SIZE(bitmaps));
+    size = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
 
-    for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        bitmaps[i].iova = dma_regions[i].addr;
-        bitmaps[i].size = dma_regions[i].size;
-        bitmaps[i].bitmap.size = sizeof(uint64_t); /* FIXME calculate based on page and IOVA size, don't hardcode */
-        bitmaps[i].bitmap.pgsize = sysconf(_SC_PAGESIZE);
-        iovecs[(i + 2)].iov_base = &bitmaps[i]; /* FIXME the +2 is because iovecs[0] is the vfio_user_header and iovecs[1] is vfio_iommu_type1_dirty_bitmap */
-        iovecs[(i + 2)].iov_len = sizeof(struct vfio_user_bitmap_range);
-    }
+    data = calloc(1, size);
+    assert(data != NULL);
 
-    /*
-     * FIXME there should be at least two IOVAs. Send single message for two
-     * IOVAs and ensure only one bit is set in first IOVA.
-     */
-    dirty_bitmap.argsz = sizeof(dirty_bitmap) + ARRAY_SIZE(bitmaps) * sizeof(struct vfio_user_bitmap_range);
-    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
-    ret = tran_sock_msg_iovec(sock, 0, VFIO_USER_DIRTY_PAGES,
-                              iovecs, ARRAY_SIZE(iovecs),
-                              NULL, 0,
-                              &hdr, data, ARRAY_SIZE(data) * sizeof(uint64_t), NULL, 0);
+    dirty_pages = data;
+    dirty_pages->flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
+    dirty_pages->argsz = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
+
+    range = data + sizeof(*dirty_pages);
+    range->iova = dma_region->addr;
+    range->size = dma_region->size;
+    range->bitmap.size = bitmap_size;
+    range->bitmap.pgsize = sysconf(_SC_PAGESIZE);
+
+    bitmap = data + sizeof(*dirty_pages) + sizeof(*range);
+
+    ret = tran_sock_msg(sock, 0x99, VFIO_USER_DIRTY_PAGES,
+                        data, sizeof(*dirty_pages) + sizeof(*range),
+                        NULL, data, size);
     if (ret != 0) {
-        err(EXIT_FAILURE, "failed to start dirty page logging");
+        err(EXIT_FAILURE, "failed to get dirty page bitmap");
     }
 
-    for (i = 0; i < ARRAY_SIZE(bitmaps); i++) {
-        printf("client: %s: %#lx-%#lx\t%#lx\n", __func__, bitmaps[i].iova,
-               bitmaps[i].iova + bitmaps[i].size - 1, data[i]);
-    }
+    printf("client: %s: %#lx-%#lx\t%#x\n", __func__, range->iova,
+           range->iova + range->size - 1, bitmap[0]);
 }
 
 enum migration {
@@ -1073,7 +1063,7 @@ int main(int argc, char *argv[])
     int server_max_fds;
     size_t pgsize;
     int nr_dma_regions;
-    struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = {0};
+    struct vfio_user_dirty_pages dirty_pages = {0};
     int opt;
     time_t t;
     char *path_to_server = NULL;
@@ -1170,10 +1160,10 @@ int main(int argc, char *argv[])
      */
     irq_fd = configure_irqs(sock);
 
-    dirty_bitmap.argsz = sizeof(dirty_bitmap);
-    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
+    dirty_pages.argsz = sizeof(dirty_pages);
+    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
     ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_bitmap, sizeof(dirty_bitmap),
+                        &dirty_pages, sizeof(dirty_pages),
                         NULL, NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to start dirty page logging");
@@ -1194,12 +1184,14 @@ int main(int argc, char *argv[])
 
     handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
 
-    get_dirty_bitmaps(sock, dma_regions, nr_dma_regions);
+    for (i = 0; i < nr_dma_regions; i++) {
+        get_dirty_bitmap(sock, &dma_regions[i]);
+    }
 
-    dirty_bitmap.argsz = sizeof(dirty_bitmap);
-    dirty_bitmap.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
+    dirty_pages.argsz = sizeof(dirty_pages);
+    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
     ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_bitmap, sizeof(dirty_bitmap),
+                        &dirty_pages, sizeof(dirty_pages),
                         NULL, NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to stop dirty page logging");

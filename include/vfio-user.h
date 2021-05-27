@@ -155,7 +155,18 @@ struct vfio_user_irq_info {
     uint32_t    subindex;
 } __attribute__((packed));
 
-/* based on struct vfio_iommu_type1_dirty_bitmap_get */
+/* Analogous to vfio_iommu_type1_dirty_bitmap. */
+struct vfio_user_dirty_pages {
+    uint32_t    argsz;
+#ifndef VFIO_IOMMU_DIRTY_PAGES_FLAG_START
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_START	(1 << 0)
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP	(1 << 1)
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP	(1 << 2)
+#endif
+    uint32_t    flags;
+} __attribute__((packed));
+
+/* Analogous to struct vfio_iommu_type1_dirty_bitmap_get. */
 struct vfio_user_bitmap_range {
     uint64_t iova;
     uint64_t size;
@@ -199,15 +210,6 @@ struct vfio_device_migration_info {
 	__u64 data_size;
 };
 #endif /* not a RHEL kernel */
-
-struct vfio_iommu_type1_dirty_bitmap {
-	__u32        argsz;
-	__u32        flags;
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_START	(1 << 0)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP	(1 << 1)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP	(1 << 2)
-	__u8         data[];
-};
 
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */
 

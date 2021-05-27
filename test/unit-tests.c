@@ -448,33 +448,6 @@ typedef struct {
 } tran_sock_t;
 
 static void
-test_dirty_pages_without_dma(UNUSED void **state)
-{
-    int ret;
-
-    /* with DMA controller */
-
-    patch("handle_dirty_pages");
-
-    expect_value(handle_dirty_pages, vfu_ctx, &vfu_ctx);
-    expect_any(handle_dirty_pages, msg);
-    will_return(handle_dirty_pages, EREMOTEIO);
-    will_return(handle_dirty_pages, -1);
-
-    ret = exec_command(&vfu_ctx, mkmsg(VFIO_USER_DIRTY_PAGES, NULL, 0));
-    assert_int_equal(-1, ret);
-    assert_int_equal(EREMOTEIO, errno);
-
-    /* without DMA controller */
-
-    vfu_ctx.dma = NULL;
-
-    ret = exec_command(&vfu_ctx, mkmsg(VFIO_USER_DIRTY_PAGES, NULL, 0));
-    assert_int_equal(0, ret);
-
-}
-
-static void
 test_migration_state_transitions(void **state UNUSED)
 {
     bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
@@ -736,24 +709,6 @@ test_should_exec_command(UNUSED void **state)
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
 }
 
-static void
-test_dma_controller_dirty_page_get(void **state UNUSED)
-{
-    dma_memory_region_t *r;
-    uint64_t len = UINT32_MAX + (uint64_t)10;
-    char bp[0x20008]; /* must be QWORD aligned */
-
-    vfu_ctx.dma->nregions = 1;
-    r = &vfu_ctx.dma->regions[0];
-    r->info.iova.iov_base = (void *)0;
-    r->info.iova.iov_len = len;
-    r->info.vaddr = (void *)0xdeadbeef;
-    vfu_ctx.dma->dirty_pgsize = 4096;
-
-    assert_int_equal(0, dma_controller_dirty_page_get(vfu_ctx.dma, (void *)0,
-                     len, 4096, sizeof(bp), (char **)&bp));
-}
-
 int
 main(void)
 {
@@ -769,7 +724,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
-        cmocka_unit_test_setup(test_dirty_pages_without_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
             setup_test_setup_migration_region,
@@ -789,7 +743,6 @@ main(void)
         cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
         cmocka_unit_test_setup(test_should_exec_command, setup),
-        cmocka_unit_test_setup(test_dma_controller_dirty_page_get, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
