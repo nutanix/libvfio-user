@@ -536,15 +536,17 @@ The request payload for this message is an entry of the following format:
 +-------------+--------+-------------+
 | Name        | Offset | Size        |
 +=============+========+=============+
-| Address     | 0      | 8           |
+| argsz       | 0      | 4           |
 +-------------+--------+-------------+
-| Size        | 8      | 8           |
+| Address     | 4      | 8           |
 +-------------+--------+-------------+
-| Offset      | 16     | 8           |
+| Size        | 12     | 8           |
 +-------------+--------+-------------+
-| Protections | 24     | 4           |
+| Offset      | 20     | 8           |
 +-------------+--------+-------------+
-| Flags       | 28     | 4           |
+| Protections | 28     | 4           |
++-------------+--------+-------------+
+| Flags       | 32     | 4           |
 +-------------+--------+-------------+
 |             | +-----+------------+ |
 |             | | Bit | Definition | |
@@ -553,6 +555,7 @@ The request payload for this message is an entry of the following format:
 |             | +-----+------------+ |
 +-------------+--------+-------------+
 
+* *argsz* is the size of the above format.
 * *Address* is the base DMA address of the region.
 * *Size* is the size of the region.
 * *Offset* is the file offset of the region with respect to the associated file
@@ -564,7 +567,7 @@ The request payload for this message is an entry of the following format:
   * *Mappable* indicates that the region can be mapped via the mmap() system
     call using the file descriptor provided in the message meta-data.
 
-This structure is 32 bytes in size, so the message size is 16 + 32 == 48 bytes.
+This structure is 32 bytes in size, so the message size is 16 + 36 bytes.
 
 If the DMA region being added can be directly mapped by the server, a file
 descriptor must be sent as part of the message meta-data. On ``AF_UNIX``
@@ -597,15 +600,17 @@ The request payload for this message is an entry of the following format:
 +--------------+--------+---------------------------------------+
 | Name         | Offset | Size                                  |
 +==============+========+=======================================+
-| Address      | 0      | 8                                     |
+| argsz        | 0      | 4                                     |
 +--------------+--------+---------------------------------------+
-| Size         | 8      | 8                                     |
+| Address      | 4      | 8                                     |
 +--------------+--------+---------------------------------------+
-| Offset       | 16     | 8                                     |
+| Size         | 12     | 8                                     |
 +--------------+--------+---------------------------------------+
-| Protections  | 24     | 4                                     |
+| Offset       | 20     | 8                                     |
 +--------------+--------+---------------------------------------+
-| Flags        | 28     | 4                                     |
+| Protections  | 28     | 4                                     |
++--------------+--------+---------------------------------------+
+| Flags        | 32     | 4                                     |
 +--------------+--------+---------------------------------------+
 |              | +-----+--------------------------------------+ |
 |              | | Bit | Definition                           | |
@@ -614,6 +619,7 @@ The request payload for this message is an entry of the following format:
 |              | +-----+--------------------------------------+ |
 +--------------+--------+---------------------------------------+
 
+* *argsz* is the maximum size of the reply payload.
 * *Address* is the base DMA address of the DMA region.
 * *Size* is the size of the DMA region.
 * *Offset* must be zero (ignored)
@@ -624,10 +630,12 @@ The request payload for this message is an entry of the following format:
     must be populated before unmapping the DMA region. The client must provide
     a ``struct vfio_user_bitmap`` immediately following this table entry.
 
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags, the size of the
-total request message is: 16 + 32 + 16.
-Otherwise, if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags, the
-size of the total request message is: 16 + 32.
+The size of request message depends on whether or not the
+``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags:
+
+* If not set, the size of the total request message is: 16 + 36.
+
+* If set, the size of the total request message is: 16 + 36 + 16.
 
 .. _VFIO bitmap format:
 
@@ -653,18 +661,14 @@ mapped then the server must release all references to that DMA region before
 replying, which potentially includes in-flight DMA transactions. Removing a
 portion of a DMA region is possible.
 
-The payload depends on whether or not ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP``
-is set in Flags in the request:
+The server responds with the original DMA entry in the request. If
+``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags in the request, then
+the server includes the ``struct vfio_user_bitmap`` sent in the request,
+followed by the corresponding dirty page bitmap, where each bit represents
+one page of size ``struct vfio_user_bitmap.pgsize``.
 
-* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags in the request:
-  The server responds with a payload that contains the original
-  ``struct vfio_user_bitmap``  sent in the request, followed by the
-  corresponding dirty page bitmap, where each bit represents one page of size
-  ``struct vfio_user_bitmap.pgsize``.  The size of the total reply message is:
-  16 + 16 + size of dirty page bitmap.
-
-* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags in the request:
-   There is no payload. The size of the reply message is: 16.
+The total size of the total reply message is:
+16 + 36 + (16 + ``strcut vfio_user_bitmap.size`` if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set).
 
 ``VFIO_USER_DEVICE_GET_INFO``
 -----------------------------
