@@ -59,10 +59,10 @@ BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 
 INSTALL_PREFIX ?= /usr/local
 
-.PHONY: all test pytest pytest-valgrind
+.PHONY: all install test pytest pytest-valgrind
 .PHONY: pre-push clean realclean tags gcov
 
-all: $(BUILD_DIR)/Makefile
+all install: $(BUILD_DIR)/Makefile
 	+$(MAKE) -C $(BUILD_DIR) $@
 
 #
@@ -127,6 +127,7 @@ pre-push: realclean
 	make test CC=gcc BUILD_TYPE=rel
 	make test CC=gcc
 	make pytest-valgrind
+	make install DESTDIR=tmp.install
 
 GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 
