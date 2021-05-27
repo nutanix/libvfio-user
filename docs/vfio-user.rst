@@ -531,8 +531,7 @@ or if the client uses a vIOMMU.
 Request
 ^^^^^^^
 
-The request payload for this message is an array of table entries of the
-following format:
+The request payload for this message is an entry of the following format:
 
 +-------------+--------+-------------+
 | Name        | Offset | Size        |
@@ -565,29 +564,16 @@ following format:
   * *Mappable* indicates that the region can be mapped via the mmap() system
     call using the file descriptor provided in the message meta-data.
 
-This structure is 32 bytes in size, so the message size is:
-16 + (# of table entries * 32).
+This structure is 32 bytes in size, so the message size is 16 + 32 == 48 bytes.
 
-If a DMA region being added can be directly mapped by the server, an array of
-file descriptors must be sent as part of the message meta-data. Each mappable
-region entry must have a corresponding file descriptor. On ``AF_UNIX`` sockets,
-the file descriptors must be passed as ``SCM_RIGHTS`` type ancillary data.
-Otherwise, if a DMA region cannot be directly mapped by the server, it can be
-accessed by the server using ``VFIO_USER_DMA_READ`` and ``VFIO_USER_DMA_WRITE``
-messages, explained in `Read and Write Operations`_. A command to map over an
-existing region must be failed by the server with ``EEXIST`` set in error field
-in the reply.
-
-Adding multiple DMA regions can partially fail. The response does not indicate
-which regions were added and which were not, therefore it is a client
-implementation detail how to recover from the failure.
-
-.. Note::
-   The server can optionally remove successfully added DMA regions making this
-   operation atomic.
-   The client can recover by attempting to unmap one by one all the DMA regions
-   in the ``VFIO_USER_DMA_MAP`` command, ignoring failures for regions that do
-   not exist.
+If the DMA region being added can be directly mapped by the server, a file
+descriptor must be sent as part of the message meta-data. On ``AF_UNIX``
+sockets, the file descriptor must be passed as ``SCM_RIGHTS`` type ancillary
+data.  Otherwise, if the DMA region cannot be directly mapped by the server, it
+can be accessed by the server using ``VFIO_USER_DMA_READ`` and
+``VFIO_USER_DMA_WRITE`` messages, explained in `Read and Write Operations`_. A
+command to map over an existing region must be failed by the server with
+``EEXIST`` set in error field in the reply.
 
 Reply
 ^^^^^
@@ -597,17 +583,16 @@ There is no payload in the reply message.
 ``VFIO_USER_DMA_UNMAP``
 -----------------------
 
-This command message is sent by the client to the server to inform it that one
-or more DMA regions, previously made available via a ``VFIO_USER_DMA_MAP``
-command message, are no longer available for DMA. It typically occurs when
-memory is subtracted from the client or if the client uses a vIOMMU.  Each DMA
-region is described by a table entry in an array of the following structure:
+This command message is sent by the client to the server to inform it that a
+DMA region, previously made available via a ``VFIO_USER_DMA_MAP`` command
+message, is no longer available for DMA. It typically occurs when memory is
+subtracted from the client or if the client uses a vIOMMU. The DMA region is
+described by the following structure:
 
 Request
 ^^^^^^^
 
-The request payload for this message is an array of table entries of the
-following format:
+The request payload for this message is an entry of the following format:
 
 +--------------+--------+---------------------------------------+
 | Name         | Offset | Size                                  |
@@ -639,12 +624,10 @@ following format:
     must be populated before unmapping the DMA region. The client must provide
     a ``struct vfio_user_bitmap`` immediately following this table entry.
 
-The position of the next DMA region in the table is therefore dependent on
-whether or not the previous DMA region has the
-``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in its Flags.
-
-The size of the total request message is:
-16 + (# of table entries * 32) + (# number of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` set Flags * 16).
+If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags, the size of the
+total request message is: 16 + 32 + 16.
+Otherwise, if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags, the
+size of the total request message is: 16 + 32.
 
 .. _VFIO bitmap format:
 
@@ -670,15 +653,18 @@ mapped then the server must release all references to that DMA region before
 replying, which potentially includes in-flight DMA transactions. Removing a
 portion of a DMA region is possible.
 
-The server responds with a payload such that there is one ``struct
-vfio_user_bitmap`` for each region that had the
-``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` bit set in Flags in the request. Each
-``struct vfio_user_bitmap`` is followed by the corresponding dirty page bitmap,
-where each bit in the dirty page bitmap represents one page of size ``struct
-vfio_user_bitmap.pgsize``.
+The payload depends on whether or not ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP``
+is set in Flags in the request:
 
-The size of the total reply message is:
-16 + (# of table entries with ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` in flags * 16) + size of all bitmaps.
+* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags in the request:
+  The server responds with a payload that contains the original
+  ``struct vfio_user_bitmap``  sent in the request, followed by the
+  corresponding dirty page bitmap, where each bit represents one page of size
+  ``struct vfio_user_bitmap.pgsize``.  The size of the total reply message is:
+  16 + 16 + size of dirty page bitmap.
+
+* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags in the request:
+   There is no payload. The size of the reply message is: 16.
 
 ``VFIO_USER_DEVICE_GET_INFO``
 -----------------------------
