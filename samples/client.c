@@ -540,7 +540,7 @@ wait_for_irq(int irq_fd)
 }
 
 static void
-handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
+handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
                  int nr_dma_regions, int *dma_region_fds)
 {
     struct vfio_user_dma_region_access dma_access;
@@ -589,7 +589,7 @@ handle_dma_write(int sock, struct vfio_user_dma_region *dma_regions,
 }
 
 static void
-handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
+handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
                 int nr_dma_regions, int *dma_region_fds)
 {
     struct vfio_user_dma_region_access dma_access, *response;
@@ -632,7 +632,7 @@ handle_dma_read(int sock, struct vfio_user_dma_region *dma_regions,
 }
 
 static void
-handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
+handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
               int nr_dma_regions, int *dma_region_fds)
 {
     handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
@@ -640,7 +640,7 @@ handle_dma_io(int sock, struct vfio_user_dma_region *dma_regions,
 }
 
 static void
-get_dirty_bitmaps(int sock, struct vfio_user_dma_region *dma_regions,
+get_dirty_bitmaps(int sock, struct vfio_user_dma_map *dma_regions,
                   UNUSED int nr_dma_regions)
 {
     struct vfio_iommu_type1_dirty_bitmap dirty_bitmap = { 0 };
@@ -1039,7 +1039,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 }
 
 static void
-map_dma_regions(int sock, struct vfio_user_dma_region *dma_regions,
+map_dma_regions(int sock, struct vfio_user_dma_map *dma_regions,
                 int *dma_region_fds, int nr_dma_regions)
 {
     int i, ret;
@@ -1065,7 +1065,7 @@ map_dma_regions(int sock, struct vfio_user_dma_region *dma_regions,
 int main(int argc, char *argv[])
 {
 	int ret, sock, irq_fd;
-    struct vfio_user_dma_region *dma_regions;
+    struct vfio_user_dma_map *dma_regions;
     struct vfio_user_device_info client_dev_info = {0};
     int *dma_region_fds;
     int i;
@@ -1154,12 +1154,11 @@ int main(int argc, char *argv[])
     dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
 
     for (i = 0; i < nr_dma_regions; i++) {
-        dma_regions[i].argsz =  sizeof(struct vfio_user_dma_region);
+        dma_regions[i].argsz =  sizeof(struct vfio_user_dma_map);
         dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
         dma_regions[i].size = sysconf(_SC_PAGESIZE);
         dma_regions[i].offset = dma_regions[i].addr;
-        dma_regions[i].prot = PROT_READ | PROT_WRITE;
-        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_MAPPABLE;
+        dma_regions[i].flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE | VFIO_USER_F_DMA_REGION_MAPPABLE;
         dma_region_fds[i] = fileno(fp);
     }
 
@@ -1214,17 +1213,18 @@ int main(int argc, char *argv[])
      * unmap the first group of the DMA regions
      */
     {
-        struct vfio_user_dma_region r[server_max_fds];
-        memcpy(r, dma_regions, sizeof(r));
-        for (i = 0; i < (int)ARRAY_SIZE(r); i++) {
-            r[i].flags = 0;
-            ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r[i],
-                                sizeof(struct vfio_user_dma_region),
-                                NULL, NULL, 0);
+        for (i = 0; i < server_max_fds; i++) {
+            struct vfio_user_dma_unmap r = {
+                .argsz = sizeof(r),
+                .addr = dma_regions[i].addr,
+                .size = dma_regions[i].size
+            };
+            ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r, sizeof(r),
+                                NULL, &r, sizeof(r));
+            if (ret < 0) {
+                err(EXIT_FAILURE, "failed to unmap DMA region");
+            }
         }
-    }
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to unmap DMA regions");
     }
 
     /*
