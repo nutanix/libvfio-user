@@ -538,40 +538,40 @@ The request payload for this message is a structure of the following format:
 +=============+========+=============+
 | argsz       | 0      | 4           |
 +-------------+--------+-------------+
-| Flags       | 4      | 4           |
+| flags       | 4      | 4           |
 +-------------+--------+-------------+
 |             | +-----+------------+ |
 |             | | Bit | Definition | |
 |             | +=====+============+ |
-|             | | 0   | Readable   | |
+|             | | 0   | readable   | |
 |             | +-----+------------+ |
-|             | | 1   | Writeable  | |
+|             | | 1   | writeable  | |
 |             | +-----+------------+ |
-|             | | 2   | Mappable   | |
+|             | | 2   | mappable   | |
 |             | +-----+------------+ |
 +-------------+--------+-------------+
-| Offset      | 8      | 8           |
+| offset      | 8      | 8           |
 +-------------+--------+-------------+
-| Address     | 16     | 8           |
+| address     | 16     | 8           |
 +-------------+--------+-------------+
-| Size        | 24     | 8           |
+| size        | 24     | 8           |
 +-------------+--------+-------------+
 
 * *argsz* is the size of the above structure. Note there is no reply payload,
   so this field differs from other message types.
-* *Flags* contains the following region attributes:
+* *flags* contains the following region attributes:
 
-  * *Readable* indicates that the region can be read from.
+  * *readable* indicates that the region can be read from.
 
-  * *Writeable* indicates that the region can be written to.
+  * *writeable* indicates that the region can be written to.
 
-  * *Mappable* indicates that the region can be mapped via the mmap() system
+  * *mappable* indicates that the region can be mapped via the mmap() system
     call using the file descriptor provided in the message meta-data.
 
-* *Offset* is the file offset of the region with respect to the associated file
+* *offset* is the file offset of the region with respect to the associated file
   descriptor, or zero if the region is not mappable
-* *Address* is the base DMA address of the region.
-* *Size* is the size of the region.
+* *address* is the base DMA address of the region.
+* *size* is the size of the region.
 
 This structure is 32 bytes in size, so the message size is 16 + 32 bytes.
 
@@ -608,7 +608,7 @@ The request payload for this message is a structure of the following format:
 +==============+========+========================+
 | argsz        | 0      | 4                      |
 +--------------+--------+------------------------+
-| Flags        | 4      | 4                      |
+| flags        | 4      | 4                      |
 +--------------+--------+------------------------+
 |              | +-----+-----------------------+ |
 |              | | Bit | Definition            | |
@@ -616,21 +616,21 @@ The request payload for this message is a structure of the following format:
 |              | | 0   | get dirty page bitmap | |
 |              | +-----+-----------------------+ |
 +--------------+--------+------------------------+
-| Address      | 8      | 8                      |
+| address      | 8      | 8                      |
 +--------------+--------+------------------------+
-| Size         | 16     | 8                      |
+| size         | 16     | 8                      |
 +--------------+--------+------------------------+
 
 * *argsz* is the maximum size of the reply payload.
-* *Flags* contains the following DMA region attributes:
+* *flags* contains the following DMA region attributes:
 
   * *get dirty page bitmap* indicates that a dirty page bitmap must be
     populated before unmapping the DMA region. The client must provide a
     `VFIO bitmap`_ structure, explained below, immediately following this
     entry.
 
-* *Address* is the base DMA address of the DMA region.
-* *Size* is the size of the DMA region.
+* *address* is the base DMA address of the DMA region.
+* *size* is the size of the DMA region.
 
 The size of request message depends on whether or not the
 *get dirty page bitmap* bit is set in Flags:

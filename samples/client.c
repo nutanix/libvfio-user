@@ -1154,11 +1154,11 @@ int main(int argc, char *argv[])
     dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
 
     for (i = 0; i < nr_dma_regions; i++) {
-        dma_regions[i].argsz =  sizeof(struct vfio_user_dma_map);
+        dma_regions[i].argsz = sizeof(struct vfio_user_dma_map);
         dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
         dma_regions[i].size = sysconf(_SC_PAGESIZE);
         dma_regions[i].offset = dma_regions[i].addr;
-        dma_regions[i].flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE | VFIO_USER_F_DMA_REGION_MAPPABLE;
+        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE | VFIO_USER_F_DMA_REGION_MAPPABLE;
         dma_region_fds[i] = fileno(fp);
     }
 
@@ -1212,18 +1212,16 @@ int main(int argc, char *argv[])
      *
      * unmap the first group of the DMA regions
      */
-    {
-        for (i = 0; i < server_max_fds; i++) {
-            struct vfio_user_dma_unmap r = {
-                .argsz = sizeof(r),
-                .addr = dma_regions[i].addr,
-                .size = dma_regions[i].size
-            };
-            ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r, sizeof(r),
-                                NULL, &r, sizeof(r));
-            if (ret < 0) {
-                err(EXIT_FAILURE, "failed to unmap DMA region");
-            }
+    for (i = 0; i < server_max_fds; i++) {
+        struct vfio_user_dma_unmap r = {
+            .argsz = sizeof(r),
+            .addr = dma_regions[i].addr,
+            .size = dma_regions[i].size
+        };
+        ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r, sizeof(r),
+                            NULL, &r, sizeof(r));
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to unmap DMA region");
         }
     }
 

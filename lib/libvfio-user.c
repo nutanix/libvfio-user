@@ -468,7 +468,7 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
 
 int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-               struct vfio_user_dma_map *region)
+               struct vfio_user_dma_map *dma_map)
 {
     char rstr[1024];
     int fd = -1;
@@ -477,31 +477,31 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
-    assert(region != NULL);
+    assert(dma_map != NULL);
 
-    if (msg->in_size < sizeof(*region) || region->argsz < sizeof(*region)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA map region %zu",
-                msg->in_size);
+    if (msg->in_size < sizeof(*dma_map) || dma_map->argsz < sizeof(*dma_map)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA map region size=%zu argsz=%u",
+                msg->in_size, dma_map->argsz);
         return ERROR_INT(EINVAL);
     }
 
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx flags=%#x",
-             region->addr, region->addr + region->size, region->offset,
-             region->flags);
+             dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
+             dma_map->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
 
-    if (region->flags & VFIO_DMA_MAP_FLAG_READ) {
+    if (dma_map->flags & VFIO_USER_F_DMA_REGION_READ) {
         prot |= PROT_READ;
-        region->flags &= ~VFIO_DMA_MAP_FLAG_READ;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_READ;
     }
 
-    if (region->flags & VFIO_DMA_MAP_FLAG_WRITE) {
+    if (dma_map->flags & VFIO_USER_F_DMA_REGION_WRITE) {
         prot |= PROT_WRITE;
-        region->flags &= ~VFIO_DMA_MAP_FLAG_WRITE;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_WRITE;
     }
 
-    if (region->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
+    if (dma_map->flags == VFIO_USER_F_DMA_REGION_MAPPABLE) {
         fd = consume_fd(msg->in_fds, msg->nr_in_fds, 0);
         if (fd < 0) {
             vfu_log(vfu_ctx, LOG_ERR,
@@ -509,15 +509,12 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                     rstr);
             return -1;
         }
-        region->flags &= ~VFIO_USER_F_DMA_REGION_MAPPABLE;
+    } else if (dma_map->flags != 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
     }
 
-    if (region->flags != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
-    }
-
-    ret = dma_controller_add_region(vfu_ctx->dma, (void *)region->addr,
-                                    region->size, fd, region->offset,
+    ret = dma_controller_add_region(vfu_ctx->dma, (void *)dma_map->addr,
+                                    dma_map->size, fd, dma_map->offset,
                                     prot);
     if (ret < 0) {
         ret = errno;
@@ -536,7 +533,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
 int
 handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-                 struct vfio_user_dma_unmap *region)
+                 struct vfio_user_dma_unmap *dma_unmap)
 {
     int ret;
     char *bitmap = NULL;
@@ -544,26 +541,26 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
-    assert(region != NULL);
+    assert(dma_unmap != NULL);
 
-    if (msg->in_size < sizeof(*region) || region->argsz < sizeof(*region)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size of DMA unmap region=%zu argsz=%u",
-                msg->in_size, region->argsz);
+    if (msg->in_size < sizeof(*dma_unmap) || dma_unmap->argsz < sizeof(*dma_unmap)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
+                msg->in_size, dma_unmap->argsz);
         return ERROR_INT(EINVAL);
     }
 
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) flags=%#x",
-             region->addr, region->addr + region->size, region->flags);
+             dma_unmap->addr, dma_unmap->addr + dma_unmap->size, dma_unmap->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
-    msg->out_size = sizeof(*region);
+    msg->out_size = sizeof(*dma_unmap);
 
-    if (region->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        if (msg->in_size < sizeof(*region) + sizeof(*region->bitmap)
-            || region->argsz < sizeof(*region) + sizeof(*region->bitmap) + region->bitmap->size) {
+    if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
+        if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
+            || dma_unmap->argsz < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size) {
             vfu_log(vfu_ctx, LOG_ERR, "bad message size=%#lx argsz=%#x",
-                    msg->in_size, region->argsz);
+                    msg->in_size, dma_unmap->argsz);
             return ERROR_INT(EINVAL);
         }
         /*
@@ -572,18 +569,18 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
          * the DMA controller.
          */
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                            (vfu_dma_addr_t)region->addr,
-                                            region->size,
-                                            region->bitmap->pgsize,
-                                            region->bitmap->size,
+                                            (vfu_dma_addr_t)dma_unmap->addr,
+                                            dma_unmap->size,
+                                            dma_unmap->bitmap->pgsize,
+                                            dma_unmap->bitmap->size,
                                             &bitmap);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
             return -1;
         }
-        msg->out_size += sizeof(*region->bitmap) + region->bitmap->size;
-    } else if (region->flags != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", region->flags);
+        msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+    } else if (dma_unmap->flags != 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
     }
 
@@ -591,16 +588,16 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     if (msg->out_data == NULL) {
         return ERROR_INT(ENOMEM);
     }
-    memcpy(msg->out_data, region, sizeof(*region));
+    memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
 
-    if (region->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        memcpy(msg->out_data + sizeof(*region), region->bitmap, sizeof(*region->bitmap));
-        memcpy(msg->out_data + sizeof(*region) + sizeof(*region->bitmap), bitmap, region->bitmap->size);
+    if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
+        memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
+        memcpy(msg->out_data + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap), bitmap, dma_unmap->bitmap->size);
     }
 
     ret = dma_controller_remove_region(vfu_ctx->dma,
-                                       (void *)region->addr,
-                                       region->size,
+                                       (void *)dma_unmap->addr,
+                                       dma_unmap->size,
                                        vfu_ctx->dma_unregister,
                                        vfu_ctx);
     if (ret < 0) {

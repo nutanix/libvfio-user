@@ -181,11 +181,11 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-               struct vfio_user_dma_map *region);
+               struct vfio_user_dma_map *dma_map);
 
 int
 handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-                 struct vfio_user_dma_unmap *region);
+                 struct vfio_user_dma_unmap *dma_unmap);
 
 int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
