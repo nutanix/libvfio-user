@@ -50,7 +50,10 @@ int main(void)
                           .sn_hi = 0xcafebabe };
     struct pmcap pm = { .hdr.id = PCI_CAP_ID_PM, .pmcs.nsfrst = 0x1 };
     /* Required for lspci to report extended caps. */
-    struct pxcap px = { .hdr.id = PCI_CAP_ID_EXP };
+    struct pxcap px = {
+            .hdr.id = PCI_CAP_ID_EXP,
+            .pxdcap = {.flrc = 0x1}
+    };
 
     vfu_ctx_t *vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, "",
                                         LIBVFIO_USER_FLAG_ATTACH_NB, NULL,
