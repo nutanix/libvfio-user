@@ -159,7 +159,7 @@ main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "Rvm")) != -1) {
+    while ((opt = getopt(argc, argv, "MRv")) != -1) {
         switch (opt) {
             case 'R':
                 restart = false;
@@ -167,7 +167,7 @@ main(int argc, char *argv[])
             case 'v':
                 verbose = true;
                 break;
-            case 'm':
+            case 'M':
                 enable_migr = false;
                 break;
             default: /* '?' */
