@@ -390,7 +390,7 @@ validate_irq_subindex(vfu_ctx_t *vfu_ctx, uint32_t subindex)
     return true;
 }
 
-int
+EXPORT int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex)
 {
     eventfd_t val = 1;

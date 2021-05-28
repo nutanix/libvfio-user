@@ -548,7 +548,7 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
     return 0;
 }
 
-ssize_t
+EXPORT ssize_t
 vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 {
     bool extended = (flags & VFU_CAP_FLAG_EXTENDED);
@@ -710,7 +710,7 @@ vfu_pci_find_next_ext_capability(vfu_ctx_t *vfu_ctx, size_t offset, int cap_id)
     return 0;
 }
 
-size_t
+EXPORT size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t offset, int cap_id)
 {
@@ -762,7 +762,7 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
     }
 }
 
-size_t
+EXPORT size_t
 vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id)
 {
     return vfu_pci_find_next_capability(vfu_ctx, extended, 0, cap_id);

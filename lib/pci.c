@@ -398,7 +398,7 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     return offset - start;
 }
 
-int
+EXPORT int
 vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
              int hdr_type, int revision UNUSED)
 {
@@ -449,7 +449,7 @@ vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
     return 0;
 }
 
-void
+EXPORT void
 vfu_pci_set_id(vfu_ctx_t *vfu_ctx, uint16_t vid, uint16_t did,
                uint16_t ssvid, uint16_t ssid)
 {
@@ -459,7 +459,7 @@ vfu_pci_set_id(vfu_ctx_t *vfu_ctx, uint16_t vid, uint16_t did,
     vfu_ctx->pci.config_space->hdr.ss.sid = ssid;
 }
 
-void
+EXPORT void
 vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi)
 {
     vfu_ctx->pci.config_space->hdr.cc.bcc = base;
@@ -467,7 +467,7 @@ vfu_pci_set_class(vfu_ctx_t *vfu_ctx, uint8_t base, uint8_t sub, uint8_t pi)
     vfu_ctx->pci.config_space->hdr.cc.pi = pi;
 }
 
-vfu_pci_config_space_t *
+EXPORT vfu_pci_config_space_t *
 vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
