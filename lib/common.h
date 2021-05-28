@@ -40,6 +40,7 @@
 #include <stdint.h>
 
 #define UNUSED __attribute__((unused))
+#define EXPORT __attribute__((visibility("default")))
 
 #define PAGE_SIZE           (size_t)sysconf(_SC_PAGE_SIZE)
 #define PAGE_ALIGNED(x)		(((x) & ((typeof(x))(PAGE_SIZE) - 1)) == 0)
