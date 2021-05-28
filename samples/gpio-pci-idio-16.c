@@ -142,6 +142,7 @@ main(int argc, char *argv[])
     int ret;
     bool verbose = false;
     bool restart = true;
+    bool enable_migr = true;
     int opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
@@ -158,13 +159,16 @@ main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "Rv")) != -1) {
+    while ((opt = getopt(argc, argv, "MRv")) != -1) {
         switch (opt) {
             case 'R':
                 restart = false;
                 break;
             case 'v':
                 verbose = true;
+                break;
+            case 'M':
+                enable_migr = false;
                 break;
             default: /* '?' */
                 fprintf(stderr, "Usage: %s [-Rv] <socketpath>\n", argv[0]);
@@ -210,15 +214,17 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup region");
     }
 
-    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup migration region");
-    }
-    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
-                                               migr_regs_size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup device migration");
+    if (enable_migr) {
+        ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
+                               NULL, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to setup migration region");
+        }
+        ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
+                                                   migr_regs_size);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to setup device migration");
+        }
     }
 
     ret = vfu_setup_device_nr_irqs(vfu_ctx, VFU_DEV_INTX_IRQ, 1);
