@@ -538,7 +538,6 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     int ret;
     char *bitmap = NULL;
     char rstr[1024];
-    uint32_t argsz;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
@@ -549,37 +548,37 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                 msg->in_size, dma_unmap->argsz);
         return ERROR_INT(EINVAL);
     }
-    argsz = msg->out_size = sizeof(*dma_unmap);
 
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) flags=%#x",
              dma_unmap->addr, dma_unmap->addr + dma_unmap->size, dma_unmap->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
+    msg->out_size = sizeof(*dma_unmap);
+
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad message size=%#lx", msg->in_size);
+        if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
+            || dma_unmap->argsz < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad message size=%#lx argsz=%#x",
+                    msg->in_size, dma_unmap->argsz);
             return ERROR_INT(EINVAL);
         }
-        argsz += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
-        if (dma_unmap->argsz >= argsz) {
-            /*
-             * TODO this could be a separate function, but the implementation is
-             * temporary anyway since we're moving dirty page tracking out of
-             * the DMA controller.
-             */
-            ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                                (vfu_dma_addr_t)dma_unmap->addr,
-                                                dma_unmap->size,
-                                                dma_unmap->bitmap->pgsize,
-                                                dma_unmap->bitmap->size,
-                                                &bitmap);
-            if (ret < 0) {
-                vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
-                return -1;
-            }
-            msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+        /*
+         * TODO this could be a separate function, but the implementation is
+         * temporary anyway since we're moving dirty page tracking out of
+         * the DMA controller.
+         */
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                            (vfu_dma_addr_t)dma_unmap->addr,
+                                            dma_unmap->size,
+                                            dma_unmap->bitmap->pgsize,
+                                            dma_unmap->bitmap->size,
+                                            &bitmap);
+        if (ret < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
+            return -1;
         }
+        msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
@@ -590,9 +589,8 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(ENOMEM);
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
-    ((struct vfio_user_dma_unmap *)msg->out_data)->argsz = argsz;
 
-    if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP && msg->out_size >= argsz) {
+    if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
         memcpy(msg->out_data + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap), bitmap, dma_unmap->bitmap->size);
     }
