@@ -565,7 +565,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             /*
              * Ideally we should set argsz in the reply and fail the request
              * with a struct vfio_user_dma_unmap payload, however this isn't
-             * currently supported. Instread, we simply fail the request,
+             * currently supported. Instead, we simply fail the request,
              * that's what VFIO does anyway.
              */
             return ERROR_INT(EINVAL);
