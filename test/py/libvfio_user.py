@@ -147,7 +147,9 @@ VFU_REGION_FLAG_WRITE = 2
 VFU_REGION_FLAG_RW = (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
 VFU_REGION_FLAG_MEM   = 4
 
-VFIO_USER_F_DMA_REGION_MAPPABLE = (1 << 0)
+VFIO_USER_F_DMA_REGION_READ = (1 << 0)
+VFIO_USER_F_DMA_REGION_WRITE = (1 << 1)
+VFIO_USER_F_DMA_REGION_MAPPABLE = (1 << 2)
 
 VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP = (1 << 0)
 
@@ -314,15 +316,14 @@ class vfio_region_sparse_mmap_area(Structure):
         ("size", c.c_uint64),
     ]
 
-# FIXME: update for map changes
-class vfio_user_dma_region(Structure):
+class vfio_user_dma_map(Structure):
     _pack_ = 1
     _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("offset", c.c_uint64),
         ("addr", c.c_uint64),
         ("size", c.c_uint64),
-        ("offset", c.c_uint64),
-        ("prot", c.c_uint32),
-        ("flags", c.c_uint32)
     ]
 
 class vfu_dma_info_t(Structure):

@@ -73,9 +73,11 @@ def test_dirty_pages_setup():
     f = tempfile.TemporaryFile()
     f.truncate(0x10000)
 
-    payload = vfio_user_dma_region(addr=0x10000, size=0x10000, offset=0,
-                                   prot=(mmap.PROT_READ | mmap.PROT_WRITE),
-                                   flags=VFIO_USER_F_DMA_REGION_MAPPABLE)
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ |
+               VFIO_USER_F_DMA_REGION_WRITE |
+               VFIO_USER_F_DMA_REGION_MAPPABLE),
+        offset=0, addr=0x10000, size=0x10000)
 
     hdr = vfio_user_header(VFIO_USER_DMA_MAP, size=len(payload))
 
