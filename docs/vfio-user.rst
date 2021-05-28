@@ -531,40 +531,49 @@ or if the client uses a vIOMMU.
 Request
 ^^^^^^^
 
-The request payload for this message is an entry of the following format:
+The request payload for this message is a structure of the following format:
 
 +-------------+--------+-------------+
 | Name        | Offset | Size        |
 +=============+========+=============+
-| Address     | 0      | 8           |
+| argsz       | 0      | 4           |
 +-------------+--------+-------------+
-| Size        | 8      | 8           |
-+-------------+--------+-------------+
-| Offset      | 16     | 8           |
-+-------------+--------+-------------+
-| Protections | 24     | 4           |
-+-------------+--------+-------------+
-| Flags       | 28     | 4           |
+| flags       | 4      | 4           |
 +-------------+--------+-------------+
 |             | +-----+------------+ |
 |             | | Bit | Definition | |
 |             | +=====+============+ |
-|             | | 0   | Mappable   | |
+|             | | 0   | readable   | |
+|             | +-----+------------+ |
+|             | | 1   | writeable  | |
+|             | +-----+------------+ |
+|             | | 2   | mappable   | |
 |             | +-----+------------+ |
 +-------------+--------+-------------+
+| offset      | 8      | 8           |
++-------------+--------+-------------+
+| address     | 16     | 8           |
++-------------+--------+-------------+
+| size        | 24     | 8           |
++-------------+--------+-------------+
 
-* *Address* is the base DMA address of the region.
-* *Size* is the size of the region.
-* *Offset* is the file offset of the region with respect to the associated file
-  descriptor, or zero if the region is not mappable
-* *Protections* are the region's protection attributes as encoded in
-  ``<sys/mman.h>``; only ``PROT_READ`` and ``PROT_WRITE`` are supported
-* *Flags* contains the following region attributes:
+* *argsz* is the size of the above structure. Note there is no reply payload,
+  so this field differs from other message types.
+* *flags* contains the following region attributes:
 
-  * *Mappable* indicates that the region can be mapped via the mmap() system
+  * *readable* indicates that the region can be read from.
+
+  * *writeable* indicates that the region can be written to.
+
+  * *mappable* indicates that the region can be mapped via the mmap() system
     call using the file descriptor provided in the message meta-data.
 
-This structure is 32 bytes in size, so the message size is 16 + 32 == 48 bytes.
+* *offset* is the file offset of the region with respect to the associated file
+  descriptor, or zero if the region is not mappable
+* *address* is the base DMA address of the region.
+* *size* is the size of the region.
+
+This structure is 32 bytes in size, so the message size is 16 + 32 bytes.
 
 If the DMA region being added can be directly mapped by the server, a file
 descriptor must be sent as part of the message meta-data. On ``AF_UNIX``
@@ -592,44 +601,45 @@ described by the following structure:
 Request
 ^^^^^^^
 
-The request payload for this message is an entry of the following format:
+The request payload for this message is a structure of the following format:
 
-+--------------+--------+---------------------------------------+
-| Name         | Offset | Size                                  |
-+==============+========+=======================================+
-| Address      | 0      | 8                                     |
-+--------------+--------+---------------------------------------+
-| Size         | 8      | 8                                     |
-+--------------+--------+---------------------------------------+
-| Offset       | 16     | 8                                     |
-+--------------+--------+---------------------------------------+
-| Protections  | 24     | 4                                     |
-+--------------+--------+---------------------------------------+
-| Flags        | 28     | 4                                     |
-+--------------+--------+---------------------------------------+
-|              | +-----+--------------------------------------+ |
-|              | | Bit | Definition                           | |
-|              | +=====+======================================+ |
-|              | | 0   | VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP | |
-|              | +-----+--------------------------------------+ |
-+--------------+--------+---------------------------------------+
++--------------+--------+------------------------+
+| Name         | Offset | Size                   |
++==============+========+========================+
+| argsz        | 0      | 4                      |
++--------------+--------+------------------------+
+| flags        | 4      | 4                      |
++--------------+--------+------------------------+
+|              | +-----+-----------------------+ |
+|              | | Bit | Definition            | |
+|              | +=====+=======================+ |
+|              | | 0   | get dirty page bitmap | |
+|              | +-----+-----------------------+ |
++--------------+--------+------------------------+
+| address      | 8      | 8                      |
++--------------+--------+------------------------+
+| size         | 16     | 8                      |
++--------------+--------+------------------------+
 
-* *Address* is the base DMA address of the DMA region.
-* *Size* is the size of the DMA region.
-* *Offset* must be zero (ignored)
-* *Protections* must be zero (ignored)
-* *Flags* contains the following DMA region attributes:
+* *argsz* is the maximum size of the reply payload.
+* *flags* contains the following DMA region attributes:
 
-  * ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` indicates that a dirty page bitmap
-    must be populated before unmapping the DMA region. The client must provide
-    a ``struct vfio_user_bitmap`` immediately following this table entry.
+  * *get dirty page bitmap* indicates that a dirty page bitmap must be
+    populated before unmapping the DMA region. The client must provide a
+    `VFIO bitmap`_ structure, explained below, immediately following this
+    entry.
 
-If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags, the size of the
-total request message is: 16 + 32 + 16.
-Otherwise, if ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags, the
-size of the total request message is: 16 + 32.
+* *address* is the base DMA address of the DMA region.
+* *size* is the size of the DMA region.
 
-.. _VFIO bitmap format:
+The size of request message depends on whether or not the
+*get dirty page bitmap* bit is set in Flags:
+
+* If not set, the size of the total request message is: 16 + 24.
+
+* If set, the size of the total request message is: 16 + 24 + 16.
+
+.. _VFIO bitmap:
 
 VFIO bitmap format
 """"""""""""""""""
@@ -653,18 +663,14 @@ mapped then the server must release all references to that DMA region before
 replying, which potentially includes in-flight DMA transactions. Removing a
 portion of a DMA region is possible.
 
-The payload depends on whether or not ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP``
-is set in Flags in the request:
+The server responds with the original DMA entry in the request. If the
+*get dirty page bitmap* bit is set in flags in the request, then
+the server also includes the `VFIO bitmap`_ structure sent in the request,
+followed by the corresponding dirty page bitmap, where each bit represents
+one page of size *pgsize* in `VFIO bitmap`_ .
 
-* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags in the request:
-  The server responds with a payload that contains the original
-  ``struct vfio_user_bitmap``  sent in the request, followed by the
-  corresponding dirty page bitmap, where each bit represents one page of size
-  ``struct vfio_user_bitmap.pgsize``.  The size of the total reply message is:
-  16 + 16 + size of dirty page bitmap.
-
-* ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags in the request:
-   There is no payload. The size of the reply message is: 16.
+The total size of the total reply message is:
+16 + 24 + (16 + *size* in `VFIO bitmap`_ if *get dirty page bitmap* is set).
 
 ``VFIO_USER_DEVICE_GET_INFO``
 -----------------------------
@@ -1542,8 +1548,7 @@ VFIO Dirty Bitmap Get Format
 
 * *size* is the size of the IOVA region
 
-* *bitmap* is the VFIO bitmap (``struct vfio_bitmap``). This field is explained
-  in `VFIO bitmap format`_.
+* *bitmap* is the VFIO bitmap explained in `VFIO bitmap`_.
 
 Reply
 ^^^^^

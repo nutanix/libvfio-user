@@ -114,18 +114,29 @@ struct vfio_user_bitmap {
     char data[];
 } __attribute__((packed));
 
-struct vfio_user_dma_region {
-    uint64_t                addr;
-    uint64_t                size;
-    uint64_t                offset;
-    uint32_t                prot;
+/* based on struct vfio_iommu_type1_dma_map */
+struct vfio_user_dma_map {
+    uint32_t argsz;
+#define VFIO_USER_F_DMA_REGION_READ     (1 << 0)
+#define VFIO_USER_F_DMA_REGION_WRITE    (1 << 1)
+#define VFIO_USER_F_DMA_REGION_MAPPABLE (1 << 2)
+    uint32_t flags;
+    uint64_t offset;
+    uint64_t addr;
+    uint64_t size;
+} __attribute__((packed));
+
+/* based on struct vfio_iommu_type1_dma_unmap */
+struct vfio_user_dma_unmap {
+    uint32_t argsz;
 #ifndef VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP
 #define VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP (1 << 0)
 #endif
-#define VFIO_USER_F_DMA_REGION_MAPPABLE (1 << 0)
-    uint32_t                flags;
+    uint32_t flags;
+    uint64_t addr;
+    uint64_t size;
     struct vfio_user_bitmap bitmap[];
-} __attribute__((packed));
+};
 
 struct vfio_user_region_access {
     uint64_t    offset;
