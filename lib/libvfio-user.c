@@ -385,7 +385,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_region_info *in_info;
     struct vfio_region_info *out_info;
     vfu_reg_info_t *vfu_reg;
-    size_t caps_size;
+    size_t caps_size = 0;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
@@ -404,8 +404,10 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     vfu_reg = &vfu_ctx->reg_info[in_info->index];
 
-    caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                                   vfu_reg);
+    if (vfu_reg->size > 0) {
+        caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                                       vfu_reg);
+    }
 
     msg->out_size = MIN(sizeof(*out_info) + caps_size, in_info->argsz);
     msg->out_data = calloc(1, msg->out_size);
