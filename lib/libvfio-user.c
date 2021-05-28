@@ -58,7 +58,7 @@
 
 static void vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason);
 
-void
+EXPORT void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 {
     va_list ap;
@@ -1029,7 +1029,7 @@ out:
     return ret;
 }
 
-int
+EXPORT int
 vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 {
     vfu_reg_info_t *cfg_reg;
@@ -1107,7 +1107,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     return 0;
 }
 
-int
+EXPORT int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 {
     int err;
@@ -1160,7 +1160,7 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
     }
 }
 
-void
+EXPORT void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
 
@@ -1187,7 +1187,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     free(vfu_ctx);
 }
 
-void *
+EXPORT void *
 vfu_get_private(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
@@ -1195,7 +1195,7 @@ vfu_get_private(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->pvt;
 }
 
-vfu_ctx_t *
+EXPORT vfu_ctx_t *
 vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
                vfu_dev_type_t dev_type)
 {
@@ -1271,7 +1271,7 @@ err_out:
     return ERROR_PTR(err);
 }
 
-int
+EXPORT int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
 {
 
@@ -1280,7 +1280,7 @@ vfu_attach_ctx(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->tran->attach(vfu_ctx);
 }
 
-int
+EXPORT int
 vfu_get_poll_fd(vfu_ctx_t *vfu_ctx)
 {
 
@@ -1289,7 +1289,7 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx)
     return vfu_ctx->tran->get_poll_fd(vfu_ctx);
 }
 
-int
+EXPORT int
 vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 {
 
@@ -1357,7 +1357,7 @@ validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
     return true;
 }
 
-int
+EXPORT int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
@@ -1441,7 +1441,7 @@ err:
     return ERROR_INT(ret);
 }
 
-int
+EXPORT int
 vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 {
     assert(vfu_ctx != NULL);
@@ -1449,7 +1449,7 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
     return 0;
 }
 
-int
+EXPORT int
 vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister)
 {
@@ -1468,7 +1468,7 @@ vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
     return 0;
 }
 
-int
+EXPORT int
 vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
                          uint32_t count)
 {
@@ -1485,7 +1485,7 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
     return 0;
 }
 
-int
+EXPORT int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
                                      const vfu_migration_callbacks_t *callbacks,
                                      uint64_t data_offset)
@@ -1515,7 +1515,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
-int
+EXPORT int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                size_t len, dma_sg_t *sg, int max_sg, int prot)
 {
@@ -1528,7 +1528,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
 
-int
+EXPORT int
 vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 	       struct iovec *iov, int cnt)
 {
@@ -1546,7 +1546,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
     return 0;
 }
 
-void
+EXPORT void
 vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
@@ -1555,7 +1555,7 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
 
-int
+EXPORT int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_recv;
@@ -1597,7 +1597,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     return ret;
 }
 
-int
+EXPORT int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_send, dma_recv;

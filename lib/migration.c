@@ -45,7 +45,7 @@ MOCK_DEFINE(vfio_migr_state_transition_is_valid)(uint32_t from, uint32_t to)
     return migr_states[from].state & (1 << to);
 }
 
-size_t
+EXPORT size_t
 vfu_get_migr_register_area_size(void)
 {
     return ROUND_UP(sizeof(struct vfio_device_migration_info),

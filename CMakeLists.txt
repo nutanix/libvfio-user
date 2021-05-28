@@ -57,6 +57,8 @@ set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -D_GNU_SOURCE -Wall -Werror -Wextra")
 set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -Wno-missing-field-initializers -Wmissing-declarations")
+set(CMAKE_C_FLAGS
+    "${CMAKE_C_FLAGS} -fvisibility=hidden")
 
 # public headers
 add_subdirectory(include)
