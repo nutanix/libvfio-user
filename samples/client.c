@@ -642,8 +642,8 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 static void
 get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 {
-    uint64_t bitmap_size = pages_bitmap_size(dma_region->size,
-                                             sysconf(_SC_PAGESIZE));
+    uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
+                                            sysconf(_SC_PAGESIZE));
     struct vfio_user_dirty_pages *dirty_pages;
     struct vfio_user_bitmap_range *range;
     char *bitmap;

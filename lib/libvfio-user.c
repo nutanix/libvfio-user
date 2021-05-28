@@ -647,9 +647,8 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_user_dirty_pages *dirty_pages_out;
     struct vfio_user_bitmap_range *range_in;
     struct vfio_user_bitmap_range *range_out;
-    size_t out_size;
-    char *bitmap_out;
     char *bitmap;
+    size_t argsz;
     int ret;
 
     if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)) {
@@ -665,39 +664,29 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                                         range_in->size, range_in->bitmap.pgsize,
                                         range_in->bitmap.size, &bitmap);
     if (ret != 0) {
-        ret = errno;
         vfu_log(vfu_ctx, LOG_WARNING,
                 "failed to get dirty bitmap from DMA controller: %m");
-        return ERROR_INT(ret);
+        return -1;
     }
 
-    out_size = sizeof(*dirty_pages_out) + sizeof(*range_out) +
-               range_in->bitmap.size;
+    /*
+     * FIXME: this is unbounded until we can limit the maximum DMA region size.
+     */
+    argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
+            range_in->bitmap.size;
 
     /*
      * If the reply doesn't fit, reply with just the dirty pages header, giving
      * the needed argsz. Typically this shouldn't happen, as the client knows
      * the needed reply size and has already provided the correct bitmap size.
      */
-    if (dirty_pages_in->argsz < out_size) {
+    if (dirty_pages_in->argsz >= argsz) {
+        msg->out_size = argsz;
+    } else {
         msg->out_size = sizeof(*dirty_pages_out);
-        msg->out_data = calloc(1, msg->out_size);
-
-        if (msg->out_data == NULL) {
-            return -1;
-        }
-
-        dirty_pages_out = msg->out_data;
-        memcpy(dirty_pages_out, dirty_pages_in, sizeof (*dirty_pages_out));
-        dirty_pages_out->argsz = out_size;
-        return 0;
     }
 
-    /*
-     * FIXME: this is unbounded until we can limit the maximum DMA region size.
-     */
-    msg->out_size = out_size;
-    msg->out_data = calloc(1, msg->out_size);
+    msg->out_data = malloc(msg->out_size);
 
     if (msg->out_data == NULL) {
         return -1;
@@ -705,13 +694,18 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     dirty_pages_out = msg->out_data;
     memcpy(dirty_pages_out, dirty_pages_in, sizeof (*dirty_pages_out));
-    dirty_pages_out->argsz = out_size;
+    dirty_pages_out->argsz = argsz;
 
-    range_out = msg->out_data + sizeof(*dirty_pages_out);
-    memcpy(range_out, range_in, sizeof (*range_out));
+    if (dirty_pages_in->argsz >= argsz) {
+        char *bitmap_out;
 
-    bitmap_out = msg->out_data + sizeof(*dirty_pages_out) + sizeof(*range_out);
-    memcpy(bitmap_out, bitmap, range_in->bitmap.size);
+        range_out = msg->out_data + sizeof(*dirty_pages_out);
+        memcpy(range_out, range_in, sizeof (*range_out));
+
+        bitmap_out = msg->out_data + sizeof(*dirty_pages_out)
+                                   + sizeof(*range_out);
+        memcpy(bitmap_out, bitmap, range_in->bitmap.size);
+    }
 
     return 0;
 }

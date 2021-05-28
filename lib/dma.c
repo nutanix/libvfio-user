@@ -266,7 +266,7 @@ get_bitmap_size(size_t region_size, size_t pgsize)
         return ERROR_INT(EINVAL);
     }
 
-    return pages_bitmap_size(region_size, pgsize);
+    return _get_bitmap_size(region_size, pgsize);
 }
 
 static int

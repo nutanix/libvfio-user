@@ -62,7 +62,7 @@
  * given page size.
  */
 static inline size_t
-pages_bitmap_size(size_t size, size_t pgsize)
+_get_bitmap_size(size_t size, size_t pgsize)
 {
     size_t nr_pages = (size / pgsize) + (size % pgsize != 0);
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
