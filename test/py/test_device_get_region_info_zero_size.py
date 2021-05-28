@@ -74,3 +74,5 @@ def test_device_get_region_info_zero_sized_region():
         assert info.cap_offset == 0
         assert info.size == 0
         assert info.offset == 0
+
+    vfu_destroy_ctx(ctx)
