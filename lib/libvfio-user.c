@@ -590,7 +590,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(ENOMEM);
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
-    ((struct vfio_user_dma_unmap*)msg->out_data)->argsz = argsz;
+    ((struct vfio_user_dma_unmap *)msg->out_data)->argsz = argsz;
 
     if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP && msg->out_size >= argsz) {
         memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));

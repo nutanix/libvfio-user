@@ -664,7 +664,7 @@ replying, which potentially includes in-flight DMA transactions. Removing a
 portion of a DMA region is possible.
 
 The server responds with the original DMA entry in the request. If the
-*get dirty page bitmap* bit is set in Flags in the request, then
+*get dirty page bitmap* bit is set in flags in the request, then
 the server also includes the `VFIO bitmap`_ structure sent in the request,
 followed by the corresponding dirty page bitmap, where each bit represents
 one page of size *pgsize* in `VFIO bitmap`_ .
