@@ -387,7 +387,10 @@ class dma_sg_t(Structure):
         ("region", c.c_int),
         ("length", c.c_uint64),
         ("offset", c.c_uint64),
-        ("mappable", c.c_bool)
+        ("mappable", c.c_bool),
+        ("writeable", c.c_bool),
+        ("le_next", c.c_void_p), # FIXME add struct for LIST_ENTRY 
+        ("le_prev", c.c_void_p),
     ]
 
 #
@@ -430,6 +433,10 @@ lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
     c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
 lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                c.POINTER(dma_sg_t), c.c_int, c.c_int)
+lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
+                           c.c_int)
+lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
+                             c.POINTER(iovec_t), c.c_int)
 
 def to_byte(val):
     """Cast an int to a byte value."""
@@ -475,7 +482,7 @@ def get_reply(sock, expect=0):
     buf = sock.recv(4096)
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
-    assert errno == expect
+    assert errno == expect, "got errno %s instead of %s" % (errno, expect)
     return buf[16:]
 
 def get_pci_header(ctx):
@@ -689,4 +696,14 @@ def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
 
     sg = dma_sg_t()
 
-    return lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot)
+    return (lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot), sg)
+
+
+def vfu_map_sg(ctx, sg, iovec, cnt=1):
+    # FIXME not sure wheter cnt != 1 will work because iovec is an array
+    return lib.vfu_map_sg(ctx, sg, iovec, cnt)
+
+def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
+    return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

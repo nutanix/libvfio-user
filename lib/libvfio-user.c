@@ -538,7 +538,6 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap)
 {
     int ret;
-    char *bitmap = NULL;
     char rstr[1024];
 
     assert(vfu_ctx != NULL);
@@ -577,21 +576,13 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
          * temporary anyway since we're moving dirty page tracking out of
          * the DMA controller.
          */
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                            (vfu_dma_addr_t)dma_unmap->addr,
-                                            dma_unmap->size,
-                                            dma_unmap->bitmap->pgsize,
-                                            dma_unmap->bitmap->size,
-                                            &bitmap);
-        if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
-            return -1;
-        }
         msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
     }
+
+
 
     msg->out_data = malloc(msg->out_size);
     if (msg->out_data == NULL) {
@@ -601,7 +592,16 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
-        memcpy(msg->out_data + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap), bitmap, dma_unmap->bitmap->size);
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                            (vfu_dma_addr_t)dma_unmap->addr,
+                                            dma_unmap->size,
+                                            dma_unmap->bitmap->pgsize,
+                                            dma_unmap->bitmap->size,
+                                            msg->out_data + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap));
+        if (ret < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
+            return -1;
+        }
     }
 
     ret = dma_controller_remove_region(vfu_ctx->dma,
@@ -649,31 +649,32 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_user_dirty_pages *dirty_pages_out;
     struct vfio_user_bitmap_range *range_in;
     struct vfio_user_bitmap_range *range_out;
-    char *bitmap;
     size_t argsz;
     int ret;
 
-    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in_size);
+
+    dirty_pages_in = msg->in_data;
+
+    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)
+        || dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid message size=%zu argsz=%u",
+                msg->in_size, dirty_pages_in->argsz);
         return ERROR_INT(EINVAL);
     }
 
-    dirty_pages_in = msg->in_data;
     range_in = msg->in_data + sizeof(*dirty_pages_in);
-
-    ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                        (vfu_dma_addr_t)range_in->iova,
-                                        range_in->size, range_in->bitmap.pgsize,
-                                        range_in->bitmap.size, &bitmap);
-    if (ret != 0) {
-        vfu_log(vfu_ctx, LOG_WARNING,
-                "failed to get dirty bitmap from DMA controller: %m");
-        return -1;
-    }
 
     /* NB: this is bound by MAX_DMA_SIZE. */
     argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
             range_in->bitmap.size;
+    msg->out_size = MIN(dirty_pages_in->argsz, argsz);
+    msg->out_data = malloc(msg->out_size);
+    if (msg->out_data == NULL) {
+        return -1;
+    }
+    dirty_pages_out = msg->out_data;
+    memcpy(dirty_pages_out, dirty_pages_in, sizeof(*dirty_pages_out));
+    dirty_pages_out->argsz = argsz;
 
     /*
      * If the reply doesn't fit, reply with just the dirty pages header, giving
@@ -681,32 +682,26 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
      * the needed reply size and has already provided the correct bitmap size.
      */
     if (dirty_pages_in->argsz >= argsz) {
-        msg->out_size = argsz;
-    } else {
-        msg->out_size = sizeof(*dirty_pages_out);
-    }
-
-    msg->out_data = malloc(msg->out_size);
-
-    if (msg->out_data == NULL) {
-        return -1;
-    }
-
-    dirty_pages_out = msg->out_data;
-    memcpy(dirty_pages_out, dirty_pages_in, sizeof (*dirty_pages_out));
-    dirty_pages_out->argsz = argsz;
-
-    if (dirty_pages_in->argsz >= argsz) {
-        char *bitmap_out;
-
+        void *bitmap_out = msg->out_data + sizeof(*dirty_pages_out)
+                           + sizeof(*range_out);
         range_out = msg->out_data + sizeof(*dirty_pages_out);
-        memcpy(range_out, range_in, sizeof (*range_out));
-
-        bitmap_out = msg->out_data + sizeof(*dirty_pages_out)
-                                   + sizeof(*range_out);
-        memcpy(bitmap_out, bitmap, range_in->bitmap.size);
+        memcpy(range_out, range_in, sizeof(*range_out));
+        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                            (vfu_dma_addr_t)range_in->iova,
+                                            range_in->size,
+                                            range_in->bitmap.pgsize,
+                                            range_in->bitmap.size, bitmap_out);
+        if (ret != 0) {
+            ret = errno;
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "failed to get dirty bitmap from DMA controller: %m");
+            free(msg->out_data);
+            msg->out_data = NULL;
+            msg->out_size = 0;
+            errno = ret;
+            return -1;
+        }
     }
-
     return 0;
 }
 
@@ -1577,7 +1572,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
 }
 
 EXPORT int
-vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
+vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg,
 	       struct iovec *iov, int cnt)
 {
     int ret;
@@ -1595,7 +1590,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
 }
 
 EXPORT void
-vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
+vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
 {
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;

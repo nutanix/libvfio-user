@@ -137,7 +137,8 @@ def test_dirty_pages_start_bad_flags():
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
 
-def test_dirty_pages_start():
+
+def _start_logging():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
@@ -150,6 +151,11 @@ def test_dirty_pages_start():
     sock.send(hdr + payload)
     vfu_run_ctx(ctx)
     get_reply(sock)
+
+
+def test_dirty_pages_start():
+    _start_logging()
+
 
 def test_dirty_pages_get_short_read():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
@@ -164,9 +170,10 @@ def test_dirty_pages_get_short_read():
 # This should in fact work; update when it does.
 #
 def test_dirty_pages_get_sub_range():
-    dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+    argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
+    dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=1)
+    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
     br = vfio_user_bitmap_range(iova=0x11000, size=0x1000, bitmap=bitmap)
 
     hdr = vfio_user_header(VFIO_USER_DIRTY_PAGES,
@@ -176,7 +183,8 @@ def test_dirty_pages_get_sub_range():
     get_reply(sock, expect=errno.ENOTSUP)
 
 def test_dirty_pages_get_bad_page_size():
-    dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+    argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
+    dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
     bitmap = vfio_user_bitmap(pgsize=0x2000, size=8)
     br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
@@ -188,7 +196,8 @@ def test_dirty_pages_get_bad_page_size():
     get_reply(sock, expect=errno.EINVAL)
 
 def test_dirty_pages_get_bad_bitmap_size():
-    dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+    argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
+    dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
     bitmap = vfio_user_bitmap(pgsize=0x1000, size=1)
     br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
@@ -249,14 +258,8 @@ def test_dirty_pages_get_unmodified():
     assert br.bitmap.pgsize == 0x1000
     assert br.bitmap.size == 8
 
-def test_dirty_pages_get_modified():
-    # sufficient to mark the region dirty
-    ret = vfu_addr_to_sg(ctx, dma_addr=0x10000, length=0x1000)
-    assert ret == 1
 
-    ret = vfu_addr_to_sg(ctx, dma_addr=0x14000, length=0x4000)
-    assert ret == 1
-
+def _get_dirty_page_bitmap():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
@@ -272,27 +275,82 @@ def test_dirty_pages_get_modified():
 
     dirty_pages, result = vfio_user_dirty_pages.pop_from_buffer(result)
     br, result = vfio_user_bitmap_range.pop_from_buffer(result)
-    bitmap = struct.unpack("Q", result)[0]
+    return struct.unpack("Q", result)[0]
 
+sg3 = None
+iovec3 = None
+
+def test_dirty_pages_get_modified():
+    ret, sg1 = vfu_addr_to_sg(ctx, dma_addr=0x10000, length=0x1000)
+    assert ret == 1
+    iovec1 = iovec_t()
+    ret = vfu_map_sg(ctx, sg1, iovec1)
+    assert ret == 0
+
+    ret, sg2 = vfu_addr_to_sg(ctx, dma_addr=0x11000, length=0x1000,
+                              prot=mmap.PROT_READ)
+    assert ret == 1
+    iovec2 = iovec_t()
+    ret = vfu_map_sg(ctx, sg2, iovec2)
+    assert ret == 0
+
+    global sg3, iovec3
+    ret, sg3 = vfu_addr_to_sg(ctx, dma_addr=0x14000, length=0x4000)
+    assert ret == 1
+    iovec3 = iovec_t()
+    ret = vfu_map_sg(ctx, sg3, iovec3)
+    assert ret == 0
+
+    bitmap = _get_dirty_page_bitmap()
     assert bitmap == 0b11110001
 
+    # unmap segment, dirty bitmap should be the same
+    vfu_unmap_sg(ctx, sg1, iovec1)
+    bitmap = _get_dirty_page_bitmap() 
+    assert bitmap == 0b11110001
+
+    # check again, previously unmapped segment should be clean
+    bitmap = _get_dirty_page_bitmap()
+    assert bitmap == 0b11110000
+
+
+def _stop_logging():
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
+
+    hdr = vfio_user_header(VFIO_USER_DIRTY_PAGES, size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    get_reply(sock)
+
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
+
+    hdr = vfio_user_header(VFIO_USER_DIRTY_PAGES, size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    get_reply(sock)
+
+
 def test_dirty_pages_stop():
-    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
-                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
+    _stop_logging()
 
-    hdr = vfio_user_header(VFIO_USER_DIRTY_PAGES, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock)
+    # one segment is still mapped, starting logging again and bitmap should be
+    # dirty
+    _start_logging()
+    assert _get_dirty_page_bitmap() == 0b11110000
 
-    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
-                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
+    # unmap segment, bitmap should still be dirty
+    vfu_unmap_sg(ctx, sg3, iovec3)
+    assert _get_dirty_page_bitmap() == 0b11110000
 
-    hdr = vfio_user_header(VFIO_USER_DIRTY_PAGES, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock)
+    # bitmap should be clear after it was unmapped before previous reqeust for
+    # dirty pages
+    assert _get_dirty_page_bitmap() == 0b00000000
 
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
+
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

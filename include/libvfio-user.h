@@ -42,6 +42,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <syslog.h>
+#include <sys/queue.h>
 
 #include "pci_caps/dsn.h"
 #include "pci_caps/msi.h"
@@ -61,12 +62,14 @@ extern "C" {
 /* DMA addresses cannot be directly de-referenced. */
 typedef void *vfu_dma_addr_t;
 
-typedef struct {
+typedef struct dma_sg {
     vfu_dma_addr_t dma_addr;
     int region;
     uint64_t length;
     uint64_t offset;
-    bool mappable;
+    bool mappable; /* TODO mappable and writeable could be combined in single field as bit flags */
+    bool writeable;
+    LIST_ENTRY(dma_sg) entries;
 } dma_sg_t;
 
 typedef struct vfu_ctx vfu_ctx_t;
@@ -635,7 +638,9 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * vfu_setup_device_dma().
  *
  * @vfu_ctx: the libvfio-user context
- * @sg: array of scatter/gather entries returned by vfu_addr_to_sg
+ * @sg: array of scatter/gather entries returned by vfu_addr_to_sg. These
+ *      entries must not be modified and the array must not be deallocated
+ *      until vfu_unmap_sg() has been called for each entry.
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -643,8 +648,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
-           struct iovec *iov, int cnt);
+vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt);
 
 /**
  * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg()) from
@@ -656,8 +660,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg,
-             struct iovec *iov, int cnt);
+vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt);
 
 /**
  * Read from the dma region exposed by the client. This can be used as an
