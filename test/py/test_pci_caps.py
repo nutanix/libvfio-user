@@ -70,8 +70,7 @@ def test_pci_cap_bad_pos():
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
 
-@c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
-             c.c_long, c.c_long, c.c_int)
+@vfu_region_access_cb_t
 def pci_region_cb(ctx, buf, count, offset, is_write):
     if not is_write:
         return read_pci_cfg_space(ctx, buf, count, offset)

@@ -193,17 +193,11 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 int
 handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
 
-MOCK_DECLARE(int, handle_dirty_pages, vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
-
 MOCK_DECLARE(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
 
 MOCK_DECLARE(bool, should_exec_command, vfu_ctx_t *vfu_ctx, uint16_t cmd);
 
 MOCK_DECLARE(int, process_request, vfu_ctx_t *vfu_ctx);
-
-MOCK_DECLARE(int, handle_dirty_pages_get, vfu_ctx_t *vfu_ctx,
-             struct iovec **iovecs, size_t *nr_iovecs,
-             struct vfio_user_bitmap_range *ranges, uint32_t size);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 

@@ -642,73 +642,97 @@ handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     return do_device_reset(vfu_ctx, reason);
 }
 
-int
-MOCK_DEFINE(handle_dirty_pages_get)(vfu_ctx_t *vfu_ctx,
-                                    struct iovec **iovecs, size_t *nr_iovecs,
-                                    struct vfio_user_bitmap_range *ranges,
-                                     uint32_t size)
+static int
+handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    int ret = EINVAL;
-    size_t i;
+    struct vfio_user_dirty_pages *dirty_pages_in;
+    struct vfio_user_dirty_pages *dirty_pages_out;
+    struct vfio_user_bitmap_range *range_in;
+    struct vfio_user_bitmap_range *range_out;
+    char *bitmap;
+    size_t argsz;
+    int ret;
 
-    assert(vfu_ctx != NULL);
-    assert(iovecs != NULL);
-    assert(nr_iovecs != NULL);
-    assert(ranges != NULL);
-
-    if (size % sizeof(struct vfio_user_bitmap_range) != 0) {
+    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in_size);
         return ERROR_INT(EINVAL);
     }
-    *nr_iovecs = size / sizeof(struct vfio_user_bitmap_range);
-    *iovecs = malloc(*nr_iovecs * sizeof(struct iovec));
-    if (*iovecs == NULL) {
+
+    dirty_pages_in = msg->in_data;
+    range_in = msg->in_data + sizeof(*dirty_pages_in);
+
+    ret = dma_controller_dirty_page_get(vfu_ctx->dma,
+                                        (vfu_dma_addr_t)range_in->iova,
+                                        range_in->size, range_in->bitmap.pgsize,
+                                        range_in->bitmap.size, &bitmap);
+    if (ret != 0) {
+        vfu_log(vfu_ctx, LOG_WARNING,
+                "failed to get dirty bitmap from DMA controller: %m");
         return -1;
     }
 
-    for (i = 0; i < *nr_iovecs; i++) {
-        struct vfio_user_bitmap_range *r = &ranges[i];
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                            (vfu_dma_addr_t)r->iova, r->size,
-                                            r->bitmap.pgsize, r->bitmap.size,
-                                            (char **)&((*iovecs)[i].iov_base));
-        if (ret != 0) {
-            ret = errno;
-            vfu_log(vfu_ctx, LOG_WARNING,
-                    "failed to get dirty bitmap from DMA controller: %m");
-            goto out;
-        }
-        (*iovecs)[i].iov_len = r->bitmap.size;
+    /*
+     * FIXME: this is unbounded until we can limit the maximum DMA region size.
+     */
+    argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
+            range_in->bitmap.size;
+
+    /*
+     * If the reply doesn't fit, reply with just the dirty pages header, giving
+     * the needed argsz. Typically this shouldn't happen, as the client knows
+     * the needed reply size and has already provided the correct bitmap size.
+     */
+    if (dirty_pages_in->argsz >= argsz) {
+        msg->out_size = argsz;
+    } else {
+        msg->out_size = sizeof(*dirty_pages_out);
     }
 
-out:
-    if (ret != 0) {
-        if (*iovecs != NULL) {
-            free(*iovecs);
-            *iovecs = NULL;
-        }
-        return ERROR_INT(ret);
+    msg->out_data = malloc(msg->out_size);
+
+    if (msg->out_data == NULL) {
+        return -1;
+    }
+
+    dirty_pages_out = msg->out_data;
+    memcpy(dirty_pages_out, dirty_pages_in, sizeof (*dirty_pages_out));
+    dirty_pages_out->argsz = argsz;
+
+    if (dirty_pages_in->argsz >= argsz) {
+        char *bitmap_out;
+
+        range_out = msg->out_data + sizeof(*dirty_pages_out);
+        memcpy(range_out, range_in, sizeof (*range_out));
+
+        bitmap_out = msg->out_data + sizeof(*dirty_pages_out)
+                                   + sizeof(*range_out);
+        memcpy(bitmap_out, bitmap, range_in->bitmap.size);
     }
 
     return 0;
 }
 
-int
-MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+static int
+handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_iommu_type1_dirty_bitmap *dirty_bitmap = msg->in_data;
+    struct vfio_user_dirty_pages *dirty_pages = msg->in_data;
     int ret;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    // FIXME: doesn't match other in_size/argsz checks
-    if (msg->in_size < sizeof(*dirty_bitmap) ||
-        msg->in_size != dirty_bitmap->argsz) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid header size %zu", msg->in_size);
+    if (msg->in_size < sizeof(*dirty_pages) ||
+        dirty_pages->argsz < sizeof(*dirty_pages)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in_size);
         return ERROR_INT(EINVAL);
     }
 
-    switch (dirty_bitmap->flags) {
+    if (vfu_ctx->migration == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "migration not configured");
+        return ERROR_INT(ENOTSUP);
+    }
+
+    switch (dirty_pages->flags) {
     case VFIO_IOMMU_DIRTY_PAGES_FLAG_START:
         ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
                   migration_get_pgsize(vfu_ctx->migration));
@@ -719,18 +743,12 @@ MOCK_DEFINE(handle_dirty_pages)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = 0;
         break;
 
-    case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP: {
-        struct vfio_user_bitmap_range *get;
-        get = (void *)(dirty_bitmap + 1);
-
-        ret = handle_dirty_pages_get(vfu_ctx, &msg->out_iovecs,
-                                     &msg->nr_out_iovecs, get,
-                                     msg->in_size - sizeof(*dirty_bitmap));
+    case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP:
+        ret = handle_dirty_pages_get(vfu_ctx, msg);
         break;
-    }
 
     default:
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_bitmap->flags);
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_pages->flags);
         ret = ERROR_INT(EINVAL);
         break;
     }

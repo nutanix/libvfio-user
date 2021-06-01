@@ -35,6 +35,7 @@ from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
 import json
+import mmap
 import os
 import pathlib
 import socket
@@ -146,6 +147,16 @@ VFU_REGION_FLAG_WRITE = 2
 VFU_REGION_FLAG_RW = (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
 VFU_REGION_FLAG_MEM   = 4
 
+VFIO_USER_F_DMA_REGION_READ = (1 << 0)
+VFIO_USER_F_DMA_REGION_WRITE = (1 << 1)
+VFIO_USER_F_DMA_REGION_MAPPABLE = (1 << 2)
+
+VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP = (1 << 0)
+
+VFIO_IOMMU_DIRTY_PAGES_FLAG_START = (1 << 0)
+VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP = (1 << 1)
+VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
+
 # enum vfu_dev_irq_type
 VFU_DEV_INTX_IRQ = 0
 VFU_DEV_MSI_IRQ  = 1
@@ -168,6 +179,8 @@ VFU_PCI_TYPE_EXPRESS      = 3
 VFU_CAP_FLAG_EXTENDED = (1 << 0)
 VFU_CAP_FLAG_CALLBACK = (1 << 1)
 VFU_CAP_FLAG_READONLY = (1 << 2)
+
+VFU_MIGR_CALLBACKS_VERS = 1
 
 SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
 
@@ -195,8 +208,8 @@ class Structure(c.Structure):
 class vfu_bar_t(c.Union):
     _pack_ = 1
     _fields_ = [
-        ("mem", c.c_int),
-        ("io", c.c_int)
+        ("mem", c.c_int32),
+        ("io", c.c_int32)
     ]
 
 class vfu_pci_hdr_intr_t(Structure):
@@ -209,9 +222,9 @@ class vfu_pci_hdr_intr_t(Structure):
 class vfu_pci_hdr_t(Structure):
     _pack_ = 1
     _fields_ = [
-        ("id", c.c_int),
-        ("cmd", c.c_short),
-        ("sts", c.c_short),
+        ("id", c.c_int32),
+        ("cmd", c.c_uint16),
+        ("sts", c.c_uint16),
         ("rid", c.c_byte),
         ("cc_pi", c.c_byte),
         ("cc_scc", c.c_byte),
@@ -221,9 +234,9 @@ class vfu_pci_hdr_t(Structure):
         ("htype", c.c_byte),
         ("bist", c.c_byte),
         ("bars", vfu_bar_t * PCI_BARS_NR),
-        ("ccptr", c.c_int),
-        ("ss", c.c_int),
-        ("erom", c.c_int),
+        ("ccptr", c.c_int32),
+        ("ss", c.c_int32),
+        ("erom", c.c_int32),
         ("cap", c.c_byte),
         ("res1", c.c_byte * 7),
         ("intr", vfu_pci_hdr_intr_t),
@@ -234,66 +247,143 @@ class vfu_pci_hdr_t(Structure):
 class iovec_t(Structure):
     _fields_ = [
         ("iov_base", c.c_void_p),
-        ("iov_len", c.c_int)
+        ("iov_len", c.c_int32)
     ]
 
 class vfio_irq_info(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("argsz", c.c_uint),
-        ("flags", c.c_uint),
-        ("index", c.c_uint),
-        ("count", c.c_uint),
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("index", c.c_uint32),
+        ("count", c.c_uint32),
     ]
 
 class vfio_irq_set(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("argsz", c.c_uint),
-        ("flags", c.c_uint),
-        ("index", c.c_uint),
-        ("start", c.c_uint),
-        ("count", c.c_uint),
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("index", c.c_uint32),
+        ("start", c.c_uint32),
+        ("count", c.c_uint32),
     ]
 
 class vfio_user_device_info(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("argsz", c.c_uint),
-        ("flags", c.c_uint),
-        ("num_regions", c.c_uint),
-        ("num_irqs", c.c_uint),
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("num_regions", c.c_uint32),
+        ("num_irqs", c.c_uint32),
     ]
 
 class vfio_region_info(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("argsz", c.c_uint),
-        ("flags", c.c_uint),
-        ("index", c.c_uint),
-        ("cap_offset", c.c_uint),
-        ("size", c.c_ulong),
-        ("offset", c.c_ulong),
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("index", c.c_uint32),
+        ("cap_offset", c.c_uint32),
+        ("size", c.c_uint64),
+        ("offset", c.c_uint64),
     ]
 
 class vfio_region_info_cap_type(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("id", c.c_ushort),
-        ("version", c.c_ushort),
-        ("next", c.c_uint),
-        ("type", c.c_uint),
-        ("subtype", c.c_uint),
+        ("id", c.c_uint16),
+        ("version", c.c_uint16),
+        ("next", c.c_uint32),
+        ("type", c.c_uint32),
+        ("subtype", c.c_uint32),
     ]
 
 class vfio_region_info_cap_sparse_mmap(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("id", c.c_ushort),
-        ("version", c.c_ushort),
-        ("next", c.c_uint),
-        ("nr_areas", c.c_uint),
-        ("reserved", c.c_uint),
+        ("id", c.c_uint16),
+        ("version", c.c_uint16),
+        ("next", c.c_uint32),
+        ("nr_areas", c.c_uint32),
+        ("reserved", c.c_uint32),
     ]
 
 class vfio_region_sparse_mmap_area(Structure):
+    _pack_ = 1
     _fields_ = [
-        ("offset", c.c_ulong),
-        ("size", c.c_ulong),
+        ("offset", c.c_uint64),
+        ("size", c.c_uint64),
+    ]
+
+class vfio_user_dma_map(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("offset", c.c_uint64),
+        ("addr", c.c_uint64),
+        ("size", c.c_uint64),
+    ]
+
+class vfu_dma_info_t(Structure):
+    _fields_ = [
+        ("iova", iovec_t),
+        ("vaddr", c.c_void_p),
+        ("mapping", iovec_t),
+        ("page_size", c.c_size_t),
+        ("prot", c.c_uint32)
+    ]
+
+class vfio_user_dirty_pages(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32)
+    ]
+
+class vfio_user_bitmap(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("pgsize", c.c_uint64),
+        ("size", c.c_uint64)
+    ]
+
+class vfio_user_bitmap_range(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("iova", c.c_uint64),
+        ("size", c.c_uint64),
+        ("bitmap", vfio_user_bitmap)
+    ]
+
+transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
+get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
+prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
+                                c.POINTER(c.c_uint64))
+read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p,
+                             c.c_uint64, c.c_uint64)
+write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_uint64)
+data_written_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_uint64)
+
+class vfu_migration_callbacks_t(Structure):
+    _fields_ = [
+        ("version", c.c_int),
+        ("transition", transition_cb_t),
+        ("get_pending_bytes", get_pending_bytes_cb_t),
+        ("prepare_data", prepare_data_cb_t),
+        ("read_data", read_data_cb_t),
+        ("write_data", write_data_cb_t),
+        ("data_written", data_written_cb_t),
+    ]
+
+class dma_sg_t(Structure):
+    _fields_ = [
+        ("dma_addr", c.c_void_p),
+        ("region", c.c_int),
+        ("length", c.c_uint64),
+        ("offset", c.c_uint64),
+        ("mappable", c.c_bool)
     ]
 
 #
@@ -327,7 +417,15 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
-
+vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.POINTER(vfu_dma_info_t))
+vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
+                                      c.POINTER(vfu_dma_info_t))
+lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
+                                     vfu_dma_unregister_cb_t)
+lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
+    c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
+lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
+                               c.POINTER(dma_sg_t), c.c_int, c.c_int)
 
 def to_byte(val):
     """Cast an int to a byte value."""
@@ -553,3 +651,38 @@ def vfu_irq_trigger(ctx, subindex):
     assert ctx != None
 
     return lib.vfu_irq_trigger(ctx, subindex)
+
+def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
+    assert ctx != None
+
+    return lib.vfu_setup_device_dma(ctx, c.cast(register_cb,
+                                                vfu_dma_register_cb_t),
+                                         c.cast(unregister_cb,
+                                                vfu_dma_unregister_cb_t))
+
+def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
+    assert ctx != None
+
+    @c.CFUNCTYPE(c.c_int)
+    def stub():
+        return 0
+
+    if not cbs:
+        cbs = vfu_migration_callbacks_t()
+        cbs.version = VFU_MIGR_CALLBACKS_VERS
+        cbs.transition = c.cast(stub, transition_cb_t)
+        cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
+        cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
+        cbs.read_data = c.cast(stub, read_data_cb_t)
+        cbs.write_data = c.cast(stub, write_data_cb_t)
+        cbs.data_written = c.cast(stub, data_written_cb_t)
+
+    return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
+
+def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
+                   prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
+    assert ctx != None
+
+    sg = dma_sg_t()
+
+    return lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot)

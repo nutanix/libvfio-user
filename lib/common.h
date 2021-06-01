@@ -37,6 +37,7 @@
 #ifndef LIB_VFIO_USER_COMMON_H
 #define LIB_VFIO_USER_COMMON_H
 
+#include <limits.h>
 #include <stdint.h>
 
 #define UNUSED __attribute__((unused))
@@ -55,6 +56,17 @@
 /* XXX NB 2nd argument must be power of two */
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
+
+/*
+ * The size, in bytes, of the bitmap that represents the given range with the
+ * given page size.
+ */
+static inline size_t
+_get_bitmap_size(size_t size, size_t pgsize)
+{
+    size_t nr_pages = (size / pgsize) + (size % pgsize != 0);
+    return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+}
 
 #ifdef UNIT_TEST
 
