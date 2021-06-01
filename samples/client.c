@@ -674,6 +674,8 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 
     printf("client: %s: %#lx-%#lx\t%#x\n", __func__, range->iova,
            range->iova + range->size - 1, bitmap[0]);
+
+    free(data);
 }
 
 enum migration {
