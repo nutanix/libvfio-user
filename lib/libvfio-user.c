@@ -671,9 +671,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return -1;
     }
 
-    /*
-     * FIXME: this is unbounded until we can limit the maximum DMA region size.
-     */
+    /* NB: this is bound by MAX_DMA_SIZE. */
     argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
             range_in->bitmap.size;
 
@@ -1506,7 +1504,8 @@ vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
     assert(vfu_ctx != NULL);
 
     // Create the internal DMA controller.
-    vfu_ctx->dma = dma_controller_create(vfu_ctx, VFU_DMA_REGIONS);
+    vfu_ctx->dma = dma_controller_create(vfu_ctx, MAX_DMA_REGIONS,
+                                         MAX_DMA_SIZE);
     if (vfu_ctx->dma == NULL) {
         return ERROR_INT(errno);
     }

@@ -71,7 +71,7 @@ fds_are_same_file(int fd1, int fd2)
 }
 
 dma_controller_t *
-dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions)
+dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
 {
     dma_controller_t *dma;
 
@@ -83,7 +83,8 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions)
     }
 
     dma->vfu_ctx = vfu_ctx;
-    dma->max_regions = max_regions;
+    dma->max_regions = (int)max_regions;
+    dma->max_size = max_size;
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
     dma->dirty_pgsize = 0;
@@ -297,6 +298,12 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
     snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#lx prot=%#x",
              dma_addr, (char *)dma_addr + size, fd, offset, prot);
+
+    if (size > dma->max_size) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %zu > max %zu",
+                size, dma->max_size);
+        return ERROR_INT(ENOSPC);
+    }
 
     for (idx = 0; idx < dma->nregions; idx++) {
         region = &dma->regions[idx];

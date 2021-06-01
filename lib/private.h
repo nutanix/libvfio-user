@@ -35,8 +35,16 @@
 
 #include <errno.h>
 
-#include "pci_caps.h"
 #include "common.h"
+#include "pci_caps.h"
+
+/*
+ * The main reason we limit the size of an individual DMA region from the client
+ * is to limit the size of the dirty bitmaps: this corresponds to 256MB at a 4K
+ * page size.
+ */
+#define MAX_DMA_SIZE (8 * ONE_TB)
+#define MAX_DMA_REGIONS 16
 
 #define SERVER_MAX_MSG_SIZE 65536
 

@@ -92,6 +92,7 @@ typedef struct {
 
 typedef struct dma_controller {
     int max_regions;
+    size_t max_size;
     int nregions;
     struct vfu_ctx *vfu_ctx;
     size_t dirty_pgsize;        // Dirty page granularity
@@ -99,7 +100,7 @@ typedef struct dma_controller {
 } dma_controller_t;
 
 dma_controller_t *
-dma_controller_create(vfu_ctx_t *vfu_ctx, int max_regions);
+dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size);
 
 void
 dma_controller_remove_all_regions(dma_controller_t *dma,

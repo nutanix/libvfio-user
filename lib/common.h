@@ -43,6 +43,7 @@
 #define UNUSED __attribute__((unused))
 #define EXPORT __attribute__((visibility("default")))
 
+#define ONE_TB              (1024UL * 1024 * 1024 * 1024)
 #define PAGE_SIZE           (size_t)sysconf(_SC_PAGE_SIZE)
 #define PAGE_ALIGNED(x)		(((x) & ((typeof(x))(PAGE_SIZE) - 1)) == 0)
 
