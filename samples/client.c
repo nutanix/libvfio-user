@@ -144,13 +144,10 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
         err(EXIT_FAILURE, "failed to receive version");
     }
 
-// FIXME: are we out of spec? reply cmd's are zero
-#if 0
     if (hdr.cmd != VFIO_USER_VERSION) {
-        errx(EXIT_FAILURE, "msg%hx: invalid cmd %hu (expected %hu)",
-               msg_id, hdr.cmd, VFIO_USER_VERSION);
+        errx(EXIT_FAILURE, "msg%hx: invalid cmd %hu (expected %u)",
+               hdr.msg_id, hdr.cmd, VFIO_USER_VERSION);
     }
-#endif
 
     if (vlen < sizeof(*sversion)) {
         errx(EXIT_FAILURE, "VFIO_USER_VERSION: invalid size %lu", vlen);
