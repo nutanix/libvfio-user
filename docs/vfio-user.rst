@@ -1515,10 +1515,10 @@ Request
   * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP`` instructs the server to stop logging
     dirty pages.
 
-  * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP`` requests from the server to return
+  * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP`` requests the server to return
     the dirty bitmap for a specific IOVA range. The IOVA range is specified by
-    a "VFIO Bitmap Range" structure, which must immediately follow the
-    "VFIO Bitmap" structure. See `VFIO Bitmap Range Format`_.
+    a "VFIO Bitmap Range" structure, which must immediately follow this
+    "VFIO Dirty Pages" structure. See `VFIO Bitmap Range Format`_.
     This operation is only valid if logging of dirty pages has been previously
     started.
 
@@ -1531,8 +1531,6 @@ vfio_iommu_type1_dirty_bitmap``.
 
 VFIO Bitmap Range Format
 """"""""""""""""""""""""
-
-FIXME: share with UNMAP
 
 +--------+--------+------+
 | Name   | Offset | Size |
