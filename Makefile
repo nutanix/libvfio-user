@@ -53,6 +53,7 @@ ifeq ($(VERBOSE),)
 endif
 
 CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
+RSTLINT= $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
 
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
@@ -63,6 +64,7 @@ INSTALL_PREFIX ?= /usr/local
 .PHONY: pre-push clean realclean tags gcov
 
 all install: $(BUILD_DIR)/Makefile
+	$(RSTLINT) docs/vfio-user.rst
 	+$(MAKE) -C $(BUILD_DIR) $@
 
 #
