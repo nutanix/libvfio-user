@@ -108,6 +108,10 @@ SERVER_MAX_FDS = 8
 
 SERVER_MAX_MSG_SIZE = 65536
 
+MAX_DMA_REGIONS = 16
+ONE_TB = (1024 * 1024 * 1024 * 1024)
+MAX_DMA_SIZE = (8 * ONE_TB)
+
 # enum vfio_user_command
 VFIO_USER_VERSION                   = 1
 VFIO_USER_DMA_MAP                   = 2

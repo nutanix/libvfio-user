@@ -58,8 +58,6 @@ extern "C" {
 #define LIB_VFIO_USER_MAJOR 0
 #define LIB_VFIO_USER_MINOR 1
 
-#define VFU_DMA_REGIONS  0x10
-
 /* DMA addresses cannot be directly de-referenced. */
 typedef void *vfu_dma_addr_t;
 
