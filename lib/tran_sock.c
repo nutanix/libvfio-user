@@ -467,7 +467,7 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  * {
  *     "capabilities": {
  *         "max_msg_fds": 32,
- *         "max_transfer_size": 1048576
+ *         "max_data_xfer_size": 1048576
  *         "migration": {
  *             "pgsize": 4096
  *         }
@@ -479,7 +479,7 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
  */
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
-                        size_t *client_max_transfer_sizep, size_t *pgsizep)
+                        size_t *client_max_data_xfer_sizep, size_t *pgsizep)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -512,13 +512,13 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
         }
     }
 
-    if (json_object_object_get_ex(jo_caps, "max_transfer_size", &jo)) {
+    if (json_object_object_get_ex(jo_caps, "max_data_xfer_size", &jo)) {
         if (json_object_get_type(jo) != json_type_int) {
             goto out;
         }
 
         errno = 0;
-        *client_max_transfer_sizep = (int)json_object_get_int64(jo);
+        *client_max_data_xfer_sizep = (int)json_object_get_int64(jo);
 
         if (errno != 0) {
             goto out;
@@ -597,7 +597,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
     }
 
     vfu_ctx->client_max_fds = 1;
-    vfu_ctx->client_max_transfer_size = VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE;
+    vfu_ctx->client_max_data_xfer_size = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE;
 
     if (vlen > sizeof(*cversion)) {
         const char *json_str = (const char *)cversion->data;
@@ -611,7 +611,7 @@ recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
         }
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
-                                      &vfu_ctx->client_max_transfer_size,
+                                      &vfu_ctx->client_max_data_xfer_size,
                                       &pgsize);
 
         if (ret < 0) {
@@ -674,20 +674,20 @@ send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_transfer_size\":%u"
+                    "\"max_data_xfer_size\":%u"
                 "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_TRANSFER_SIZE);
+             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE);
     } else {
         slen = snprintf(server_caps, sizeof(server_caps),
             "{"
                 "\"capabilities\":{"
                     "\"max_msg_fds\":%u,"
-                    "\"max_transfer_size\":%u,"
+                    "\"max_data_xfer_size\":%u,"
                     "\"migration\":{"
                         "\"pgsize\":%zu"
                     "}"
                 "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_TRANSFER_SIZE,
+             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE,
                   migration_get_pgsize(vfu_ctx->migration));
     }
 

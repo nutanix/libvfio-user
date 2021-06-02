@@ -161,7 +161,7 @@ def test_valid_negotiate_no_json():
     assert minor == LIBVFIO_USER_MINOR
     json = parse_json(json_str)
     assert json.capabilities.max_msg_fds == SERVER_MAX_FDS
-    assert json.capabilities.max_transfer_size == SERVER_MAX_TRANSFER_SIZE
+    assert json.capabilities.max_data_xfer_size == SERVER_MAX_DATA_XFER_SIZE
     # FIXME: migration object checks
 
     disconnect_client(ctx, sock)
@@ -174,8 +174,8 @@ def test_valid_negotiate_empty_json():
 
 def test_valid_negotiate_json():
     client_version_json(json=bytes(
-        '{ "capabilities": { "max_msg_fds": %s, "max_transfer_size": %u } }' %
-        (VFIO_USER_CLIENT_MAX_FDS_LIMIT, VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE),
+        '{ "capabilities": { "max_msg_fds": %s, "max_data_xfer_size": %u } }' %
+        (VFIO_USER_CLIENT_MAX_FDS_LIMIT, VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE),
          "utf-8"))
 
     # notice client closed connection

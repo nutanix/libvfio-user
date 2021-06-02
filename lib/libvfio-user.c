@@ -252,7 +252,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (ra->count > SERVER_MAX_TRANSFER_SIZE) {
+    if (ra->count > SERVER_MAX_DATA_XFER_SIZE) {
         vfu_log(vfu_ctx, LOG_ERR, "region access count too large (%u)",
                 ra->count);
         return false;
@@ -908,7 +908,7 @@ is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         /*
          * We know we can reject this: all normal requests shouldn't need this
          * amount of space, including VFIO_USER_REGION_WRITE, which should be
-         * bound by max_transfer_size.
+         * bound by max_data_xfer_size.
          */
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: size of %u is too large",
                 msg->hdr.msg_id, msg->hdr.msg_size);
@@ -1630,7 +1630,7 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
     assert(sg != NULL);
 
     rlen = sizeof(struct vfio_user_dma_region_access) +
-           MIN(sg->length, vfu_ctx->client_max_transfer_size);
+           MIN(sg->length, vfu_ctx->client_max_data_xfer_size);
 
     rbuf = calloc(1, rlen);
 
@@ -1653,7 +1653,7 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
         int ret;
 
         dma_req->addr = (uint64_t)sg->dma_addr + count;
-        dma_req->count = MIN(remaining, vfu_ctx->client_max_transfer_size);
+        dma_req->count = MIN(remaining, vfu_ctx->client_max_data_xfer_size);
 
         if (cmd == VFIO_USER_DMA_WRITE) {
             memcpy(rbuf + sizeof(*dma_req), data + count, dma_req->count);

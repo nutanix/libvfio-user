@@ -328,7 +328,7 @@ size, allowing a client to allocate a larger buffer for holding the reply before
 trying again.
 
 In addition, during negotiation (see  `Version`_), the client and server may
-each specify a ``max_transfer_size`` value; this defines the maximum data that
+each specify a ``max_data_xfer_size`` value; this defines the maximum data that
 may be read or written via one of the ``VFIO_USER_DMA/REGION_READ/WRITE``
 messages; see `Read and Write Operations`_.
 
@@ -488,21 +488,21 @@ format:
 
 Capabilities:
 
-+-------------------+--------+------------------------------------------------+
-| Name              | Type   | Description                                    |
-+===================+========+================================================+
-| max_msg_fds       | number | Maximum number of file descriptors that can be |
-|                   |        | received by the sender in one message.         |
-|                   |        | Optional. If not specified then the receiver   |
-|                   |        | must assume a value of ``1``.                  |
-+-------------------+--------+------------------------------------------------+
-| max_transfer_size | number | Maximum ``count`` for data transfer messages;  |
-|                   |        | see `Read and Write Operations`_. Optional,    |
-|                   |        | with a default value of 1048576 bytes.         |
-+-------------------+--------+------------------------------------------------+
-| migration         | object | Migration capability parameters. If missing    |
-|                   |        | then migration is not supported by the sender. |
-+-------------------+--------+------------------------------------------------+
++--------------------+--------+------------------------------------------------+
+| Name               | Type   | Description                                    |
++====================+========+================================================+
+| max_msg_fds        | number | Maximum number of file descriptors that can be |
+|                    |        | received by the sender in one message.         |
+|                    |        | Optional. If not specified then the receiver   |
+|                    |        | must assume a value of ``1``.                  |
++--------------------+--------+------------------------------------------------+
+| max_data_xfer_size | number | Maximum ``count`` for data transfer messages;  |
+|                    |        | see `Read and Write Operations`_. Optional,    |
+|                    |        | with a default value of 1048576 bytes.         |
++--------------------+--------+------------------------------------------------+
+| migration          | object | Migration capability parameters. If missing    |
+|                    |        | then migration is not supported by the sender. |
++--------------------+--------+------------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
@@ -1302,7 +1302,7 @@ There is no payload in the reply.
 Note that all of these operations must be supported by the client and/or server,
 even if the corresponding memory or device region has been shared as mappable.
 
-The ``count`` field must not exceed the value of ``max_transfer_size`` of the
+The ``count`` field must not exceed the value of ``max_data_xfer_size`` of the
 peer, for both reads and writes.
 
 ``VFIO_USER_REGION_READ``

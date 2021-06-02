@@ -47,12 +47,12 @@
 #define MAX_DMA_SIZE (8 * ONE_TB)
 #define MAX_DMA_REGIONS 16
 
-#define SERVER_MAX_TRANSFER_SIZE (VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE)
+#define SERVER_MAX_DATA_XFER_SIZE (VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE)
 
 /*
- * Enough to receive a VFIO_USER_REGION_WRITE of SERVER_MAX_TRANSFER_SIZE.
+ * Enough to receive a VFIO_USER_REGION_WRITE of SERVER_MAX_DATA_XFER_SIZE.
  */
-#define SERVER_MAX_MSG_SIZE (SERVER_MAX_TRANSFER_SIZE + \
+#define SERVER_MAX_MSG_SIZE (SERVER_MAX_DATA_XFER_SIZE + \
                              sizeof(struct vfio_user_header) + \
                              sizeof(struct vfio_user_region_access))
 
@@ -163,7 +163,7 @@ struct vfu_ctx {
     vfu_dma_unregister_cb_t *dma_unregister;
 
     int                     client_max_fds;
-    size_t                  client_max_transfer_size;
+    size_t                  client_max_data_xfer_size;
 
     struct migration        *migration;
 

@@ -50,7 +50,7 @@
 extern "C" {
 #endif
 
-#define VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE (1024 * 1024)
+#define VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE (1024 * 1024)
 
 enum vfio_user_command {
     VFIO_USER_VERSION                   = 1,

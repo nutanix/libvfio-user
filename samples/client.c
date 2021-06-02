@@ -52,7 +52,7 @@
 #define CLIENT_MAX_FDS (32)
 
 /* This is low, so we get testing of vfu_dma_read/write() chunking. */
-#define CLIENT_MAX_TRANSFER_SIZE (1024)
+#define CLIENT_MAX_DATA_XFER_SIZE (1024)
 
 static char *irq_to_str[] = {
     [VFU_DEV_INTX_IRQ] = "INTx",
@@ -108,12 +108,12 @@ send_version(int sock)
         "{"
             "\"capabilities\":{"
                 "\"max_msg_fds\":%u,"
-                "\"max_transfer_size\":%u,"
+                "\"max_data_xfer_size\":%u,"
                 "\"migration\":{"
                     "\"pgsize\":%zu"
                 "}"
             "}"
-         "}", CLIENT_MAX_FDS, CLIENT_MAX_TRANSFER_SIZE, sysconf(_SC_PAGESIZE));
+         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE, sysconf(_SC_PAGESIZE));
 
     cversion.major = LIB_VFIO_USER_MAJOR;
     cversion.minor = LIB_VFIO_USER_MINOR;
@@ -134,7 +134,7 @@ send_version(int sock)
 }
 
 static void
-recv_version(int sock, int *server_max_fds, size_t *server_max_transfer_size,
+recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
              size_t *pgsize)
 {
     struct vfio_user_version *sversion = NULL;
@@ -172,7 +172,7 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_transfer_size,
     }
 
     *server_max_fds = 1;
-    *server_max_transfer_size = VFIO_USER_DEFAULT_MAX_TRANSFER_SIZE;
+    *server_max_data_xfer_size = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE;
     *pgsize = sysconf(_SC_PAGESIZE);
 
     if (vlen > sizeof(*sversion)) {
@@ -184,7 +184,7 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_transfer_size,
         }
 
         ret = tran_parse_version_json(json_str, server_max_fds,
-                                      server_max_transfer_size, pgsize);
+                                      server_max_data_xfer_size, pgsize);
 
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
@@ -195,11 +195,11 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_transfer_size,
 }
 
 static void
-negotiate(int sock, int *server_max_fds, size_t *server_max_transfer_size,
+negotiate(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
           size_t *pgsize)
 {
     send_version(sock);
-    recv_version(sock, server_max_fds, server_max_transfer_size, pgsize);
+    recv_version(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 }
 
 static void
@@ -660,10 +660,10 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 {
     size_t i;
 
-    for (i = 0; i < 4096 / CLIENT_MAX_TRANSFER_SIZE; i++) {
+    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
         handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
     }
-    for (i = 0; i < 4096 / CLIENT_MAX_TRANSFER_SIZE; i++) {
+    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
         handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
     }
 }
@@ -917,7 +917,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
 static int
 migrate_to(char *old_sock_path, int *server_max_fds,
-           size_t *server_max_transfer_size, size_t *pgsize, size_t nr_iters,
+           size_t *server_max_data_xfer_size, size_t *pgsize, size_t nr_iters,
            struct iovec *migr_iters, char *path_to_server,
            unsigned char *src_md5sum, size_t bar1_size)
 {
@@ -974,7 +974,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     sock = init_sock(sock_path);
     free(sock_path);
 
-    negotiate(sock, server_max_fds, server_max_transfer_size, pgsize);
+    negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 
     /* XXX set device state to resuming */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
@@ -1087,7 +1087,7 @@ int main(int argc, char *argv[])
     int i;
     FILE *fp;
     int server_max_fds;
-    size_t server_max_transfer_size;
+    size_t server_max_data_xfer_size;
     size_t pgsize;
     int nr_dma_regions;
     struct vfio_user_dirty_pages dirty_pages = {0};
@@ -1123,7 +1123,7 @@ int main(int argc, char *argv[])
      *
      * Do intial negotiation with the server, and discover parameters.
      */
-    negotiate(sock, &server_max_fds, &server_max_transfer_size, &pgsize);
+    negotiate(sock, &server_max_fds, &server_max_data_xfer_size, &pgsize);
 
     /* try to access a bogus region, we should get an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof(ret));
@@ -1268,7 +1268,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to asprintf");
     }
 
-    sock = migrate_to(argv[optind], &server_max_fds, &server_max_transfer_size,
+    sock = migrate_to(argv[optind], &server_max_fds, &server_max_data_xfer_size,
                       &pgsize, nr_iters, migr_iters, path_to_server,
                       md5sum, bar1_size);
     free(path_to_server);
