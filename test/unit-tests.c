@@ -541,7 +541,8 @@ setup_test_setup_migration_region(void **state)
     if (p->v == NULL) {
         return -1;
     }
-    p->rs = ROUND_UP(sizeof(struct vfio_device_migration_info), sysconf(_SC_PAGE_SIZE));
+    p->rs = ROUND_UP(sizeof(struct vfio_user_migration_info),
+                     sysconf(_SC_PAGE_SIZE));
     p->ds = sysconf(_SC_PAGE_SIZE);
     p->s = p->rs + p->ds;
     *state = p;
