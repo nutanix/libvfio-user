@@ -48,7 +48,7 @@ struct migration {
      * TODO if the user provides an FD then should mmap it and use the migration
      * registers in the file
      */
-    struct vfio_device_migration_info info;
+    struct vfio_user_migration_info info;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
     uint64_t data_offset;

@@ -716,7 +716,7 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
 
     /* XXX read pending_bytes */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                        offsetof(struct vfio_device_migration_info, pending_bytes),
+                        offsetof(struct vfio_user_migration_info, pending_bytes),
                         &pending_bytes, sizeof(pending_bytes));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to read pending_bytes");
@@ -726,14 +726,14 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
 
         /* XXX read data_offset and data_size */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_device_migration_info, data_offset),
+                            offsetof(struct vfio_user_migration_info, data_offset),
                             &data_offset, sizeof(data_offset));
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read data_offset");
         }
 
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_device_migration_info, data_size),
+                            offsetof(struct vfio_user_migration_info, data_size),
                             &data_size, sizeof(data_size));
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read data_size");
@@ -760,7 +760,7 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
          * migration data have been consumed.
          */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_device_migration_info, pending_bytes),
+                            offsetof(struct vfio_user_migration_info, pending_bytes),
                             &pending_bytes, sizeof(pending_bytes));
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read pending_bytes");
@@ -843,7 +843,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
      */
     device_state = VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_device_migration_info, device_state),
+                        offsetof(struct vfio_user_migration_info, device_state),
                         &device_state, sizeof(device_state));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -864,7 +864,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     device_state = VFIO_DEVICE_STATE_SAVING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_device_migration_info, device_state),
+                        offsetof(struct vfio_user_migration_info, device_state),
                         &device_state, sizeof(device_state));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -880,7 +880,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     /* XXX read device state, migration must have finished now */
     device_state = VFIO_DEVICE_STATE_STOP;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                              offsetof(struct vfio_device_migration_info, device_state),
+                              offsetof(struct vfio_user_migration_info, device_state),
                               &device_state, sizeof(device_state));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -951,7 +951,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     /* XXX set device state to resuming */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_device_migration_info, device_state),
+                        offsetof(struct vfio_user_migration_info, device_state),
                         &device_state, sizeof(device_state));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to resuming");
@@ -961,7 +961,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
         /* XXX read data offset */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_device_migration_info, data_offset),
+                            offsetof(struct vfio_user_migration_info, data_offset),
                             &data_offset, sizeof(data_offset));
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read migration data offset");
@@ -985,7 +985,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         /* XXX write data_size */
         data_len = migr_iters[i].iov_len;
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                            offsetof(struct vfio_device_migration_info, data_size),
+                            offsetof(struct vfio_user_migration_info, data_size),
                             &data_len, sizeof(data_len));
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to write migration data size");
@@ -995,7 +995,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     /* XXX set device state to running */
     device_state = VFIO_DEVICE_STATE_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                            offsetof(struct vfio_device_migration_info, device_state),
+                            offsetof(struct vfio_user_migration_info, device_state),
                             &device_state, sizeof(device_state));
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to running");

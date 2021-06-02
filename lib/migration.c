@@ -48,7 +48,7 @@ MOCK_DEFINE(vfio_migr_state_transition_is_valid)(uint32_t from, uint32_t to)
 EXPORT size_t
 vfu_get_migr_register_area_size(void)
 {
-    return ROUND_UP(sizeof(struct vfio_device_migration_info),
+    return ROUND_UP(sizeof(struct vfio_user_migration_info),
                     sysconf(_SC_PAGE_SIZE));
 }
 
@@ -405,7 +405,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     assert(migr != NULL);
 
     switch (pos) {
-    case offsetof(struct vfio_device_migration_info, device_state):
+    case offsetof(struct vfio_user_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
             vfu_log(vfu_ctx, LOG_ERR,
                     "bad device_state access size %ld", count);
@@ -417,7 +417,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
             return 0;
         }
         old_device_state = migr->info.device_state;
-        ret = handle_device_state(vfu_ctx, migr, *device_state , true);
+        ret = handle_device_state(vfu_ctx, migr, *device_state, true);
         if (ret == 0) {
             vfu_log(vfu_ctx, LOG_DEBUG,
                 "migration: transition from state %s to state %s",
@@ -430,7 +430,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
                  migr_states[*device_state].name);
         }
         break;
-    case offsetof(struct vfio_device_migration_info, pending_bytes):
+    case offsetof(struct vfio_user_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
             vfu_log(vfu_ctx, LOG_ERR,
                     "bad pending_bytes access size %ld", count);
@@ -438,7 +438,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
         }
         ret = handle_pending_bytes(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
-    case offsetof(struct vfio_device_migration_info, data_offset):
+    case offsetof(struct vfio_user_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
             vfu_log(vfu_ctx, LOG_ERR,
                     "bad data_offset access size %ld", count);
@@ -446,7 +446,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
         }
         ret = handle_data_offset(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
-    case offsetof(struct vfio_device_migration_info, data_size):
+    case offsetof(struct vfio_user_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
             vfu_log(vfu_ctx, LOG_ERR,
                     "bad data_size access size %ld", count);
@@ -478,7 +478,7 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
      * in that case.
      */
 
-    if (pos + count <= sizeof(struct vfio_device_migration_info)) {
+    if (pos + count <= sizeof(struct vfio_user_migration_info)) {
         ret = migration_region_access_registers(vfu_ctx, buf, count,
                                                 pos, is_write);
         if (ret != 0) {

@@ -159,9 +159,9 @@ struct vfio_user_irq_info {
 struct vfio_user_dirty_pages {
     uint32_t    argsz;
 #ifndef VFIO_IOMMU_DIRTY_PAGES_FLAG_START
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_START	(1 << 0)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP	(1 << 1)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP	(1 << 2)
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_START      (1 << 0)
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP       (1 << 1)
+#define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP (1 << 2)
 #endif
     uint32_t    flags;
 } __attribute__((packed));
@@ -173,45 +173,12 @@ struct vfio_user_bitmap_range {
     struct vfio_user_bitmap bitmap;
 } __attribute__((packed));
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)
+#ifndef VFIO_REGION_TYPE_MIGRATION
 
-/* copied from <linux/vfio.h> */
+#define VFIO_REGION_TYPE_MIGRATION (3)
+#define VFIO_REGION_SUBTYPE_MIGRATION (1)
 
-#define VFIO_DEVICE_STATE_STOP      (0)
-#define VFIO_DEVICE_STATE_RUNNING   (1 << 0)
-#define VFIO_DEVICE_STATE_SAVING    (1 << 1)
-#define VFIO_DEVICE_STATE_RESUMING  (1 << 2)
-#define VFIO_DEVICE_STATE_MASK      (VFIO_DEVICE_STATE_RUNNING | \
-				     VFIO_DEVICE_STATE_SAVING |  \
-				     VFIO_DEVICE_STATE_RESUMING)
-
-#define VFIO_DEVICE_STATE_VALID(state) \
-	(state & VFIO_DEVICE_STATE_RESUMING ? \
-	(state & VFIO_DEVICE_STATE_MASK) == VFIO_DEVICE_STATE_RESUMING : 1)
-
-#define VFIO_DEVICE_STATE_IS_ERROR(state) \
-	((state & VFIO_DEVICE_STATE_MASK) == (VFIO_DEVICE_STATE_SAVING | \
-					      VFIO_DEVICE_STATE_RESUMING))
-
-#define VFIO_DEVICE_STATE_SET_ERROR(state) \
-	((state & ~VFIO_DEVICE_STATE_MASK) | VFIO_DEVICE_SATE_SAVING | \
-					     VFIO_DEVICE_STATE_RESUMING)
-
-/* RHEL kernels have some of it backported */
-#ifndef VFIO_REGION_TYPE_MIGRATION /* not a RHEL kernel */
-#define VFIO_REGION_TYPE_MIGRATION              (3)
-#define VFIO_REGION_SUBTYPE_MIGRATION           (1)
-
-struct vfio_device_migration_info {
-	__u32 device_state;         /* VFIO device state */
-	__u32 reserved;
-	__u64 pending_bytes;
-	__u64 data_offset;
-	__u64 data_size;
-};
-#endif /* not a RHEL kernel */
-
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */
+#endif /* VFIO_REGION_TYPE_MIGRATION */
 
 #ifdef __cplusplus
 }
