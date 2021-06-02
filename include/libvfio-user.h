@@ -263,20 +263,19 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * Regions VFU_PCI_DEV_MIGR_REGION_IDX and VFU_GENERIC_DEV_MIGR_REG_IDX,
  * corresponding to the migration region, enable live migration support for
  * the device. The migration region must contain at the beginning the migration
- * registers (struct vfio_device_migration_info defined in <linux/vfio.h>) and
- * the remaining part of the region can be arbitrarily used by the device
- * implementation. The region provided must have at least
- * vfu_get_migr_register_area_size() bytes available at the start of the region
- * (this size is guaranteed to be page-aligned). If mmap_areas is given, it
- * must _not_ include this part of the region.
+ * registers (struct vfio_user_migration_info) and the remaining part of the
+ * region can be arbitrarily used by the device implementation. The region
+ * provided must have at least vfu_get_migr_register_area_size() bytes available
+ * at the start of the region (this size is guaranteed to be page-aligned). If
+ * mmap_areas is given, it must _not_ include this part of the region.
  *
  * libvfio-user offers two ways for the migration region to be used:
  *  1. natively: the device implementation must handle accesses to the
  *      migration registers and migration data via the region callbacks. The
  *      semantics of these registers are explained in <linux/vfio.h>.
- *  2. via the vfu_migration_t callbacks: the device implementation registers
- *      a set of callbacks by calling vfu_setup_device_migration. The region's
- *      read/write callbacks are never called.
+ *  2. via the vfu_migration_callbacks_t callbacks: the device implementation
+ *      registers a set of callbacks by calling vfu_setup_device_migration.
+ *      The region's read/write callbacks are never called.
  *
  * @vfu_ctx: the libvfio-user context
  * @region_idx: region index
@@ -299,13 +298,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *region_access, int flags,
                  struct iovec *mmap_areas, uint32_t nr_mmap_areas,
                  int fd, uint64_t offset);
-
-/*
- * Returns the size of the area needed to hold the migration registers at the
- * beginning of the migration region; guaranteed to be page aligned.
- */
-size_t
-vfu_get_migr_register_area_size(void);
 
 typedef enum vfu_reset_type {
     /*
@@ -456,15 +448,6 @@ int
 vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
                          uint32_t count);
 
-/*
- * FIXME the names of migration callback functions are probably far too long,
- * but for now it helps with the implementation.
- */
-/**
- * Migration callback function.
- * @vfu_ctx: the libvfio-user context
- */
-typedef int (vfu_migration_callback_t)(vfu_ctx_t *vfu_ctx);
 
 typedef enum {
     VFU_MIGR_STATE_STOP,
@@ -473,7 +456,6 @@ typedef enum {
     VFU_MIGR_STATE_PRE_COPY,
     VFU_MIGR_STATE_RESUME
 } vfu_migr_state_t;
-
 
 #define VFU_MIGR_CALLBACKS_VERS 1
 
@@ -567,6 +549,39 @@ typedef struct {
     int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
+
+
+#ifndef VFIO_DEVICE_STATE_STOP
+
+#define VFIO_DEVICE_STATE_STOP (0)
+#define VFIO_DEVICE_STATE_RUNNING (1 << 0)
+#define VFIO_DEVICE_STATE_SAVING (1 << 1)
+#define VFIO_DEVICE_STATE_RESUMING (1 << 2)
+#define VFIO_DEVICE_STATE_MASK ((1 << 3) - 1)
+
+#endif /* VFIO_DEVICE_STATE_STOP */
+
+/*
+ * The currently defined migration registers; if using migration callbacks,
+ * these are handled internally by the library.
+ *
+ * This is analogous to struct vfio_device_migration_info.
+ */
+struct vfio_user_migration_info {
+    /* VFIO_DEVICE_STATE_* */
+    uint32_t device_state;
+    uint32_t reserved;
+    uint64_t pending_bytes;
+    uint64_t data_offset;
+    uint64_t data_size;
+};
+
+/*
+ * Returns the size of the area needed to hold the migration registers at the
+ * beginning of the migration region; guaranteed to be page aligned.
+ */
+size_t
+vfu_get_migr_register_area_size(void);
 
 /**
  * vfu_setup_device_migration provides an abstraction over the migration
