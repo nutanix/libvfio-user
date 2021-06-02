@@ -51,6 +51,9 @@
 
 #define CLIENT_MAX_FDS (32)
 
+/* This is low, so we get testing of vfu_dma_read/write() chunking. */
+#define CLIENT_MAX_DATA_XFER_SIZE (1024)
+
 static char *irq_to_str[] = {
     [VFU_DEV_INTX_IRQ] = "INTx",
     [VFU_DEV_MSI_IRQ] = "MSI",
@@ -105,11 +108,12 @@ send_version(int sock)
         "{"
             "\"capabilities\":{"
                 "\"max_msg_fds\":%u,"
+                "\"max_data_xfer_size\":%u,"
                 "\"migration\":{"
                     "\"pgsize\":%zu"
                 "}"
             "}"
-         "}", CLIENT_MAX_FDS, sysconf(_SC_PAGESIZE));
+         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE, sysconf(_SC_PAGESIZE));
 
     cversion.major = LIB_VFIO_USER_MAJOR;
     cversion.minor = LIB_VFIO_USER_MINOR;
@@ -130,7 +134,8 @@ send_version(int sock)
 }
 
 static void
-recv_version(int sock, int *server_max_fds, size_t *pgsize)
+recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
+             size_t *pgsize)
 {
     struct vfio_user_version *sversion = NULL;
     struct vfio_user_header hdr;
@@ -167,6 +172,7 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
     }
 
     *server_max_fds = 1;
+    *server_max_data_xfer_size = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE;
     *pgsize = sysconf(_SC_PAGESIZE);
 
     if (vlen > sizeof(*sversion)) {
@@ -177,7 +183,8 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
             errx(EXIT_FAILURE, "ignoring invalid JSON from server");
         }
 
-        ret = tran_parse_version_json(json_str, server_max_fds, pgsize);
+        ret = tran_parse_version_json(json_str, server_max_fds,
+                                      server_max_data_xfer_size, pgsize);
 
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
@@ -188,10 +195,11 @@ recv_version(int sock, int *server_max_fds, size_t *pgsize)
 }
 
 static void
-negotiate(int sock, int *server_max_fds, size_t *pgsize)
+negotiate(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
+          size_t *pgsize)
 {
     send_version(sock);
-    recv_version(sock, server_max_fds, pgsize);
+    recv_version(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 }
 
 static void
@@ -562,21 +570,27 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
     }
 
     for (i = 0; i < nr_dma_regions; i++) {
-        if (dma_regions[i].addr == dma_access.addr) {
-            ret = pwrite(dma_region_fds[i], data, dma_access.count,
-                         dma_regions[i].offset);
-            if (ret < 0) {
-                err(EXIT_FAILURE,
-                    "failed to write data to fd=%d at %#lx-%#lx",
-                        dma_region_fds[i],
-                        dma_regions[i].offset,
-                        dma_regions[i].offset + dma_access.count - 1);
-            }
-            break;
-	    }
+        off_t offset;
+        ssize_t c;
+
+        if (dma_access.addr < dma_regions[i].addr ||
+            dma_access.addr >= dma_regions[i].addr + dma_regions[i].size) {
+            continue;
+        }
+
+        offset = dma_regions[i].offset + dma_access.addr;
+
+        c = pwrite(dma_region_fds[i], data, dma_access.count, offset);
+
+        if (c != (ssize_t)dma_access.count) {
+            err(EXIT_FAILURE, "failed to write to fd=%d at [%#lx-%#lx)",
+                    dma_region_fds[i], offset, offset + dma_access.count);
+        }
+        break;
     }
 
-    dma_access.count = 0;
+    assert(i != nr_dma_regions);
+
     ret = tran_sock_send(sock, msg_id, true, VFIO_USER_DMA_WRITE,
                          &dma_access, sizeof(dma_access));
     if (ret < 0) {
@@ -606,24 +620,36 @@ handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
     if (response == NULL) {
         err(EXIT_FAILURE, NULL);
     }
+    response->addr = dma_access.addr;
     response->count = dma_access.count;
     data = (char *)response->data;
 
     for (i = 0; i < nr_dma_regions; i++) {
-        if (dma_regions[i].addr == dma_access.addr) {
-            if (pread(dma_region_fds[i], data, dma_access.count, dma_regions[i].offset) == -1) {
-                err(EXIT_FAILURE, "failed to write data at %#lx-%#lx",
-                    dma_regions[i].offset,
-                    dma_regions[i].offset + dma_access.count);
-            }
-            break;
-	    }
+        off_t offset;
+        ssize_t c;
+
+        if (dma_access.addr < dma_regions[i].addr ||
+            dma_access.addr >= dma_regions[i].addr + dma_regions[i].size) {
+            continue;
+        }
+
+        offset = dma_regions[i].offset + dma_access.addr;
+
+        c = pread(dma_region_fds[i], data, dma_access.count, offset);
+
+        if (c != (ssize_t)dma_access.count) {
+            err(EXIT_FAILURE, "failed to read from fd=%d at [%#lx-%#lx)",
+                    dma_region_fds[i], offset, offset + dma_access.count);
+        }
+        break;
     }
+
+    assert(i != nr_dma_regions);
 
     ret = tran_sock_send(sock, msg_id, true, VFIO_USER_DMA_READ,
                          response, response_sz);
     if (ret < 0) {
-        err(EXIT_FAILURE, "failed to send reply of DMA write");
+        err(EXIT_FAILURE, "failed to send reply of DMA read");
     }
     free(response);
 }
@@ -632,8 +658,14 @@ static void
 handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
               int nr_dma_regions, int *dma_region_fds)
 {
-    handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
-    handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    size_t i;
+
+    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
+        handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    }
+    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
+        handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    }
 }
 
 static void
@@ -677,12 +709,6 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 
     free(data);
 }
-
-enum migration {
-    NO_MIGRATION,
-    MIGRATION_SOURCE,
-    MIGRATION_DESTINATION,
-};
 
 static void
 usage(char *argv0)
@@ -891,8 +917,9 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
 static int
 migrate_to(char *old_sock_path, int *server_max_fds,
-           size_t *pgsize, size_t nr_iters, struct iovec *migr_iters,
-           char *path_to_server, unsigned char *src_md5sum, size_t bar1_size)
+           size_t *server_max_data_xfer_size, size_t *pgsize, size_t nr_iters,
+           struct iovec *migr_iters, char *path_to_server,
+           unsigned char *src_md5sum, size_t bar1_size)
 {
     int ret, sock;
     char *sock_path;
@@ -947,7 +974,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     sock = init_sock(sock_path);
     free(sock_path);
 
-    negotiate(sock, server_max_fds, pgsize);
+    negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 
     /* XXX set device state to resuming */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
@@ -1060,6 +1087,7 @@ int main(int argc, char *argv[])
     int i;
     FILE *fp;
     int server_max_fds;
+    size_t server_max_data_xfer_size;
     size_t pgsize;
     int nr_dma_regions;
     struct vfio_user_dirty_pages dirty_pages = {0};
@@ -1095,7 +1123,7 @@ int main(int argc, char *argv[])
      *
      * Do intial negotiation with the server, and discover parameters.
      */
-    negotiate(sock, &server_max_fds, &pgsize);
+    negotiate(sock, &server_max_fds, &server_max_data_xfer_size, &pgsize);
 
     /* try to access a bogus region, we should get an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof(ret));
@@ -1240,8 +1268,8 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to asprintf");
     }
 
-    sock = migrate_to(argv[optind], &server_max_fds, &pgsize,
-                      nr_iters, migr_iters, path_to_server,
+    sock = migrate_to(argv[optind], &server_max_fds, &server_max_data_xfer_size,
+                      &pgsize, nr_iters, migr_iters, path_to_server,
                       md5sum, bar1_size);
     free(path_to_server);
     for (i = 0; i < (int)nr_iters; i++) {

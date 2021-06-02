@@ -54,7 +54,7 @@ extern struct transport_ops tran_sock_ops;
  */
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
-                        size_t *pgsizep);
+                        size_t *client_max_data_xfer_sizep, size_t *pgsizep);
 
 /*
  * Send a message to the other end.  The iovecs array should leave the first

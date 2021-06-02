@@ -317,9 +317,8 @@ Message sizes
 
 Some requests have an ``argsz`` field. In a request, it defines the maximum
 expected reply payload size, which should be at least the size of the fixed
-reply payload headers defined here. For messages that don't have a reply
-payload, it defines the size of the incoming request (not including the standard
-header); otherwise it's not related to the request message size.
+reply payload headers defined here. The *request* payload size is defined by the
+usual ``msg_size`` field in the header, not the ``argsz`` field.
 
 In a reply, the server sets ``argsz`` field to the size needed for a full
 payload size. This may be less than the requested maximum size. This may be
@@ -327,6 +326,11 @@ larger than the requested maximum size: in that case, the full payload is not
 included in the reply, but the ``argsz`` field in the reply indicates the needed
 size, allowing a client to allocate a larger buffer for holding the reply before
 trying again.
+
+In addition, during negotiation (see  `Version`_), the client and server may
+each specify a ``max_data_xfer_size`` value; this defines the maximum data that
+may be read or written via one of the ``VFIO_USER_DMA/REGION_READ/WRITE``
+messages; see `Read and Write Operations`_.
 
 Protocol Specification
 ======================
@@ -475,43 +479,39 @@ version data    4       variable (including terminating NUL). Optional.
 The version data is an optional UTF-8 encoded JSON byte array with the following
 format:
 
-+--------------------+------------------+-----------------------------------+
-| Name               | Type             | Description                       |
-+====================+==================+===================================+
-| ``"capabilities"`` | collection of    | Contains common capabilities that |
-|                    | name/value pairs | the sender supports. Optional.    |
-+--------------------+------------------+-----------------------------------+
++--------------+--------+-----------------------------------+
+| Name         | Type   | Description                       |
++==============+========+===================================+
+| capabilities | object | Contains common capabilities that |
+|              |        | the sender supports. Optional.    |
++--------------+--------+-----------------------------------+
 
 Capabilities:
 
-+--------------------+------------------+-------------------------------------+
-| Name               | Type             | Description                         |
-+====================+==================+=====================================+
-| ``"max_msg_fds"``  | number           | Maximum number of file descriptors  |
-|                    |                  | that can be received by the sender  |
-|                    |                  | in one message. Optional. If not    |
-|                    |                  | specified then the receiver must    |
-|                    |                  | assume ``"max_msg_fds"=1``.         |
-+--------------------+------------------+-------------------------------------+
-| ``"max_msg_size"`` | number           | Maximum message size in bytes that  |
-|                    |                  | the receiver can handle, including  |
-|                    |                  | the header. Optional. If not        |
-|                    |                  | specified then the receiver must    |
-|                    |                  | assume ``"max_msg_size"=4096``.     |
-+--------------------+------------------+-------------------------------------+
-| ``"migration"``    | collection of    | Migration capability parameters. If |
-|                    | name/value pairs | missing then migration is not       |
-|                    |                  | supported by the sender.            |
-+--------------------+------------------+-------------------------------------+
++--------------------+--------+------------------------------------------------+
+| Name               | Type   | Description                                    |
++====================+========+================================================+
+| max_msg_fds        | number | Maximum number of file descriptors that can be |
+|                    |        | received by the sender in one message.         |
+|                    |        | Optional. If not specified then the receiver   |
+|                    |        | must assume a value of ``1``.                  |
++--------------------+--------+------------------------------------------------+
+| max_data_xfer_size | number | Maximum ``count`` for data transfer messages;  |
+|                    |        | see `Read and Write Operations`_. Optional,    |
+|                    |        | with a default value of 1048576 bytes.         |
++--------------------+--------+------------------------------------------------+
+| migration          | object | Migration capability parameters. If missing    |
+|                    |        | then migration is not supported by the sender. |
++--------------------+--------+------------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
-+--------------+--------+-----------------------------------------------+
-| Name         | Type   | Description                                   |
-+==============+========+===============================================+
-| ``"pgsize"`` | number | Page size of dirty pages bitmap. The smallest |
-|              |        | between the client and the server is used.    |
-+--------------+--------+-----------------------------------------------+
++--------+--------+-----------------------------------------------+
+| Name   | Type   | Description                                   |
++========+========+===============================================+
+| pgsize | number | Page size of dirty pages bitmap. The smallest |
+|        |        | between the client and the server is used.    |
++--------+--------+-----------------------------------------------+
 
 Reply
 ^^^^^
@@ -1302,6 +1302,9 @@ There is no payload in the reply.
 Note that all of these operations must be supported by the client and/or server,
 even if the corresponding memory or device region has been shared as mappable.
 
+The ``count`` field must not exceed the value of ``max_data_xfer_size`` of the
+peer, for both reads and writes.
+
 ``VFIO_USER_REGION_READ``
 -------------------------
 
@@ -1315,16 +1318,16 @@ Request
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 0      | 8        |
+| offset | 0      | 8        |
 +--------+--------+----------+
-| Region | 8      | 4        |
+| region | 8      | 4        |
 +--------+--------+----------+
-| Count  | 12     | 4        |
+| count  | 12     | 4        |
 +--------+--------+----------+
 
-* *Offset* into the region being accessed.
-* *Region* is the index of the region being accessed.
-* *Count* is the size of the data to be transferred.
+* *offset* into the region being accessed.
+* *region* is the index of the region being accessed.
+* *count* is the size of the data to be transferred.
 
 Reply
 ^^^^^
@@ -1332,19 +1335,19 @@ Reply
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 0      | 8        |
+| offset | 0      | 8        |
 +--------+--------+----------+
-| Region | 8      | 4        |
+| region | 8      | 4        |
 +--------+--------+----------+
-| Count  | 12     | 4        |
+| count  | 12     | 4        |
 +--------+--------+----------+
-| Data   | 16     | variable |
+| data   | 16     | variable |
 +--------+--------+----------+
 
-* *Offset* into the region accessed.
-* *Region* is the index of the region accessed.
-* *Count* is the size of the data transferred.
-* *Data* is the data that was read from the device region.
+* *offset* into the region accessed.
+* *region* is the index of the region accessed.
+* *count* is the size of the data transferred.
+* *data* is the data that was read from the device region.
 
 ``VFIO_USER_REGION_WRITE``
 --------------------------
@@ -1359,19 +1362,19 @@ Request
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 0      | 8        |
+| offset | 0      | 8        |
 +--------+--------+----------+
-| Region | 8      | 4        |
+| region | 8      | 4        |
 +--------+--------+----------+
-| Count  | 12     | 4        |
+| count  | 12     | 4        |
 +--------+--------+----------+
-| Data   | 16     | variable |
+| data   | 16     | variable |
 +--------+--------+----------+
 
-* *Offset* into the region being accessed.
-* *Region* is the index of the region being accessed.
-* *Count* is the size of the data to be transferred.
-* *Data* is the data to write
+* *offset* into the region being accessed.
+* *region* is the index of the region being accessed.
+* *count* is the size of the data to be transferred.
+* *data* is the data to write
 
 Reply
 ^^^^^
@@ -1379,16 +1382,16 @@ Reply
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 0      | 8        |
+| offset | 0      | 8        |
 +--------+--------+----------+
-| Region | 8      | 4        |
+| region | 8      | 4        |
 +--------+--------+----------+
-| Count  | 12     | 4        |
+| count  | 12     | 4        |
 +--------+--------+----------+
 
-* *Offset* into the region accessed.
-* *Region* is the index of the region accessed.
-* *Count* is the size of the data transferred.
+* *offset* into the region accessed.
+* *region* is the index of the region accessed.
+* *count* is the size of the data transferred.
 
 ``VFIO_USER_DMA_READ``
 -----------------------
@@ -1402,14 +1405,14 @@ Request
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 0      | 8        |
+| address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 8        |
+| count   | 8      | 8        |
 +---------+--------+----------+
 
-* *Address* is the client DMA memory address being accessed. This address must have
+* *address* is the client DMA memory address being accessed. This address must have
   been previously exported to the server with a ``VFIO_USER_DMA_MAP`` message.
-* *Count* is the size of the data to be transferred.
+* *count* is the size of the data to be transferred.
 
 Reply
 ^^^^^
@@ -1417,16 +1420,16 @@ Reply
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 0      | 8        |
+| address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 8        |
+| count   | 8      | 8        |
 +---------+--------+----------+
-| Data    | 16     | variable |
+| data    | 16     | variable |
 +---------+--------+----------+
 
-* *Address* is the client DMA memory address being accessed.
-* *Count* is the size of the data transferred.
-* *Data* is the data read.
+* *address* is the client DMA memory address being accessed.
+* *count* is the size of the data transferred.
+* *data* is the data read.
 
 ``VFIO_USER_DMA_WRITE``
 -----------------------
@@ -1440,17 +1443,17 @@ Request
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 0      | 8        |
+| address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 8        |
+| count   | 8      | 8        |
 +---------+--------+----------+
-| Data    | 16     | variable |
+| data    | 16     | variable |
 +---------+--------+----------+
 
-* *Address* is the client DMA memory address being accessed. This address must have
+* *address* is the client DMA memory address being accessed. This address must have
   been previously exported to the server with a ``VFIO_USER_DMA_MAP`` message.
-* *Count* is the size of the data to be transferred.
-* *Data* is the data to write
+* *count* is the size of the data to be transferred.
+* *data* is the data to write
 
 Reply
 ^^^^^
@@ -1458,13 +1461,13 @@ Reply
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 0      | 8        |
+| address | 0      | 8        |
 +---------+--------+----------+
-| Count   | 8      | 4        |
+| count   | 8      | 4        |
 +---------+--------+----------+
 
-* *Address* is the client DMA memory address being accessed.
-* *Count* is the size of the data transferred.
+* *address* is the client DMA memory address being accessed.
+* *count* is the size of the data transferred.
 
 ``VFIO_USER_DEVICE_RESET``
 --------------------------
