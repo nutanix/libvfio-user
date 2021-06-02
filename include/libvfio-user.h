@@ -263,12 +263,11 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  * Regions VFU_PCI_DEV_MIGR_REGION_IDX and VFU_GENERIC_DEV_MIGR_REG_IDX,
  * corresponding to the migration region, enable live migration support for
  * the device. The migration region must contain at the beginning the migration
- * registers (struct vfio_user_migration_info defined in <linux/vfio.h>) and
- * the remaining part of the region can be arbitrarily used by the device
- * implementation. The region provided must have at least
- * vfu_get_migr_register_area_size() bytes available at the start of the region
- * (this size is guaranteed to be page-aligned). If mmap_areas is given, it
- * must _not_ include this part of the region.
+ * registers (struct vfio_user_migration_info) and the remaining part of the
+ * region can be arbitrarily used by the device implementation. The region
+ * provided must have at least vfu_get_migr_register_area_size() bytes available
+ * at the start of the region (this size is guaranteed to be page-aligned). If
+ * mmap_areas is given, it must _not_ include this part of the region.
  *
  * libvfio-user offers two ways for the migration region to be used:
  *  1. natively: the device implementation must handle accesses to the
