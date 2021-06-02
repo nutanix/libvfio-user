@@ -318,7 +318,7 @@ Message sizes
 Some requests have an ``argsz`` field. In a request, it defines the maximum
 expected reply payload size, which should be at least the size of the fixed
 reply payload headers defined here. The *request* payload size is defined by the
-usual ``msg_size`` field in the header, not this field.
+usual ``msg_size`` field in the header, not the ``argsz`` field.
 
 In a reply, the server sets ``argsz`` field to the size needed for a full
 payload size. This may be less than the requested maximum size. This may be

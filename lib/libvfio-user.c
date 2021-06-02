@@ -1613,9 +1613,13 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, const dma_sg_t *sg, struct iovec *iov, int cnt)
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
 
-EXPORT int
-vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
+static int
+vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
+                 dma_sg_t *sg, void *data)
 {
+    struct vfio_user_dma_region_access *dma_reply;
+    struct vfio_user_dma_region_access *dma_req;
+    struct vfio_user_dma_region_access dma;
     static int msg_id = 1;
     size_t remaining;
     size_t count;
@@ -1637,88 +1641,31 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     remaining = sg->length;
     count = 0;
 
-    while (remaining > 0) {
-        struct vfio_user_dma_region_access *dma_reply = rbuf;
-        struct vfio_user_dma_region_access dma_req;
-        int ret;
-
-        dma_req.addr = (uint64_t)sg->dma_addr + count;
-        dma_req.count = MIN(remaining, vfu_ctx->client_max_transfer_size);
-
-        ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_READ,
-                                      &dma_req, sizeof(dma_req), NULL,
-                                      rbuf, rlen);
-
-        if (ret < 0) {
-            ret = errno;
-            if (ret == ENOMSG) {
-                vfu_reset_ctx(vfu_ctx, "closed");
-                ret = ENOTCONN;
-            } else if (errno == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, "reset");
-                ret = ENOTCONN;
-            }
-            free(rbuf);
-            return ERROR_INT(ret);
-        }
-
-        if (dma_reply->addr != dma_req.addr ||
-            dma_reply->count != dma_req.count) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad reply to VFIO_USER_DMA_READ: "
-                    "request:%#lx,%lu reply:%#lx,%lu",
-                    dma_req.addr, dma_req.count,
-                    dma_reply->addr, dma_reply->count);
-            free(rbuf);
-            return ERROR_INT(EINVAL);
-        }
-
-        memcpy(data + count, rbuf + sizeof(*dma_reply), dma_req.count);
-
-        count += dma_req.count;
-        remaining -= dma_req.count;
+    if (cmd == VFIO_USER_DMA_READ) {
+        dma_req = &dma;
+        dma_reply = rbuf;
+    } else {
+        dma_req = rbuf;
+        dma_reply = &dma;
     }
 
-    free(rbuf);
-    return 0;
-}
-
-EXPORT int
-vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
-{
-    static int msg_id = 1;
-    size_t remaining;
-    size_t count;
-    size_t rlen;
-    void *rbuf;
-
-    assert(vfu_ctx != NULL);
-    assert(sg != NULL);
-
-    rlen = sizeof(struct vfio_user_dma_region_access) +
-           MIN(sg->length, vfu_ctx->client_max_transfer_size);
-
-    rbuf = calloc(1, rlen);
-
-    if (rbuf == NULL) {
-        return -1;
-    }
-
-    remaining = sg->length;
-    count = 0;
-
     while (remaining > 0) {
-        struct vfio_user_dma_region_access dma_reply;
-        struct vfio_user_dma_region_access *dma_req = rbuf;
         int ret;
 
         dma_req->addr = (uint64_t)sg->dma_addr + count;
         dma_req->count = MIN(remaining, vfu_ctx->client_max_transfer_size);
 
-        memcpy(rbuf + sizeof(*dma_req), data + count, dma_req->count);
+        if (cmd == VFIO_USER_DMA_WRITE) {
+            memcpy(rbuf + sizeof(*dma_req), data + count, dma_req->count);
 
-        ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id, VFIO_USER_DMA_WRITE,
-                                      rbuf, rlen, NULL,
-                                      &dma_reply, sizeof(dma_reply));
+            ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id++, VFIO_USER_DMA_WRITE,
+                                          rbuf, rlen, NULL,
+                                          dma_reply, sizeof(*dma_reply));
+        } else {
+            ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id++, VFIO_USER_DMA_READ,
+                                          dma_req, sizeof(*dma_req), NULL,
+                                          rbuf, rlen);
+        }
 
         if (ret < 0) {
             ret = errno;
@@ -1733,14 +1680,18 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
             return ERROR_INT(ret);
         }
 
-        if (dma_reply.addr != dma_req->addr ||
-            dma_reply.count != dma_req->count) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad reply to VFIO_USER_DMA_WRITE: "
+        if (dma_reply->addr != dma_req->addr ||
+            dma_reply->count != dma_req->count) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad reply to DMA transfer: "
                     "request:%#lx,%lu reply:%#lx,%lu",
                     dma_req->addr, dma_req->count,
-                    dma_reply.addr, dma_reply.count);
+                    dma_reply->addr, dma_reply->count);
             free(rbuf);
             return ERROR_INT(EINVAL);
+        }
+
+        if (cmd == VFIO_USER_DMA_READ) {
+            memcpy(data + count, rbuf + sizeof(*dma_reply), dma_req->count);
         }
 
         count += dma_req->count;
@@ -1749,6 +1700,18 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 
     free(rbuf);
     return 0;
+}
+
+EXPORT int
+vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
+{
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sg, data);
+}
+
+EXPORT int
+vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
+{
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sg, data);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
