@@ -390,7 +390,6 @@ class dma_sg_t(Structure):
         ("region", c.c_int),
         ("length", c.c_uint64),
         ("offset", c.c_uint64),
-        ("mappable", c.c_bool),
         ("writeable", c.c_bool),
         ("le_next", c.c_void_p), # FIXME add struct for LIST_ENTRY 
         ("le_prev", c.c_void_p),
