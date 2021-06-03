@@ -348,6 +348,9 @@ def test_dirty_pages_stop():
     # dirty pages
     assert _get_dirty_page_bitmap() == 0b00000000
 
+    # otherwise Valgrind reports a memory leak
+    _stop_logging()
+
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
