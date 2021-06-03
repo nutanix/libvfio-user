@@ -67,6 +67,9 @@ typedef struct dma_sg dma_sg_t;
 
 typedef struct vfu_ctx vfu_ctx_t;
 
+/*
+ * Returns the size, in bytes, of dma_sg_t.
+ */
 size_t
 dma_sg_size(void);
 
@@ -875,6 +878,9 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id);
 size_t
 vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
                              size_t pos, int cap_id);
+
+bool
+vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
 
 #ifdef __cplusplus
 }

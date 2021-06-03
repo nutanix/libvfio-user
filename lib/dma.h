@@ -88,7 +88,6 @@ typedef struct dma_sg {
     int region;
     uint64_t length;
     uint64_t offset;
-    bool mappable; /* TODO mappable and writeable could be combined in single field as bit flags */
     bool writeable;
     LIST_ENTRY(dma_sg) entries;
 } dma_sg_t;
@@ -177,7 +176,6 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
     sg->offset = dma_addr - region->info.iova.iov_base;
     sg->length = len;
     sg->writeable = prot & PROT_WRITE;
-    sg->mappable = (region->info.vaddr != NULL);
 
     return 0;
 }
@@ -307,6 +305,9 @@ int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap);
+bool
+dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg);
+
 
 #endif /* LIB_VFIO_USER_DMA_H */
 

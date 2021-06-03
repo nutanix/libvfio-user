@@ -50,6 +50,11 @@ dma_sg_size(void)
     return sizeof(dma_sg_t);
 }
 
+bool
+dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg) {
+    return sg->region[dma->regions].info.vaddr != NULL;
+}
+
 static inline ssize_t
 fd_get_blocksize(int fd)
 {

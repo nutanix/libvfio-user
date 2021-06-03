@@ -1709,4 +1709,10 @@ vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sg, data);
 }
 
+EXPORT bool
+vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
+{
+    return dma_sg_is_mappable(vfu_ctx->dma, sg);
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

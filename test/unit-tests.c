@@ -409,7 +409,7 @@ test_dma_addr_to_sg(void **state UNUSED)
     assert_int_equal(0x2000 - (unsigned long long)r->info.iova.iov_base,
                      sg.offset);
     assert_int_equal(0x400, sg.length);
-    assert_true(sg.mappable);
+    assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg));
 
     errno = 0;
     r->info.prot = PROT_WRITE;
