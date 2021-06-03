@@ -83,6 +83,16 @@
 
 struct vfu_ctx;
 
+typedef struct dma_sg {
+    vfu_dma_addr_t dma_addr;
+    int region;
+    uint64_t length;
+    uint64_t offset;
+    bool mappable; /* TODO mappable and writeable could be combined in single field as bit flags */
+    bool writeable;
+    LIST_ENTRY(dma_sg) entries;
+} dma_sg_t;
+
 typedef struct {
     vfu_dma_info_t info;
     int fd;                     // File descriptor to mmap

@@ -212,13 +212,13 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     unsigned char buf[count];
     unsigned char md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
     int i, ret;
-    dma_sg_t sg;
+    dma_sg_t *sg = alloca(dma_sg_size());
 
     assert(vfu_ctx != NULL);
 
     ret = vfu_addr_to_sg(vfu_ctx,
                          (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
-                         count, &sg, 1, PROT_WRITE);
+                         count, sg, 1, PROT_WRITE);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to map %p-%p",
             server_data->regions[0].iova.iov_base,
@@ -229,7 +229,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     get_md5sum(buf, count, md5sum1);
     vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p count %d", __func__,
            server_data->regions[0].iova.iov_base, count);
-    ret = vfu_dma_write(vfu_ctx, &sg, buf);
+    ret = vfu_dma_write(vfu_ctx, sg, buf);
     if (ret < 0) {
         err(EXIT_FAILURE, "vfu_dma_write failed");
     }
@@ -237,7 +237,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     memset(buf, 0, count);
     vfu_log(vfu_ctx, LOG_DEBUG, "%s: READ  addr %p count %d", __func__,
            server_data->regions[0].iova.iov_base, count);
-    ret = vfu_dma_read(vfu_ctx, &sg, buf);
+    ret = vfu_dma_read(vfu_ctx, sg, buf);
     if (ret < 0) {
         err(EXIT_FAILURE, "vfu_dma_read failed");
     }

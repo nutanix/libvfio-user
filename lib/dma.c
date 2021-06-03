@@ -44,6 +44,12 @@
 #include "dma.h"
 #include "private.h"
 
+size_t
+dma_sg_size(void)
+{
+    return sizeof(dma_sg_t);
+}
+
 static inline ssize_t
 fd_get_blocksize(int fd)
 {

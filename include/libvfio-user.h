@@ -62,17 +62,13 @@ extern "C" {
 /* DMA addresses cannot be directly de-referenced. */
 typedef void *vfu_dma_addr_t;
 
-typedef struct dma_sg {
-    vfu_dma_addr_t dma_addr;
-    int region;
-    uint64_t length;
-    uint64_t offset;
-    bool mappable; /* TODO mappable and writeable could be combined in single field as bit flags */
-    bool writeable;
-    LIST_ENTRY(dma_sg) entries;
-} dma_sg_t;
+struct dma_sg;
+typedef struct dma_sg dma_sg_t;
 
 typedef struct vfu_ctx vfu_ctx_t;
+
+size_t
+dma_sg_size(void);
 
 /*
  * Attaching to the transport is non-blocking.
