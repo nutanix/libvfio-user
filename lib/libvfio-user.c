@@ -510,6 +510,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if (dma_map->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
+        return ERROR_INT(EINVAL);
     }
 
     if (msg->nr_in_fds > 0) {
