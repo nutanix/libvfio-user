@@ -105,6 +105,10 @@ else
 
 pytest: all
 	@echo "=== Running python tests ==="
+ifeq ($(PYTESTCMD), /bin/true -rP --quiet)
+	@echo "No pytest-3 found in system. Try 'apt-get install python3-pytest' or 'which pytest-3'"
+	@echo "0 Python tests run"
+endif
 	$(PYTEST)
 
 pytest-valgrind: all
