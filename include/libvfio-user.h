@@ -342,8 +342,7 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
 
 /*
  * Info for a guest DMA region.  @iova is always valid; the other parameters
- * will only be set if the guest DMA region is VFIO_USER_F_DMA_REGION_MAPPABLE,
- * and a file descriptor has been passed across the vfio-user socket.
+ * will only be set if the guest DMA region is mappable.
  *
  * @iova: guest DMA range. This is the guest physical range (as we don't
  *   support vIOMMU) that the guest registers for DMA, via a VFIO_USER_DMA_MAP

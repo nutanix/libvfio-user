@@ -123,14 +123,12 @@ test_dma_map_mappable_without_fd(void **state UNUSED)
 {
     struct vfio_user_dma_map dma_map = {
         .argsz = sizeof(dma_map),
-        .flags = VFIO_USER_F_DMA_REGION_MAPPABLE
     };
 
     ret = handle_dma_map(&vfu_ctx,
                          mkmsg(VFIO_USER_DMA_MAP, &dma_map, sizeof(dma_map)),
                          &dma_map);
-    assert_int_equal(-1, ret);
-    assert_int_equal(errno, EINVAL);
+    assert_int_equal(0, ret);
 }
 
 static void

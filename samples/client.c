@@ -1175,7 +1175,7 @@ int main(int argc, char *argv[])
         dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
         dma_regions[i].size = sysconf(_SC_PAGESIZE);
         dma_regions[i].offset = dma_regions[i].addr;
-        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE | VFIO_USER_F_DMA_REGION_MAPPABLE;
+        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE;
         dma_region_fds[i] = fileno(fp);
     }
 
