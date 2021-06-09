@@ -188,6 +188,8 @@ def test_device_set_irqs_bad_fds_for_DATA_BOOL():
                            VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
                            start=0, count=1)
 
+    payload = bytes(payload) + struct.pack("?", False)
+
     fd = eventfd()
 
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
