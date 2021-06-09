@@ -41,6 +41,7 @@ def client_version_json(expect=0, json=''):
 
     payload = struct.pack("HH%dsc" % len(json),
                           LIBVFIO_USER_MAJOR, LIBVFIO_USER_MINOR, json, b'\0')
+
     hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
     sock.send(hdr + payload)
     vfu_attach_ctx(ctx, expect=expect)

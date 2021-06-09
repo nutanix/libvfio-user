@@ -72,11 +72,7 @@ def test_irq_trigger():
 
     fd = eventfd(initval=4)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=len(payload))
-    sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
-                 struct.pack("I", fd))])
-    vfu_run_ctx(ctx)
-    get_reply(sock)
+    msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
 
     ret = vfu_irq_trigger(ctx, 8)
 
