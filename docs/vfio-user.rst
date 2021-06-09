@@ -547,8 +547,6 @@ The request payload for this message is a structure of the following format:
 |             | +-----+------------+ |
 |             | | 1   | writeable  | |
 |             | +-----+------------+ |
-|             | | 2   | mappable   | |
-|             | +-----+------------+ |
 +-------------+--------+-------------+
 | offset      | 8      | 8           |
 +-------------+--------+-------------+
@@ -565,9 +563,6 @@ The request payload for this message is a structure of the following format:
 
   * *writeable* indicates that the region can be written to.
 
-  * *mappable* indicates that the region can be mapped via the mmap() system
-    call using the file descriptor provided in the message meta-data.
-
 * *offset* is the file offset of the region with respect to the associated file
   descriptor, or zero if the region is not mappable
 * *address* is the base DMA address of the region.
@@ -576,13 +571,15 @@ The request payload for this message is a structure of the following format:
 This structure is 32 bytes in size, so the message size is 16 + 32 bytes.
 
 If the DMA region being added can be directly mapped by the server, a file
-descriptor must be sent as part of the message meta-data. On ``AF_UNIX``
-sockets, the file descriptor must be passed as ``SCM_RIGHTS`` type ancillary
-data.  Otherwise, if the DMA region cannot be directly mapped by the server, it
-can be accessed by the server using ``VFIO_USER_DMA_READ`` and
-``VFIO_USER_DMA_WRITE`` messages, explained in `Read and Write Operations`_. A
-command to map over an existing region must be failed by the server with
-``EEXIST`` set in error field in the reply.
+descriptor must be sent as part of the message meta-data. The region can be
+mapped via the mmap() system call. On ``AF_UNIX`` sockets, the file descriptor
+must be passed as ``SCM_RIGHTS`` type ancillary data.  Otherwise, if the DMA
+region cannot be directly mapped by the server, no file descriptor must be sent
+as part of the message meta-data and the DMA region can be accessed by the
+server using ``VFIO_USER_DMA_READ`` and ``VFIO_USER_DMA_WRITE`` messages,
+explained in `Read and Write Operations`_. A command to map over an existing
+region must be failed by the server with ``EEXIST`` set in error field in the
+reply.
 
 Reply
 ^^^^^
@@ -632,7 +629,8 @@ The request payload for this message is a structure of the following format:
 * *address* is the base DMA address of the DMA region.
 * *size* is the size of the DMA region.
 
-The size of request message depends on whether or not the
+The address and size of the DMA region being unmapped must match exactly a
+previous mapping. The size of request message depends on whether or not the
 *get dirty page bitmap* bit is set in Flags:
 
 * If not set, the size of the total request message is: 16 + 24.
@@ -660,8 +658,7 @@ Reply
 
 Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is
 mapped then the server must release all references to that DMA region before
-replying, which potentially includes in-flight DMA transactions. Removing a
-portion of a DMA region is possible.
+replying, which potentially includes in-flight DMA transactions.
 
 The server responds with the original DMA entry in the request. If the
 *get dirty page bitmap* bit is set in flags in the request, then
