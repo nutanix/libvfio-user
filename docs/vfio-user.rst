@@ -629,7 +629,8 @@ The request payload for this message is a structure of the following format:
 * *address* is the base DMA address of the DMA region.
 * *size* is the size of the DMA region.
 
-The size of request message depends on whether or not the
+The address and size of the DMA region being unmapped must match exactly a
+previous mapping. The size of request message depends on whether or not the
 *get dirty page bitmap* bit is set in Flags:
 
 * If not set, the size of the total request message is: 16 + 24.
@@ -657,8 +658,7 @@ Reply
 
 Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is
 mapped then the server must release all references to that DMA region before
-replying, which potentially includes in-flight DMA transactions. Removing a
-portion of a DMA region is possible.
+replying, which potentially includes in-flight DMA transactions.
 
 The server responds with the original DMA entry in the request. If the
 *get dirty page bitmap* bit is set in flags in the request, then
