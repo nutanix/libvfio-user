@@ -658,8 +658,7 @@ Reply
 
 Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is
 mapped then the server must release all references to that DMA region before
-replying, which potentially includes in-flight DMA transactions. Removing a
-portion of a DMA region is possible.
+replying, which potentially includes in-flight DMA transactions.
 
 The server responds with the original DMA entry in the request. If the
 *get dirty page bitmap* bit is set in flags in the request, then
