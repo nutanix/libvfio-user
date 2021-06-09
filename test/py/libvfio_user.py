@@ -435,7 +435,7 @@ lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
 lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                c.POINTER(dma_sg_t), c.c_int, c.c_int)
 lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
-                           c.c_int)
+                           c.c_int, c.c_int)
 lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                              c.POINTER(iovec_t), c.c_int)
 
@@ -483,7 +483,7 @@ def get_reply(sock, expect=0):
     buf = sock.recv(4096)
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
-    assert errno == expect, "got errno %s instead of %s" % (errno, expect)
+    assert errno == expect
     return buf[16:]
 
 def get_pci_header(ctx):
@@ -700,9 +700,9 @@ def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
     return (lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot), sg)
 
 
-def vfu_map_sg(ctx, sg, iovec, cnt=1):
+def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
     # FIXME not sure wheter cnt != 1 will work because iovec is an array
-    return lib.vfu_map_sg(ctx, sg, iovec, cnt)
+    return lib.vfu_map_sg(ctx, sg, iovec, cnt, flags)
 
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
     return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)

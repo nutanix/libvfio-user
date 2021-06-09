@@ -704,8 +704,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             free(msg->out_data);
             msg->out_data = NULL;
             msg->out_size = 0;
-            errno = ret;
-            return -1;
+            return ERROR_INT(ret);
         }
     }
     return 0;
@@ -1583,12 +1582,12 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
 }
 
 EXPORT int
-vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg,
-	       struct iovec *iov, int cnt)
+vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
+           int flags)
 {
     int ret;
 
-    if (unlikely(vfu_ctx->dma_unregister == NULL)) {
+    if (unlikely(vfu_ctx->dma_unregister == NULL) || flags != 0) {
         return ERROR_INT(EINVAL);
     }
 
@@ -1624,6 +1623,10 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 
     assert(vfu_ctx != NULL);
     assert(sg != NULL);
+
+    if (cmd == VFIO_USER_DMA_WRITE && !sg->writeable) {
+        return ERROR_INT(EPERM);
+    }
 
     rlen = sizeof(struct vfio_user_dma_region_access) +
            MIN(sg->length, vfu_ctx->client_max_data_xfer_size);

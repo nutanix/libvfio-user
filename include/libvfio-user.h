@@ -657,11 +657,13 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
+ * @flags: must be 0
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt);
+vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
+           int flags);
 
 /**
  * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg()) from

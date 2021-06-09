@@ -89,7 +89,7 @@ struct dma_sg {
     uint64_t length;
     uint64_t offset;
     bool writeable;
-    LIST_ENTRY(dma_sg) entries;
+    LIST_ENTRY(dma_sg) entry;
 };
 
 typedef struct {
@@ -167,7 +167,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
 {
     const dma_memory_region_t *const region = &dma->regions[region_index];
 
-    if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {  /* FIXME this could be done during map time */
+    if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {
         return ERROR_INT(EACCES);
     }
 
@@ -249,16 +249,13 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
             if (dma->dirty_pgsize > 0) {
                 _dma_mark_dirty(dma, region, sg);
             }
-            LIST_INSERT_HEAD(&dma->maps, &sg[i], entries);
+            LIST_INSERT_HEAD(&dma->maps, &sg[i], entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
         iov[i].iov_base = region->info.vaddr + sg[i].offset;
         iov[i].iov_len = sg[i].length;
-        /*
-         * FIXME in case of error we need to decrease region->refcnt accordingly
-         */
         region->refcnt++;
     }
 
@@ -286,7 +283,7 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             continue;
         }
         if (sg->writeable) {
-            LIST_REMOVE(sg, entries);
+            LIST_REMOVE(sg, entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg[i].dma_addr + sg[i].offset,

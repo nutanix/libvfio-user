@@ -136,7 +136,7 @@ def test_dirty_pages_start_bad_flags():
     get_reply(sock, expect=errno.EINVAL)
 
 
-def _start_logging():
+def start_logging():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
@@ -145,14 +145,10 @@ def _start_logging():
     vfu_run_ctx(ctx)
     get_reply(sock)
 
-    # should be idempotent
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock)
-
 
 def test_dirty_pages_start():
-    _start_logging()
+    start_logging()
+    start_logging() # should be idempotent
 
 
 def test_dirty_pages_get_short_read():
@@ -257,7 +253,7 @@ def test_dirty_pages_get_unmodified():
     assert br.bitmap.size == 8
 
 
-def _get_dirty_page_bitmap():
+def get_dirty_page_bitmap():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
@@ -299,20 +295,20 @@ def test_dirty_pages_get_modified():
     ret = vfu_map_sg(ctx, sg3, iovec3)
     assert ret == 0
 
-    bitmap = _get_dirty_page_bitmap()
+    bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b11110001
 
     # unmap segment, dirty bitmap should be the same
     vfu_unmap_sg(ctx, sg1, iovec1)
-    bitmap = _get_dirty_page_bitmap() 
+    bitmap = get_dirty_page_bitmap() 
     assert bitmap == 0b11110001
 
     # check again, previously unmapped segment should be clean
-    bitmap = _get_dirty_page_bitmap()
+    bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b11110000
 
 
-def _stop_logging():
+def stop_logging():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
 
@@ -331,23 +327,24 @@ def _stop_logging():
 
 
 def test_dirty_pages_stop():
-    _stop_logging()
+    stop_logging()
 
     # one segment is still mapped, starting logging again and bitmap should be
     # dirty
-    _start_logging()
-    assert _get_dirty_page_bitmap() == 0b11110000
+    start_logging()
+    assert get_dirty_page_bitmap() == 0b11110000
 
     # unmap segment, bitmap should still be dirty
     vfu_unmap_sg(ctx, sg3, iovec3)
-    assert _get_dirty_page_bitmap() == 0b11110000
+    assert get_dirty_page_bitmap() == 0b11110000
 
     # bitmap should be clear after it was unmapped before previous reqeust for
     # dirty pages
-    assert _get_dirty_page_bitmap() == 0b00000000
+    assert get_dirty_page_bitmap() == 0b00000000
 
-    # otherwise Valgrind reports a memory leak
-    _stop_logging()
+    # FIXME we have a memory leak as we don't free dirty bitmaps when
+    # destroying the context.
+    stop_logging()
 
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)

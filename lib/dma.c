@@ -476,7 +476,7 @@ out:
 }
 
 static void
-dirty_mapped_sg(dma_controller_t *dma)
+dma_mark_dirty_sgs(dma_controller_t *dma)
 {
     struct dma_sg *sg;
 
@@ -484,7 +484,7 @@ dirty_mapped_sg(dma_controller_t *dma)
         return;
     }
 
-    LIST_FOREACH(sg, &dma->maps, entries) {
+    LIST_FOREACH(sg, &dma->maps, entry) {
         if (sg->writeable) {
             _dma_mark_dirty(dma, &dma->regions[sg->region], sg);
         }
@@ -525,7 +525,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
     }
     dma->dirty_pgsize = pgsize;
 
-    dirty_mapped_sg(dma);
+    dma_mark_dirty_sgs(dma);
 
     return 0;
 }
@@ -594,10 +594,14 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 
     region = &dma->regions[sg.region];
 
+    /*
+     * TODO race condition between resetting bitmap and user calling
+     * vfu_map_sg/vfu_unmap_sg().
+     */
     memcpy(bitmap, region->dirty_bitmap, size);
     memset(region->dirty_bitmap, 0, size);
 
-    dirty_mapped_sg(dma);
+    dma_mark_dirty_sgs(dma);
 
     return 0;
 }
