@@ -44,6 +44,17 @@
 #include "dma.h"
 #include "private.h"
 
+size_t
+dma_sg_size(void)
+{
+    return sizeof(dma_sg_t);
+}
+
+bool
+dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg) {
+    return sg->region[dma->regions].info.vaddr != NULL;
+}
+
 static inline ssize_t
 fd_get_blocksize(int fd)
 {
@@ -88,6 +99,7 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
     dma->dirty_pgsize = 0;
+    LIST_INIT(&dma->maps);
 
     return dma;
 }
@@ -463,7 +475,24 @@ out:
     return cnt;
 }
 
-int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
+static void
+dma_mark_dirty_sgs(dma_controller_t *dma)
+{
+    struct dma_sg *sg;
+
+    if (dma->dirty_pgsize == 0) {
+        return;
+    }
+
+    LIST_FOREACH(sg, &dma->maps, entry) {
+        if (sg->writeable) {
+            _dma_mark_dirty(dma, &dma->regions[sg->region], sg);
+        }
+    }
+}
+
+int
+dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
     size_t i;
 
@@ -495,6 +524,9 @@ int dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize
         }
     }
     dma->dirty_pgsize = pgsize;
+
+    dma_mark_dirty_sgs(dma);
+
     return 0;
 }
 
@@ -519,7 +551,7 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
-                              char **data)
+                              char *bitmap)
 {
     int ret;
     ssize_t bitmap_size;
@@ -527,7 +559,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     dma_memory_region_t *region;
 
     assert(dma != NULL);
-    assert(data != NULL);
+    assert(bitmap != NULL);
 
     /*
      * FIXME for now we support IOVAs that match exactly the DMA region. This
@@ -562,7 +594,14 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 
     region = &dma->regions[sg.region];
 
-    *data = region->dirty_bitmap;
+    /*
+     * TODO race condition between resetting bitmap and user calling
+     * vfu_map_sg/vfu_unmap_sg().
+     */
+    memcpy(bitmap, region->dirty_bitmap, size);
+    memset(region->dirty_bitmap, 0, size);
+
+    dma_mark_dirty_sgs(dma);
 
     return 0;
 }

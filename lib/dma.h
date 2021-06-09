@@ -73,6 +73,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
+#include <sys/queue.h>
 
 #include "libvfio-user.h"
 #include "common.h"
@@ -81,6 +82,15 @@
 #define iov_end(iov) ((iov)->iov_base + (iov)->iov_len)
 
 struct vfu_ctx;
+
+struct dma_sg {
+    vfu_dma_addr_t dma_addr;
+    int region;
+    uint64_t length;
+    uint64_t offset;
+    bool writeable;
+    LIST_ENTRY(dma_sg) entry;
+};
 
 typedef struct {
     vfu_dma_info_t info;
@@ -96,6 +106,7 @@ typedef struct dma_controller {
     int nregions;
     struct vfu_ctx *vfu_ctx;
     size_t dirty_pgsize;        // Dirty page granularity
+    LIST_HEAD(, dma_sg) maps;
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
@@ -132,14 +143,6 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                    vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_sg, int prot);
 
-static bool
-_dma_should_mark_dirty(const dma_controller_t *dma, int prot)
-{
-    assert(dma != NULL);
-
-    return (prot & PROT_WRITE) == PROT_WRITE && dma->dirty_pgsize > 0;
-}
-
 static void
 _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
                 dma_sg_t *sg)
@@ -172,10 +175,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
     sg->region = region_index;
     sg->offset = dma_addr - region->info.iova.iov_base;
     sg->length = len;
-    if (_dma_should_mark_dirty(dma, prot)) {
-        _dma_mark_dirty(dma, region, sg);
-    }
-    sg->mappable = (region->info.vaddr != NULL);
+    sg->writeable = prot & PROT_WRITE;
 
     return 0;
 }
@@ -225,7 +225,7 @@ dma_addr_to_sg(const dma_controller_t *dma,
 }
 
 static inline int
-dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
+dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
            int cnt)
 {
     dma_memory_region_t *region;
@@ -245,6 +245,12 @@ dma_map_sg(dma_controller_t *dma, const dma_sg_t *sg, struct iovec *iov,
             return ERROR_INT(EFAULT);
         }
 
+        if (sg->writeable) {
+            if (dma->dirty_pgsize > 0) {
+                _dma_mark_dirty(dma, region, sg);
+            }
+            LIST_INSERT_HEAD(&dma->maps, &sg[i], entry);
+        }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
@@ -276,6 +282,9 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             /* bad region */
             continue;
         }
+        if (sg->writeable) {
+            LIST_REMOVE(sg, entry);
+        }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg[i].dma_addr + sg[i].offset,
                 sg[i].dma_addr + sg[i].offset + sg[i].length);
@@ -292,7 +301,10 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma);
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
-                              char **data);
+                              char *bitmap);
+bool
+dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg);
+
 
 #endif /* LIB_VFIO_USER_DMA_H */
 
