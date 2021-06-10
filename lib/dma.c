@@ -442,7 +442,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                 size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
                 if (cnt < max_sg) {
-                    ret = dma_init_sg(dma, sg, dma_addr, region_len, prot, idx);
+                    ret = dma_init_sg(dma, &sg[cnt], dma_addr, region_len, prot, idx);
                     if (ret < 0) {
                         return ret;
                     }
