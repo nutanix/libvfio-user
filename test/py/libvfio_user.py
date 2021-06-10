@@ -486,6 +486,19 @@ def get_reply(sock, expect=0):
     assert errno == expect
     return buf[16:]
 
+def msg(ctx, sock, cmd, payload, expect=0, fds=None):
+    """Round trip a request and reply to the server."""
+    hdr = vfio_user_header(cmd, size=len(payload))
+
+    if fds:
+        sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                        struct.pack("I" * len(fds), *fds))])
+    else:
+        sock.send(hdr + payload)
+
+    vfu_run_ctx(ctx)
+    return get_reply(sock, expect=expect)
+
 def get_pci_header(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)
     return c.cast(ptr, c.POINTER(vfu_pci_hdr_t)).contents

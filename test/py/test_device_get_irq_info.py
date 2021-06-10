@@ -59,28 +59,19 @@ def test_device_get_irq_info_setup():
 def test_device_get_irq_info_bad_in():
     payload = struct.pack("II", 0, 0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload, expect=errno.EINVAL)
 
     # bad argsz
     payload = vfio_irq_info(argsz=8, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload, expect=errno.EINVAL)
 
     # bad index
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_NUM_IRQS,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload, expect=errno.EINVAL)
 
 def test_device_get_irq_info():
 
@@ -89,20 +80,12 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz + 16, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock)
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
@@ -114,11 +97,7 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_ERR_IRQ,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock)
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
@@ -130,11 +109,7 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_MSIX_IRQ,
                             count=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_IRQ_INFO, size=len(payload))
-
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock)
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
