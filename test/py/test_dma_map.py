@@ -68,11 +68,7 @@ def test_dma_region_too_big():
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
 
-    hdr = vfio_user_header(VFIO_USER_DMA_MAP, size=len(payload))
-
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.ENOSPC)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
 
     disconnect_client(ctx, sock)
 
@@ -85,15 +81,12 @@ def test_dma_region_too_many():
                    VFIO_USER_F_DMA_REGION_WRITE),
             offset=0, addr=0x1000 * i, size=4096)
 
-        hdr = vfio_user_header(VFIO_USER_DMA_MAP, size=len(payload))
-
-        sock.send(hdr + payload)
-        vfu_run_ctx(ctx)
-
         if i == MAX_DMA_REGIONS + 1:
-            get_reply(sock, expect=errno.EINVAL)
+            expect=errno.EINVAL
         else:
-            get_reply(sock)
+            expect=0
+
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
     disconnect_client(ctx, sock)
 

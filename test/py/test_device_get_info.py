@@ -52,28 +52,19 @@ def test_device_get_info():
 
     payload = struct.pack("II", 0, 0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload, expect=errno.EINVAL)
 
     # bad argsz
 
     payload = vfio_user_device_info(argsz=8, flags=0, num_regions=0, num_irqs=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    get_reply(sock, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload, expect=errno.EINVAL)
 
     # valid with larger argsz
 
     payload = vfio_user_device_info(argsz=32, flags=0, num_regions=0, num_irqs=0)
 
-    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_INFO, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock)
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload)
 
     (argsz, flags, num_regions, num_irqs) = struct.unpack("IIII", result)
 
