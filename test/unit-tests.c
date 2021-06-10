@@ -387,8 +387,9 @@ test_dma_map_sg(void **state UNUSED)
 static void
 test_dma_addr_to_sg(void **state UNUSED)
 {
-    dma_memory_region_t *r;
-    dma_sg_t sg;
+    dma_memory_region_t *r, *r1;
+    dma_sg_t sg[2];
+    struct iovec iov[2];
     int ret;
 
     vfu_ctx.dma->nregions = 1;
@@ -400,32 +401,59 @@ test_dma_addr_to_sg(void **state UNUSED)
     /* fast path, region hint hit */
     r->info.prot = PROT_WRITE;
     ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, &sg, 1, PROT_READ);
+                         0x400, sg, 1, PROT_READ);
     assert_int_equal(1, ret);
-    assert_int_equal(r->info.iova.iov_base, sg.dma_addr);
-    assert_int_equal(0, sg.region);
+    assert_int_equal(r->info.iova.iov_base, sg[0].dma_addr);
+    assert_int_equal(0, sg[0].region);
     assert_int_equal(0x2000 - (unsigned long long)r->info.iova.iov_base,
-                     sg.offset);
-    assert_int_equal(0x400, sg.length);
-    assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg));
+                     sg[0].offset);
+    assert_int_equal(0x400, sg[0].length);
+    assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg[0]));
 
     errno = 0;
     r->info.prot = PROT_WRITE;
     ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x6000,
-                         0x400, &sg, 1, PROT_READ);
+                         0x400, sg, 1, PROT_READ);
     assert_int_equal(-1, ret);
     assert_int_equal(ENOENT, errno);
 
     r->info.prot = PROT_READ;
     ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, &sg, 1, PROT_WRITE);
+                         0x400, sg, 1, PROT_WRITE);
     assert_int_equal(-1, ret);
     assert_int_equal(EACCES, errno);
 
     r->info.prot = PROT_READ|PROT_WRITE;
     ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, &sg, 1, PROT_READ);
+                         0x400, sg, 1, PROT_READ);
     assert_int_equal(1, ret);
+
+    vfu_ctx.dma->nregions = 2;
+    r1 = &vfu_ctx.dma->regions[1];
+    r1->info.iova.iov_base = (void *)0x5000;
+    r1->info.iova.iov_len = 0x2000;
+    r1->info.vaddr = (void *)0xcafebabe;
+    r1->info.prot = PROT_WRITE;
+    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x1000,
+                         0x5000, sg, 2, PROT_READ);
+    assert_int_equal(2, ret);
+    assert_int_equal(0x4000, sg[0].length);
+    assert_int_equal(r->info.iova.iov_base, sg[0].dma_addr);
+    assert_int_equal(0, sg[0].region);
+    assert_int_equal(0, sg[0].offset);
+    assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg[0]));
+
+    assert_int_equal(0x1000, sg[1].length);
+    assert_int_equal(r1->info.iova.iov_base, sg[1].dma_addr);
+    assert_int_equal(1, sg[1].region);
+    assert_int_equal(0, sg[1].offset);
+    assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg[1]));
+
+    assert_int_equal(0, dma_map_sg(vfu_ctx.dma, sg, iov, 2));
+    assert_int_equal(r->info.vaddr + sg[0].offset, iov[0].iov_base);
+    assert_int_equal(sg[0].length, iov[0].iov_len);
+    assert_int_equal(r1->info.vaddr + sg[1].offset, iov[1].iov_base);
+    assert_int_equal(sg[1].length, iov[1].iov_len);
 
     /* TODO test more scenarios */
 }
