@@ -147,6 +147,9 @@ realclean:
 	rm -rf $(GCOVS)
 
 $(BUILD_DIR)/Makefile:
+ifneq (,$(filter -DNDEBUG,$(CFLAGS)))
+	$(error -DNDEBUG flag is not supported)
+endif
 	mkdir -p $(BUILD_DIR)
 	cd $(BUILD_DIR); $(CMAKE) \
 		-D "CMAKE_C_COMPILER:STRING=$(CC)" \
