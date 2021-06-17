@@ -292,6 +292,81 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
     return 0;
 }
 
+#if 0
+static int
+handle_px_pxdc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
+                      const struct pxdc2 *const p)
+{
+    const char *y = "en", *n = "dis";
+    assert(px != NULL);
+    assert(p != NULL);
+
+    if (p->comp_timeout != px->pxdc2.comp_timeout) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME completion timeout set to %d",
+                p->comp_timeout);
+    }
+
+    if (p->comp_timout_dis != px->pxdc2.comp_timout_dis) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME completion timeout %sable",
+                p->comp_timout_dis ? n : y);
+    }
+
+    if (p->ari != px->pxdc2.ari) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME ARI forwarding %sable",
+                p->ari ? y : n);
+    }
+
+    if (p->atomic_req != px->pxdc2.atomic_req) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME AtomicOp requester %sable",
+                p->atomic_req ? y : n);
+   }
+
+    if (p->atomic_egress_block != px->pxdc2.atomic_egress_block) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME AtomicOp requests %s",
+                p->atomic_egress_block ? "blocked" : "unblocked");
+    }
+
+    if (p->ido_req_en != px->pxdc2.ido_req_en) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME IDO request %sable",
+                p->ido_req_en ? y : n);
+    }
+
+    if (p->ido_cmp_en != px->pxdc2.ido_cmp_en) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME IDO completion %sable",
+                p->ido_cmp_en ? y : n);
+    }
+
+    if (p->ltr_en != px->pxdc2.ltr_en) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME LTR %sable", p->ltr_en ? y: n);
+    }
+
+    if (p->obff_en != px->pxdc2.obff_en) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME OBFF %sable", p->obff_en ? y : n);
+    }
+
+    if (p->end_end_tlp_prefix_block != px->pxdc2.end_end_tlp_prefix_block) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME End-End TLP Prefix forwarding %sable",
+                p->end_end_tlp_prefix_block ? n : y);
+    }
+    px->pxdc2 = *p;
+    return 0;
+}
+
+static int
+handle_px_pxlc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
+                      const struct pxlc2 *const p)
+{
+    assert(px != NULL);
+    assert(p != NULL);
+
+    if (p->stuff != px->pxlc2.stuff) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "FIXME pxlc2=%#x", p->stuff);
+    }
+    px->pxlc2 = *p;
+    return 0;
+}
+#endif
+
 static int
 handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
                         loff_t off)
@@ -299,6 +374,12 @@ handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
     switch (off) {
     case offsetof(struct pxcap, pxdc):
         return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
+#if 0
+    case offsetof(struct pxcap, pxdc2):
+        return handle_px_pxdc2_write(vfu_ctx, px, (struct pxdc2 *)buf);
+    case offsetof(struct pxcap, pxlc2):
+        return handle_px_pxlc2_write(vfu_ctx, px, (struct pxlc2 *)buf);
+#endif
     }
     return ERROR_INT(EINVAL);
 }
