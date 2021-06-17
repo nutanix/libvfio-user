@@ -292,7 +292,6 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
     return 0;
 }
 
-#if 0
 static int
 handle_px_pxdc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
                       const struct pxdc2 *const p)
@@ -365,7 +364,6 @@ handle_px_pxlc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
     px->pxlc2 = *p;
     return 0;
 }
-#endif
 
 static int
 handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
@@ -374,12 +372,10 @@ handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
     switch (off) {
     case offsetof(struct pxcap, pxdc):
         return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
-#if 0
     case offsetof(struct pxcap, pxdc2):
         return handle_px_pxdc2_write(vfu_ctx, px, (struct pxdc2 *)buf);
     case offsetof(struct pxcap, pxlc2):
         return handle_px_pxlc2_write(vfu_ctx, px, (struct pxlc2 *)buf);
-#endif
     }
     return ERROR_INT(EINVAL);
 }

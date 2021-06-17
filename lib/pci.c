@@ -221,47 +221,55 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
 {
     vfu_pci_config_space_t *cfg_space;
     int ret = 0;
+    size_t _count;
+    loff_t _offset = offset;
 
     assert(vfu_ctx != NULL);
     assert(buf != NULL);
 
     cfg_space = vfu_pci_get_config_space(vfu_ctx);
 
-    switch (offset) {
-    case PCI_COMMAND:
-        ret = handle_command_write(vfu_ctx, cfg_space, buf, count);
-        break;
-    case PCI_STATUS:
-        vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
-        break;
-    case PCI_INTERRUPT_PIN:
-        vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN");
-        ret = ERROR_INT(EINVAL);
-        break;
-    case PCI_INTERRUPT_LINE:
-        cfg_space->hdr.intr.iline = buf[0];
-        vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x", cfg_space->hdr.intr.iline);
-        break;
-    case PCI_LATENCY_TIMER:
-        cfg_space->hdr.mlt = (uint8_t)buf[0];
-        vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx",
-                cfg_space->hdr.mlt);
-        break;
-    case PCI_BASE_ADDRESS_0:
-    case PCI_BASE_ADDRESS_1:
-    case PCI_BASE_ADDRESS_2:
-    case PCI_BASE_ADDRESS_3:
-    case PCI_BASE_ADDRESS_4:
-    case PCI_BASE_ADDRESS_5:
-        pci_hdr_write_bar(vfu_ctx, BAR_INDEX(offset), buf);
-        break;
-    case PCI_ROM_ADDRESS:
-        ret = handle_erom_write(vfu_ctx, cfg_space, buf, count);
-        break;
-    default:
-        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx-%#lx not handled",
-                offset, offset + count);
-        ret = ERROR_INT(EINVAL);
+    while (count > 0) {
+        _count = count;
+        switch (_offset) {
+        case PCI_COMMAND:
+            _count = MIN(2, count);
+            ret = handle_command_write(vfu_ctx, cfg_space, buf, _count);
+            break;
+        case PCI_STATUS:
+            vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
+            break;
+        case PCI_INTERRUPT_PIN:
+            vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN");
+            ret = ERROR_INT(EINVAL);
+            break;
+        case PCI_INTERRUPT_LINE:
+            cfg_space->hdr.intr.iline = buf[0];
+            vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x", cfg_space->hdr.intr.iline);
+            break;
+        case PCI_LATENCY_TIMER:
+            cfg_space->hdr.mlt = (uint8_t)buf[0];
+            vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx",
+                    cfg_space->hdr.mlt);
+            break;
+        case PCI_BASE_ADDRESS_0:
+        case PCI_BASE_ADDRESS_1:
+        case PCI_BASE_ADDRESS_2:
+        case PCI_BASE_ADDRESS_3:
+        case PCI_BASE_ADDRESS_4:
+        case PCI_BASE_ADDRESS_5:
+            pci_hdr_write_bar(vfu_ctx, BAR_INDEX(_offset), buf);
+            break;
+        case PCI_ROM_ADDRESS:
+            ret = handle_erom_write(vfu_ctx, cfg_space, buf, _count);
+            break;
+        default:
+            vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx-%#lx not handled",
+                    _offset, _offset + _count);
+            ret = ERROR_INT(EINVAL);
+        }
+        count -= _count;
+        _offset += _count;
     }
 
 #ifdef VFU_VERBOSE_LOGGING
