@@ -326,5 +326,32 @@ def test_pci_cap_write_msix():
     # FIXME
     pass
 
+
+def test_pci_cap_write_pxdc2():
+    sock = connect_client(ctx)
+    offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) + PCI_EXP_DEVCTL2
+    data = b'\xde\xad'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                 count=len(data), data=data)
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                          count=len(data))
+    assert payload == data
+    disconnect_client(ctx, sock)
+
+
+def test_pci_cap_write_pxlc2():
+    sock = connect_client(ctx)
+    offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) + PCI_EXP_LNKCTL2
+    data = b'\xbe\xef'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                 count=len(data), data=data)
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                          count=len(data))
+    assert payload == data
+    disconnect_client(ctx, sock)
+
+
 def test_pci_cap_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

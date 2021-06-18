@@ -157,10 +157,22 @@ struct pxdcap2 {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdcap2) == 0x4, "bad PXDCAP2 size");
 
-struct pxdc2 {
-    uint16_t stuff:16;
+union pxdc2 {
+    uint16_t raw;
+    struct {
+        uint32_t comp_timeout:4;
+        uint32_t comp_timout_dis:1;
+        uint32_t ari:1;
+        uint32_t atomic_req:1;
+        uint32_t atomic_egress_block:1;
+        uint32_t ido_req_en:1;
+        uint32_t ido_cmp_en:1;
+        uint32_t ltr_en:1;
+        uint32_t obff_en:2;
+        uint32_t end_end_tlp_prefix_block:1;
+    } __attribute__((packed));
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxdc2) == 0x2, "bad PXDC2 size");
+_Static_assert(sizeof(union pxdc2) == 0x2, "bad PXDC2 size");
 
 struct pxds2 {
     uint16_t stuff:16;
@@ -245,7 +257,7 @@ struct pxcap {
     /* Device Capabilities 2 */
     struct pxdcap2 pxdcap2;
     /* Device Control 2 */
-    struct pxdc2 pxdc2;
+    union pxdc2 pxdc2;
     /* Device Status 2 */
     struct pxds2 pxds2;
     /* Link Capabilities 2 */
