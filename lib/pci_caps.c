@@ -293,12 +293,44 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
 }
 
 static int
+handle_px_pxdc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
+                      const union pxdc2 *const p)
+{
+    assert(px != NULL);
+    assert(p != NULL);
+
+    if (p->raw != px->pxdc2.raw) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "Device Control 2 set to %#x", p->raw);
+    }
+    px->pxdc2 = *p;
+    return 0;
+}
+
+static int
+handle_px_pxlc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
+                      const struct pxlc2 *const p)
+{
+    assert(px != NULL);
+    assert(p != NULL);
+
+    if (p->stuff != px->pxlc2.stuff) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "Link Control 2 set to %#x", p->stuff);
+    }
+    px->pxlc2 = *p;
+    return 0;
+}
+
+static int
 handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
                         loff_t off)
 {
     switch (off) {
     case offsetof(struct pxcap, pxdc):
         return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
+    case offsetof(struct pxcap, pxdc2):
+        return handle_px_pxdc2_write(vfu_ctx, px, (union pxdc2 *)buf);
+    case offsetof(struct pxcap, pxlc2):
+        return handle_px_pxlc2_write(vfu_ctx, px, (struct pxlc2 *)buf);
     }
     return ERROR_INT(EINVAL);
 }
