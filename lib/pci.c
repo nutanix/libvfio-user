@@ -80,16 +80,11 @@ pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 
 static int
 handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
-                     const char *buf, size_t count)
+                     const char *buf)
 {
     uint16_t v;
 
     assert(ctx != NULL);
-
-    if (count != 2) {
-        vfu_log(ctx, LOG_ERR, "bad write command size %lu", count);
-        return ERROR_INT(EINVAL);
-    }
 
     assert(pci != NULL);
     assert(buf != NULL);
@@ -189,17 +184,13 @@ handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 
 static int
 handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
-                  const char *buf, size_t count)
+                  const char *buf)
 {
     uint32_t v;
 
     assert(ctx != NULL);
     assert(pci != NULL);
 
-    if (count != 0x4) {
-        vfu_log(ctx, LOG_ERR, "bad EROM count %lu", count);
-        return ERROR_INT(EINVAL);
-    }
     v = *(uint32_t*)buf;
 
     if (v == (uint32_t)PCI_ROM_ADDRESS_MASK) {
@@ -217,7 +208,7 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 }
 
 static int
-pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
+pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
 {
     vfu_pci_config_space_t *cfg_space;
     int ret = 0;
@@ -229,7 +220,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
 
     switch (offset) {
     case PCI_COMMAND:
-        ret = handle_command_write(vfu_ctx, cfg_space, buf, count);
+        ret = handle_command_write(vfu_ctx, cfg_space, buf);
         break;
     case PCI_STATUS:
         vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
@@ -256,11 +247,11 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         pci_hdr_write_bar(vfu_ctx, BAR_INDEX(offset), buf);
         break;
     case PCI_ROM_ADDRESS:
-        ret = handle_erom_write(vfu_ctx, cfg_space, buf, count);
+        ret = handle_erom_write(vfu_ctx, cfg_space, buf);
         break;
     default:
-        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx-%#lx not handled",
-                offset, offset + count);
+        vfu_log(vfu_ctx, LOG_INFO, "PCI config write %#lx not handled",
+                offset);
         ret = ERROR_INT(EINVAL);
     }
 
@@ -283,7 +274,7 @@ pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     assert(count <= PCI_STD_HEADER_SIZEOF);
 
     if (is_write) {
-        ret = pci_hdr_write(vfu_ctx, buf, count, offset);
+        ret = pci_hdr_write(vfu_ctx, buf, offset);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to write to PCI header: %m");
         } else {
@@ -330,15 +321,50 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
  *
  * @cb is set to the callback to use for accessing the segment.
  */
-static size_t
+static ssize_t
 pci_config_space_next_segment(vfu_ctx_t *ctx, size_t count, loff_t offset,
-                              vfu_region_access_cb_t **cb)
+                              bool is_write, vfu_region_access_cb_t **cb)
 {
     struct pci_cap *cap;
+    static const size_t off2sz[] = {
+        [PCI_VENDOR_ID] = 2,
+        [PCI_DEVICE_ID] = 2,
+        [PCI_COMMAND] = 2,
+        [PCI_STATUS] = 2,
+        [PCI_REVISION_ID] = 1,
+        [PCI_CLASS_PROG] = 3,
+        [PCI_CACHE_LINE_SIZE] = 1,
+        [PCI_LATENCY_TIMER] = 1,
+        [PCI_HEADER_TYPE] = 1,
+        [PCI_BIST] = 1,
+        [PCI_BASE_ADDRESS_0] = 4,
+        [PCI_BASE_ADDRESS_1] = 4,
+        [PCI_BASE_ADDRESS_2] = 4,
+        [PCI_BASE_ADDRESS_3] = 4,
+        [PCI_BASE_ADDRESS_4] = 4,
+        [PCI_BASE_ADDRESS_5] = 4,
+        [PCI_CARDBUS_CIS] = 4,
+        [PCI_SUBSYSTEM_VENDOR_ID] = 2,
+        [PCI_SUBSYSTEM_ID] = 2,
+        [PCI_ROM_ADDRESS] = 4,
+        [PCI_CAPABILITY_LIST] = 1,
+        [PCI_INTERRUPT_LINE] = 1,
+        [PCI_INTERRUPT_PIN] = 1,
+        [PCI_MIN_GNT] = 1,
+        [PCI_MAX_LAT] = 1
+    };
 
     if (offset < PCI_STD_HEADER_SIZEOF) {
         *cb = pci_hdr_access;
-        return MIN(count, (size_t)(PCI_STD_HEADER_SIZEOF - offset));
+        if (is_write) {
+            if (off2sz[offset] == 0) {
+                return ERROR_INT(EINVAL);
+            }
+            count = MIN(count, off2sz[offset]);
+        } else {
+            count = MIN(count, (size_t)(PCI_STD_HEADER_SIZEOF - offset));
+        }
+        return count;
     }
 
     cap = cap_find_by_offset(ctx, offset, count);
@@ -379,9 +405,15 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
     while (count > 0) {
         vfu_region_access_cb_t *cb;
-        size_t size;
+        ssize_t size;
 
-        size = pci_config_space_next_segment(vfu_ctx, count, offset, &cb);
+        size = pci_config_space_next_segment(vfu_ctx, count, offset, is_write,
+                                             &cb);
+        if (size < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad write to PCI config space %#lx-%#lx",
+                    offset, offset + count - 1);
+            return size;
+        }
 
         ret = cb(vfu_ctx, buf, size, offset, is_write);
 
