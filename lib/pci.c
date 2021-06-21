@@ -233,7 +233,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, size_t count, loff_t offset)
         _count = count;
         switch (_offset) {
         case PCI_COMMAND:
-            _count = MIN(sizeof(vfu_pci_hdr_cmd_t), count);
+            _count = MIN(vfu_pci_hdr_cmd_t, count);
             ret = handle_command_write(vfu_ctx, cfg_space, buf, _count);
             break;
         case PCI_STATUS:
