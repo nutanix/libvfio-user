@@ -314,6 +314,40 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     return count;
 }
 
+#define PCI_REG_SZ(reg) \
+    [offsetof(vfu_pci_hdr_t, reg)] = sizeof(((vfu_pci_hdr_t *)0)->reg)
+
+static size_t
+pci_config_space_size_for_reg(loff_t offset)
+{
+    static const size_t off2sz[] = {
+        PCI_REG_SZ(id),
+        PCI_REG_SZ(cmd),
+        PCI_REG_SZ(sts),
+        PCI_REG_SZ(rid),
+        PCI_REG_SZ(cc),
+        PCI_REG_SZ(cls),
+        PCI_REG_SZ(mlt),
+        PCI_REG_SZ(htype),
+        PCI_REG_SZ(bist),
+        PCI_REG_SZ(bars[0]),
+        PCI_REG_SZ(bars[1]),
+        PCI_REG_SZ(bars[2]),
+        PCI_REG_SZ(bars[3]),
+        PCI_REG_SZ(bars[4]),
+        PCI_REG_SZ(bars[5]),
+        PCI_REG_SZ(ccptr),
+        PCI_REG_SZ(ss),
+        PCI_REG_SZ(erom),
+        PCI_REG_SZ(cap),
+        PCI_REG_SZ(intr),
+        PCI_REG_SZ(mgnt),
+        PCI_REG_SZ(mlat)
+    };
+    assert(offset < PCI_STD_HEADER_SIZEOF);
+    return off2sz[offset];
+}
+
 /*
  * Returns the size of the next segment to access, which may be less than
  * @count: we might need to split up an access that straddles capabilities and
@@ -321,46 +355,21 @@ pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
  *
  * @cb is set to the callback to use for accessing the segment.
  */
-static ssize_t
+static size_t
 pci_config_space_next_segment(vfu_ctx_t *ctx, size_t count, loff_t offset,
                               bool is_write, vfu_region_access_cb_t **cb)
 {
     struct pci_cap *cap;
-    static const size_t off2sz[] = {
-        [PCI_VENDOR_ID] = 2,
-        [PCI_DEVICE_ID] = 2,
-        [PCI_COMMAND] = 2,
-        [PCI_STATUS] = 2,
-        [PCI_REVISION_ID] = 1,
-        [PCI_CLASS_PROG] = 3,
-        [PCI_CACHE_LINE_SIZE] = 1,
-        [PCI_LATENCY_TIMER] = 1,
-        [PCI_HEADER_TYPE] = 1,
-        [PCI_BIST] = 1,
-        [PCI_BASE_ADDRESS_0] = 4,
-        [PCI_BASE_ADDRESS_1] = 4,
-        [PCI_BASE_ADDRESS_2] = 4,
-        [PCI_BASE_ADDRESS_3] = 4,
-        [PCI_BASE_ADDRESS_4] = 4,
-        [PCI_BASE_ADDRESS_5] = 4,
-        [PCI_CARDBUS_CIS] = 4,
-        [PCI_SUBSYSTEM_VENDOR_ID] = 2,
-        [PCI_SUBSYSTEM_ID] = 2,
-        [PCI_ROM_ADDRESS] = 4,
-        [PCI_CAPABILITY_LIST] = 1,
-        [PCI_INTERRUPT_LINE] = 1,
-        [PCI_INTERRUPT_PIN] = 1,
-        [PCI_MIN_GNT] = 1,
-        [PCI_MAX_LAT] = 1
-    };
 
     if (offset < PCI_STD_HEADER_SIZEOF) {
         *cb = pci_hdr_access;
         if (is_write) {
-            if (off2sz[offset] == 0) {
-                return ERROR_INT(EINVAL);
+            size_t reg_size = pci_config_space_size_for_reg(offset);
+            if (reg_size == 0) {
+                *cb = NULL;
+                return 0;
             }
-            count = MIN(count, off2sz[offset]);
+            count = MIN(count, reg_size);
         } else {
             count = MIN(count, (size_t)(PCI_STD_HEADER_SIZEOF - offset));
         }
@@ -405,11 +414,11 @@ pci_config_space_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 
     while (count > 0) {
         vfu_region_access_cb_t *cb;
-        ssize_t size;
+        size_t size;
 
         size = pci_config_space_next_segment(vfu_ctx, count, offset, is_write,
                                              &cb);
-        if (size < 0) {
+        if (cb == NULL) {
             vfu_log(vfu_ctx, LOG_ERR, "bad write to PCI config space %#lx-%#lx",
                     offset, offset + count - 1);
             return size;
