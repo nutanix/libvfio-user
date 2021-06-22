@@ -200,6 +200,8 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
         pci->hdr.erom = 0;
     } else if (v == (uint32_t)~PCI_ROM_ADDRESS_ENABLE) {
         vfu_log(ctx, LOG_INFO, "EROM disable ignored");
+    } else if (v == ~0U) {
+        vfu_log(ctx, LOG_INFO, "EROM not implemented");
     } else {
         vfu_log(ctx, LOG_ERR, "bad write to EROM 0x%x bytes", v);
         return ERROR_INT(EINVAL);
