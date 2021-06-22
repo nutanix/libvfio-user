@@ -235,6 +235,11 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
         cfg_space->hdr.intr.iline = buf[0];
         vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x", cfg_space->hdr.intr.iline);
         break;
+    case PCI_CACHE_LINE_SIZE:
+        cfg_space->hdr.cls = (uint8_t)buf[0];
+        vfu_log(vfu_ctx, LOG_DEBUG, "cache line size set to %#hhx",
+                cfg_space->hdr.cls);
+        break;
     case PCI_LATENCY_TIMER:
         cfg_space->hdr.mlt = (uint8_t)buf[0];
         vfu_log(vfu_ctx, LOG_INFO, "set to latency timer to %hhx",
