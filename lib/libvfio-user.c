@@ -1011,8 +1011,8 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
  * the socket. Otherwise, we synchronously process the request in place, and
  * possibly reply.
  */
-int
-MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
+static int
+process_request(vfu_ctx_t *vfu_ctx)
 {
     vfu_msg_t *msg = NULL;
     int ret;
@@ -1022,9 +1022,6 @@ MOCK_DEFINE(process_request)(vfu_ctx_t *vfu_ctx)
     ret = get_request_header(vfu_ctx, &msg);
 
     if (ret < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return 0;
-        }
         return ret;
     }
 
@@ -1162,8 +1159,9 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
 EXPORT int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 {
-    int err;
+    int reqs_processed = 0;
     bool blocking;
+    int err;
 
     assert(vfu_ctx != NULL);
 
@@ -1172,11 +1170,20 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     }
 
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+
     do {
         err = process_request(vfu_ctx);
+
+        if (err == 0) {
+            reqs_processed++;
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                err = 0;
+            }
+        }
     } while (err == 0 && blocking);
 
-    return err;
+    return err == 0 ? reqs_processed : err;
 }
 
 static void
