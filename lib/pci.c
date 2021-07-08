@@ -231,7 +231,6 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
     /* read-only registers */
     case offsetof(vfu_pci_hdr_t, rid):
     case offsetof(vfu_pci_hdr_t, cc):
-    case offsetof(vfu_pci_hdr_t, cls):
     case offsetof(vfu_pci_hdr_t, intr.ipin):
     case offsetof(vfu_pci_hdr_t, mgnt):
     case offsetof(vfu_pci_hdr_t, mlat):
