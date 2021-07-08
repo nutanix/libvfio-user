@@ -223,11 +223,16 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
         ret = handle_command_write(vfu_ctx, cfg_space, buf);
         break;
     case PCI_STATUS:
+        /* FIXME ignoring write completely is wrong as some bits are RW1C */
         vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
         break;
-    case PCI_INTERRUPT_PIN:
-        vfu_log(vfu_ctx, LOG_ERR, "attempt to write read-only field IPIN");
-        ret = ERROR_INT(EINVAL);
+    /* read-only registers */
+    case offsetof(vfu_pci_hdr_t, rid):
+    case offsetof(vfu_pci_hdr_t, cc):
+    case offsetof(vfu_pci_hdr_t, cls):
+    case offsetof(vfu_pci_hdr_t, intr.ipin):
+    case offsetof(vfu_pci_hdr_t, mgnt):
+    case offsetof(vfu_pci_hdr_t, mlat):
         break;
     case PCI_INTERRUPT_LINE:
         cfg_space->hdr.intr.iline = buf[0];
@@ -340,7 +345,8 @@ pci_config_space_size_for_reg(loff_t offset)
         PCI_REG_SZ(ss),
         PCI_REG_SZ(erom),
         PCI_REG_SZ(cap),
-        PCI_REG_SZ(intr),
+        PCI_REG_SZ(intr.iline),
+        PCI_REG_SZ(intr.ipin),
         PCI_REG_SZ(mgnt),
         PCI_REG_SZ(mlat)
     };
