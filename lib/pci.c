@@ -200,6 +200,8 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
         pci->hdr.erom = 0;
     } else if (v == (uint32_t)~PCI_ROM_ADDRESS_ENABLE) {
         vfu_log(ctx, LOG_INFO, "EROM disable ignored");
+    } else if (v == ~0U) {
+        vfu_log(ctx, LOG_INFO, "EROM not implemented");
     } else {
         vfu_log(ctx, LOG_ERR, "bad write to EROM 0x%x bytes", v);
         return ERROR_INT(EINVAL);
@@ -232,6 +234,11 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
     case PCI_INTERRUPT_LINE:
         cfg_space->hdr.intr.iline = buf[0];
         vfu_log(vfu_ctx, LOG_DEBUG, "ILINE=%0x", cfg_space->hdr.intr.iline);
+        break;
+    case PCI_CACHE_LINE_SIZE:
+        cfg_space->hdr.cls = (uint8_t)buf[0];
+        vfu_log(vfu_ctx, LOG_DEBUG, "cache line size set to %#hhx",
+                cfg_space->hdr.cls);
         break;
     case PCI_LATENCY_TIMER:
         cfg_space->hdr.mlt = (uint8_t)buf[0];
