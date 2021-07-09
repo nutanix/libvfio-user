@@ -228,7 +228,10 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
         /* FIXME ignoring write completely is wrong as some bits are RW1C */
         vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
         break;
-    /* read-only registers */
+    /*
+     * According to the PCI spec, writing to read-only registers must be
+     * ignored by the device. Some OSes tend to do this, e.g. FreeBSD.
+     */
     case offsetof(vfu_pci_hdr_t, rid):
     case offsetof(vfu_pci_hdr_t, cc):
     case offsetof(vfu_pci_hdr_t, intr.ipin):
