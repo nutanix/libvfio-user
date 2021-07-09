@@ -292,41 +292,27 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
     return 0;
 }
 
+/* TODO implement */
 static int
-handle_px_pxlc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px,
-                     const union pxlc *const p)
+handle_px_pxlc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const union pxlc *const p UNUSED)
 {
-    assert(px != NULL);
-    assert(p != NULL);
-
-    /* FIXME RCB only writeable for endpoints and bridges */
-    /* FIXME must preserve reserved bits */
-    px->pxlc.raw = p->raw;
     return 0;
 }
 
+/* TODO implement */
 static int
-handle_px_pxsc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px,
-                     const struct pxsc *const p)
+handle_px_pxsc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const struct pxsc *const p UNUSED)
 {
-    assert(px != NULL);
-    assert(p != NULL);
-
-    /* FIXME */
-    px->pxsc.stuff = p->stuff;
     return 0;
 }
 
+/* TODO implement */
 static int
-handle_px_pxrc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px,
-                     const struct pxrc *const p)
+handle_px_pxrc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const struct pxrc *const p UNUSED)
 {
-    assert(px != NULL);
-    assert(p != NULL);
-
-    /* FIXME  */
-    /* FIXME must preserve reserved bits */
-    px->pxrc.stuff = p->stuff;
     return 0;
 }
 
