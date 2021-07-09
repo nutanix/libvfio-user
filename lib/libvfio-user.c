@@ -1430,6 +1430,17 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     assert(vfu_ctx != NULL);
 
+    if ((flags & ~(VFU_REGION_FLAG_MASK)) ||
+        (!(flags & VFU_REGION_FLAG_RW))) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid region flags");
+        return ERROR_INT(EINVAL);
+    }
+
+    if ((flags & VFU_REGION_FLAG_ALWAYS_CB) && (cb == NULL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "VFU_REGION_FLAG_ALWAYS_CB needs callback");
+        return ERROR_INT(EINVAL);
+    }
+
     if ((mmap_areas == NULL) != (nr_mmap_areas == 0) ||
         (mmap_areas != NULL && fd == -1)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid mappable region arguments");
@@ -1448,11 +1459,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
         (((flags & VFU_REGION_FLAG_RW) != VFU_REGION_FLAG_RW) ||
         (flags & VFU_REGION_FLAG_MEM))) {
-        return ERROR_INT(EINVAL);
-    }
-
-    if ((flags & VFU_REGION_FLAG_ALWAYS_CB) && (cb == NULL)) {
-        vfu_log(vfu_ctx, LOG_ERR, "VFU_REGION_FLAG_ALWAYS_CB needs callback");
         return ERROR_INT(EINVAL);
     }
 

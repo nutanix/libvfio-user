@@ -217,11 +217,14 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
                                          size_t count, loff_t offset,
                                          bool is_write);
 
-#define VFU_REGION_FLAG_READ    (1 << 0)
-#define VFU_REGION_FLAG_WRITE   (1 << 1)
-#define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-#define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
-#define VFU_REGION_FLAG_ALWAYS_CB   (1 << 3)
+#define VFU_REGION_FLAG_READ      (1 << 0)
+#define VFU_REGION_FLAG_WRITE     (1 << 1)
+#define VFU_REGION_FLAG_RW        (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
+/* If unset, this is an IO region. */
+#define VFU_REGION_FLAG_MEM       (1 << 2)
+#define VFU_REGION_FLAG_ALWAYS_CB (1 << 3)
+#define VFU_REGION_FLAG_MASK      (VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM | \
+                                   VFU_REGION_FLAG_ALWAYS_CB)
 
 /**
  * Set up a device region.

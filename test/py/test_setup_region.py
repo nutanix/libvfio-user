@@ -40,6 +40,17 @@ def test_device_set_irqs_setup():
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
+def test_setup_region_bad_flags():
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x10000,
+                           flags=0x400)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x10000,
+                           flags=0)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
 def test_setup_region_bad_mmap_areas():
 
     f = tempfile.TemporaryFile()
