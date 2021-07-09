@@ -221,6 +221,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
 #define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
 #define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
+#define VFU_REGION_FLAG_ALWAYS_CB   (1 << 3)
 
 /**
  * Set up a device region.
