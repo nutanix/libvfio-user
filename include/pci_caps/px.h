@@ -98,10 +98,24 @@ struct pxlcap {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxlcap) == 0x4, "bad PXLCAP size");
 
-struct pxlc {
-    uint16_t stuff:16;
+union pxlc {
+    uint16_t raw;
+    struct {
+        uint16_t aspmc:2; /* Active State Power Management Control */
+        uint16_t rsvdp1:1;
+        uint16_t rcb:1; /* Read Completion Boundary */
+        uint16_t ld:1; /* Link Disable */
+        uint16_t rl:1; /* Retrain Link */
+        uint16_t ccc:1; /* Common Clock Configuration */
+        uint16_t es:1; /* Extended Synch */
+        uint16_t clkreq_en:1; /* Enable Clock Power Management */
+        uint16_t hawd:1; /* Hardware Autonomous Width Disable */
+        uint16_t lbmie:1; /* Link Bandwidth Management Interrupt Enable */
+        uint16_t labie:1; /* Link Autonomous Bandwidth Interrupt Enable */
+        uint16_t rsvdp2:4;
+    };
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxlc) == 0x2, "bad PXLC size");
+_Static_assert(sizeof(union pxlc) == 0x2, "bad PXLC size");
 
 struct pxls {
     uint16_t stuff:16;
@@ -239,7 +253,7 @@ struct pxcap {
     /* Link Capabilities */
     struct pxlcap pxlcap;
     /* Link Control */
-    struct pxlc pxlc;
+    union pxlc pxlc;
     /* Link Status */
     struct pxls pxls;
     /* Slot Capabilities */

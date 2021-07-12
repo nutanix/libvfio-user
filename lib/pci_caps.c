@@ -292,6 +292,30 @@ handle_px_pxdc_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
     return 0;
 }
 
+/* TODO implement */
+static int
+handle_px_pxlc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const union pxlc *const p UNUSED)
+{
+    return 0;
+}
+
+/* TODO implement */
+static int
+handle_px_pxsc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const struct pxsc *const p UNUSED)
+{
+    return 0;
+}
+
+/* TODO implement */
+static int
+handle_px_pxrc_write(vfu_ctx_t *vfu_ctx UNUSED, struct pxcap *px UNUSED,
+                     const struct pxrc *const p UNUSED)
+{
+    return 0;
+}
+
 static int
 handle_px_pxdc2_write(vfu_ctx_t *vfu_ctx, struct pxcap *px,
                       const union pxdc2 *const p)
@@ -327,10 +351,18 @@ handle_px_write_2_bytes(vfu_ctx_t *vfu_ctx, struct pxcap *px, char *buf,
     switch (off) {
     case offsetof(struct pxcap, pxdc):
         return handle_px_pxdc_write(vfu_ctx, px, (union pxdc *)buf);
+    case offsetof(struct pxcap, pxlc):
+        return handle_px_pxlc_write(vfu_ctx, px, (union pxlc *)buf);
+    case offsetof(struct pxcap, pxsc):
+        return handle_px_pxsc_write(vfu_ctx, px, (struct pxsc *)buf);
+    case offsetof(struct pxcap, pxrc):
+        return handle_px_pxrc_write(vfu_ctx, px, (struct pxrc *)buf);
     case offsetof(struct pxcap, pxdc2):
         return handle_px_pxdc2_write(vfu_ctx, px, (union pxdc2 *)buf);
     case offsetof(struct pxcap, pxlc2):
         return handle_px_pxlc2_write(vfu_ctx, px, (struct pxlc2 *)buf);
+    case offsetof(struct pxcap, pxsc2): /* RsvdZ */
+        return 0;
     }
     return ERROR_INT(EINVAL);
 }
