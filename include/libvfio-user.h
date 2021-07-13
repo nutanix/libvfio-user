@@ -221,6 +221,7 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 #define VFU_REGION_FLAG_WRITE   (1 << 1)
 #define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
 #define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
+#define VFU_REGION_FLAG_ALWAYS_CB   (1 << 3)
 
 /**
  * Set up a device region.
@@ -262,6 +263,8 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  *  - if no callback is provided, reads to other areas are a simple memcpy(),
  *    and writes are an error
  *  - otherwise, the callback is expected to handle the access
+ *  - if VFU_REGION_FLAG_ALWAYS_CB flag is set, all accesses to the config
+ *    space are forwarded to the callback
  *
  * Regions VFU_PCI_DEV_MIGR_REGION_IDX and VFU_GENERIC_DEV_MIGR_REG_IDX,
  * corresponding to the migration region, enable live migration support for
