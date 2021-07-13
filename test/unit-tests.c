@@ -151,6 +151,7 @@ test_dma_map_without_fd(void **state UNUSED)
     expect_value(dma_controller_add_region, fd, -1);
     expect_value(dma_controller_add_region, offset, dma_map.offset);
     expect_value(dma_controller_add_region, prot, PROT_NONE);
+    expect_any(dma_controller_add_region, exist);
     ret = handle_dma_map(&vfu_ctx,
                          mkmsg(VFIO_USER_DMA_MAP, &dma_map, sizeof(dma_map)),
                          &dma_map);
@@ -194,6 +195,7 @@ test_dma_map_return_value(void **state UNUSED)
     expect_value(dma_controller_add_region, fd, -1);
     expect_value(dma_controller_add_region, offset, dma_map.offset);
     expect_value(dma_controller_add_region, prot, PROT_NONE);
+    expect_any(dma_controller_add_region, exist);
     will_return(dma_controller_add_region, 0);
     will_return(dma_controller_add_region, 2);
 
@@ -299,9 +301,11 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     off_t offset = 0;
     size_t size = 0;
     int fd = -1;
+    bool exist;
 
     assert_int_equal(0, dma_controller_add_region(vfu_ctx.dma, dma_addr,
-                                                  size, fd, offset, PROT_NONE));
+                                                  size, fd, offset, PROT_NONE,
+                                                  &exist));
     assert_int_equal(1, vfu_ctx.dma->nregions);
     r = &vfu_ctx.dma->regions[0];
     assert_ptr_equal(NULL, r->info.vaddr);

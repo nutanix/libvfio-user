@@ -128,7 +128,7 @@ dma_controller_destroy(dma_controller_t *dma);
  */
 MOCK_DECLARE(int, dma_controller_add_region, dma_controller_t *dma,
              vfu_dma_addr_t dma_addr, size_t size, int fd, off_t offset,
-             uint32_t prot);
+             uint32_t prot, bool *exist);
 
 MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
              vfu_dma_addr_t dma_addr, size_t size,

@@ -72,6 +72,19 @@ def test_dma_region_too_big():
 
     disconnect_client(ctx, sock)
 
+def test_dma_map_dup():
+    sock = connect_client(ctx)
+
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0xdeadbeef, size=0x1000)
+
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=0)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=0)
+
+    disconnect_client(ctx, sock)
+
+
 def test_dma_region_too_many():
     sock = connect_client(ctx)
 
@@ -92,3 +105,6 @@ def test_dma_region_too_many():
 
 def test_dirty_pages_cleanup():
     vfu_destroy_ctx(ctx)
+
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

@@ -299,7 +299,8 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 int
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, size_t size,
-                                       int fd, off_t offset, uint32_t prot)
+                                       int fd, off_t offset, uint32_t prot,
+                                       bool *exist)
 {
     dma_memory_region_t *region;
     int page_size = 0;
@@ -344,6 +345,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                         "%s; existing=%#x", rstr, region->info.prot);
                 return ERROR_INT(EINVAL);
             }
+            *exist = true;
             return idx;
         }
 
