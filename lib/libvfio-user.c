@@ -208,7 +208,8 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         dump_buffer("buffer write", buf, count);
     }
 
-    if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
+    if ((region_index == VFU_PCI_DEV_CFG_REGION_IDX) &&
+        !(vfu_ctx->reg_info[region_index].flags & VFU_REGION_FLAG_ALWAYS_CB)) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
             return ret;
@@ -1445,7 +1446,13 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
      * PCI config space is never mappable or of type mem.
      */
     if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
-        flags != VFU_REGION_FLAG_RW) {
+        (((flags & VFU_REGION_FLAG_RW) != VFU_REGION_FLAG_RW) ||
+        (flags & VFU_REGION_FLAG_MEM))) {
+        return ERROR_INT(EINVAL);
+    }
+
+    if ((flags & VFU_REGION_FLAG_ALWAYS_CB) && (cb == NULL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "VFU_REGION_FLAG_ALWAYS_CB needs callback");
         return ERROR_INT(EINVAL);
     }
 
