@@ -34,6 +34,7 @@
 from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
+import errno
 import json
 import mmap
 import os
@@ -481,7 +482,9 @@ def disconnect_client(ctx, sock):
     sock.close()
 
     # notice client closed connection
-    vfu_run_ctx(ctx)
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTCONN
 
 def get_reply(sock, expect=0):
     buf = sock.recv(4096)
@@ -500,7 +503,9 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
     else:
         sock.send(hdr + payload)
 
-    vfu_run_ctx(ctx)
+    ret = vfu_run_ctx(ctx)
+    assert ret >= 0
+
     return get_reply(sock, expect=expect)
 
 def get_pci_header(ctx):
@@ -541,10 +546,8 @@ def access_region(ctx, sock, is_write, region, offset, count,
         payload += data
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
-    hdr = vfio_user_header(cmd, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock, expect=expect)
+
+    result = msg(ctx, sock, cmd, payload, expect=expect)
 
     if is_write:
         return None
