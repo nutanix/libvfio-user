@@ -148,8 +148,7 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  *
  * @vfu_ctx: The libvfio-user context to poll
  *
- * @returns the number of requests processed (0 or more); or -1 on error,
- *          with errno set as follows:
+ * @returns 0 on success, -1 on error, with errno set as follows:
  *
  * EAGAIN/EWOULDBLOCK: no more commands to process
  * ENOTCONN: client closed connection, vfu_attach_ctx() should be called again
