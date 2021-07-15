@@ -62,6 +62,7 @@ static struct function funcs[] = {
     { .name = "dma_controller_add_region" },
     { .name = "dma_controller_remove_region" },
     { .name = "dma_controller_unmap_region" },
+    { .name = "process_request" },
     { .name = "should_exec_command" },
     { .name = "migration_region_access_registers" },
     { .name = "handle_device_state" },
@@ -165,6 +166,18 @@ device_is_stopped(struct migration *migration)
         return __real_device_is_stopped(migration);
     }
     check_expected(migration);
+    return mock();
+}
+
+int
+process_request(vfu_ctx_t *vfu_ctx)
+{
+
+    if (!is_patched("process_request")) {
+        return __real_process_request(vfu_ctx);
+    }
+    check_expected(vfu_ctx);
+
     return mock();
 }
 
