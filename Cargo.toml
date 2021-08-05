@@ -1,0 +1,7 @@
+[package]
+name = "hello_world"
+version = "0.1.0"
+
+[dependencies]
+libvfio-user-sys = { path = "rust" }
+libc = "0.2"
