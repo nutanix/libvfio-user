@@ -37,11 +37,21 @@ unsafe extern "C" fn _log(
     println!("{}", CStr::from_ptr(msg).to_string_lossy().into_owned());
 }
 
+unsafe extern "C" fn bar2(
+    vfu_ctx: *mut vfu_ctx_t,
+    buf: *mut c_char,
+    count: usize,
+    offset: ::std::os::raw::c_longlong,
+    is_write: bool) -> isize
+{
+    return 4;
+}
 
 fn main() {
     let c_str = CString::new("/var/run/vfio-user.sock").unwrap();
     let sock: *const c_char = c_str.as_ptr() as *const c_char;
     let p: *mut c_void = ptr::null_mut();
+    let null_iovec: *mut libvfio_user_sys::iovec = std::ptr::null_mut();
     unsafe {
         let vfu_ctx = vfu_create_ctx(vfu_trans_t_VFU_TRANS_SOCK, sock, 0, p,
                                      vfu_dev_type_t_VFU_DEV_TYPE_PCI);
@@ -54,7 +64,14 @@ fn main() {
             0);
 	assert!(ret == 0);
         libvfio_user_sys::vfu_pci_set_id(vfu_ctx, 0x494f, 0x0dc8, 0x0, 0x0);
-        // FIXME setup region
+        ret = vfu_setup_region(vfu_ctx,
+	    2, // VFU_PCI_DEV_BAR2_REGION_IDX,
+	    0x100,
+            bar2,
+	    3, // VFU_REGION_FLAG_RW
+	    null_iovec,
+	    0, -1, 0);
+	assert!(ret == 0);
         ret = libvfio_user_sys::vfu_setup_device_nr_irqs(vfu_ctx,
             vfu_dev_irq_type_VFU_DEV_INTX_IRQ, 1);
 	assert!(ret == 0);

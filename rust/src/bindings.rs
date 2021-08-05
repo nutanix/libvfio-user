@@ -11039,15 +11039,24 @@ extern "C" {
 #[doc = " @is_write: whether or not this is a write"]
 #[doc = ""]
 #[doc = " @returns the number of bytes read or written, or -1 on error, setting errno."]
-pub type vfu_region_access_cb_t = ::std::option::Option<
+//pub type vfu_region_access_cb_t = ::std::option::Option<
+//    unsafe extern "C" fn(
+//        vfu_ctx: *mut vfu_ctx_t,
+//        buf: *mut ::std::os::raw::c_char,
+//        count: usize,
+//        offset: loff_t,
+//        is_write: bool,
+//    ) -> isize,
+//>;
+pub type vfu_region_access_cb_t = 
     unsafe extern "C" fn(
         vfu_ctx: *mut vfu_ctx_t,
         buf: *mut ::std::os::raw::c_char,
         count: usize,
         offset: loff_t,
         is_write: bool,
-    ) -> isize,
->;
+    ) -> isize;
+
 extern "C" {
     #[doc = " Set up a device region."]
     #[doc = ""]
