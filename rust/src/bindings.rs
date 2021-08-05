@@ -10991,13 +10991,20 @@ extern "C" {
 #[doc = " @level: log level as defined in syslog(3)"]
 #[doc = " @vfu_log_fn_t: typedef for log function."]
 #[doc = " @msg: message"]
-pub type vfu_log_fn_t = ::std::option::Option<
+//pub type vfu_log_fn_t = ::std::option::Option<
+//    unsafe extern "C" fn(
+//        vfu_ctx: *mut vfu_ctx_t,
+//        level: ::std::os::raw::c_int,
+//        msg: *const ::std::os::raw::c_char,
+//    ),
+//>;
+pub type vfu_log_fn_t = 
     unsafe extern "C" fn(
         vfu_ctx: *mut vfu_ctx_t,
         level: ::std::os::raw::c_int,
         msg: *const ::std::os::raw::c_char,
-    ),
->;
+    );
+
 extern "C" {
     #[doc = " Log to the logging function configured for this context. The format should"]
     #[doc = " not include a new line."]
