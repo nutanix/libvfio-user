@@ -46,10 +46,10 @@ unsafe extern "C" fn bar2(
 {
     static mut pin: i8 = 0;
 
-    if (offset == 0 && !is_write) {
+    if offset == 0 && !is_write {
         let ptr = buf.offset(0 as isize) as *mut i8;
         *ptr = pin / 3;
-	pin += 1;
+        pin += 1;
     }
 
     return count as isize;
