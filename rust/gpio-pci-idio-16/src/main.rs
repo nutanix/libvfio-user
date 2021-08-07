@@ -4,30 +4,30 @@ use libc::{c_char, c_int, c_longlong};
 use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::str;
 
 extern crate libvfio_user_sys;
 
-use std::env;
 use std::ptr;
 
-use libvfio_user_sys::iovec;
-use libvfio_user_sys::vfu_attach_ctx;
-use libvfio_user_sys::vfu_create_ctx;
 use libvfio_user_sys::vfu_ctx_t;
 use libvfio_user_sys::vfu_dev_irq_type_VFU_DEV_INTX_IRQ;
 use libvfio_user_sys::vfu_dev_type_t_VFU_DEV_TYPE_PCI;
-use libvfio_user_sys::vfu_log_fn_t;
+use libvfio_user_sys::vfu_trans_t_VFU_TRANS_SOCK;
+use libvfio_user_sys::vfu_create_ctx;
 use libvfio_user_sys::vfu_pci_init;
+use libvfio_user_sys::vfu_setup_region;
+/*
+use libvfio_user_sys::iovec;
+use libvfio_user_sys::vfu_attach_ctx;
+use libvfio_user_sys::vfu_log_fn_t;
 use libvfio_user_sys::vfu_pci_set_id;
 use libvfio_user_sys::vfu_pci_type_t_VFU_PCI_TYPE_CONVENTIONAL;
 use libvfio_user_sys::vfu_realize_ctx;
 use libvfio_user_sys::vfu_run_ctx;
 use libvfio_user_sys::vfu_setup_log;
-use libvfio_user_sys::vfu_setup_region;
-use libvfio_user_sys::vfu_trans_t_VFU_TRANS_SOCK;
 use libvfio_user_sys::VFU_PCI_DEV_BAR2_REGION_IDX;
 use libvfio_user_sys::VFU_REGION_FLAG_RW;
+*/
 
 unsafe extern "C" fn _log(
     vfu_ctx: *mut vfu_ctx_t,
@@ -44,26 +44,25 @@ unsafe extern "C" fn bar2(
     offset: c_longlong,
     is_write: bool,
 ) -> isize {
-    static mut pin: i8 = 0;
+    static mut PIN: i8 = 0;
 
     if offset == 0 && !is_write {
-        let ptr = buf.offset(0 as isize) as *mut i8;
-        *ptr = pin / 3;
-        pin += 1;
+        let ptr = buf.offset(0);
+        *ptr = PIN / 3;
+        PIN += 1;
     }
 
     return count as isize;
 }
 
 fn main() {
-    let c_str = CString::new("/var/run/vfio-user.sock").unwrap();
-    let sock: *const c_char = c_str.as_ptr() as *const c_char;
+    let sock_path = CString::new("/var/run/vfio-user.sock").unwrap();
     let p: *mut c_void = ptr::null_mut();
     let null_iovec: *mut libvfio_user_sys::iovec = std::ptr::null_mut();
     unsafe {
         let vfu_ctx = vfu_create_ctx(
             vfu_trans_t_VFU_TRANS_SOCK,
-            sock,
+            sock_path.as_ptr(),
             0,
             p,
             vfu_dev_type_t_VFU_DEV_TYPE_PCI,
