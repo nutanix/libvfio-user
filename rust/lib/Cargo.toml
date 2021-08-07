@@ -1,0 +1,6 @@
+[package]
+name = "libvfio-user-sys"
+version = "0.1.0"
+
+[dependencies]
+libc = "0.2"
