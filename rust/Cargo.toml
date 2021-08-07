@@ -1,12 +1,6 @@
-#cargo-features = ["edition2021"]
-[package]
-name = "libvfio-user-sys"
-version = "0.1.0"
-links = "foo"
-build = "build.rs"
-#edition = "2021"
-[dependencies]
-libc = "0.2"
-[build-dependencies]
-cc = { version = "1.0", features = ["parallel"] }
-pkg-config = "0.3"
+[workspace]
+
+members = [
+    "gpio-pci-idio-16",
+    "lib"
+]
