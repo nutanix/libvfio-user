@@ -9,6 +9,8 @@ extern crate libvfio_user_sys;
 
 use std::ptr;
 
+use libvfio_user_sys::*;
+/*
 use libvfio_user_sys::vfu_ctx_t;
 use libvfio_user_sys::vfu_dev_irq_type_VFU_DEV_INTX_IRQ;
 use libvfio_user_sys::vfu_dev_type_t_VFU_DEV_TYPE_PCI;
@@ -16,7 +18,6 @@ use libvfio_user_sys::vfu_trans_t_VFU_TRANS_SOCK;
 use libvfio_user_sys::vfu_create_ctx;
 use libvfio_user_sys::vfu_pci_init;
 use libvfio_user_sys::vfu_setup_region;
-/*
 use libvfio_user_sys::iovec;
 use libvfio_user_sys::vfu_attach_ctx;
 use libvfio_user_sys::vfu_log_fn_t;
@@ -69,7 +70,7 @@ fn main() {
         );
         // FIXME check vfu_ctx non-null
         let mut ret;
-        ret = libvfio_user_sys::vfu_setup_log(vfu_ctx, _log, 7); // FIXME LOG_DEBUG
+        ret = libvfio_user_sys::vfu_setup_log(vfu_ctx, _log, LOG_DEBUG as i32);
         ret = vfu_pci_init(
             vfu_ctx,
             libvfio_user_sys::vfu_pci_type_t_VFU_PCI_TYPE_CONVENTIONAL,
