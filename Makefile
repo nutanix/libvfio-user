@@ -61,7 +61,7 @@ BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
 INSTALL_PREFIX ?= /usr/local
 
 .PHONY: all install test pytest pytest-valgrind
-.PHONY: pre-push clean realclean tags gcov
+.PHONY: pre-push clean realclean tags gcov rust
 
 all install: $(BUILD_DIR)/Makefile
 	$(RSTLINT) docs/vfio-user.rst
@@ -127,8 +127,8 @@ endif
 pre-push: realclean
 	make test WITH_ASAN=1
 	make realclean
-	make test CC=clang BUILD_TYPE=rel
-	make test CC=clang
+	make test rust CC=clang BUILD_TYPE=rel
+	make test rust CC=clang
 	make realclean
 	make test CC=gcc BUILD_TYPE=rel
 	make test CC=gcc
@@ -138,6 +138,14 @@ pre-push: realclean
 GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 
 gcov: realclean test $(GCOVS)
+
+ifeq ($(BUILD_TYPE), dbg)
+rust: all
+	cd $(CURDIR)/rust && cargo build
+else
+rust: all
+	cd $(CURDIR)/rust && cargo build --release
+endif
 
 clean:
 	rm -rf $(BUILD_DIR)
