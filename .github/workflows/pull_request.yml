@@ -7,6 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            components: rustfmt, clippy
       - name: pre-push
         run: |
           sudo apt-get update
@@ -19,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            components: rustfmt, clippy
       - name: pre-push
         run: |
           sudo apt update
@@ -32,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            components: rustfmt, clippy
       - name: pre-push
         run: |
           yum -y install make gcc-4.8.5 epel-release pciutils
@@ -45,6 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            components: rustfmt, clippy
       - name: pre-push
         run: |
           dnf -y install --releasever=34 \
