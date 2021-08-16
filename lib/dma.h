@@ -245,15 +245,15 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
             return ERROR_INT(EFAULT);
         }
 
-        if (sg->writeable) {
+        if (sg[i].writeable) {
             if (dma->dirty_pgsize > 0) {
-                _dma_mark_dirty(dma, region, sg);
+                _dma_mark_dirty(dma, region, &sg[i]);
             }
             LIST_INSERT_HEAD(&dma->maps, &sg[i], entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
-                sg->dma_addr + sg->offset,
-                sg->dma_addr + sg->offset + sg->length);
+                sg[i].dma_addr + sg[i].offset,
+                sg[i].dma_addr + sg[i].offset + sg[i].length);
         iov[i].iov_base = region->info.vaddr + sg[i].offset;
         iov[i].iov_len = sg[i].length;
         region->refcnt++;
@@ -282,8 +282,8 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             /* bad region */
             continue;
         }
-        if (sg->writeable) {
-            LIST_REMOVE(sg, entry);
+        if (sg[i].writeable) {
+            LIST_REMOVE(&sg[i], entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg[i].dma_addr + sg[i].offset,
