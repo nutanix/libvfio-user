@@ -631,9 +631,9 @@ int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
 
 /**
- * Takes a guest physical address and returns a list of scatter/gather entries
- * than can be individually mapped in the program's virtual memory.  A single
- * linear guest physical address span may need to be split into multiple
+ * Takes a guest physical address range and populates an array of scatter/gather
+ * entries than can be individually mapped in the program's virtual memory.  A
+ * single linear guest physical address span may need to be split into multiple
  * scatter/gather regions due to limitations of how memory can be mapped.
  *
  * vfu_setup_device_dma() must have been called prior to using this function.
@@ -657,9 +657,9 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
                dma_sg_t *sg, int max_sg, int prot);
 
 /**
- * Maps a list scatter/gather entries from the guest's physical address space
- * to the program's virtual memory. It is the caller's responsibility to remove
- * the mappings by calling vfu_unmap_sg().
+ * Maps scatter/gather entries from the guest's physical address space to the
+ * process's virtual memory. It is the caller's responsibility to remove the
+ * mappings by calling vfu_unmap_sg().
  *
  * This is only supported when a @dma_unregister callback is provided to
  * vfu_setup_device_dma().
@@ -667,7 +667,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries returned by vfu_addr_to_sg. These
  *      entries must not be modified and the array must not be deallocated
- *      until vfu_unmap_sg() has been called for each entry.
+ *      until vfu_unmap_sg() has been called.
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -680,8 +680,8 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
            int flags);
 
 /**
- * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg()) from
- * the program's virtual memory.
+ * Unmaps scatter/gather entries (previously mapped by vfu_map_sg()) from
+ * the process's virtual memory.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap
