@@ -33,6 +33,10 @@
 /*
  * Defines the libvfio-user server-side API.  The protocol definitions can be
  * found in vfio-user.h.
+ *
+ * This is not currently a stable API or ABI, and may change at any time.
+ * Library calls are not guaranteed thread-safe: multi-threaded consumers need
+ * to protect calls with their own exclusion methods.
  */
 
 #ifndef LIB_VFIO_USER_H
@@ -130,8 +134,11 @@ int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Return a file descriptor suitable for waiting on via epoll() or similar. This
- * should not be cached, as it may change after a successful vfu_attach_ctx().
+ * Return a file descriptor suitable for waiting on via epoll() or similar. The
+ * file descriptor may change after a successful vfu_attach_ctx(), or on
+ * receiving ENOTCONN error message from vfu_run_ctx(); in those cases,
+ * vfu_get_poll_fd() should be called again to get the current correct file
+ * descriptor.
  */
 int
 vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);

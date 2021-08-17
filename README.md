@@ -30,14 +30,17 @@ Applications using libvfio-user provide a description of the device (eg. region 
 IRQ information) and as set of callbacks which are invoked by `libvfio-user` when
 those regions are accessed.
 
-Currently there is one, single-threaded, application instance per device,
-however the application can employ any form of concurrency needed. In the future
-we plan to make libvfio-user multi-threaded.
+API
+===
 
-The library (and the protocol) are actively under development, and should not be
-considered a stable API or interface. Work is underway to integrate the protocol
-with `qemu` (as a client) and [SPDK](https://spdk.io) (on the server side,
-implementing a virtual NVMe controller).
+Currently there is one, single-threaded, library context per device, however the
+application can employ any form of concurrency needed. In the future we plan to
+make libvfio-user multi-thread safe.
+
+The library (and the protocol) are actively under development, and should not
+yet be considered a stable API or interface.
+
+The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h).
 
 Memory Mapping the Device
 -------------------------
