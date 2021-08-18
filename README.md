@@ -30,18 +30,6 @@ Applications using libvfio-user provide a description of the device (eg. region 
 IRQ information) and as set of callbacks which are invoked by `libvfio-user` when
 those regions are accessed.
 
-API
-===
-
-Currently there is one, single-threaded, library context per device, however the
-application can employ any form of concurrency needed. In the future we plan to
-make libvfio-user multi-thread safe.
-
-The library (and the protocol) are actively under development, and should not
-yet be considered a stable API or interface.
-
-The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h).
-
 Memory Mapping the Device
 -------------------------
 
@@ -89,8 +77,56 @@ The kernel headers are necessary because VFIO structs and defines are reused.
 
 Finally build your program and link with `libvfio-user.so`.
 
-Example
-=======
+Supported features
+==================
+
+With the client support found in
+[cloud-hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor/) or the
+in-development [qemu](https://gitlab.com/qemu-project/qemu) support, most guest
+VM use cases will work. See below for some details on how to try this out.
+
+However, guests with an IOMMU (vIOMMU) will not currently work: the number of
+DMA regions is strictly limited, and there are also issues with some server
+implementations such as SPDK's virtual NVMe controller.
+
+Currently, `libvfio-user` has explicit support for PCI devices only. In
+addition, only PCI endpoints are supported (no bridges etc.).
+
+API
+===
+
+Currently there is one, single-threaded, library context per device, however the
+application can employ any form of concurrency needed. In the future we plan to
+make libvfio-user multi-thread safe.
+
+The library (and the protocol) are actively under development, and should not
+yet be considered a stable API or interface.
+
+The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h).
+
+Mailing List & Chat
+===================
+
+libvfio-user development is discussed in libvfio-user-devel@nongnu.org.
+Subscribe here: https://lists.gnu.org/mailman/listinfo/libvfio-user-devel.
+
+We are on Slack at [libvfio-user.slack.com](https://libvfio-user.slack.com);
+or IRC at [#qemu on OFTC](https://oftc.net/).
+
+Contributing
+============
+
+Contributions are welcome; please file an
+[issue](https://github.com/nutanix/libvfio-user/issues/) or
+[open a PR](https://github.com/nutanix/libvfio-user/pulls). Anything substantial
+is worth discussing with us first.
+
+Please make sure to mark any commits with `Signed-off-by` (`git commit -s`),
+which signals agreement with the [Developer Certificate of Origin
+v1.1](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin).
+
+Examples
+========
 
 The [samples directory](./samples/) contains various libvfio-user samples.
 
@@ -239,28 +275,6 @@ backed by hugepages:
 
 Becasue SPDK must be run as root, either fix the vfio-user socket permissions
 or configure libvirt to run QEMU as root.
-
-
-Mailing List & Chat
-===================
-
-libvfio-user development is discussed in libvfio-user-devel@nongnu.org.
-Subscribe here: https://lists.gnu.org/mailman/listinfo/libvfio-user-devel.
-
-We are on Slack at [libvfio-user.slack.com](https://libvfio-user.slack.com);
-or IRC at [#qemu on OFTC](https://oftc.net/).
-
-Contributing
-============
-
-Contributions are welcome; please file an
-[issue](https://github.com/nutanix/libvfio-user/issues/) or
-[open a PR](https://github.com/nutanix/libvfio-user/pulls). Anything substantial
-is worth discussing with us first.
-
-Please make sure to mark any commits with `Signed-off-by` (`git commit -s`),
-which signals agreement with the [Developer Certificate of Origin
-v1.1](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin).
 
 History
 =======
