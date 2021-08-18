@@ -89,6 +89,9 @@ However, guests with an IOMMU (vIOMMU) will not currently work: the number of
 DMA regions is strictly limited, and there are also issues with some server
 implementations such as SPDK's virtual NVMe controller.
 
+Currently, `libvfio-user` has explicit support for PCI devices only. In
+addition, only PCI endpoints are supported (no bridges etc.).
+
 API
 ===
 
