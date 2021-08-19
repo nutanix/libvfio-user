@@ -216,7 +216,7 @@ Authentication
 
 For ``AF_UNIX``, we rely on OS mandatory access controls on the socket files,
 therefore it is up to the management layer to set up the socket as required.
-Socket types than span guests or hosts will require a proper authentication
+Socket types that span guests or hosts will require a proper authentication
 mechanism. Defining that mechanism is deferred to a future version of the
 protocol.
 
