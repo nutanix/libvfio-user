@@ -361,7 +361,7 @@ static void
 test_dma_map_sg(void **state UNUSED)
 {
     dma_sg_t sg[] = { {.region = 0}, {.region = 1}, {.region = 2} };
-    struct iovec iovec[] = { {0} , {0}, {0} };
+    struct iovec iovec[] = { {0}, {0}, {0} };
 
     /* bad region */
     assert_int_equal(-1, dma_map_sg(vfu_ctx.dma, &sg[0], &iovec[0], 1));
@@ -405,7 +405,7 @@ static void
 test_dma_unmap_sg(void **state UNUSED)
 {
     dma_sg_t sg[] = { {.region = 0}, {.region = 1}, {.region = 2} };
-    struct iovec iovec[] = { {0} , {0}, {0} };
+    struct iovec iovec[] = { {0}, {0}, {0} };
 
     vfu_ctx.dma->nregions = 3;
     vfu_ctx.dma->regions[0].info.iova.iov_base = (void *)0xc0000;
