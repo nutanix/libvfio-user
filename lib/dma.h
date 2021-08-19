@@ -229,35 +229,38 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
            int cnt)
 {
     dma_memory_region_t *region;
-    int i;
 
     assert(dma != NULL);
     assert(sg != NULL);
     assert(iov != NULL);
+    assert(cnt > 0);
 
-    for (i = 0; i < cnt; i++) {
-        if (sg[i].region >= dma->nregions) {
+    do {
+        if (sg->region >= dma->nregions) {
             return ERROR_INT(EINVAL);
         }
-        region = &dma->regions[sg[i].region];
+        region = &dma->regions[sg->region];
 
         if (region->info.vaddr == NULL) {
             return ERROR_INT(EFAULT);
         }
 
-        if (sg[i].writeable) {
+        if (sg->writeable) {
             if (dma->dirty_pgsize > 0) {
-                _dma_mark_dirty(dma, region, &sg[i]);
+                _dma_mark_dirty(dma, region, sg);
             }
-            LIST_INSERT_HEAD(&dma->maps, &sg[i], entry);
+            LIST_INSERT_HEAD(&dma->maps, sg, entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
-                sg[i].dma_addr + sg[i].offset,
-                sg[i].dma_addr + sg[i].offset + sg[i].length);
-        iov[i].iov_base = region->info.vaddr + sg[i].offset;
-        iov[i].iov_len = sg[i].length;
+                sg->dma_addr + sg->offset,
+                sg->dma_addr + sg->offset + sg->length);
+        iov->iov_base = region->info.vaddr + sg->offset;
+        iov->iov_len = sg->length;
         region->refcnt++;
-    }
+
+        sg++;
+        iov++;
+    } while (--cnt > 0);
 
     return 0;
 }
@@ -266,9 +269,13 @@ static inline void
 dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
 	     UNUSED struct iovec *iov, int cnt)
 {
-    int i;
 
-    for (i = 0; i < cnt; i++) {
+    assert(dma != NULL);
+    assert(sg != NULL);
+    assert(iov != NULL);
+    assert(cnt > 0);
+
+    do {
         dma_memory_region_t *r;
         /*
          * FIXME this double loop will be removed if we replace the array with
@@ -276,20 +283,21 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
          */
         for (r = dma->regions;
              r < dma->regions + dma->nregions &&
-             r->info.iova.iov_base != sg[i].dma_addr;
+             r->info.iova.iov_base != sg->dma_addr;
              r++);
         if (r > dma->regions + dma->nregions) {
             /* bad region */
             continue;
         }
-        if (sg[i].writeable) {
-            LIST_REMOVE(&sg[i], entry);
+        if (sg->writeable) {
+            LIST_REMOVE(sg, entry);
         }
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
-                sg[i].dma_addr + sg[i].offset,
-                sg[i].dma_addr + sg[i].offset + sg[i].length);
+                sg->dma_addr + sg->offset,
+                sg->dma_addr + sg->offset + sg->length);
         r->refcnt--;
-    }
+        sg++;
+    } while (--cnt > 0);
 }
 
 int
