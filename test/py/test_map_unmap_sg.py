@@ -32,20 +32,21 @@ import errno
 from libvfio_user import *
 import tempfile
 
-def test_map_sg():
+ctx = None
+
+def test_map_sg_with_invalid_region():
     global ctx
 
     ctx = prepare_ctx_for_dma()
     assert ctx != None
 
-    # Invalid region
     sg = dma_sg_t()
     iovec = iovec_t()
     ret = vfu_map_sg(ctx, sg, iovec)
     assert ret == -1
     assert ctypes.get_errno() == errno.EINVAL
 
-    # w/o fd
+def test_map_sg_without_fd():
     sock = connect_client(ctx)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
@@ -53,6 +54,8 @@ def test_map_sg():
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x1000, size=4096)
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+    sg = dma_sg_t()
+    iovec = iovec_t()
     sg.region = 0
     ret = vfu_map_sg(ctx, sg, iovec)
     assert ret == -1
@@ -60,7 +63,7 @@ def test_map_sg():
 
     disconnect_client(ctx, sock)
 
-	# Multiple sg entries
+def test_map_multiple_sge():
     sock = connect_client(ctx)
     regions = 4
     f = tempfile.TemporaryFile()
