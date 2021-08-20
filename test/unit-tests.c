@@ -358,72 +358,6 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
 }
 
 static void
-test_dma_map_sg(void **state UNUSED)
-{
-    dma_sg_t sg[] = { {.region = 0}, {.region = 1}, {.region = 2} };
-    struct iovec iovec[] = { {0}, {0}, {0} };
-
-    /* bad region */
-    assert_int_equal(-1, dma_map_sg(vfu_ctx.dma, &sg[0], &iovec[0], 1));
-    assert_int_equal(EINVAL, errno);
-
-    vfu_ctx.dma->nregions = 1;
-
-    /* w/o fd */
-    sg[0].region = 0;
-    assert_int_equal(-1, dma_map_sg(vfu_ctx.dma, &sg[0], &iovec[0], 1));
-    assert_int_equal(EFAULT, errno);
-
-    /* w/ fd */
-    vfu_ctx.dma->regions[0].info.vaddr = (void *)0xdead0000;
-
-    sg[0].offset = 0x0000beef;
-    sg[0].length = 0xcafebabe;
-    assert_int_equal(0, dma_map_sg(vfu_ctx.dma, &sg[0], &iovec[0], 1));
-    assert_int_equal(0xdeadbeef, iovec[0].iov_base);
-    assert_int_equal(0x00000000cafebabe, iovec[0].iov_len);
-
-    /* multiple sg entries */
-    vfu_ctx.dma->nregions = 3;
-    vfu_ctx.dma->regions[0].info.vaddr = (void *)0xc0000;
-    sg[0].offset = 0;
-    sg[0].length = 0x20000;
-    vfu_ctx.dma->regions[1].info.vaddr = (void *)0xe0000;
-    sg[1].length = 0x20000;
-    vfu_ctx.dma->regions[2].info.vaddr = (void *)0x100000;
-    sg[2].length = 0x10000;
-    assert_int_equal(0, dma_map_sg(vfu_ctx.dma, sg, iovec, 3));
-    assert_int_equal(0xc0000, iovec[0].iov_base);
-    assert_int_equal(0x20000, iovec[0].iov_len);
-    assert_int_equal(0xe0000, iovec[1].iov_base);
-    assert_int_equal(0x20000, iovec[1].iov_len);
-    assert_int_equal(0x100000, iovec[2].iov_base);
-    assert_int_equal(0x10000, iovec[2].iov_len);
-}
-
-static void
-test_dma_unmap_sg(void **state UNUSED)
-{
-    dma_sg_t sg[] = { {.region = 0}, {.region = 1}, {.region = 2} };
-    struct iovec iovec[] = { {0}, {0}, {0} };
-
-    vfu_ctx.dma->nregions = 3;
-    vfu_ctx.dma->regions[0].info.iova.iov_base = (void *)0xc0000;
-    vfu_ctx.dma->regions[0].refcnt = 1;
-    sg[0].dma_addr = (void *)0xc0000;
-    vfu_ctx.dma->regions[1].info.iova.iov_base = (void *)0xe0000;
-    vfu_ctx.dma->regions[1].refcnt = 1;
-    sg[1].dma_addr = (void *)0xe0000;
-    vfu_ctx.dma->regions[2].info.iova.iov_base = (void *)0x100000;
-    vfu_ctx.dma->regions[2].refcnt = 1;
-    sg[2].dma_addr = (void *)0x100000;
-    dma_unmap_sg(vfu_ctx.dma, sg, iovec, 3);
-    assert_int_equal(0, vfu_ctx.dma->regions[0].refcnt);
-    assert_int_equal(0, vfu_ctx.dma->regions[1].refcnt);
-    assert_int_equal(0, vfu_ctx.dma->regions[2].refcnt);
-}
-
-static void
 test_dma_addr_to_sg(void **state UNUSED)
 {
     dma_memory_region_t *r, *r1;
@@ -787,8 +721,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
-        cmocka_unit_test_setup(test_dma_map_sg, setup),
-        cmocka_unit_test_setup(test_dma_unmap_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),

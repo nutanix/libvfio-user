@@ -568,6 +568,30 @@ def ext_cap_hdr(buf, offset):
     cap_next >>= 4
     return cap_id, cap_next
 
+@vfu_dma_register_cb_t
+def dma_register(ctx, info):
+    pass
+
+@vfu_dma_unregister_cb_t
+def dma_unregister(ctx, info):
+    pass
+    return 0
+
+def prepare_ctx_for_dma():
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx != None
+
+    ret = vfu_pci_init(ctx)
+    assert ret == 0
+
+    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    return ctx
+
 #
 # Library wrappers
 #
@@ -715,13 +739,12 @@ def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
                    prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
     assert ctx != None
 
-    sg = dma_sg_t()
+    sg = (dma_sg_t * max_sg)()
 
     return (lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot), sg)
 
 
 def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
-    # FIXME not sure wheter cnt != 1 will work because iovec is an array
     return lib.vfu_map_sg(ctx, sg, iovec, cnt, flags)
 
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
