@@ -545,7 +545,8 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap)
 {
     size_t out_size;
-    int ret;
+    int ret = 0;
+    bool unmap_all = false;
     char rstr[1024];
 
     assert(vfu_ctx != NULL);
@@ -555,6 +556,12 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     if (msg->in_size < sizeof(*dma_unmap) || dma_unmap->argsz < sizeof(*dma_unmap)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
                 msg->in_size, dma_unmap->argsz);
+        return ERROR_INT(EINVAL);
+    }
+
+    if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
+            (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA flags=%#x", dma_unmap->flags);
         return ERROR_INT(EINVAL);
     }
 
@@ -585,6 +592,13 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
          * the DMA controller.
          */
         out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+    } else if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
+        if (dma_unmap->addr || dma_unmap->size) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad addr=%#lx or size=%#lx, expected "
+                    "both to be zero", dma_unmap->addr, dma_unmap->size);
+            return ERROR_INT(EINVAL);
+        }
+        unmap_all = true;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
@@ -610,18 +624,24 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         }
     }
 
-    ret = dma_controller_remove_region(vfu_ctx->dma,
-                                       (void *)dma_unmap->addr,
-                                       dma_unmap->size,
-                                       vfu_ctx->dma_unregister,
-                                       vfu_ctx);
-    if (ret < 0) {
-        ret = errno;
-        vfu_log(vfu_ctx, LOG_WARNING,
-                "failed to remove DMA region %s: %m", rstr);
-        return ERROR_INT(ret);
+    if (unmap_all) {
+        dma_controller_remove_all_regions(vfu_ctx->dma,
+                                          vfu_ctx->dma_unregister, vfu_ctx);
+    } else {
+        ret = dma_controller_remove_region(vfu_ctx->dma,
+                                           (void *)dma_unmap->addr,
+                                           dma_unmap->size,
+                                           vfu_ctx->dma_unregister,
+                                           vfu_ctx);
+        if (ret < 0) {
+            ret = errno;
+            vfu_log(vfu_ctx, LOG_WARNING,
+                    "failed to remove DMA region %s: %m", rstr);
+            return ERROR_INT(ret);
+        }
     }
     msg->out_size = out_size;
+
     return ret;
 }
 
