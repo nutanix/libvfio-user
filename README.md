@@ -281,7 +281,7 @@ Rust
 ----
 
 Support for Rust is experimental. rust/gpio-pci-idio-16/src/main.rs
-re-implements the `GPIO sample <https://github.com/nutanix/libvfio-user/blob/master/samples/gpio-pci-idio-16.c>`_.
+re-implements the GPIO sample.
 
 To build:
 
@@ -289,8 +289,9 @@ To build:
 
 And then run it as:
 
+    # /var/run/vfio-user.sock is currently hard-coded
     rm /var/run/vfio-user.sock
-    build/rust/debug/gpio-pci-idio-16 & # /var/run/vfio-user.sock is currently hard-coded
+    build/rust/debug/gpio-pci-idio-16 &
 
 
 History
