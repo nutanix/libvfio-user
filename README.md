@@ -276,6 +276,23 @@ backed by hugepages:
 Becasue SPDK must be run as root, either fix the vfio-user socket permissions
 or configure libvirt to run QEMU as root.
 
+
+Rust
+----
+
+Support for Rust is experimental. rust/gpio-pci-idio-16/src/main.rs
+re-implements the `GPIO sample <https://github.com/nutanix/libvfio-user/blob/master/samples/gpio-pci-idio-16.c>`_.
+
+To build:
+
+    make rust
+
+And then run it as:
+
+    rm /var/run/vfio-user.sock
+    build/rust/debug/gpio-pci-idio-16 & # /var/run/vfio-user.sock is currently hard-coded
+
+
 History
 =======
 
