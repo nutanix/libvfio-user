@@ -280,7 +280,7 @@ or configure libvirt to run QEMU as root.
 Rust
 ----
 
-Support for Rust is experimental. rust/gpio-pci-idio-16/src/main.rs
+Support for Rust is experimental. `rust/gpio-pci-idio-16/src/main.rs`
 re-implements the GPIO sample.
 
 To build:
