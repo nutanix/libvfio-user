@@ -544,6 +544,7 @@ int
 handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap)
 {
+    size_t out_size;
     int ret;
     char rstr[1024];
 
@@ -562,7 +563,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
-    msg->out_size = sizeof(*dma_unmap);
+    out_size = sizeof(*dma_unmap);
 
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
@@ -583,15 +584,13 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
          * temporary anyway since we're moving dirty page tracking out of
          * the DMA controller.
          */
-        msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+        out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
     }
 
-
-
-    msg->out_data = malloc(msg->out_size);
+    msg->out_data = malloc(out_size);
     if (msg->out_data == NULL) {
         return ERROR_INT(ENOMEM);
     }
@@ -622,6 +621,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                 "failed to remove DMA region %s: %m", rstr);
         return ERROR_INT(ret);
     }
+    msg->out_size = out_size;
     return ret;
 }
 
