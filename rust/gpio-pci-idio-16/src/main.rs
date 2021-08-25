@@ -125,7 +125,7 @@ unsafe extern "C" fn migration_read_data(
 ) -> isize
 {
     assert!(offset == 0);
-    assert!(size == std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
+    assert!(size >= std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
     let ptr = buf.offset(0) as *mut i8;
     *ptr = PIN;
     DIRTY = false;
@@ -149,7 +149,7 @@ unsafe extern "C" fn migration_write_data(
 ) -> isize
 {
     assert!(offset == 0);
-    assert!(size == std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
+    assert!(size >= std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
     let ptr = buf.offset(0) as *mut i8;
     PIN = *ptr;
     return 0;
