@@ -283,6 +283,10 @@ Rust
 Support for Rust is experimental. `rust/gpio-pci-idio-16/src/main.rs`
 re-implements the GPIO sample.
 
+Install Rust and Cargo:
+
+   curl https://sh.rustup.rs -sSf | sh
+
 To build:
 
     make rust
