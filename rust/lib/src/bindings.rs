@@ -11293,40 +11293,42 @@ pub type vfu_migr_state_t = u32;
 #[derive(Debug, Copy, Clone)]
 pub struct vfu_migration_callbacks_t {
     pub version: ::std::os::raw::c_int,
-    pub transition: ::std::option::Option<
+    // FIXME drop Option to fix compilation error "expected enum `Option`, found fn item"
+    //pub transition: ::std::option::Option<
+    //    unsafe extern "C" fn(
+    //       vfu_ctx: *mut vfu_ctx_t,
+    //        state: vfu_migr_state_t,
+    //    ) -> ::std::os::raw::c_int,
+    //>,
+    pub transition:
         unsafe extern "C" fn(
-            vfu_ctx: *mut vfu_ctx_t,
+           vfu_ctx: *mut vfu_ctx_t,
             state: vfu_migr_state_t,
         ) -> ::std::os::raw::c_int,
-    >,
     pub get_pending_bytes:
-        ::std::option::Option<unsafe extern "C" fn(vfu_ctx: *mut vfu_ctx_t) -> u64>,
-    pub prepare_data: ::std::option::Option<
+        unsafe extern "C" fn(vfu_ctx: *mut vfu_ctx_t) -> u64,
+    pub prepare_data:
         unsafe extern "C" fn(
             vfu_ctx: *mut vfu_ctx_t,
             offset: *mut u64,
             size: *mut u64,
         ) -> ::std::os::raw::c_int,
-    >,
-    pub read_data: ::std::option::Option<
+    pub read_data:
         unsafe extern "C" fn(
             vfu_ctx: *mut vfu_ctx_t,
             buf: *mut ::std::os::raw::c_void,
             count: u64,
             offset: u64,
         ) -> isize,
-    >,
-    pub write_data: ::std::option::Option<
+    pub write_data:
         unsafe extern "C" fn(
             vfu_ctx: *mut vfu_ctx_t,
             buf: *mut ::std::os::raw::c_void,
             count: u64,
             offset: u64,
         ) -> isize,
-    >,
-    pub data_written: ::std::option::Option<
+    pub data_written:
         unsafe extern "C" fn(vfu_ctx: *mut vfu_ctx_t, count: u64) -> ::std::os::raw::c_int,
-    >,
 }
 #[test]
 fn bindgen_test_layout_vfu_migration_callbacks_t() {
