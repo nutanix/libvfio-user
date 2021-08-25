@@ -137,7 +137,7 @@ unsafe extern "C" fn migration_data_written(
     count: u64
 ) -> i32
 {
-    assert!(count == std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
+    assert!(count >= std::mem::size_of::<i8>() as u64); // FIXME must be size_of<PIN>
     return 0;
 }
 
