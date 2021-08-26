@@ -337,6 +337,15 @@ class vfio_user_dma_map(Structure):
         ("size", c.c_uint64),
     ]
 
+class vfio_user_dma_unmap(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("addr", c.c_uint64),
+        ("size", c.c_uint64),
+    ]
+
 class vfu_dma_info_t(Structure):
     _fields_ = [
         ("iova", iovec_t),
