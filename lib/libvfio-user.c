@@ -561,7 +561,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
             (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad DMA flags=%#x", dma_unmap->flags);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
         return ERROR_INT(EINVAL);
     }
 
@@ -610,6 +610,12 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
 
+    if (unmap_all) {
+        dma_controller_remove_all_regions(vfu_ctx->dma,
+                                          vfu_ctx->dma_unregister, vfu_ctx);
+        goto out;
+    }
+
     if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
@@ -624,22 +630,19 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         }
     }
 
-    if (unmap_all) {
-        dma_controller_remove_all_regions(vfu_ctx->dma,
-                                          vfu_ctx->dma_unregister, vfu_ctx);
-    } else {
-        ret = dma_controller_remove_region(vfu_ctx->dma,
-                                           (void *)dma_unmap->addr,
-                                           dma_unmap->size,
-                                           vfu_ctx->dma_unregister,
-                                           vfu_ctx);
-        if (ret < 0) {
-            ret = errno;
-            vfu_log(vfu_ctx, LOG_WARNING,
-                    "failed to remove DMA region %s: %m", rstr);
-            return ERROR_INT(ret);
-        }
+    ret = dma_controller_remove_region(vfu_ctx->dma,
+                                       (void *)dma_unmap->addr,
+                                       dma_unmap->size,
+                                       vfu_ctx->dma_unregister,
+                                       vfu_ctx);
+    if (ret < 0) {
+        ret = errno;
+        vfu_log(vfu_ctx, LOG_WARNING,
+                "failed to remove DMA region %s: %m", rstr);
+        return ERROR_INT(ret);
     }
+
+out:
     msg->out_size = out_size;
 
     return ret;
