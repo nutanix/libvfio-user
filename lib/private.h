@@ -133,6 +133,9 @@ typedef struct  {
     int fd;
     /* offset of region within fd. */
     uint64_t offset;
+    /* The subregions for ioregions and ioevents */
+    ioeventfd_t *sub_regions;
+    int nr_sub_regions;
 } vfu_reg_info_t;
 
 struct pci_dev {

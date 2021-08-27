@@ -89,6 +89,52 @@ typedef enum {
     VFU_DEV_TYPE_PCI
 } vfu_dev_type_t;
 
+typedef struct request {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+} request_t;
+
+typedef struct sub_region_ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t datamatch;
+} sub_region_ioeventfd_t;
+
+typedef struct sub_region_ioregionfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t user_data;
+} sub_region_ioregionfd_t;
+
+typedef union sub_region {
+    sub_region_ioeventfd_t ioeventfd;
+    sub_region_ioregionfd_t toregionfd;
+} sub_region_t;
+
+typedef struct ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    int32_t fd;
+} ioeventfd_t;
+
+typedef struct reply {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+    sub_region_t sub_regions[];
+} reply_t;
+
 /**
  * Creates libvfio-user context. By default one ERR and one REQ IRQs are
  * initialized, this can be overridden with vfu_setup_device_nr_irqs.
@@ -883,6 +929,19 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
 
 bool
 vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
+
+/*
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @offset: The offset into the memory region
+ * @flags: Any flags to set up the ioeventfd
+ * @index: The index of the memory region to set up the ioeventfd
+ */
+int
+create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags,
+                 uint32_t index);
+
+int delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index);
 
 #ifdef __cplusplus
 }

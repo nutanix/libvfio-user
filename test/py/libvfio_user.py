@@ -34,6 +34,7 @@
 from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
+import array
 import json
 import mmap
 import os
@@ -325,6 +326,55 @@ class vfio_region_sparse_mmap_area(Structure):
         ("size", c.c_uint64),
     ]
 
+class region_io_fds_request(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("index", c.c_uint32),
+        ("count", c.c_uint32)
+    ]
+
+class sub_region_ioeventfd(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("offset", c.c_uint64),
+        ("size", c.c_uint64),
+        ("fd_index", c.c_uint32),
+        ("type", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("padding", c.c_uint32),
+        ("datamatch", c.c_uint64)
+    ]
+
+class sub_region_ioregionfd(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("offset", c.c_uint64),
+        ("size", c.c_uint64),
+        ("fd_index", c.c_uint32),
+        ("type", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("padding", c.c_uint32),
+        ("user_data", c.c_uint64)
+    ]
+
+class sub_region_io_fd(c.Union):
+    _pack_ = 1
+    _fields_ = [
+        ("sub_region_ioeventfd", sub_region_ioeventfd),
+        ("sub_region_ioregionfd",sub_region_ioregionfd)
+    ]
+
+class region_io_fds_reply(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("index", c.c_uint32),
+        ("count", c.c_uint32)
+    ]
+
 class vfio_user_dma_map(Structure):
     _pack_ = 1
     _fields_ = [
@@ -393,7 +443,7 @@ class dma_sg_t(Structure):
         ("length", c.c_uint64),
         ("offset", c.c_uint64),
         ("writeable", c.c_bool),
-        ("le_next", c.c_void_p), # FIXME add struct for LIST_ENTRY 
+        ("le_next", c.c_void_p), # FIXME add struct for LIST_ENTRY
         ("le_prev", c.c_void_p),
     ]
 
@@ -442,6 +492,9 @@ lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
 lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                              c.POINTER(iovec_t), c.c_int)
 
+lib.create_ioeventfd.argtypes = (c.c_void_p, c.c_size_t, c.c_uint32, c.c_uint32)
+
+
 def to_byte(val):
     """Cast an int to a byte value."""
     return val.to_bytes(1, 'little')
@@ -454,7 +507,7 @@ def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
 
-def eventfd(initval=0, flags=0):
+def  eventfd(initval=0, flags=0):
     libc.eventfd.argtypes = (c.c_uint, c.c_int)
     return libc.eventfd(initval, flags)
 
@@ -501,6 +554,37 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
 
     vfu_run_ctx(ctx)
     return get_reply(sock, expect=expect)
+
+def get_reply_fd(sock, expect=0):
+    fds = array.array("i")
+    data, ancillary, flags, addr = sock.recvmsg(4096, socket.CMSG_LEN(64 * fds.itemsize))
+    (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII", data[0:16])
+    assert errno == expect
+    cmsgLevel, cmsgType, packedFD = ancillary[0]
+    # cmsgLevel and cmsgType really need to be SOL_SOCKET / SCM_RIGHTS, but
+    # since those are the *only* standard values, there's not much point in
+    # checking.
+    unpackedFDs = []
+    for i in range(0, len(packedFD), 4):
+        [unpackedFD] = struct.unpack_from("i", packedFD, offset = i)
+        unpackedFDs.append(unpackedFD)
+    assert len(packedFD)/4 == len(unpackedFDs)
+    assert (msg_flags & VFIO_USER_F_TYPE_REPLY) != 0
+    return (unpackedFDs, data[16:])
+
+def msg_fd(ctx, sock, cmd, payload, expect=0, fds=None):
+    """Round trip a request and reply to the server. With the server returning
+       new fds"""
+    hdr = vfio_user_header(cmd, size=len(payload))
+
+    if fds:
+        sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                        struct.pack("I" * len(fds), *fds))])
+    else:
+        sock.send(hdr + payload)
+
+    vfu_run_ctx(ctx)
+    return get_reply_fd(sock, expect=expect)
 
 def get_pci_header(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)
@@ -722,5 +806,10 @@ def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
 
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
     return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
+
+def create_ioeventfd(ctx, offset, flags, index):
+    assert ctx != None
+
+    return lib.create_ioeventfd(ctx, offset, flags, index)
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

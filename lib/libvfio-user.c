@@ -48,6 +48,8 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
+#include <sys/eventfd.h>
+
 #include "dma.h"
 #include "irq.h"
 #include "libvfio-user.h"
@@ -458,6 +460,150 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     return 0;
 }
+
+
+EXPORT int
+create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags, uint32_t index)
+{
+
+    assert(vfu_ctx != NULL);
+
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+    vfu_reg->nr_sub_regions += 1;
+
+    vfu_reg->sub_regions = realloc(vfu_reg->sub_regions, sizeof(ioeventfd_t) * vfu_reg->nr_sub_regions);
+    if (vfu_reg->sub_regions == NULL) {
+        return -1;
+    }
+
+    int tmp = -1;
+
+    tmp = eventfd(0, flags);
+    if (tmp == -1) {
+        return -1;
+    }
+
+    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].fd = tmp;
+    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].offset = offset;
+    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].size = 8;
+
+    return tmp;
+}
+
+EXPORT int delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index)
+{
+    assert(vfu_ctx != NULL);
+
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+    close(vfu_reg->sub_regions[fd_index].fd);
+    vfu_reg->nr_sub_regions -= 1;
+    vfu_reg->sub_regions[fd_index].fd = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].fd;
+    vfu_reg->sub_regions[fd_index].offset = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].offset;
+    vfu_reg->sub_regions[fd_index].size = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].size;
+    if (vfu_reg->nr_sub_regions > 0) {
+        vfu_reg->sub_regions = realloc(vfu_reg->sub_regions, sizeof(ioeventfd_t) * vfu_reg->nr_sub_regions);
+        if (vfu_reg->sub_regions == NULL) {
+            return -1;
+        }
+    } else {
+        free(vfu_reg->sub_regions);
+        vfu_reg->sub_regions = NULL;
+    }
+    return 0;
+}
+
+static void
+cleanup_ioeventfds(vfu_ctx_t *vfu_ctx)
+{
+    assert(vfu_ctx != NULL);
+    int index = 0;
+    for (index = 0; index < VFU_PCI_DEV_NUM_REGIONS; index ++) {
+        vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+        if (vfu_reg->nr_sub_regions >0 && vfu_reg->sub_regions != NULL) {
+            int i = 0;
+            for (i = 0; i < vfu_reg->nr_sub_regions; i ++) {
+                close(vfu_reg->sub_regions[i].fd);
+            }
+        }
+        free(vfu_reg->sub_regions);
+    }
+}
+
+static int
+create_ioeventfds(vfu_ctx_t *vfu_ctx, uint32_t index) {
+
+    assert(index != 0);
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+
+    if (vfu_reg->nr_sub_regions == 0) {
+        int i = 0;
+        for (i = 0; i < 4; i++) {
+            int tmp = create_ioeventfd(vfu_ctx, 8 * i, 0, index);
+            if (tmp == -1) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int
+handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg) {
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+    assert(msg->out_fds == NULL);
+
+    request_t *req = msg->in_data;
+    if (req->flags != 0 || req->count != 0) {
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->index >= vfu_ctx->nr_regions) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
+                req->index);
+        return ERROR_INT(EINVAL);
+    }
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[req->index];
+
+
+    int nr_ioeventfds = create_ioeventfds(vfu_ctx, req->index);
+    if (nr_ioeventfds == -1) {
+        return ERROR_INT(EINVAL);
+    }
+
+    msg->out_size = MIN(req->argsz, 16 + vfu_reg->nr_sub_regions * sizeof(sub_region_ioeventfd_t));
+    msg->out_data = calloc(1, msg->out_size);
+    reply_t *rep = msg->out_data;
+    rep->index = req->index;
+    rep->count = vfu_reg->nr_sub_regions;
+    rep->flags = 0;
+    rep->argsz = msg->out_size;
+
+    msg->nr_out_fds = rep->count;
+    msg->out_fds = malloc(sizeof(int) * msg->nr_out_fds);
+    if (msg->out_fds == NULL) {
+        return -1;
+    }
+    uint max_sent_sub_regions = MIN((req->argsz-16)/sizeof(sub_region_ioeventfd_t), rep->count);
+    uint i = 0;
+    for (i = 0; i < max_sent_sub_regions; i ++) {
+        sub_region_ioeventfd_t *ioefd = &rep->sub_regions[i].ioeventfd;
+        ioefd->offset = vfu_reg->sub_regions[i].offset;
+        ioefd->size = vfu_reg->sub_regions[i].size;
+        ioefd->fd_index = i; // this is the index in the fd array returned
+        ioefd->type = 0;
+        ioefd->flags = 0;
+        ioefd->datamatch = 0;
+
+        msg->out_fds[i] = vfu_reg->sub_regions[i].fd;
+    }
+
+    msg->hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
+
+    return 0;
+}
+
 
 int
 consume_fd(int *fds, size_t nr_fds, size_t index)
@@ -968,6 +1114,10 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = handle_device_get_region_info(vfu_ctx, msg);
         break;
 
+    case VFIO_USER_DEVICE_GET_REGION_IO_FDS:
+        ret = handle_device_get_region_io_fds(vfu_ctx, msg);
+        break;
+
     case VFIO_USER_DEVICE_GET_IRQ_INFO:
         ret = handle_device_get_irq_info(vfu_ctx, msg);
         break;
@@ -1240,6 +1390,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
         dma_controller_destroy(vfu_ctx->dma);
     }
     free_sparse_mmap_areas(vfu_ctx);
+    cleanup_ioeventfds(vfu_ctx);
     free(vfu_ctx->reg_info);
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
@@ -1469,6 +1620,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->cb = cb;
     reg->fd = fd;
     reg->offset = offset;
+    reg->sub_regions = NULL;
+    reg->nr_sub_regions = 0;
 
     if (mmap_areas == NULL && reg->fd != -1) {
         mmap_areas = &whole_region;
