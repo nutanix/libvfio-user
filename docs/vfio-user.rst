@@ -612,6 +612,8 @@ The request payload for this message is a structure of the following format:
 |              | +=====+=======================+ |
 |              | | 0   | get dirty page bitmap | |
 |              | +-----+-----------------------+ |
+|              | | 1   | unmap all regions     | |
+|              | +-----+-----------------------+ |
 +--------------+--------+------------------------+
 | address      | 8      | 8                      |
 +--------------+--------+------------------------+
@@ -625,6 +627,9 @@ The request payload for this message is a structure of the following format:
     populated before unmapping the DMA region. The client must provide a
     `VFIO Bitmap`_ structure, explained below, immediately following this
     entry.
+  * *unmap all regions* indicates to unmap all the regions previously
+    mapped via `VFIO_USER_DMA_MAP`. This flag cannot be combined with
+    *get dirty page bitmap* and expects *address* and *size* to be 0.
 
 * *address* is the base DMA address of the DMA region.
 * *size* is the size of the DMA region.
