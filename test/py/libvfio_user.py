@@ -493,6 +493,9 @@ lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                              c.POINTER(iovec_t), c.c_int)
 
 lib.create_ioeventfd.argtypes = (c.c_void_p, c.c_size_t, c.c_uint32, c.c_uint32)
+lib.vfu_delete_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_uint32)
+lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_uint32,
+                                     c.c_int, c.c_uint32, c.c_uint32)
 
 
 def to_byte(val):
@@ -560,10 +563,8 @@ def get_reply_fd(sock, expect=0):
     data, ancillary, flags, addr = sock.recvmsg(4096, socket.CMSG_LEN(64 * fds.itemsize))
     (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII", data[0:16])
     assert errno == expect
-    cmsgLevel, cmsgType, packedFD = ancillary[0]
-    # cmsgLevel and cmsgType really need to be SOL_SOCKET / SCM_RIGHTS, but
-    # since those are the *only* standard values, there's not much point in
-    # checking.
+
+    cmsgLevel, cmsgType, packedFD = ancillary[0] if len(ancillary) != 0 else (0, 0, [])
     unpackedFDs = []
     for i in range(0, len(packedFD), 4):
         [unpackedFD] = struct.unpack_from("i", packedFD, offset = i)
@@ -812,4 +813,13 @@ def create_ioeventfd(ctx, offset, flags, index):
 
     return lib.create_ioeventfd(ctx, offset, flags, index)
 
+def delete_ioeventfd(ctx, index, fd_index):
+    assert ctx != None
+
+    return lib.vfu_delete_ioeventfd(ctx, index, fd_index)
+
+def vfu_create_ioeventfd(ctx, offset, size, fd, flags, index):
+    assert ctx != None
+
+    return lib.vfu_create_ioeventfd(ctx, offset, size, fd, flags, index)
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

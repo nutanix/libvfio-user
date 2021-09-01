@@ -94,7 +94,7 @@ typedef struct request {
     uint32_t flags;
     uint32_t index;
     uint32_t count;
-} request_t;
+} __attribute__((packed)) request_t;
 
 typedef struct sub_region_ioeventfd {
     uint64_t offset;
@@ -104,7 +104,7 @@ typedef struct sub_region_ioeventfd {
     uint32_t flags;
     uint32_t padding;
     uint64_t datamatch;
-} sub_region_ioeventfd_t;
+} __attribute__((packed)) sub_region_ioeventfd_t;
 
 typedef struct sub_region_ioregionfd {
     uint64_t offset;
@@ -114,18 +114,19 @@ typedef struct sub_region_ioregionfd {
     uint32_t flags;
     uint32_t padding;
     uint64_t user_data;
-} sub_region_ioregionfd_t;
+} __attribute__((packed)) sub_region_ioregionfd_t;
 
 typedef union sub_region {
     sub_region_ioeventfd_t ioeventfd;
     sub_region_ioregionfd_t toregionfd;
-} sub_region_t;
+} __attribute__((packed)) sub_region_t;
 
 typedef struct ioeventfd {
     uint64_t offset;
     uint64_t size;
     int32_t fd;
-} ioeventfd_t;
+    uint32_t flags;
+} __attribute__((packed)) ioeventfd_t;
 
 typedef struct reply {
     uint32_t argsz;
@@ -133,7 +134,7 @@ typedef struct reply {
     uint32_t index;
     uint32_t count;
     sub_region_t sub_regions[];
-} reply_t;
+} __attribute__((packed)) reply_t;
 
 /**
  * Creates libvfio-user context. By default one ERR and one REQ IRQs are
@@ -941,7 +942,9 @@ int
 create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags,
                  uint32_t index);
 
-int delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index);
+int vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t size, int fd, uint32_t flags, uint32_t index);
+
+int vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index);
 
 #ifdef __cplusplus
 }
