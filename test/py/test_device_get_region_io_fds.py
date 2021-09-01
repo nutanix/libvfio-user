@@ -121,6 +121,48 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
     reply, ret = region_io_fds_reply.pop_from_buffer(ret)
     assert reply.argsz == 16
 
+def test_device_get_region_io_fds_fds_read_write_nothing():
+
+    t = eventfd(0,0)
+    assert vfu_create_ioeventfd(ctx, 6 * 8, 8, t, 0, VFU_PCI_DEV_BAR2_REGION_IDX) != -1
+    assert vfu_create_ioeventfd(ctx, 7 * 8, 8, t, 0, VFU_PCI_DEV_BAR2_REGION_IDX) != -1
+
+
+    payload = region_io_fds_request(argsz = 16+(40*8), flags = 0, index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
+
+    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect=0)
+    reply, ret = region_io_fds_reply.pop_from_buffer(ret)
+
+    assert reply.count == 8
+    assert reply.argsz == 16+(40*8)
+
+    ioevents = []
+    for i in range(0, reply.count):
+        ioevent, ret = sub_region_ioeventfd.pop_from_buffer(ret)
+        ioevents.append(ioevent)
+
+    for i in range(0, 6):
+        os.write(newfds[ioevents[i].fd_index], c.c_ulonglong(i+1))
+
+    for i in range(0, 6):
+        out = os.read(newfds[ioevents[i].fd_index], ioevent.size)
+        [out] = struct.unpack("@Q",out)
+        assert out  == i+1
+        assert ioevents[i].size == 8
+        assert ioevents[i].offset == 8 * i
+
+
+    assert ioevents[6].fd_index == ioevents[7].fd_index
+    assert ioevents[6].offset != ioevents[7].offset
+
+    os.write(newfds[ioevents[6].fd_index], c.c_ulonglong(1))
+    out = os.read(newfds[ioevents[7].fd_index], ioevent.size)
+    [out] = struct.unpack("@Q",out)
+    assert out == 1
+
+
+
+
 def test_device_setup_ioeventfd():
     assert create_ioeventfd(ctx, 0, 0, VFU_PCI_DEV_BAR1_REGION_IDX) != -1
     assert create_ioeventfd(ctx, 8, 0, VFU_PCI_DEV_BAR1_REGION_IDX) != -1

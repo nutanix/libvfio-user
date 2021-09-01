@@ -548,6 +548,21 @@ cleanup_ioeventfds(vfu_ctx_t *vfu_ctx)
 }
 
 static int
+get_fd_index(int *out_fds, size_t nr_out_fds, int fd_search)
+{
+    assert(out_fds != NULL);
+
+    uint i = 0;
+    for(i = 0; i< nr_out_fds; i ++) {
+        if (out_fds[i] == fd_search) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int
 handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
 
@@ -558,9 +573,9 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     uint max_sent_sub_regions = 0;
     vfu_reg_info_t *vfu_reg = NULL;
-    reply_t *rep = NULL;
+    reply_sub_region_t *rep = NULL;
     sub_region_ioeventfd_t *ioefd = NULL;
-    request_t *req = msg->in_data;
+    region_io_fds_request_t *req = msg->in_data;
 
     if (req->flags != 0 || req->count != 0 || msg->in_size < 16) {
         return ERROR_INT(EINVAL);
@@ -588,23 +603,31 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     // Cannot send invalid files descriptors as it will cause the recv to fail and block
     // No recovery is possible from that state in the test suite.
-    msg->nr_out_fds = max_sent_sub_regions;
-    msg->out_fds = malloc(sizeof(int) * msg->nr_out_fds);
+    msg->nr_out_fds = 0;
+    msg->out_fds = malloc(sizeof(int) * max_sent_sub_regions);
     if (msg->out_fds == NULL) {
         return -1;
     }
 
     uint i = 0;
     for (i = 0; i < max_sent_sub_regions; i ++) {
+        int fd_lookup = get_fd_index(msg->out_fds, msg->nr_out_fds, vfu_reg->sub_regions[i].fd);
+
         ioefd = &rep->sub_regions[i].ioeventfd;
         ioefd->offset = vfu_reg->sub_regions[i].offset;
         ioefd->size = vfu_reg->sub_regions[i].size;
-        ioefd->fd_index = i; // this is the index in the fd array returned
+        //ioefd->fd_index = get_fd_index(msg->out_fds, msg->nr_out_fds, vfu_reg->sub_regions[i].fd); // this is the index in the fd array returned
         ioefd->type = 0;
         ioefd->flags = 0;
         ioefd->datamatch = 0;
 
-        msg->out_fds[i] = vfu_reg->sub_regions[i].fd;
+        if (fd_lookup == -1) {
+            msg->out_fds[msg->nr_out_fds] = vfu_reg->sub_regions[i].fd;
+            ioefd->fd_index = msg->nr_out_fds;
+            msg->nr_out_fds++;
+        } else {
+            ioefd->fd_index = fd_lookup;
+        }
     }
 
     msg->hdr.flags.type = VFIO_USER_F_TYPE_REPLY;

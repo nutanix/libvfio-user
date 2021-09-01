@@ -156,6 +156,45 @@ struct vfio_user_irq_info {
     uint32_t    subindex;
 } __attribute__((packed));
 
+struct region_io_fds {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+} __attribute__((packed));
+
+struct sub_region_ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t datamatch;
+} __attribute__((packed));
+
+struct sub_region_ioregionfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t user_data;
+} __attribute__((packed));
+
+struct reply_sub_region {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+    union sub_region {
+        struct sub_region_ioeventfd ioeventfd;
+        struct sub_region_ioregionfd toregionfd;
+    } sub_regions[];
+} __attribute__((packed));
+
+
 /* Analogous to vfio_iommu_type1_dirty_bitmap. */
 struct vfio_user_dirty_pages {
     uint32_t    argsz;

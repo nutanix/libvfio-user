@@ -176,6 +176,13 @@ struct vfu_ctx {
     vfu_dev_type_t          dev_type;
 };
 
+struct ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    int32_t fd;
+    uint32_t flags;
+} __attribute__((packed));
+
 static inline int
 ERROR_INT(int err)
 {

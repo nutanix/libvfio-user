@@ -89,52 +89,15 @@ typedef enum {
     VFU_DEV_TYPE_PCI
 } vfu_dev_type_t;
 
-typedef struct request {
-    uint32_t argsz;
-    uint32_t flags;
-    uint32_t index;
-    uint32_t count;
-} __attribute__((packed)) request_t;
+typedef struct region_io_fds region_io_fds_request_t;
 
-typedef struct sub_region_ioeventfd {
-    uint64_t offset;
-    uint64_t size;
-    uint32_t fd_index;
-    uint32_t type;
-    uint32_t flags;
-    uint32_t padding;
-    uint64_t datamatch;
-} __attribute__((packed)) sub_region_ioeventfd_t;
+typedef struct sub_region_ioregionfd sub_region_ioregionfd_t;
 
-typedef struct sub_region_ioregionfd {
-    uint64_t offset;
-    uint64_t size;
-    uint32_t fd_index;
-    uint32_t type;
-    uint32_t flags;
-    uint32_t padding;
-    uint64_t user_data;
-} __attribute__((packed)) sub_region_ioregionfd_t;
+typedef struct sub_region_ioeventfd sub_region_ioeventfd_t;
 
-typedef union sub_region {
-    sub_region_ioeventfd_t ioeventfd;
-    sub_region_ioregionfd_t toregionfd;
-} __attribute__((packed)) sub_region_t;
+typedef struct reply_sub_region reply_sub_region_t;
 
-typedef struct ioeventfd {
-    uint64_t offset;
-    uint64_t size;
-    int32_t fd;
-    uint32_t flags;
-} __attribute__((packed)) ioeventfd_t;
-
-typedef struct reply {
-    uint32_t argsz;
-    uint32_t flags;
-    uint32_t index;
-    uint32_t count;
-    sub_region_t sub_regions[];
-} __attribute__((packed)) reply_t;
+typedef struct ioeventfd ioeventfd_t;
 
 /**
  * Creates libvfio-user context. By default one ERR and one REQ IRQs are
