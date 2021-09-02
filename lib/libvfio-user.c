@@ -509,7 +509,6 @@ EXPORT int vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_
         if (rem == NULL) {
             break;
         }
-
         LIST_NEXT(rem, pointers);
     }
 
@@ -564,7 +563,10 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(msg->out_fds == NULL);
-    assert(msg->in_size == 16);
+
+    if (msg->in_size != 16) {
+        return ERROR_INT(EINVAL);
+    }
 
     uint max_sent_sub_regions = 0;
     vfu_reg_info_t *vfu_reg = NULL;
@@ -583,6 +585,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                 req->index);
         return ERROR_INT(EINVAL);
     }
+
     vfu_reg = &vfu_ctx->reg_info[req->index];
     sub_reg = LIST_FIRST(&vfu_reg->sub_reg_l);
     while (sub_reg != NULL){
