@@ -99,6 +99,8 @@ typedef struct reply_sub_region reply_sub_region_t;
 
 typedef struct ioeventfd ioeventfd_t;
 
+typedef struct ioeventfd_list ioeventfd_list_t;
+
 /**
  * Creates libvfio-user context. By default one ERR and one REQ IRQs are
  * initialized, this can be overridden with vfu_setup_device_nr_irqs.

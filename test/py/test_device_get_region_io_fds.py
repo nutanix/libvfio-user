@@ -86,6 +86,7 @@ def test_device_get_region_io_fds_fds_read_write():
     reply, ret = region_io_fds_reply.pop_from_buffer(ret)
     ioevent, ret = sub_region_ioeventfd.pop_from_buffer(ret)
 
+    print(newfds)
     for i in range(0,4):
         os.write(newfds[i], c.c_ulonglong(10))
         out = os.read(newfds[i], 8)
@@ -103,14 +104,16 @@ def test_device_get_region_io_fds_full():
     for i in range(0, reply.count):
         ioevent, ret = sub_region_ioeventfd.pop_from_buffer(ret)
         ioevents.append(ioevent)
-        os.write(newfds[ioevent.fd_index], c.c_ulonglong(i+1))
+        os.write(newfds[ioevent.fd_index], c.c_ulonglong(1))
+
+    print(newfds, [i.fd_index for i in ioevents])
 
     for i in range(0, reply.count):
         out = os.read(newfds[ioevents[i].fd_index], ioevent.size)
         [out] = struct.unpack("@Q",out)
-        assert out  == i+1
+        assert out  == 1
         assert ioevents[i].size == 8
-        assert ioevents[i].offset == 8 * i
+        assert ioevents[i].offset == 40 - (8 * i)
 
 def test_device_get_region_io_fds_fds_read_write_nothing():
 
@@ -121,7 +124,7 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
     reply, ret = region_io_fds_reply.pop_from_buffer(ret)
     assert reply.argsz == 16
 
-def test_device_get_region_io_fds_fds_read_write_nothing():
+def test_device_get_region_io_fds_fds_read_write_dupe_fd():
 
     t = eventfd(0,0)
     assert vfu_create_ioeventfd(ctx, 6 * 8, 8, t, 0, VFU_PCI_DEV_BAR2_REGION_IDX) != -1
@@ -141,22 +144,24 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
         ioevent, ret = sub_region_ioeventfd.pop_from_buffer(ret)
         ioevents.append(ioevent)
 
-    for i in range(0, 6):
-        os.write(newfds[ioevents[i].fd_index], c.c_ulonglong(i+1))
+    for i in range(2, 8):
+        os.write(newfds[ioevents[i].fd_index], c.c_ulonglong(1))
 
-    for i in range(0, 6):
+    print(newfds, [i.fd_index for i in ioevents])
+
+    for i in range(2, 8):
         out = os.read(newfds[ioevents[i].fd_index], ioevent.size)
         [out] = struct.unpack("@Q",out)
-        assert out  == i+1
+        assert out  == 1
         assert ioevents[i].size == 8
-        assert ioevents[i].offset == 8 * i
+        assert ioevents[i].offset == 56 - (8 * i)
 
 
-    assert ioevents[6].fd_index == ioevents[7].fd_index
-    assert ioevents[6].offset != ioevents[7].offset
+    assert ioevents[0].fd_index == ioevents[1].fd_index
+    assert ioevents[0].offset != ioevents[1].offset
 
-    os.write(newfds[ioevents[6].fd_index], c.c_ulonglong(1))
-    out = os.read(newfds[ioevents[7].fd_index], ioevent.size)
+    os.write(newfds[ioevents[0].fd_index], c.c_ulonglong(1))
+    out = os.read(newfds[ioevents[1].fd_index], ioevent.size)
     [out] = struct.unpack("@Q",out)
     assert out == 1
 

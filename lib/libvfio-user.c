@@ -469,20 +469,15 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t size, int fd, u
     assert(fd >= 0);
 
     vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
-    void *cleanup = vfu_reg->sub_regions;
-
-    vfu_reg->nr_sub_regions += 1;
-    vfu_reg->sub_regions = realloc(vfu_reg->sub_regions, sizeof(ioeventfd_t) * vfu_reg->nr_sub_regions);
-    if (vfu_reg->sub_regions == NULL) {
-        vfu_reg->nr_sub_regions = 0;
-        free(cleanup);
+    ioeventfd_list_t *elem = malloc(sizeof(ioeventfd_list_t));
+    if (elem == NULL) {
         return -1;
     }
-
-    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].fd = fd;
-    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].offset = offset;
-    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].size = size;
-    vfu_reg->sub_regions[vfu_reg->nr_sub_regions-1].flags = flags;
+    elem->data.fd = fd;
+    elem->data.offset = offset;
+    elem->data.size = size;
+    elem->data.flags = flags;
+    LIST_INSERT_HEAD(&vfu_reg->sub_reg_l, elem, pointers);
 
     return 0;
 }
@@ -506,27 +501,26 @@ create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags, uint32_t ind
 EXPORT int vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index)
 {
     assert(vfu_ctx != NULL);
-    void *cleanup = NULL;
     vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+    ioeventfd_list_t *rem = LIST_FIRST(&vfu_reg->sub_reg_l);
 
-    close(vfu_reg->sub_regions[fd_index].fd);
-
-    vfu_reg->nr_sub_regions -= 1;
-    vfu_reg->sub_regions[fd_index].fd = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].fd;
-    vfu_reg->sub_regions[fd_index].offset = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].offset;
-    vfu_reg->sub_regions[fd_index].size = vfu_reg->sub_regions[vfu_reg->nr_sub_regions].size;
-
-    if (vfu_reg->nr_sub_regions > 0) {
-        cleanup = vfu_reg->sub_regions;
-        vfu_reg->sub_regions = realloc(vfu_reg->sub_regions, sizeof(ioeventfd_t) * vfu_reg->nr_sub_regions);
-        if (vfu_reg->sub_regions == NULL) {
-            free(cleanup);
-            return -1;
+    uint32_t i = 0;
+    for (i = 0; i < fd_index; i ++) {
+        if (rem == NULL) {
+            break;
         }
-    } else {
-        free(vfu_reg->sub_regions);
-        vfu_reg->sub_regions = NULL;
+
+        LIST_NEXT(rem, pointers);
     }
+
+    if (rem == NULL) {
+        return -1;
+    }
+
+    LIST_REMOVE(rem, pointers);
+    close(rem->data.fd);
+    free(rem);
+
     return 0;
 }
 
@@ -534,16 +528,17 @@ static void
 cleanup_ioeventfds(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
+
     int index = 0;
     for (index = 0; index < VFU_PCI_DEV_NUM_REGIONS; index ++) {
         vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
-        if (vfu_reg->nr_sub_regions >0 && vfu_reg->sub_regions != NULL) {
-            int i = 0;
-            for (i = 0; i < vfu_reg->nr_sub_regions; i ++) {
-                close(vfu_reg->sub_regions[i].fd);
-            }
+
+        while (!LIST_EMPTY(&vfu_reg->sub_reg_l)) {            /* List Deletion. */
+            ioeventfd_list_t *n = LIST_FIRST(&vfu_reg->sub_reg_l);
+            LIST_REMOVE(n, pointers);
+            close(n->data.fd);
+            free(n);
         }
-        free(vfu_reg->sub_regions);
     }
 }
 
@@ -576,6 +571,8 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     reply_sub_region_t *rep = NULL;
     sub_region_ioeventfd_t *ioefd = NULL;
     region_io_fds_request_t *req = msg->in_data;
+    ioeventfd_list_t *sub_reg = NULL;
+    size_t nr_sub_reg = 0;
 
     if (req->flags != 0 || req->count != 0 || msg->in_size < 16) {
         return ERROR_INT(EINVAL);
@@ -587,12 +584,17 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
     vfu_reg = &vfu_ctx->reg_info[req->index];
+    sub_reg = LIST_FIRST(&vfu_reg->sub_reg_l);
+    while (sub_reg != NULL){
+        nr_sub_reg++;
+        sub_reg =  LIST_NEXT(sub_reg, pointers);
+    }
 
     if (req->argsz < 16 || req->argsz > SERVER_MAX_DATA_XFER_SIZE) {
         return ERROR_INT(EINVAL);
     }
 
-    max_sent_sub_regions = MIN((req->argsz - 16) / (int) sizeof(sub_region_ioeventfd_t), vfu_reg->nr_sub_regions);
+    max_sent_sub_regions = MIN((req->argsz - 16) / (int) sizeof(sub_region_ioeventfd_t), nr_sub_reg);
     msg->out_size = 16 + max_sent_sub_regions * sizeof(sub_region_ioeventfd_t);
     msg->out_data = calloc(1, msg->out_size);
     rep = msg->out_data;
@@ -609,25 +611,26 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return -1;
     }
 
+    sub_reg = LIST_FIRST(&vfu_reg->sub_reg_l);
     uint i = 0;
     for (i = 0; i < max_sent_sub_regions; i ++) {
-        int fd_lookup = get_fd_index(msg->out_fds, msg->nr_out_fds, vfu_reg->sub_regions[i].fd);
+        int fd_lookup = get_fd_index(msg->out_fds, msg->nr_out_fds, sub_reg->data.fd);
 
         ioefd = &rep->sub_regions[i].ioeventfd;
-        ioefd->offset = vfu_reg->sub_regions[i].offset;
-        ioefd->size = vfu_reg->sub_regions[i].size;
-        //ioefd->fd_index = get_fd_index(msg->out_fds, msg->nr_out_fds, vfu_reg->sub_regions[i].fd); // this is the index in the fd array returned
+        ioefd->offset = sub_reg->data.offset;
+        ioefd->size = sub_reg->data.size;
         ioefd->type = 0;
         ioefd->flags = 0;
         ioefd->datamatch = 0;
 
         if (fd_lookup == -1) {
-            msg->out_fds[msg->nr_out_fds] = vfu_reg->sub_regions[i].fd;
+            msg->out_fds[msg->nr_out_fds] = sub_reg->data.fd;
             ioefd->fd_index = msg->nr_out_fds;
             msg->nr_out_fds++;
         } else {
             ioefd->fd_index = fd_lookup;
         }
+        sub_reg = LIST_NEXT(sub_reg, pointers);
     }
 
     msg->hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
@@ -1651,8 +1654,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->cb = cb;
     reg->fd = fd;
     reg->offset = offset;
-    reg->sub_regions = NULL;
-    reg->nr_sub_regions = 0;
+    LIST_INIT(&reg->sub_reg_l);
 
     if (mmap_areas == NULL && reg->fd != -1) {
         mmap_areas = &whole_region;
