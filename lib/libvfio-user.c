@@ -466,10 +466,12 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
                      size_t offset, uint32_t size, uint32_t flags,
                      uint64_t datamatch)
 {
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+
     assert(vfu_ctx != NULL);
     assert(fd >= 0);
 
-    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+    vfu_reg = &vfu_ctx->reg_info[region_idx];
 
     if (offset + size > vfu_reg->size) {
         ERROR_INT(EINVAL);
@@ -495,10 +497,13 @@ EXPORT int
 vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
                      uint32_t size, uint32_t fd_index, uint32_t flags)
 {
-    assert(vfu_ctx != NULL);
-    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+    vfu_reg_info_t *vfu_reg = NULL;
     ioeventfd_list_t *rem = NULL;
     size_t current_fd_index = 0;
+
+    assert(vfu_ctx != NULL);
+
+    vfu_reg = &vfu_ctx->reg_info[region_idx];
 
     LIST_FOREACH(rem, &vfu_reg->subregions, entry) {
         if (rem->offset == offset && rem->size == size &&
@@ -517,10 +522,11 @@ vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
 static void
 free_regions(vfu_ctx_t *vfu_ctx)
 {
+    int index = 0;
+
     assert(vfu_ctx != NULL);
 
-    int index = 0;
-    for (index = 0; index < VFU_PCI_DEV_NUM_REGIONS; index ++) {
+    for (index = 0; index < VFU_PCI_DEV_NUM_REGIONS; index++) {
         vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
 
         while (!LIST_EMPTY(&vfu_reg->subregions)) {
@@ -540,10 +546,11 @@ free_regions(vfu_ctx_t *vfu_ctx)
 static int
 add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
 {
+    uint i = 0;
+
     assert(out_fds != NULL);
     assert(nr_out_fds != NULL);
 
-    uint i = 0;
     for (i = 0; i < *nr_out_fds; i++) {
         if (out_fds[i] == fd_search) {
             return i;
@@ -551,14 +558,22 @@ add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
     }
 
     out_fds[*nr_out_fds] = fd_search;
-    ++*nr_out_fds;
+    (*nr_out_fds)++;
 
-    return *nr_out_fds -1;
+    return *nr_out_fds - 1;
 }
 
 static int
 handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    uint max_sent_sub_regions = 0;
+    vfu_reg_info_t *vfu_reg = NULL;
+    vfio_user_region_io_fds_reply_t *reply = NULL;
+    vfio_user_sub_region_ioeventfd_t *ioefd = NULL;
+    vfio_user_region_io_fds_request_t *req = NULL;
+    ioeventfd_list_t *sub_reg = NULL;
+    size_t nr_sub_reg = 0;
+
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(msg->out_fds == NULL);
@@ -567,13 +582,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    uint max_sent_sub_regions = 0;
-    vfu_reg_info_t *vfu_reg = NULL;
-    vfio_user_region_io_fds_reply_t *reply = NULL;
-    vfio_user_sub_region_ioeventfd_t *ioefd = NULL;
-    vfio_user_region_io_fds_request_t *req = msg->in_data;
-    ioeventfd_list_t *sub_reg = NULL;
-    size_t nr_sub_reg = 0;
+    req = msg->in_data;
 
     if (req->flags != 0 || req->count != 0) {
         return ERROR_INT(EINVAL);
@@ -617,14 +626,14 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                           sizeof(vfio_user_sub_region_ioeventfd_t);
 
     msg->nr_out_fds = 0;
-    msg->out_fds = malloc(sizeof(int) * max_sent_sub_regions);
+    msg->out_fds = calloc(sizeof(int), max_sent_sub_regions);
     if (msg->out_fds == NULL) {
         return -1;
     }
 
     sub_reg = LIST_FIRST(&vfu_reg->subregions);
     uint i = 0;
-    for (i = 0; i < max_sent_sub_regions; i ++) {
+    for (i = 0; i < max_sent_sub_regions; i++) {
 
         ioefd = &reply->sub_regions[i].ioeventfd;
         ioefd->offset = sub_reg->offset;
