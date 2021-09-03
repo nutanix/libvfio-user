@@ -167,6 +167,10 @@ VFIO_IOMMU_DIRTY_PAGES_FLAG_START = (1 << 0)
 VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP = (1 << 1)
 VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
 
+VFIO_USER_IO_FD_TYPE_IOEVENTFD = 0
+VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
+
+
 # enum vfu_dev_irq_type
 VFU_DEV_INTX_IRQ = 0
 VFU_DEV_MSI_IRQ  = 1
@@ -326,7 +330,7 @@ class vfio_region_sparse_mmap_area(Structure):
         ("size", c.c_uint64),
     ]
 
-class region_io_fds_request(Structure):
+class vfio_user_region_io_fds_request(Structure):
     _pack_ = 1
     _fields_ = [
         ("argsz", c.c_uint32),
@@ -335,7 +339,7 @@ class region_io_fds_request(Structure):
         ("count", c.c_uint32)
     ]
 
-class sub_region_ioeventfd(Structure):
+class vfio_user_sub_region_ioeventfd(Structure):
     _pack_ = 1
     _fields_ = [
         ("offset", c.c_uint64),
@@ -347,7 +351,7 @@ class sub_region_ioeventfd(Structure):
         ("datamatch", c.c_uint64)
     ]
 
-class sub_region_ioregionfd(Structure):
+class vfio_user_sub_region_ioregionfd(Structure):
     _pack_ = 1
     _fields_ = [
         ("offset", c.c_uint64),
@@ -359,14 +363,14 @@ class sub_region_ioregionfd(Structure):
         ("user_data", c.c_uint64)
     ]
 
-class sub_region_io_fd(c.Union):
+class vfio_user_sub_region_io_fd(c.Union):
     _pack_ = 1
     _fields_ = [
-        ("sub_region_ioeventfd", sub_region_ioeventfd),
-        ("sub_region_ioregionfd",sub_region_ioregionfd)
+        ("sub_region_ioeventfd", vfio_user_sub_region_ioeventfd),
+        ("sub_region_ioregionfd",vfio_user_sub_region_ioregionfd)
     ]
 
-class region_io_fds_reply(Structure):
+class vfio_user_region_io_fds_reply(Structure):
     _pack_ = 1
     _fields_ = [
         ("argsz", c.c_uint32),
@@ -492,10 +496,12 @@ lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
 lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                              c.POINTER(iovec_t), c.c_int)
 
-lib.create_ioeventfd.argtypes = (c.c_void_p, c.c_size_t, c.c_uint32, c.c_uint32)
-lib.vfu_delete_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_uint32)
-lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_uint32,
-                                     c.c_int, c.c_uint32, c.c_uint32)
+lib.vfu_delete_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_size_t,
+                                     c.c_uint32, c.c_uint32, c.c_uint32)
+
+lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
+                                     c.c_size_t, c.c_uint32, c.c_uint32,
+                                     c.c_uint64)
 
 
 def to_byte(val):
@@ -808,18 +814,13 @@ def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
     return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
 
-def create_ioeventfd(ctx, offset, flags, index):
+def vfu_delete_ioeventfd(ctx, region_idx, offset, size, fd_index, flags):
     assert ctx != None
 
-    return lib.create_ioeventfd(ctx, offset, flags, index)
+    return lib.vfu_delete_ioeventfd(ctx, region_idx, offset, size, fd_index, flags)
 
-def delete_ioeventfd(ctx, index, fd_index):
+def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
     assert ctx != None
 
-    return lib.vfu_delete_ioeventfd(ctx, index, fd_index)
-
-def vfu_create_ioeventfd(ctx, offset, size, fd, flags, index):
-    assert ctx != None
-
-    return lib.vfu_create_ioeventfd(ctx, offset, size, fd, flags, index)
+    return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch)
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

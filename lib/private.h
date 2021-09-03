@@ -135,8 +135,7 @@ typedef struct  {
     /* offset of region within fd. */
     uint64_t offset;
     /* The subregions for ioregions and ioevents */
-
-    LIST_HEAD(, ioeventfd_list) sub_reg_l;
+    LIST_HEAD(, ioeventfd_list) subregions;
 } vfu_reg_info_t;
 
 struct pci_dev {
@@ -182,11 +181,15 @@ struct ioeventfd {
     uint64_t size;
     int32_t fd;
     uint32_t flags;
-} __attribute__((packed));
+};
 
 struct ioeventfd_list {
-    ioeventfd_t data;
-    LIST_ENTRY(ioeventfd_list) pointers;
+    uint64_t offset;
+    uint64_t size;
+    int32_t fd;
+    uint32_t flags;
+    uint64_t datamatch;
+    LIST_ENTRY(ioeventfd_list) entry;
 };
 
 static inline int

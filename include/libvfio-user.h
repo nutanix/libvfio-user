@@ -89,18 +89,6 @@ typedef enum {
     VFU_DEV_TYPE_PCI
 } vfu_dev_type_t;
 
-typedef struct region_io_fds region_io_fds_request_t;
-
-typedef struct sub_region_ioregionfd sub_region_ioregionfd_t;
-
-typedef struct sub_region_ioeventfd sub_region_ioeventfd_t;
-
-typedef struct reply_sub_region reply_sub_region_t;
-
-typedef struct ioeventfd ioeventfd_t;
-
-typedef struct ioeventfd_list ioeventfd_list_t;
-
 /**
  * Creates libvfio-user context. By default one ERR and one REQ IRQs are
  * initialized, this can be overridden with vfu_setup_device_nr_irqs.
@@ -897,19 +885,40 @@ bool
 vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
 
 /*
+ * Creates a new ioeventfd at the given setup memory region with @offset, @size,
+ * @fd, @flags and @datamatch.
+ *
+ * Returns 0 on success and -1 on failure with errno set.
  *
  * @vfu_ctx: the libvfio-user context
+ * @region_idx: The index of the memory region to set up the ioeventfd
+ * @fd: the value of the file descriptor
  * @offset: The offset into the memory region
+ * @size: size of the memory region
  * @flags: Any flags to set up the ioeventfd
- * @index: The index of the memory region to set up the ioeventfd
+ * @datamtach: sets the datamatch value
  */
 int
-create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags,
-                 uint32_t index);
+vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
+                     size_t offset, uint32_t size, uint32_t flags,
+                     uint64_t datamatch);
 
-int vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t size, int fd, uint32_t flags, uint32_t index);
-
-int vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index);
+/*
+ * Deletes an ioeventfd at the given setup memory region with @offset, @size,
+ * @fd_index, @flags and @datamatch.
+ *
+ * Returns 0 on success and -1 on failure.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @region_idx: The index of the memory region to set up the ioeventfd
+ * @offset: offset within the memory region
+ * @size: the size of the region
+ * @fd_index: the index of the fd from the subregion
+ * @flags: the flags of the region
+ */
+int
+vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
+                     uint32_t size, uint32_t fd_index, uint32_t flags);
 
 #ifdef __cplusplus
 }

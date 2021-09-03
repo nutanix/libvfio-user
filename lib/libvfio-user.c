@@ -462,69 +462,60 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 EXPORT int
-vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t size, int fd, uint32_t flags, uint32_t index)
+vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
+                     size_t offset, uint32_t size, uint32_t flags,
+                     uint64_t datamatch)
 {
-
     assert(vfu_ctx != NULL);
     assert(fd >= 0);
 
-    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+
+    if (offset + size > vfu_reg->size) {
+        ERROR_INT(EINVAL);
+        return -1;
+    }
+
     ioeventfd_list_t *elem = malloc(sizeof(ioeventfd_list_t));
     if (elem == NULL) {
         return -1;
     }
-    elem->data.fd = fd;
-    elem->data.offset = offset;
-    elem->data.size = size;
-    elem->data.flags = flags;
-    LIST_INSERT_HEAD(&vfu_reg->sub_reg_l, elem, pointers);
+
+    elem->fd = fd;
+    elem->offset = offset;
+    elem->size = size;
+    elem->flags = flags;
+    elem->datamatch = datamatch;
+    LIST_INSERT_HEAD(&vfu_reg->subregions, elem, entry);
 
     return 0;
 }
 
 EXPORT int
-create_ioeventfd(vfu_ctx_t *vfu_ctx, size_t offset, uint32_t flags, uint32_t index)
-{
-
-    assert(vfu_ctx != NULL);
-    int tmp = eventfd(0, 0);
-
-    if (tmp == -1) {
-        return -1;
-    }
-
-    vfu_create_ioeventfd(vfu_ctx, offset, 8, tmp, flags, index);
-
-    return tmp;
-}
-
-EXPORT int vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t fd_index)
+vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
+                     uint32_t size, uint32_t fd_index, uint32_t flags)
 {
     assert(vfu_ctx != NULL);
-    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
-    ioeventfd_list_t *rem = LIST_FIRST(&vfu_reg->sub_reg_l);
+    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+    ioeventfd_list_t *rem = NULL;
+    size_t current_fd_index = 0;
 
-    uint32_t i = 0;
-    for (i = 0; i < fd_index; i ++) {
-        if (rem == NULL) {
-            break;
+    LIST_FOREACH(rem, &vfu_reg->subregions, entry) {
+        if (rem->offset == offset && rem->size == size &&
+            current_fd_index == fd_index && rem->flags == flags ) {
+                LIST_REMOVE(rem, entry);
+                free(rem);
+                return 0;
         }
-        LIST_NEXT(rem, pointers);
+        LIST_NEXT(rem, entry);
+        current_fd_index++;
     }
 
-    if (rem == NULL) {
-        return -1;
-    }
-
-    LIST_REMOVE(rem, pointers);
-    close(rem->data.fd);
-    free(rem);
-
-    return 0;
+    return -1;
 }
 
 static void
-cleanup_ioeventfds(vfu_ctx_t *vfu_ctx)
+free_regions(vfu_ctx_t *vfu_ctx)
 {
     assert(vfu_ctx != NULL);
 
@@ -532,51 +523,59 @@ cleanup_ioeventfds(vfu_ctx_t *vfu_ctx)
     for (index = 0; index < VFU_PCI_DEV_NUM_REGIONS; index ++) {
         vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[index];
 
-        while (!LIST_EMPTY(&vfu_reg->sub_reg_l)) {            /* List Deletion. */
-            ioeventfd_list_t *n = LIST_FIRST(&vfu_reg->sub_reg_l);
-            LIST_REMOVE(n, pointers);
-            close(n->data.fd);
+        while (!LIST_EMPTY(&vfu_reg->subregions)) {
+            ioeventfd_list_t *n = LIST_FIRST(&vfu_reg->subregions);
+            LIST_REMOVE(n, entry);
             free(n);
         }
     }
+    free(vfu_ctx->reg_info);
 }
 
+/*
+ * This function is used to add fd's to the fd return array and gives you back
+ * the index of the fd that has been added. If the fd is already present it will
+ * return the index to that duplicate fd to reduce the number of fd's sent.
+ */
 static int
-get_fd_index(int *out_fds, size_t nr_out_fds, int fd_search)
+add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
 {
     assert(out_fds != NULL);
+    assert(nr_out_fds != NULL);
 
     uint i = 0;
-    for(i = 0; i< nr_out_fds; i ++) {
+    for (i = 0; i < *nr_out_fds; i++) {
         if (out_fds[i] == fd_search) {
             return i;
         }
     }
 
-    return -1;
+    out_fds[*nr_out_fds] = fd_search;
+    ++*nr_out_fds;
+
+    return *nr_out_fds -1;
 }
 
 static int
 handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(msg->out_fds == NULL);
 
-    if (msg->in_size != 16) {
+    if (msg->in_size != sizeof(vfio_user_region_io_fds_request_t)) {
         return ERROR_INT(EINVAL);
     }
 
     uint max_sent_sub_regions = 0;
     vfu_reg_info_t *vfu_reg = NULL;
-    reply_sub_region_t *rep = NULL;
-    sub_region_ioeventfd_t *ioefd = NULL;
-    region_io_fds_request_t *req = msg->in_data;
+    vfio_user_region_io_fds_reply_t *reply = NULL;
+    vfio_user_sub_region_ioeventfd_t *ioefd = NULL;
+    vfio_user_region_io_fds_request_t *req = msg->in_data;
     ioeventfd_list_t *sub_reg = NULL;
     size_t nr_sub_reg = 0;
 
-    if (req->flags != 0 || req->count != 0 || msg->in_size < 16) {
+    if (req->flags != 0 || req->count != 0) {
         return ERROR_INT(EINVAL);
     }
 
@@ -587,60 +586,60 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     vfu_reg = &vfu_ctx->reg_info[req->index];
-    sub_reg = LIST_FIRST(&vfu_reg->sub_reg_l);
-    while (sub_reg != NULL){
+    LIST_FOREACH(sub_reg, &vfu_reg->subregions, entry) {
         nr_sub_reg++;
-        sub_reg =  LIST_NEXT(sub_reg, pointers);
     }
 
-    if (req->argsz < 16 || req->argsz > SERVER_MAX_DATA_XFER_SIZE) {
+    if (req->argsz < sizeof(vfio_user_region_io_fds_reply_t) ||
+        req->argsz > SERVER_MAX_DATA_XFER_SIZE) {
         return ERROR_INT(EINVAL);
     }
 
-    max_sent_sub_regions = MIN((req->argsz - 16) / (int) sizeof(sub_region_ioeventfd_t), nr_sub_reg);
-    msg->out_size = 16 + max_sent_sub_regions * sizeof(sub_region_ioeventfd_t);
-    msg->out_data = calloc(1, msg->out_size);
-    rep = msg->out_data;
-    rep->index = req->index;
-    rep->count = max_sent_sub_regions;
-    rep->flags = 0;
-    rep->argsz = msg->out_size;
+    max_sent_sub_regions = MIN((req->argsz -
+                                sizeof(vfio_user_region_io_fds_reply_t)) /
+                                sizeof(vfio_user_sub_region_ioeventfd_t),
+                                nr_sub_reg);
+    msg->out_size = sizeof(vfio_user_region_io_fds_reply_t) +
+                    max_sent_sub_regions *
+                    sizeof(vfio_user_sub_region_ioeventfd_t);
+    msg->out_data = calloc(1, sizeof(vfio_user_region_io_fds_reply_t) +
+                           max_sent_sub_regions *
+                           sizeof(vfio_user_sub_region_ioeventfd_t));
+    if (msg->out_data == NULL) {
+        return -1;
+    }
+    reply = msg->out_data;
+    reply->index = req->index;
+    reply->count = max_sent_sub_regions;
+    reply->flags = 0;
+    reply->argsz = sizeof(vfio_user_region_io_fds_reply_t) +
+                          max_sent_sub_regions *
+                          sizeof(vfio_user_sub_region_ioeventfd_t);
 
-    // Cannot send invalid files descriptors as it will cause the recv to fail and block
-    // No recovery is possible from that state in the test suite.
     msg->nr_out_fds = 0;
     msg->out_fds = malloc(sizeof(int) * max_sent_sub_regions);
     if (msg->out_fds == NULL) {
         return -1;
     }
 
-    sub_reg = LIST_FIRST(&vfu_reg->sub_reg_l);
+    sub_reg = LIST_FIRST(&vfu_reg->subregions);
     uint i = 0;
     for (i = 0; i < max_sent_sub_regions; i ++) {
-        int fd_lookup = get_fd_index(msg->out_fds, msg->nr_out_fds, sub_reg->data.fd);
 
-        ioefd = &rep->sub_regions[i].ioeventfd;
-        ioefd->offset = sub_reg->data.offset;
-        ioefd->size = sub_reg->data.size;
-        ioefd->type = 0;
-        ioefd->flags = 0;
-        ioefd->datamatch = 0;
+        ioefd = &reply->sub_regions[i].ioeventfd;
+        ioefd->offset = sub_reg->offset;
+        ioefd->size = sub_reg->size;
+        ioefd->fd_index = add_fd_index(msg->out_fds, &msg->nr_out_fds,
+                                       sub_reg->fd);
+        ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
+        ioefd->flags = sub_reg->flags;
+        ioefd->datamatch = sub_reg->datamatch;
 
-        if (fd_lookup == -1) {
-            msg->out_fds[msg->nr_out_fds] = sub_reg->data.fd;
-            ioefd->fd_index = msg->nr_out_fds;
-            msg->nr_out_fds++;
-        } else {
-            ioefd->fd_index = fd_lookup;
-        }
-        sub_reg = LIST_NEXT(sub_reg, pointers);
+        sub_reg = LIST_NEXT(sub_reg, entry);
     }
-
-    msg->hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
 
     return 0;
 }
-
 
 int
 consume_fd(int *fds, size_t nr_fds, size_t index)
@@ -1427,8 +1426,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
         dma_controller_destroy(vfu_ctx->dma);
     }
     free_sparse_mmap_areas(vfu_ctx);
-    cleanup_ioeventfds(vfu_ctx);
-    free(vfu_ctx->reg_info);
+    free_regions(vfu_ctx);
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
@@ -1657,7 +1655,7 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     reg->cb = cb;
     reg->fd = fd;
     reg->offset = offset;
-    LIST_INIT(&reg->sub_reg_l);
+    LIST_INIT(&reg->subregions);
 
     if (mmap_areas == NULL && reg->fd != -1) {
         mmap_areas = &whole_region;

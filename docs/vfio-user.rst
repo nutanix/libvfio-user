@@ -995,7 +995,7 @@ Reply
 
 * *argsz* is the size of the region IO FD info structure plus the
   total size of the sub-region array. Thus, each array entry "i" is at offset
-  i * ((argsz - 32) / count). Note that currently this is 40 bytes for both IO
+  i * ((argsz - 16) / count). Note that currently this is 40 bytes for both IO
   FD types, but this is not to be relied on. As elsewhere, this indicates the
   full reply payload size needed.
 * *flags* must be zero
@@ -1011,8 +1011,8 @@ Note that it is the client's responsibility to verify the requested values (for
 example, that the requested offset does not exceed the region's bounds).
 
 Each sub-region given in the response has one of two possible structures,
-depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` or
-``VFIO_USER_IO_FD_TYPE_IOREGIONFD``:
+depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` (0) or
+``VFIO_USER_IO_FD_TYPE_IOREGIONFD`` (1):
 
 Sub-Region IO FD info format (ioeventfd)
 """"""""""""""""""""""""""""""""""""""""
