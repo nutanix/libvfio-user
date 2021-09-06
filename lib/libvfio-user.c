@@ -500,14 +500,19 @@ vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
     vfu_reg_info_t *vfu_reg = NULL;
     ioeventfd_list_t *rem = NULL;
     size_t current_fd_index = 0;
+    int fd = -1;
+
 
     assert(vfu_ctx != NULL);
 
     vfu_reg = &vfu_ctx->reg_info[region_idx];
 
     LIST_FOREACH(rem, &vfu_reg->subregions, entry) {
+        if (current_fd_index == fd_index) {
+            fd = rem->fd;
+        }
         if (rem->offset == offset && rem->size == size &&
-            current_fd_index == fd_index && rem->flags == flags ) {
+            rem->fd == fd && rem->flags == flags ) {
                 LIST_REMOVE(rem, entry);
                 free(rem);
                 return 0;
