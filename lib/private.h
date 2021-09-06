@@ -176,21 +176,14 @@ struct vfu_ctx {
     vfu_dev_type_t          dev_type;
 };
 
-struct ioeventfd {
-    uint64_t offset;
-    uint64_t size;
-    int32_t fd;
-    uint32_t flags;
-};
-
-struct ioeventfd_list {
+typedef struct ioeventfd_list {
     uint64_t offset;
     uint64_t size;
     int32_t fd;
     uint32_t flags;
     uint64_t datamatch;
     LIST_ENTRY(ioeventfd_list) entry;
-};
+} ioeventfd_list_t;
 
 static inline int
 ERROR_INT(int err)

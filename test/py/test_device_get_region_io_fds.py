@@ -9,6 +9,7 @@ import ctypes
 ctx = None
 sock = None
 fds = []
+SIZE = 8
 
 def test_device_get_region_io_fds_setup():
     global ctx, sock
@@ -38,11 +39,13 @@ def test_device_get_region_io_fds_setup():
         tmp = eventfd(0,0)
         fds.append(tmp)
         assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR2_REGION_IDX, tmp, \
-                                    i * 8, 8, 0, 0) != -1
+                                    i * SIZE, SIZE, 0, 0) != -1
 
 def test_device_get_region_io_fds_bad_flags():
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+40*5, flags = 1, \
+    payload = vfio_user_region_io_fds_request(\
+    argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 5, flags = 1, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, \
@@ -50,27 +53,31 @@ def test_device_get_region_io_fds_bad_flags():
 
 def test_device_get_region_io_fds_bad_count():
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+40*5, flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+    argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 5, flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, \
         expect=errno.EINVAL)
 
-def test_device_get_region_io_fds_buffer_to_small():
+def test_device_get_region_io_fds_buffer_too_small():
 
-    payload = vfio_user_region_io_fds_request(argsz = 15, flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+        argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) -1 , flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, \
         expect=errno.EINVAL)
 
-def test_device_get_region_io_fds_buffer_to_large():
+def test_device_get_region_io_fds_buffer_too_large():
 
     payload = vfio_user_region_io_fds_request(argsz = SERVER_MAX_DATA_XFER_SIZE\
                                               + 1, flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 1)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect = \
+        errno.EINVAL)
 
 def test_device_get_region_io_fds_no_regions():
 
@@ -101,14 +108,25 @@ def test_device_get_region_io_fds_no_regions_setup():
     assert reply.flags == 0
     assert reply.index == VFU_PCI_DEV_BAR3_REGION_IDX
 
+def test_device_get_region_io_fds_region_out_of_range():
+
+    payload = vfio_user_region_io_fds_request(argsz = 512, flags = 0, \
+                                index = 512, count = 0)
+
+    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect = \
+              errno.EINVAL)
+
 def test_device_get_region_io_fds_fds_read_write():
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+40*4, flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+    argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 4, flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
 
+    assert len(newfds) == 4
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
     ioevent, ret = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
 
@@ -120,14 +138,16 @@ def test_device_get_region_io_fds_fds_read_write():
 
 def test_device_get_region_io_fds_full():
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+(40*6), flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+        argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 6, flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
-
+    assert len(newfds) == reply.count
     ioevents = []
     for i in range(0, reply.count):
         ioevent, ret = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
@@ -138,16 +158,17 @@ def test_device_get_region_io_fds_full():
         out = os.read(newfds[ioevents[i].fd_index], ioevent.size)
         [out] = struct.unpack("@Q",out)
         assert out == 1
-        assert ioevents[i].size == 8
-        assert ioevents[i].offset == 40 - (8 * i)
+        assert ioevents[i].size == SIZE
+        assert ioevents[i].offset == 40 - (SIZE * i)
         assert ioevents[i].type == VFIO_USER_IO_FD_TYPE_IOEVENTFD
 
 def test_device_get_region_io_fds_fds_read_write_nothing():
 
-    payload = vfio_user_region_io_fds_request(argsz = 16, flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+            argsz = ctypes.sizeof(vfio_user_region_io_fds_reply), flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
 
     reply, ret = vfio_user_region_io_fds_request.pop_from_buffer(ret)
@@ -156,20 +177,23 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
 def test_device_get_region_io_fds_fds_read_write_dupe_fd():
 
     t = eventfd(0,0)
-    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR2_REGION_IDX, t, 6 * 8, 8, \
-                                 0, 0) != -1
-    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR2_REGION_IDX, t, 7 * 8, 8, \
-                                0, 0) != -1
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR2_REGION_IDX, t, 6 * SIZE, \
+                                SIZE, 0, 0) != -1
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR2_REGION_IDX, t, 7 * SIZE, \
+                                SIZE, 0, 0) != -1
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+(40*8), flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+        argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 8, flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
-
+    assert len(newfds) == 7
     assert reply.count == 8
-    assert reply.argsz == 16+(40*8)
+    assert reply.argsz == ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+        ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 8
 
     ioevents = []
     for i in range(0, reply.count):
@@ -183,8 +207,8 @@ def test_device_get_region_io_fds_fds_read_write_dupe_fd():
         out = os.read(newfds[ioevents[i].fd_index], ioevent.size)
         [out] = struct.unpack("@Q",out)
         assert out == 1
-        assert ioevents[i].size == 8
-        assert ioevents[i].offset == 56 - (8 * i)
+        assert ioevents[i].size == SIZE
+        assert ioevents[i].offset == 56 - (SIZE * i)
         assert ioevents[i].type == VFIO_USER_IO_FD_TYPE_IOEVENTFD
 
     assert ioevents[0].fd_index == ioevents[1].fd_index
@@ -214,10 +238,12 @@ def test_device_get_region_io_fds_fds_read_write_dupe_fd():
                                 ioevents[1].offset, ioevents[1].size, \
                                 ioevents[1].fd_index, ioevents[1].flags) == 0
 
-    payload = vfio_user_region_io_fds_request(argsz = 16+(40*8), flags = 0, \
+    payload = vfio_user_region_io_fds_request(\
+        argsz = ctypes.sizeof(vfio_user_region_io_fds_reply) + \
+            ctypes.sizeof(vfio_user_sub_region_ioeventfd) * 8, flags = 0, \
                                  index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fd(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
 

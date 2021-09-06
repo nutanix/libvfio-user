@@ -516,7 +516,7 @@ def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
 
-def  eventfd(initval=0, flags=0):
+def eventfd(initval=0, flags=0):
     libc.eventfd.argtypes = (c.c_uint, c.c_int)
     return libc.eventfd(initval, flags)
 
@@ -564,22 +564,27 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
     vfu_run_ctx(ctx)
     return get_reply(sock, expect=expect)
 
-def get_reply_fd(sock, expect=0):
+def get_reply_fds(sock, expect=0):
+    """Recvies a message from a socket and pulls the returned file descriptors
+       out of the message."""
     fds = array.array("i")
-    data, ancillary, flags, addr = sock.recvmsg(4096, socket.CMSG_LEN(64 * fds.itemsize))
-    (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII", data[0:16])
+    data, ancillary, flags, addr = sock.recvmsg(4096, \
+                                            socket.CMSG_LEN(64 * fds.itemsize))
+    (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII",\
+                                                              data[0:16])
     assert errno == expect
 
-    cmsgLevel, cmsgType, packedFD = ancillary[0] if len(ancillary) != 0 else (0, 0, [])
-    unpackedFDs = []
-    for i in range(0, len(packedFD), 4):
-        [unpackedFD] = struct.unpack_from("i", packedFD, offset = i)
-        unpackedFDs.append(unpackedFD)
-    assert len(packedFD)/4 == len(unpackedFDs)
+    cmsgLevel, cmsgType, packed_FD = ancillary[0] if len(ancillary) != 0 else \
+                                        (0, 0, [])
+    unpacked_FDs = []
+    for i in range(0, len(packed_FD), 4):
+        [unpacked_FD] = struct.unpack_from("i", packed_FD, offset = i)
+        unpacked_FDs.append(unpacked_FD)
+    assert len(packed_FD)/4 == len(unpacked_FDs)
     assert (msg_flags & VFIO_USER_F_TYPE_REPLY) != 0
-    return (unpackedFDs, data[16:])
+    return (unpacked_FDs, data[16:])
 
-def msg_fd(ctx, sock, cmd, payload, expect=0, fds=None):
+def msg_fds(ctx, sock, cmd, payload, expect=0, fds=None):
     """Round trip a request and reply to the server. With the server returning
        new fds"""
     hdr = vfio_user_header(cmd, size=len(payload))
@@ -591,7 +596,7 @@ def msg_fd(ctx, sock, cmd, payload, expect=0, fds=None):
         sock.send(hdr + payload)
 
     vfu_run_ctx(ctx)
-    return get_reply_fd(sock, expect=expect)
+    return get_reply_fds(sock, expect=expect)
 
 def get_pci_header(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)

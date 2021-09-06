@@ -502,7 +502,6 @@ vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
     size_t current_fd_index = 0;
     int fd = -1;
 
-
     assert(vfu_ctx != NULL);
 
     vfu_reg = &vfu_ctx->reg_info[region_idx];
@@ -571,13 +570,14 @@ add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
 static int
 handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    uint max_sent_sub_regions = 0;
+    size_t max_sent_sub_regions = 0;
     vfu_reg_info_t *vfu_reg = NULL;
     vfio_user_region_io_fds_reply_t *reply = NULL;
     vfio_user_sub_region_ioeventfd_t *ioefd = NULL;
     vfio_user_region_io_fds_request_t *req = NULL;
     ioeventfd_list_t *sub_reg = NULL;
     size_t nr_sub_reg = 0;
+    size_t i = 0;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
@@ -594,8 +594,8 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     if (req->index >= vfu_ctx->nr_regions) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region info",
-                req->index);
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region index %d in get region io fds "
+                "info", req->index);
         return ERROR_INT(EINVAL);
     }
 
@@ -637,7 +637,6 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     sub_reg = LIST_FIRST(&vfu_reg->subregions);
-    uint i = 0;
     for (i = 0; i < max_sent_sub_regions; i++) {
 
         ioefd = &reply->sub_regions[i].ioeventfd;

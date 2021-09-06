@@ -156,29 +156,17 @@ struct vfio_user_irq_info {
     uint32_t    subindex;
 } __attribute__((packed));
 
-typedef struct vfio_user_region_io_fds_request vfio_user_region_io_fds_request_t;
-
-typedef struct vfio_user_sub_region_ioregionfd vfio_user_sub_region_ioregionfd_t;
-
-typedef struct vfio_user_sub_region_ioeventfd vfio_user_sub_region_ioeventfd_t;
-
-typedef struct vfio_user_region_io_fds_reply vfio_user_region_io_fds_reply_t;
-
-typedef struct ioeventfd ioeventfd_t;
-
-typedef struct ioeventfd_list ioeventfd_list_t;
-
-struct vfio_user_region_io_fds_request {
+typedef struct vfio_user_region_io_fds_request {
     uint32_t argsz;
     uint32_t flags;
     uint32_t index;
     uint32_t count;
-} __attribute__((packed));
+} __attribute__((packed)) vfio_user_region_io_fds_request_t;
 
 #define VFIO_USER_IO_FD_TYPE_IOEVENTFD 0
 #define VFIO_USER_IO_FD_TYPE_IOREGIONFD 1
 
-struct vfio_user_sub_region_ioeventfd {
+typedef struct vfio_user_sub_region_ioeventfd {
     uint64_t offset;
     uint64_t size;
     uint32_t fd_index;
@@ -186,9 +174,9 @@ struct vfio_user_sub_region_ioeventfd {
     uint32_t flags;
     uint32_t padding;
     uint64_t datamatch;
-} __attribute__((packed));
+} __attribute__((packed)) vfio_user_sub_region_ioeventfd_t;
 
-struct vfio_user_sub_region_ioregionfd {
+typedef struct vfio_user_sub_region_ioregionfd {
     uint64_t offset;
     uint64_t size;
     uint32_t fd_index;
@@ -196,9 +184,9 @@ struct vfio_user_sub_region_ioregionfd {
     uint32_t flags;
     uint32_t padding;
     uint64_t user_data;
-} __attribute__((packed));
+} __attribute__((packed)) vfio_user_sub_region_ioregionfd_t;
 
-struct vfio_user_region_io_fds_reply {
+typedef struct vfio_user_region_io_fds_reply {
     uint32_t argsz;
     uint32_t flags;
     uint32_t index;
@@ -207,7 +195,7 @@ struct vfio_user_region_io_fds_reply {
         struct vfio_user_sub_region_ioeventfd ioeventfd;
         struct vfio_user_sub_region_ioregionfd ioregionfd;
     } sub_regions[];
-} __attribute__((packed));
+} __attribute__((packed)) vfio_user_region_io_fds_reply_t;
 
 
 /* Analogous to vfio_iommu_type1_dirty_bitmap. */
