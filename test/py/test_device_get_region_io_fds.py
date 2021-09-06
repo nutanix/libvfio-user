@@ -113,8 +113,8 @@ def test_device_get_region_io_fds_region_out_of_range():
     payload = vfio_user_region_io_fds_request(argsz = 512, flags = 0, \
                                 index = 512, count = 0)
 
-    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect = \
-              errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect = \
+        errno.EINVAL)
 
 def test_device_get_region_io_fds_fds_read_write():
 
@@ -127,8 +127,8 @@ def test_device_get_region_io_fds_fds_read_write():
                          payload, expect=0)
 
     assert len(newfds) == 4
-    reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
-    ioevent, ret = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
+    _, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
+    _, ret = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
 
     for i in range(0,4):
         os.write(newfds[i], c.c_ulonglong(10))
@@ -168,7 +168,7 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
             argsz = ctypes.sizeof(vfio_user_region_io_fds_reply), flags = 0, \
                                 index = VFU_PCI_DEV_BAR2_REGION_IDX, count = 0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
+    _, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, \
                          payload, expect=0)
 
     reply, ret = vfio_user_region_io_fds_request.pop_from_buffer(ret)
