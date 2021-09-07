@@ -894,31 +894,14 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
  * @region_idx: The index of the memory region to set up the ioeventfd
  * @fd: the value of the file descriptor
  * @offset: The offset into the memory region
- * @size: size of the memory region
+ * @size: size of the ioeventfd
  * @flags: Any flags to set up the ioeventfd
- * @datamtach: sets the datamatch value
+ * @datamatch: sets the datamatch value
  */
 int
 vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
                      size_t offset, uint32_t size, uint32_t flags,
                      uint64_t datamatch);
-
-/*
- * Deletes an ioeventfd at the given setup memory region with @offset, @size,
- * @fd_index, @flags and @datamatch.
- *
- * Returns 0 on success and -1 on failure.
- *
- * @vfu_ctx: the libvfio-user context
- * @region_idx: The index of the memory region to set up the ioeventfd
- * @offset: offset within the memory region
- * @size: the size of the region
- * @fd_index: the index of the fd from the subregion
- * @flags: the flags of the region
- */
-int
-vfu_delete_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, size_t offset,
-                     uint32_t size, uint32_t fd_index, uint32_t flags);
 
 #ifdef __cplusplus
 }

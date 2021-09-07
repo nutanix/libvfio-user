@@ -367,7 +367,7 @@ class vfio_user_sub_region_io_fd(c.Union):
     _pack_ = 1
     _fields_ = [
         ("sub_region_ioeventfd", vfio_user_sub_region_ioeventfd),
-        ("sub_region_ioregionfd",vfio_user_sub_region_ioregionfd)
+        ("sub_region_ioregionfd", vfio_user_sub_region_ioregionfd)
     ]
 
 class vfio_user_region_io_fds_reply(Structure):
@@ -496,9 +496,6 @@ lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
 lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                              c.POINTER(iovec_t), c.c_int)
 
-lib.vfu_delete_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_size_t,
-                                     c.c_uint32, c.c_uint32, c.c_uint32)
-
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
                                      c.c_uint64)
@@ -565,24 +562,24 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
     return get_reply(sock, expect=expect)
 
 def get_reply_fds(sock, expect=0):
-    """Recvies a message from a socket and pulls the returned file descriptors
+    """Receives a message from a socket and pulls the returned file descriptors
        out of the message."""
     fds = array.array("i")
-    data, ancillary, flags, addr = sock.recvmsg(4096, \
+    data, ancillary, flags, addr = sock.recvmsg(4096,
                                             socket.CMSG_LEN(64 * fds.itemsize))
-    (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII",\
+    (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII",
                                                               data[0:16])
     assert errno == expect
 
-    cmsgLevel, cmsgType, packed_FD = ancillary[0] if len(ancillary) != 0 else \
+    cmsgLevel, cmsgType, packed_fd = ancillary[0] if len(ancillary) != 0 else \
                                         (0, 0, [])
-    unpacked_FDs = []
-    for i in range(0, len(packed_FD), 4):
-        [unpacked_FD] = struct.unpack_from("i", packed_FD, offset = i)
-        unpacked_FDs.append(unpacked_FD)
-    assert len(packed_FD)/4 == len(unpacked_FDs)
+    unpacked_fds = []
+    for i in range(0, len(packed_fd), 4):
+        [unpacked_fd] = struct.unpack_from("i", packed_fd, offset = i)
+        unpacked_fds.append(unpacked_fd)
+    assert len(packed_fd)/4 == len(unpacked_fds)
     assert (msg_flags & VFIO_USER_F_TYPE_REPLY) != 0
-    return (unpacked_FDs, data[16:])
+    return (unpacked_fds, data[16:])
 
 def msg_fds(ctx, sock, cmd, payload, expect=0, fds=None):
     """Round trip a request and reply to the server. With the server returning
@@ -818,11 +815,6 @@ def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
 
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
     return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
-
-def vfu_delete_ioeventfd(ctx, region_idx, offset, size, fd_index, flags):
-    assert ctx != None
-
-    return lib.vfu_delete_ioeventfd(ctx, region_idx, offset, size, fd_index, flags)
 
 def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
     assert ctx != None
