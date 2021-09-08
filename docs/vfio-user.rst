@@ -322,9 +322,9 @@ usual ``msg_size`` field in the header, not the ``argsz`` field.
 
 In a reply, the server sets ``argsz`` field to the size needed for a full
 payload size. This may be less than the requested maximum size. This may be
-larger than the requested maximum size: in that case, the full payload is not
-included in the reply, but the ``argsz`` field in the reply indicates the needed
-size, allowing a client to allocate a larger buffer for holding the reply before
+larger than the requested maximum size: in that case, the payload reply header
+is returned, but the ``argsz`` field in the reply indicates the needed size,
+allowing a client to allocate a larger buffer for holding the reply before
 trying again.
 
 In addition, during negotiation (see  `Version`_), the client and server may
