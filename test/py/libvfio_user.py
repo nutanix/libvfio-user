@@ -571,7 +571,7 @@ def get_reply_fds(sock, expect=0):
                                                               data[0:16])
     assert errno == expect
 
-    cmsgLevel, cmsgType, packed_fd = ancillary[0] if len(ancillary) != 0 else \
+    cmsg_level, cmsg_type, packed_fd = ancillary[0] if len(ancillary) != 0 else \
                                         (0, 0, [])
     unpacked_fds = []
     for i in range(0, len(packed_fd), 4):

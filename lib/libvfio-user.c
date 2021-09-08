@@ -544,6 +544,7 @@ static int
 handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     size_t max_sent_sub_regions = 0;
+    uint subregion_array_size = 0;
     vfu_reg_info_t *vfu_reg = NULL;
     vfio_user_region_io_fds_reply_t *reply = NULL;
     vfio_user_sub_region_ioeventfd_t *ioefd = NULL;
@@ -572,10 +573,6 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    if (req->index >= VFU_PCI_DEV_NUM_REGIONS) {
-        return ERROR_INT(EINVAL);
-    }
-
     vfu_reg = &vfu_ctx->reg_info[req->index];
 
     if (vfu_reg->fd == -1) {
@@ -595,13 +592,11 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                                 sizeof(vfio_user_region_io_fds_reply_t)) /
                                 sizeof(vfio_user_sub_region_ioeventfd_t),
                                 nr_sub_reg);
-    max_sent_sub_regions = (max_sent_sub_regions >= nr_sub_reg) ? nr_sub_reg : 0;
-    msg->out_size = sizeof(vfio_user_region_io_fds_reply_t) +
-                    max_sent_sub_regions *
-                    sizeof(vfio_user_sub_region_ioeventfd_t);
-    msg->out_data = calloc(1, sizeof(vfio_user_region_io_fds_reply_t) +
-                           max_sent_sub_regions *
-                           sizeof(vfio_user_sub_region_ioeventfd_t));
+    subregion_array_size = ((max_sent_sub_regions >= nr_sub_reg) ? nr_sub_reg :
+                             0) * sizeof(vfio_user_sub_region_ioeventfd_t);
+    msg->out_size = sizeof(vfio_user_region_io_fds_reply_t)
+                           + subregion_array_size;
+    msg->out_data = calloc(1, msg->out_size);
     if (msg->out_data == NULL) {
         return -1;
     }
@@ -614,24 +609,26 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                           sizeof(vfio_user_sub_region_ioeventfd_t);
 
     msg->nr_out_fds = 0;
-    msg->out_fds = calloc(sizeof(int), max_sent_sub_regions);
-    if (msg->out_fds == NULL) {
-        return -1;
-    }
+    if (req->argsz >= reply->argsz) {
+        msg->out_fds = calloc(sizeof(int), max_sent_sub_regions);
+        if (msg->out_fds == NULL) {
+            return -1;
+        }
 
-    sub_reg = LIST_FIRST(&vfu_reg->subregions);
-    for (i = 0; i < max_sent_sub_regions; i++) {
+        sub_reg = LIST_FIRST(&vfu_reg->subregions);
+        for (i = 0; i < max_sent_sub_regions; i++) {
 
-        ioefd = &reply->sub_regions[i].ioeventfd;
-        ioefd->offset = sub_reg->offset;
-        ioefd->size = sub_reg->size;
-        ioefd->fd_index = add_fd_index(msg->out_fds, &msg->nr_out_fds,
-                                       sub_reg->fd);
-        ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
-        ioefd->flags = sub_reg->flags;
-        ioefd->datamatch = sub_reg->datamatch;
+            ioefd = &reply->sub_regions[i].ioeventfd;
+            ioefd->offset = sub_reg->offset;
+            ioefd->size = sub_reg->size;
+            ioefd->fd_index = add_fd_index(msg->out_fds, &msg->nr_out_fds,
+                                        sub_reg->fd);
+            ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
+            ioefd->flags = sub_reg->flags;
+            ioefd->datamatch = sub_reg->datamatch;
 
-        sub_reg = LIST_NEXT(sub_reg, entry);
+            sub_reg = LIST_NEXT(sub_reg, entry);
+        }
     }
 
     return 0;
