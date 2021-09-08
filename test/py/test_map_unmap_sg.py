@@ -1,7 +1,7 @@
 #
 # Copyright (c) 2021 Nutanix Inc. All rights reserved.
 #
-# Authors: John Levon <john.levon@nutanix.com>
+# Authors: Swapnil Ingle <swapnil.ingle@nutanix.com>
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -20,56 +20,98 @@
 #  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
 #  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
 #  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-#  SERVICESLOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+#  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 #  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
 #  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 #  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 #  DAMAGE.
 #
 
-from libvfio_user import *
+import ctypes
 import errno
-
-#
-# NB: this is currently very incomplete
-#
+from libvfio_user import *
+import tempfile
 
 ctx = None
 
-def test_dma_region_too_big():
+def test_map_sg_with_invalid_region():
     global ctx
 
     ctx = prepare_ctx_for_dma()
     assert ctx != None
 
+    sg = dma_sg_t()
+    iovec = iovec_t()
+    ret = vfu_map_sg(ctx, sg, iovec)
+    assert ret == -1
+    assert ctypes.get_errno() == errno.EINVAL
+
+def test_map_sg_without_fd():
     sock = connect_client(ctx)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
-
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
+        offset=0, addr=0x1000, size=4096)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+    sg = dma_sg_t()
+    iovec = iovec_t()
+    sg.region = 0
+    ret = vfu_map_sg(ctx, sg, iovec)
+    assert ret == -1
+    assert ctypes.get_errno() == errno.EFAULT
 
     disconnect_client(ctx, sock)
 
-def test_dma_region_too_many():
+def test_map_multiple_sge():
     sock = connect_client(ctx)
-
-    for i in range(1, MAX_DMA_REGIONS + 2):
+    regions = 4
+    f = tempfile.TemporaryFile()
+    f.truncate(0x1000 * regions)
+    for i in range(1, regions):
         payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
             flags=(VFIO_USER_F_DMA_REGION_READ |
                    VFIO_USER_F_DMA_REGION_WRITE),
             offset=0, addr=0x1000 * i, size=4096)
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
-        if i == MAX_DMA_REGIONS + 1:
-            expect=errno.EINVAL
-        else:
-            expect=0
+    ret, sg = vfu_addr_to_sg(ctx, dma_addr=0x1000, length=4096 * 3, max_sg=3,
+                             prot=mmap.PROT_READ)
+    assert ret == 3
 
-        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
+    iovec = (iovec_t * 3)()
+    ret = vfu_map_sg(ctx, sg, iovec, cnt=3)
+    assert ret == 0
+    assert iovec[0].iov_len == 4096
+    assert iovec[1].iov_len == 4096
+    assert iovec[2].iov_len == 4096
 
     disconnect_client(ctx, sock)
 
-def test_dma_region_cleanup():
+def test_unmap_sg():
+    sock = connect_client(ctx)
+    regions = 4
+    f = tempfile.TemporaryFile()
+    f.truncate(0x1000 * regions)
+    for i in range(1, regions):
+        payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+            flags=(VFIO_USER_F_DMA_REGION_READ |
+                   VFIO_USER_F_DMA_REGION_WRITE),
+            offset=0, addr=0x1000 * i, size=4096)
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
+
+    ret, sg = vfu_addr_to_sg(ctx, dma_addr=0x1000, length=4096 * 3, max_sg=3,
+                             prot=mmap.PROT_READ)
+    assert ret == 3
+
+    iovec = (iovec_t * 3)()
+    ret = vfu_map_sg(ctx, sg, iovec, cnt=3)
+    assert ret == 0
+    vfu_unmap_sg(ctx, sg, iovec, cnt=3)
+
+    disconnect_client(ctx, sock)
+
+def test_map_unmap_sg_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

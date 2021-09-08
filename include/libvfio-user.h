@@ -33,6 +33,10 @@
 /*
  * Defines the libvfio-user server-side API.  The protocol definitions can be
  * found in vfio-user.h.
+ *
+ * This is not currently a stable API or ABI, and may change at any time.
+ * Library calls are not guaranteed thread-safe: multi-threaded consumers need
+ * to protect calls with their own exclusion methods.
  */
 
 #ifndef LIB_VFIO_USER_H
@@ -130,8 +134,11 @@ int
 vfu_attach_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Return a file descriptor suitable for waiting on via epoll() or similar. This
- * should not be cached, as it may change after a successful vfu_attach_ctx().
+ * Return a file descriptor suitable for waiting on via epoll() or similar. The
+ * file descriptor may change after a successful vfu_attach_ctx(), or on
+ * receiving ENOTCONN error message from vfu_run_ctx(); in those cases,
+ * vfu_get_poll_fd() should be called again to get the current correct file
+ * descriptor.
  */
 int
 vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
@@ -217,10 +224,14 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
                                          size_t count, loff_t offset,
                                          bool is_write);
 
-#define VFU_REGION_FLAG_READ    (1 << 0)
-#define VFU_REGION_FLAG_WRITE   (1 << 1)
-#define VFU_REGION_FLAG_RW      (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-#define VFU_REGION_FLAG_MEM     (1 << 2)    // if unset, bar is IO
+#define VFU_REGION_FLAG_READ      (1 << 0)
+#define VFU_REGION_FLAG_WRITE     (1 << 1)
+#define VFU_REGION_FLAG_RW        (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
+/* If unset, this is an IO region. */
+#define VFU_REGION_FLAG_MEM       (1 << 2)
+#define VFU_REGION_FLAG_ALWAYS_CB (1 << 3)
+#define VFU_REGION_FLAG_MASK      (VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM | \
+                                   VFU_REGION_FLAG_ALWAYS_CB)
 
 /**
  * Set up a device region.
@@ -262,6 +273,8 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
  *  - if no callback is provided, reads to other areas are a simple memcpy(),
  *    and writes are an error
  *  - otherwise, the callback is expected to handle the access
+ *  - if VFU_REGION_FLAG_ALWAYS_CB flag is set, all accesses to the config
+ *    space are forwarded to the callback
  *
  * Regions VFU_PCI_DEV_MIGR_REGION_IDX and VFU_GENERIC_DEV_MIGR_REG_IDX,
  * corresponding to the migration region, enable live migration support for
@@ -618,9 +631,9 @@ int
 vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
 
 /**
- * Takes a guest physical address and returns a list of scatter/gather entries
- * than can be individually mapped in the program's virtual memory.  A single
- * linear guest physical address span may need to be split into multiple
+ * Takes a guest physical address range and populates an array of scatter/gather
+ * entries than can be individually mapped in the program's virtual memory.  A
+ * single linear guest physical address span may need to be split into multiple
  * scatter/gather regions due to limitations of how memory can be mapped.
  *
  * vfu_setup_device_dma() must have been called prior to using this function.
@@ -644,9 +657,9 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
                dma_sg_t *sg, int max_sg, int prot);
 
 /**
- * Maps a list scatter/gather entries from the guest's physical address space
- * to the program's virtual memory. It is the caller's responsibility to remove
- * the mappings by calling vfu_unmap_sg().
+ * Maps scatter/gather entries from the guest's physical address space to the
+ * process's virtual memory. It is the caller's responsibility to remove the
+ * mappings by calling vfu_unmap_sg().
  *
  * This is only supported when a @dma_unregister callback is provided to
  * vfu_setup_device_dma().
@@ -654,7 +667,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries returned by vfu_addr_to_sg. These
  *      entries must not be modified and the array must not be deallocated
- *      until vfu_unmap_sg() has been called for each entry.
+ *      until vfu_unmap_sg() has been called.
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -667,8 +680,8 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
            int flags);
 
 /**
- * Unmaps a list scatter/gather entries (previously mapped by vfu_map_sg()) from
- * the program's virtual memory.
+ * Unmaps scatter/gather entries (previously mapped by vfu_map_sg()) from
+ * the process's virtual memory.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap

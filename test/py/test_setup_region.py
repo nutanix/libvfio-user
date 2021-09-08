@@ -40,6 +40,17 @@ def test_device_set_irqs_setup():
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
+def test_setup_region_bad_flags():
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x10000,
+                           flags=0x400)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x10000,
+                           flags=0)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
 def test_setup_region_bad_mmap_areas():
 
     f = tempfile.TemporaryFile()
@@ -113,6 +124,41 @@ def test_setup_region_bad_migr():
                            mmap_areas=mmap_areas, fd=f.fileno())
     assert ret == -1
     assert c.get_errno() == errno.EINVAL
+
+def test_setup_region_cfg_always_cb_nocb():
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                           size=PCI_CFG_SPACE_EXP_SIZE, cb=None,
+                           flags=(VFU_REGION_FLAG_RW |
+                                  VFU_REGION_FLAG_ALWAYS_CB))
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+@vfu_region_access_cb_t
+def pci_cfg_region_cb(ctx, buf, count, offset, is_write):
+    if not is_write:
+        for i in range(count):
+            buf[i] = 0xcc
+
+    return count
+
+def test_setup_region_cfg_always_cb():
+    global ctx
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                           size=PCI_CFG_SPACE_EXP_SIZE, cb=pci_cfg_region_cb,
+                           flags=(VFU_REGION_FLAG_RW |
+                                  VFU_REGION_FLAG_ALWAYS_CB))
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=0, count=2)
+    assert payload == b'\xcc\xcc'
+
+    disconnect_client(ctx, sock)
 
 def test_setup_region_cleanup():
     vfu_destroy_ctx(ctx)

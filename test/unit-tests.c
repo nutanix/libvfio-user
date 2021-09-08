@@ -358,33 +358,6 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
 }
 
 static void
-test_dma_map_sg(void **state UNUSED)
-{
-    dma_sg_t sg = { .region = 1 };
-    struct iovec iovec = { 0 };
-
-    /* bad region */
-    assert_int_equal(-1, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
-    assert_int_equal(EINVAL, errno);
-
-    vfu_ctx.dma->nregions = 1;
-
-    /* w/o fd */
-    sg.region = 0;
-    assert_int_equal(-1, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
-    assert_int_equal(EFAULT, errno);
-
-    /* w/ fd */
-    vfu_ctx.dma->regions[0].info.vaddr = (void *)0xdead0000;
-
-    sg.offset = 0x0000beef;
-    sg.length = 0xcafebabe;
-    assert_int_equal(0, dma_map_sg(vfu_ctx.dma, &sg, &iovec, 1));
-    assert_int_equal(0xdeadbeef, iovec.iov_base);
-    assert_int_equal(0x00000000cafebabe, iovec.iov_len);
-}
-
-static void
 test_dma_addr_to_sg(void **state UNUSED)
 {
     dma_memory_region_t *r, *r1;
@@ -748,7 +721,6 @@ main(void)
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
-        cmocka_unit_test_setup(test_dma_map_sg, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),

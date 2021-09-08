@@ -210,7 +210,8 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
         dump_buffer("buffer write", buf, count);
     }
 
-    if (region_index == VFU_PCI_DEV_CFG_REGION_IDX) {
+    if ((region_index == VFU_PCI_DEV_CFG_REGION_IDX) &&
+        !(vfu_ctx->reg_info[region_index].flags & VFU_REGION_FLAG_ALWAYS_CB)) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
             return ret;
@@ -718,7 +719,9 @@ int
 handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap)
 {
-    int ret;
+    size_t out_size;
+    int ret = 0;
+    bool unmap_all = false;
     char rstr[1024];
 
     assert(vfu_ctx != NULL);
@@ -731,12 +734,18 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(EINVAL);
     }
 
+    if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
+            (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
+        return ERROR_INT(EINVAL);
+    }
+
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) flags=%#x",
              dma_unmap->addr, dma_unmap->addr + dma_unmap->size, dma_unmap->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
 
-    msg->out_size = sizeof(*dma_unmap);
+    out_size = sizeof(*dma_unmap);
 
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
@@ -757,19 +766,30 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
          * temporary anyway since we're moving dirty page tracking out of
          * the DMA controller.
          */
-        msg->out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+        out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
+    } else if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
+        if (dma_unmap->addr || dma_unmap->size) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad addr=%#lx or size=%#lx, expected "
+                    "both to be zero", dma_unmap->addr, dma_unmap->size);
+            return ERROR_INT(EINVAL);
+        }
+        unmap_all = true;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
     }
 
-
-
-    msg->out_data = malloc(msg->out_size);
+    msg->out_data = malloc(out_size);
     if (msg->out_data == NULL) {
         return ERROR_INT(ENOMEM);
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
+
+    if (unmap_all) {
+        dma_controller_remove_all_regions(vfu_ctx->dma,
+                                          vfu_ctx->dma_unregister, vfu_ctx);
+        goto out;
+    }
 
     if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
@@ -796,6 +816,10 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                 "failed to remove DMA region %s: %m", rstr);
         return ERROR_INT(ret);
     }
+
+out:
+    msg->out_size = out_size;
+
     return ret;
 }
 
@@ -1609,6 +1633,17 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     assert(vfu_ctx != NULL);
 
+    if ((flags & ~(VFU_REGION_FLAG_MASK)) ||
+        (!(flags & VFU_REGION_FLAG_RW))) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid region flags");
+        return ERROR_INT(EINVAL);
+    }
+
+    if ((flags & VFU_REGION_FLAG_ALWAYS_CB) && (cb == NULL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "VFU_REGION_FLAG_ALWAYS_CB needs callback");
+        return ERROR_INT(EINVAL);
+    }
+
     if ((mmap_areas == NULL) != (nr_mmap_areas == 0) ||
         (mmap_areas != NULL && fd == -1)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid mappable region arguments");
@@ -1625,7 +1660,8 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
      * PCI config space is never mappable or of type mem.
      */
     if (region_idx == VFU_PCI_DEV_CFG_REGION_IDX &&
-        flags != VFU_REGION_FLAG_RW) {
+        (((flags & VFU_REGION_FLAG_RW) != VFU_REGION_FLAG_RW) ||
+        (flags & VFU_REGION_FLAG_MEM))) {
         return ERROR_INT(EINVAL);
     }
 

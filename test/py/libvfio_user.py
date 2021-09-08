@@ -35,6 +35,7 @@ from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
 import array
+import errno
 import json
 import mmap
 import os
@@ -97,6 +98,8 @@ VFIO_IRQ_SET_ACTION_MASK = (1 << 3)
 VFIO_IRQ_SET_ACTION_UNMASK = (1 << 4)
 VFIO_IRQ_SET_ACTION_TRIGGER = (1 << 5)
 
+VFIO_DMA_UNMAP_FLAG_ALL = (1 << 1)
+
 # libvfio-user defines
 
 VFU_TRANS_SOCK = 0
@@ -157,6 +160,7 @@ VFU_REGION_FLAG_READ  = 1
 VFU_REGION_FLAG_WRITE = 2
 VFU_REGION_FLAG_RW = (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
 VFU_REGION_FLAG_MEM   = 4
+VFU_REGION_FLAG_ALWAYS_CB = 8
 
 VFIO_USER_F_DMA_REGION_READ = (1 << 0)
 VFIO_USER_F_DMA_REGION_WRITE = (1 << 1)
@@ -389,6 +393,15 @@ class vfio_user_dma_map(Structure):
         ("size", c.c_uint64),
     ]
 
+class vfio_user_dma_unmap(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("addr", c.c_uint64),
+        ("size", c.c_uint64),
+    ]
+
 class vfu_dma_info_t(Structure):
     _fields_ = [
         ("iova", iovec_t),
@@ -539,7 +552,9 @@ def disconnect_client(ctx, sock):
     sock.close()
 
     # notice client closed connection
-    vfu_run_ctx(ctx)
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTCONN
 
 def get_reply(sock, expect=0):
     buf = sock.recv(4096)
@@ -558,7 +573,9 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
     else:
         sock.send(hdr + payload)
 
-    vfu_run_ctx(ctx)
+    ret = vfu_run_ctx(ctx)
+    assert ret >= 0
+
     return get_reply(sock, expect=expect)
 
 def get_reply_fds(sock, expect=0):
@@ -633,10 +650,8 @@ def access_region(ctx, sock, is_write, region, offset, count,
         payload += data
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
-    hdr = vfio_user_header(cmd, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_run_ctx(ctx)
-    result = get_reply(sock, expect=expect)
+
+    result = msg(ctx, sock, cmd, payload, expect=expect)
 
     if is_write:
         return None
@@ -656,6 +671,30 @@ def ext_cap_hdr(buf, offset):
     cap_id, cap_next = struct.unpack_from('HH', buf, offset)
     cap_next >>= 4
     return cap_id, cap_next
+
+@vfu_dma_register_cb_t
+def dma_register(ctx, info):
+    pass
+
+@vfu_dma_unregister_cb_t
+def dma_unregister(ctx, info):
+    pass
+    return 0
+
+def prepare_ctx_for_dma():
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx != None
+
+    ret = vfu_pci_init(ctx)
+    assert ret == 0
+
+    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    return ctx
 
 #
 # Library wrappers
@@ -804,13 +843,12 @@ def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
                    prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
     assert ctx != None
 
-    sg = dma_sg_t()
+    sg = (dma_sg_t * max_sg)()
 
     return (lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot), sg)
 
 
 def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
-    # FIXME not sure wheter cnt != 1 will work because iovec is an array
     return lib.vfu_map_sg(ctx, sg, iovec, cnt, flags)
 
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):

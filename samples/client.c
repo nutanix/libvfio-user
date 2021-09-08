@@ -1302,6 +1302,19 @@ int main(int argc, char *argv[])
     handle_dma_io(sock, dma_regions + server_max_fds,
                   nr_dma_regions - server_max_fds,
                   dma_region_fds + server_max_fds);
+
+    struct vfio_user_dma_unmap r = {
+        .argsz = sizeof(r),
+        .addr = 0,
+        .size = 0,
+        .flags = VFIO_DMA_UNMAP_FLAG_ALL
+    };
+    ret = tran_sock_msg(sock, 8, VFIO_USER_DMA_UNMAP, &r, sizeof(r),
+                        NULL, &r, sizeof(r));
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to unmap all DMA regions");
+    }
+
     return 0;
 }
 
