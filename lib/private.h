@@ -34,6 +34,7 @@
 #define LIB_VFIO_USER_PRIVATE_H
 
 #include <errno.h>
+#include <sys/queue.h>
 
 #include "common.h"
 #include "pci_caps.h"
@@ -133,6 +134,8 @@ typedef struct  {
     int fd;
     /* offset of region within fd. */
     uint64_t offset;
+    /* The subregions for ioregionfds and ioeventfds */
+    LIST_HEAD(, ioeventfd) subregions;
 } vfu_reg_info_t;
 
 struct pci_dev {
@@ -172,6 +175,15 @@ struct vfu_ctx {
     bool                    realized;
     vfu_dev_type_t          dev_type;
 };
+
+typedef struct ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    int32_t fd;
+    uint32_t flags;
+    uint64_t datamatch;
+    LIST_ENTRY(ioeventfd) entry;
+} ioeventfd_t;
 
 static inline int
 ERROR_INT(int err)

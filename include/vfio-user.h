@@ -159,6 +159,48 @@ struct vfio_user_irq_info {
     uint32_t    subindex;
 } __attribute__((packed));
 
+typedef struct vfio_user_region_io_fds_request {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+} __attribute__((packed)) vfio_user_region_io_fds_request_t;
+
+#define VFIO_USER_IO_FD_TYPE_IOEVENTFD 0
+#define VFIO_USER_IO_FD_TYPE_IOREGIONFD 1
+
+typedef struct vfio_user_sub_region_ioeventfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t datamatch;
+} __attribute__((packed)) vfio_user_sub_region_ioeventfd_t;
+
+typedef struct vfio_user_sub_region_ioregionfd {
+    uint64_t offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t padding;
+    uint64_t user_data;
+} __attribute__((packed)) vfio_user_sub_region_ioregionfd_t;
+
+typedef struct vfio_user_region_io_fds_reply {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+    union sub_region {
+        struct vfio_user_sub_region_ioeventfd ioeventfd;
+        struct vfio_user_sub_region_ioregionfd ioregionfd;
+    } sub_regions[];
+} __attribute__((packed)) vfio_user_region_io_fds_reply_t;
+
+
 /* Analogous to vfio_iommu_type1_dirty_bitmap. */
 struct vfio_user_dirty_pages {
     uint32_t    argsz;
