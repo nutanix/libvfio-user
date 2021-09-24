@@ -558,7 +558,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
     assert(msg->out_fds == NULL);
 
-    if (msg->in_size != sizeof(vfio_user_region_io_fds_request_t)) {
+    if (msg->in_size < sizeof(vfio_user_region_io_fds_request_t)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -575,10 +575,6 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     vfu_reg = &vfu_ctx->reg_info[req->index];
-
-    if (vfu_reg->fd == -1) {
-        return ERROR_INT(EINVAL);
-    }
 
     LIST_FOREACH(sub_reg, &vfu_reg->subregions, entry) {
         nr_sub_reg++;

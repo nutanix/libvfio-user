@@ -66,6 +66,13 @@ def test_device_get_region_io_fds_setup():
                            mmap_areas=mmap_areas, fd=f.fileno(), offset=0x8000)
     assert ret == 0
 
+    mmap_areas = []
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR5_REGION_IDX, size=0x8000,
+                           flags=(VFU_REGION_FLAG_RW),
+                           mmap_areas=mmap_areas, fd=-1, offset=0x8000)
+    assert ret == 0
+
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -136,7 +143,15 @@ def test_device_get_region_io_fds_no_regions_setup():
                                 index = VFU_PCI_DEV_BAR3_REGION_IDX, count = 0)
 
     ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-              expect=errno.EINVAL)
+              expect = 0)
+
+def test_device_get_region_io_fds_fd_not_setup():
+
+    payload = vfio_user_region_io_fds_request(argsz = 512, flags = 0,
+                                index = VFU_PCI_DEV_BAR5_REGION_IDX, count = 0)
+
+    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+              expect = 0)
 
 def test_device_get_region_io_fds_region_out_of_range():
 
