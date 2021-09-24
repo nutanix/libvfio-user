@@ -576,6 +576,11 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     vfu_reg = &vfu_ctx->reg_info[req->index];
 
+    // At least one flag must be set for a valid region.
+    if (!(vfu_reg->flags & VFU_REGION_FLAG_MASK)) {
+        return ERROR_INT(EINVAL);
+    }
+
     LIST_FOREACH(sub_reg, &vfu_reg->subregions, entry) {
         nr_sub_reg++;
     }
