@@ -66,6 +66,10 @@ def test_device_get_region_io_fds_setup():
                            mmap_areas=mmap_areas, fd=f.fileno(), offset=0x8000)
     assert ret == 0
 
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR5_REGION_IDX, size=0x8000,
+                           flags=(VFU_REGION_FLAG_RW), offset=0x8000)
+    assert ret == 0
+
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -115,7 +119,7 @@ def test_device_get_region_io_fds_buffer_too_large():
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect =
         errno.EINVAL)
 
-def test_device_get_region_io_fds_no_regions():
+def test_device_get_region_io_fds_no_fds():
 
     payload = vfio_user_region_io_fds_request(argsz = 512, flags = 0,
                                 index = VFU_PCI_DEV_BAR1_REGION_IDX, count = 0)
@@ -136,7 +140,22 @@ def test_device_get_region_io_fds_no_regions_setup():
                                 index = VFU_PCI_DEV_BAR3_REGION_IDX, count = 0)
 
     ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-              expect=errno.EINVAL)
+              expect = 0)
+
+def test_device_get_region_io_fds_region_no_mmap():
+
+    payload = vfio_user_region_io_fds_request(argsz = 512, flags = 0,
+                                index = VFU_PCI_DEV_BAR5_REGION_IDX, count = 0)
+
+    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+              expect = 0)
+
+    reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
+
+    assert reply.argsz == len(vfio_user_region_io_fds_reply())
+    assert reply.count == 0
+    assert reply.flags == 0
+    assert reply.index == VFU_PCI_DEV_BAR5_REGION_IDX
 
 def test_device_get_region_io_fds_region_out_of_range():
 
