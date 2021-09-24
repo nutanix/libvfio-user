@@ -143,7 +143,7 @@ def test_device_get_region_io_fds_no_regions_setup():
                                 index = VFU_PCI_DEV_BAR3_REGION_IDX, count = 0)
 
     ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-              expect = 0)
+              expect = errno.EINVAL)
 
 def test_device_get_region_io_fds_fd_not_setup():
 
