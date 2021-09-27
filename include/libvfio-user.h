@@ -901,6 +901,25 @@ vfu_pci_find_next_capability(vfu_ctx_t *vfu_ctx, bool extended,
 bool
 vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
 
+/*
+ * Creates a new ioeventfd at the given setup memory region with @offset, @size,
+ * @fd, @flags and @datamatch.
+ *
+ * Returns 0 on success and -1 on failure with errno set.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @region_idx: The index of the memory region to set up the ioeventfd
+ * @fd: the value of the file descriptor
+ * @offset: The offset into the memory region
+ * @size: size of the ioeventfd
+ * @flags: Any flags to set up the ioeventfd
+ * @datamatch: sets the datamatch value
+ */
+int
+vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
+                     size_t offset, uint32_t size, uint32_t flags,
+                     uint64_t datamatch);
+
 #ifdef __cplusplus
 }
 #endif

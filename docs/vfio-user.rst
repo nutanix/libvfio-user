@@ -322,9 +322,9 @@ usual ``msg_size`` field in the header, not the ``argsz`` field.
 
 In a reply, the server sets ``argsz`` field to the size needed for a full
 payload size. This may be less than the requested maximum size. This may be
-larger than the requested maximum size: in that case, the full payload is not
-included in the reply, but the ``argsz`` field in the reply indicates the needed
-size, allowing a client to allocate a larger buffer for holding the reply before
+larger than the requested maximum size: in that case, the payload reply header
+is returned, but the ``argsz`` field in the reply indicates the needed size,
+allowing a client to allocate a larger buffer for holding the reply before
 trying again.
 
 In addition, during negotiation (see  `Version`_), the client and server may
@@ -612,6 +612,8 @@ The request payload for this message is a structure of the following format:
 |              | +=====+=======================+ |
 |              | | 0   | get dirty page bitmap | |
 |              | +-----+-----------------------+ |
+|              | | 1   | unmap all regions     | |
+|              | +-----+-----------------------+ |
 +--------------+--------+------------------------+
 | address      | 8      | 8                      |
 +--------------+--------+------------------------+
@@ -625,6 +627,9 @@ The request payload for this message is a structure of the following format:
     populated before unmapping the DMA region. The client must provide a
     `VFIO Bitmap`_ structure, explained below, immediately following this
     entry.
+  * *unmap all regions* indicates to unmap all the regions previously
+    mapped via `VFIO_USER_DMA_MAP`. This flag cannot be combined with
+    *get dirty page bitmap* and expects *address* and *size* to be 0.
 
 * *address* is the base DMA address of the DMA region.
 * *size* is the size of the DMA region.
@@ -995,7 +1000,7 @@ Reply
 
 * *argsz* is the size of the region IO FD info structure plus the
   total size of the sub-region array. Thus, each array entry "i" is at offset
-  i * ((argsz - 32) / count). Note that currently this is 40 bytes for both IO
+  i * ((argsz - 16) / count). Note that currently this is 40 bytes for both IO
   FD types, but this is not to be relied on. As elsewhere, this indicates the
   full reply payload size needed.
 * *flags* must be zero
@@ -1011,8 +1016,8 @@ Note that it is the client's responsibility to verify the requested values (for
 example, that the requested offset does not exceed the region's bounds).
 
 Each sub-region given in the response has one of two possible structures,
-depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` or
-``VFIO_USER_IO_FD_TYPE_IOREGIONFD``:
+depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` (0) or
+``VFIO_USER_IO_FD_TYPE_IOREGIONFD`` (1):
 
 Sub-Region IO FD info format (ioeventfd)
 """"""""""""""""""""""""""""""""""""""""
