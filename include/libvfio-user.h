@@ -81,6 +81,10 @@ dma_sg_size(void);
  * Attaching to the transport is non-blocking.
  * The caller must then manually call vfu_attach_ctx(),
  * which is non-blocking, as many times as necessary.
+ *
+ * This also applies to vfu_run_ctx(). However, it's presumed that any actual
+ * reads or writes of the socket connection will not need to block, since both
+ * APIS are synchronous.
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
