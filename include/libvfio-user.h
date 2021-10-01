@@ -501,7 +501,13 @@ typedef struct {
     /*
      * Migration state transition callback.
      *
-     * The callback should return -1 on error, setting errno.
+     * The callback should return 0 on success and -errno on error.
+     *
+     * When operating in non-blocking mode (LIBVFIO_USER_FLAG_ATTACH_NB was
+     * passed to vfu_create_ctx) and -EBUSY is returned, transitioning to the
+     * new state becomes asynchronous: libvfio-user does not send a response to
+     * the client and does not process any new messages.  Transitioning to the
+     * new device state is completed by calling vfu_migr_done.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -568,6 +574,17 @@ typedef struct {
     int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
+
+/*
+ * Completes a pending migration state transition. Calling this function when
+ * there is no pending migration state transition results in undefined
+ * behavior.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @err: 0 for success, -errno for error..
+ */
+void
+vfu_migr_done(vfu_ctx_t *vfu_ctx, int err);
 
 
 #ifndef VFIO_DEVICE_STATE_STOP

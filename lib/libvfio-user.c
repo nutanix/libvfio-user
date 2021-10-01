@@ -335,7 +335,11 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
-
+    if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
+        && errno == EBUSY && vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+        vfu_ctx->migr_trans_pending = true;
+        return 0;
+    }
     if (ret != in_ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %m",
                 msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
@@ -1209,6 +1213,29 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return ret;
 }
 
+static int
+do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int ret)
+{
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    ret = vfu_ctx->tran->reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
+
+        if (errno == ECONNRESET) {
+            vfu_reset_ctx(vfu_ctx, "reset");
+            errno = ENOTCONN;
+        } else if (errno == ENOMSG) {
+            vfu_reset_ctx(vfu_ctx, "closed");
+            errno = ENOTCONN;
+        }
+    }
+
+    return ret;
+}
+
 /*
  * Handle requests over the vfio-user socket. This can return immediately if we
  * are non-blocking, and there is no request from the client ready to read from
@@ -1263,19 +1290,12 @@ out:
          */
         ret = 0;
     } else {
-        ret = vfu_ctx->tran->reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
-
-        if (ret < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
-
-            if (errno == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, "reset");
-                errno = ENOTCONN;
-            } else if (errno == ENOMSG) {
-                vfu_reset_ctx(vfu_ctx, "closed");
-                errno = ENOTCONN;
-            }
+        if (vfu_ctx->migr_trans_pending) {
+            vfu_ctx->migr_trans_msg = msg;
+            return 0;
         }
+
+        ret = do_reply(vfu_ctx, msg, ret);
     }
 
     free_msg(vfu_ctx, msg);
@@ -1376,6 +1396,9 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
 
     do {
+        if (vfu_ctx->migr_trans_pending) {
+            return ERROR_INT(EBUSY);
+        }
         err = process_request(vfu_ctx);
 
         if (err == 0) {
@@ -1941,6 +1964,22 @@ EXPORT bool
 vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
 {
     return dma_sg_is_mappable(vfu_ctx->dma, sg);
+}
+
+EXPORT void
+vfu_migr_done(vfu_ctx_t *vfu_ctx, int err)
+{
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->migr_trans_pending);
+
+    if (vfu_ctx->migr_trans_msg != NULL) {
+        errno = err;
+        do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, err);
+        free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
+        vfu_ctx->migr_trans_msg = NULL;
+    }
+
+    vfu_ctx->migr_trans_pending = false;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
