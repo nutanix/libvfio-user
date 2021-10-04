@@ -114,7 +114,7 @@ def test_migration_trans_async():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_migr_done(ctx, 0)
+    vfu_async_done(ctx, 0)
 
     get_reply(sock)
 
@@ -135,7 +135,7 @@ def test_migration_trans_async_err():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_migr_done(ctx, errno.ENOTTY)
+    vfu_async_done(ctx, errno.ENOTTY)
 
     get_reply(sock, errno.ENOTTY)
 

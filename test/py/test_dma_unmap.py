@@ -36,10 +36,11 @@ import tempfile
 ctx = None
 sock = None
 
-def test_dma_unmap_setup():
+
+def test_dma_unmap_setup(dma_unregister=None):
     global ctx, sock
 
-    ctx = prepare_ctx_for_dma()
+    ctx = prepare_ctx_for_dma(dma_unregister)
     assert ctx != None
     payload = struct.pack("II", 0, 0)
 
@@ -51,6 +52,7 @@ def test_dma_unmap_setup():
         offset=0, addr=0x1000, size=4096)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+
 
 def test_dma_unmap_short_write():
 
@@ -73,6 +75,15 @@ def test_dma_unmap():
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x1000, size=4096)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
+
+
+def test_dma_unmap_invalid_addr():
+
+    payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
+                                  addr=0x10000, size=4096)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOENT)
+
 
 def test_dma_unmap_all():
 
@@ -104,7 +115,46 @@ def test_dma_unmap_all_invalid_flags():
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
+
+_dma_unregister_cb = None
+
+
+@vfu_dma_unregister_cb_t
+def dma_unregister_cb(ctx, info):
+    global _dma_unregister_cb
+    return _dma_unregister_cb(ctx, info)
+
+
+def test_dma_unmap_async():
+
+    test_dma_unmap_cleanup()
+
+    global _dma_unregister_cb
+    _dma_unregister_cb = lambda ctx, info: -errno.EBUSY
+
+    test_dma_unmap_setup(dma_unregister_cb)
+
+    payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
+                                  flags=0, addr=0x1000, size=4096)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.EBUSY
+
+    vfu_async_done(ctx, 0)
+
+    get_reply(sock)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == 0
+
+
 def test_dma_unmap_cleanup():
+
+    global _dma_unregister_cb
+    _dma_unregister_cb = lambda ctx, info: 0
+
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
 

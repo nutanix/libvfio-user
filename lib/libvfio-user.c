@@ -337,7 +337,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
         && errno == EBUSY && vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
-        vfu_ctx->migr_trans_pending = true;
+        vfu_ctx->pending = VFU_CTX_PENDING_MIGR;
         return 0;
     }
     if (ret != in_ra->count) {
@@ -817,8 +817,14 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                        vfu_ctx);
     if (ret < 0) {
         ret = errno;
+        if (errno == EBUSY) {
+            vfu_ctx->pending = VFU_CTX_PENDING_DMA_UNMAP;
+            vfu_ctx->pending_dma_unmap_addr = dma_unmap->addr;
+            vfu_ctx->pending_dma_unmap_size = dma_unmap->size;
+            return 0;
+        }
         vfu_log(vfu_ctx, LOG_WARNING,
-                "failed to remove DMA region %s: %m", rstr);
+               "failed to remove DMA region %s: %m", rstr);
         return ERROR_INT(ret);
     }
 
@@ -1290,8 +1296,8 @@ out:
          */
         ret = 0;
     } else {
-        if (vfu_ctx->migr_trans_pending) {
-            vfu_ctx->migr_trans_msg = msg;
+        if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
+            vfu_ctx->pending_msg = msg;
             return 0;
         }
 
@@ -1396,7 +1402,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
 
     do {
-        if (vfu_ctx->migr_trans_pending) {
+        if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
             return ERROR_INT(EBUSY);
         }
         err = process_request(vfu_ctx);
@@ -1838,6 +1844,10 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
         return ERROR_INT(EINVAL);
     }
 
+    if (unlikely(vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP)) {
+        return ERROR_INT(EBUSY);
+    }
+
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
         return -1;
@@ -1967,19 +1977,27 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
 }
 
 EXPORT void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int err)
+vfu_async_done(vfu_ctx_t *vfu_ctx, int err)
 {
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->migr_trans_pending);
+    assert(vfu_ctx->pending != VFU_CTX_PENDING_NONE);
 
-    if (vfu_ctx->migr_trans_msg != NULL) {
-        errno = err;
-        do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, err);
-        free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
-        vfu_ctx->migr_trans_msg = NULL;
+    if (vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP) {
+        int ret = dma_controller_remove_region(vfu_ctx->dma,
+                                       (void *)vfu_ctx->pending_dma_unmap_addr,
+                                       vfu_ctx->pending_dma_unmap_size,
+                                       NULL, vfu_ctx);
+        assert(ret == 0); // cannot fail
     }
 
-    vfu_ctx->migr_trans_pending = false;
+    if (vfu_ctx->pending_msg != NULL) {
+        errno = err;
+        do_reply(vfu_ctx, vfu_ctx->pending_msg, err);
+        free_msg(vfu_ctx, vfu_ctx->pending_msg);
+        vfu_ctx->pending_msg = NULL;
+    }
+
+    vfu_ctx->pending = VFU_CTX_PENDING_NONE;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

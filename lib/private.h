@@ -149,6 +149,12 @@ struct pci_dev {
 
 struct dma_controller;
 
+enum vfu_ctx_pending {
+    VFU_CTX_PENDING_NONE,
+    VFU_CTX_PENDING_MIGR,
+    VFU_CTX_PENDING_DMA_UNMAP
+};
+
 struct vfu_ctx {
     void                    *pvt;
     struct dma_controller   *dma;
@@ -169,8 +175,13 @@ struct vfu_ctx {
     size_t                  client_max_data_xfer_size;
 
     struct migration        *migration;
-    bool                    migr_trans_pending;
-    vfu_msg_t               *migr_trans_msg;
+
+    enum vfu_ctx_pending    pending;
+
+    uint64_t                pending_dma_unmap_addr;
+    uint64_t                pending_dma_unmap_size;
+
+    vfu_msg_t               *pending_msg;
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];
     vfu_irqs_t              *irqs;

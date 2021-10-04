@@ -415,14 +415,18 @@ typedef struct vfu_dma_info {
 typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /*
- * Function that is called when the guest unregisters a DMA region. The device
- * must release all references to that region before the callback returns.
- * This is required if you want to be able to access guest memory directly via
- * a mapping.
- *
- * The callback should return 0 on success, -1 with errno set on failure
+ * Function that is called when the guest unregisters a DMA region.
+ * The callback should return 0 on success and -errno on failure.
  * (although unregister should not fail: this will not stop a guest from
  * unregistering the region).
+ * This callback is required if you want to be able to access guest memory
+ * directly via a mapping.
+ *
+ * The device must release all references to that region before the callback
+ * returns. If the device returns -EBUSY then libvfio-user does not respond
+ * to the client and does not process new messages until vfu_async_done is
+ * called by the device, effectively making the DMA unmap operation
+ * asynchronous.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
@@ -507,7 +511,7 @@ typedef struct {
      * passed to vfu_create_ctx) and -EBUSY is returned, transitioning to the
      * new state becomes asynchronous: libvfio-user does not send a response to
      * the client and does not process any new messages.  Transitioning to the
-     * new device state is completed by calling vfu_migr_done.
+     * new device state is completed by calling vfu_async_done.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -576,15 +580,15 @@ typedef struct {
 } vfu_migration_callbacks_t;
 
 /*
- * Completes a pending migration state transition. Calling this function when
- * there is no pending migration state transition results in undefined
- * behavior.
+ * Completes a pending migration state transition or DMA unmap operation.
+ * Calling this function when there is no pending migration state transition or
+ * DMA unmap operation results in undefined behavior.
  *
  * @vfu_ctx: the libvfio-user context
- * @err: 0 for success, -errno for error..
+ * @err: 0 for success, -errno for error.
  */
 void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int err);
+vfu_async_done(vfu_ctx_t *vfu_ctx, int err);
 
 
 #ifndef VFIO_DEVICE_STATE_STOP

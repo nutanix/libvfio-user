@@ -520,7 +520,7 @@ lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
                                      c.c_uint64)
 
-lib.vfu_migr_done.argtypes = (c.c_void_p, c.c_int) 
+lib.vfu_async_done.argtypes = (c.c_void_p, c.c_int)
 
 
 def to_byte(val):
@@ -685,22 +685,21 @@ def ext_cap_hdr(buf, offset):
     return cap_id, cap_next
 
 @vfu_dma_register_cb_t
-def dma_register(ctx, info):
+def _dma_register(ctx, info):
     pass
 
 @vfu_dma_unregister_cb_t
-def dma_unregister(ctx, info):
-    pass
+def _dma_unregister(ctx, info):
     return 0
 
-def prepare_ctx_for_dma():
+def prepare_ctx_for_dma(dma_unregister=_dma_unregister):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
 
-    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    ret = vfu_setup_device_dma(ctx, _dma_register, dma_unregister)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -871,7 +870,7 @@ def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
 
     return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch)
 
-def vfu_migr_done(ctx, err):
-    return lib.vfu_migr_done(ctx, err)
+def vfu_async_done(ctx, err):
+    return lib.vfu_async_done(ctx, err)
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
