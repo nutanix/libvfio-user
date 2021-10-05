@@ -143,12 +143,7 @@ MOCK_DEFINE(state_trans_notify)(vfu_ctx_t *vfu_ctx,
      * We've already checked that device_state is valid by calling
      * vfio_migr_state_transition_is_valid.
      */
-    int ret = fn(vfu_ctx, migr_state_vfio_to_vfu(vfio_device_state));
-    if (ret < 0) {
-        errno = -ret;
-        ret = -1;
-    }
-    return ret;
+    return fn(vfu_ctx, migr_state_vfio_to_vfu(vfio_device_state));
 }
 
 /**
@@ -428,7 +423,12 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
                 "migration: transition from state %s to state %s",
                  migr_states[old_device_state].name,
                  migr_states[*device_state].name);
-        } else if (errno != EBUSY) {
+        } else if (errno == EBUSY) {
+            vfu_log(vfu_ctx, LOG_DEBUG,
+                "migration: transition from state %s to state %s deferred",
+                 migr_states[old_device_state].name,
+                 migr_states[*device_state].name);
+        } else {
             vfu_log(vfu_ctx, LOG_ERR,
                 "migration: failed to transition from state %s to state %s",
                  migr_states[old_device_state].name,

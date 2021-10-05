@@ -32,15 +32,17 @@ import ctypes as c
 import errno
 
 ctx = None
-_transition_cb = None
 
+global trans_cb_err
+trans_cb_err = 0
 
 @transition_cb_t
-def transition_cb(ctx, state):
-    global _transition_cb
-    ret = _transition_cb(ctx, state)
-    _transition_cb = None
-    return ret
+def trans_cb(ctx, state):
+    global trans_cb_err
+    if trans_cb_err != 0:
+        c.set_errno(trans_cb_err)
+        return -1
+    return 0
 
 
 def test_migration_setup():
@@ -59,7 +61,7 @@ def test_migration_setup():
 
     cbs = vfu_migration_callbacks_t()
     cbs.version = VFU_MIGR_CALLBACKS_VERS
-    cbs.transition = transition_cb
+    cbs.transition = trans_cb
     cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
     cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
     cbs.read_data = c.cast(stub, read_data_cb_t)
@@ -77,9 +79,6 @@ def test_migration_setup():
 
 def test_migration_trans_sync():
 
-    global _transition_cb
-    _transition_cb = lambda _, state: 0
-
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data)
@@ -90,8 +89,8 @@ def test_migration_trans_sync():
 
 def test_migration_trans_sync_err():
 
-    global _transition_cb
-    _transition_cb = lambda _, state: -errno.EPERM
+    global trans_cb_err
+    trans_cb_err = errno.EPERM
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -103,8 +102,8 @@ def test_migration_trans_sync_err():
 
 def test_migration_trans_async():
 
-    global _transition_cb
-    _transition_cb = lambda _, state: -errno.EBUSY
+    global trans_cb_err
+    trans_cb_err = errno.EBUSY
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -124,8 +123,8 @@ def test_migration_trans_async():
 
 def test_migration_trans_async_err():
 
-    global _transition_cb
-    _transition_cb = lambda _, state: -errno.EBUSY
+    global trans_cb_err
+    trans_cb_err = errno.EBUSY
 
     data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -135,7 +134,8 @@ def test_migration_trans_async_err():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_async_done(ctx, errno.ENOTTY)
+    c.set_errno(errno.ENOTTY)
+    vfu_async_done(ctx, -1)
 
     get_reply(sock, errno.ENOTTY)
 

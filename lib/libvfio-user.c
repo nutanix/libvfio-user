@@ -337,6 +337,13 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
         && errno == EBUSY && vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+        /*
+         * We don't support async behavior for the non-blocking mode simply
+         * because we don't have a use case yet, the only user of migration
+         * is SPDK and it operates in non-blocking mode. We don't know the
+         * implications of enabling this in blocking mode as we haven't looked
+         * at the details.
+         */
         vfu_ctx->pending = VFU_CTX_PENDING_MIGR;
         return 0;
     }
@@ -1220,12 +1227,12 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 static int
-do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int ret)
+do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_ret)
 {
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    ret = vfu_ctx->tran->reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
+    int ret = vfu_ctx->tran->reply(vfu_ctx, msg, reply_ret == 0 ? 0 : errno);
 
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
@@ -1290,17 +1297,18 @@ process_request(vfu_ctx_t *vfu_ctx)
     }
 
 out:
+    if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
+        assert(ret == 0);
+        vfu_ctx->pending_msg = msg;
+        /* NB the message is freed in vfu_migr_done */
+        return 0;
+    }
     if (msg->hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
          */
         ret = 0;
     } else {
-        if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
-            vfu_ctx->pending_msg = msg;
-            return 0;
-        }
-
         ret = do_reply(vfu_ctx, msg, ret);
     }
 
@@ -1961,12 +1969,14 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 EXPORT int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
+    assert(vfu_ctx->pending == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sg, data);
 }
 
 EXPORT int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
+    assert(vfu_ctx->pending == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sg, data);
 }
 
@@ -1976,28 +1986,29 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
     return dma_sg_is_mappable(vfu_ctx->dma, sg);
 }
 
-EXPORT void
+EXPORT int
 vfu_async_done(vfu_ctx_t *vfu_ctx, int err)
 {
+    int ret = 0;
+
     assert(vfu_ctx != NULL);
     assert(vfu_ctx->pending != VFU_CTX_PENDING_NONE);
 
     if (vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP) {
-        int ret = dma_controller_remove_region(vfu_ctx->dma,
+        ret = dma_controller_remove_region(vfu_ctx->dma,
                                        (void *)vfu_ctx->pending_dma_unmap_addr,
                                        vfu_ctx->pending_dma_unmap_size,
                                        NULL, vfu_ctx);
         assert(ret == 0); // cannot fail
     }
 
-    if (vfu_ctx->pending_msg != NULL) {
-        errno = err;
-        do_reply(vfu_ctx, vfu_ctx->pending_msg, err);
-        free_msg(vfu_ctx, vfu_ctx->pending_msg);
-        vfu_ctx->pending_msg = NULL;
+    if (!vfu_ctx->pending_msg->hdr.flags.no_reply) {
+        ret = do_reply(vfu_ctx, vfu_ctx->pending_msg, err);
     }
-
+    free_msg(vfu_ctx, vfu_ctx->pending_msg);
+    vfu_ctx->pending_msg = NULL;
     vfu_ctx->pending = VFU_CTX_PENDING_NONE;
+    return ret;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

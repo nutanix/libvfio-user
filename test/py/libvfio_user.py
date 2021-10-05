@@ -440,7 +440,7 @@ class vfio_user_bitmap_range(Structure):
         ("bitmap", vfio_user_bitmap)
     ]
 
-transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
+transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
 get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
 prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
                                 c.POINTER(c.c_uint64))
