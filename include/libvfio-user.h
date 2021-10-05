@@ -516,7 +516,7 @@ typedef struct {
      * threading model does not allow blocking.
      *
      * The user must not call functions vfu_dma_read or vfu_dma_write, doing so
-     * rresults in undefined behavior.
+     * results in undefined behavior.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -590,12 +590,12 @@ typedef struct {
  * DMA unmap operation results in undefined behavior.
  *
  * @vfu_ctx: the libvfio-user context
- * @err: 0 for success, -1 on error having set errno.
+ * @reply_errno: 0 for success or errno on error.
  *
  * @returns 0 on success, or -1 on failure. Sets errno.
  */
 int
-vfu_async_done(vfu_ctx_t *vfu_ctx, int err);
+vfu_async_done(vfu_ctx_t *vfu_ctx, int reply_errno);
 
 
 #ifndef VFIO_DEVICE_STATE_STOP
