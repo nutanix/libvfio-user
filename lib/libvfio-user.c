@@ -1291,17 +1291,18 @@ process_request(vfu_ctx_t *vfu_ctx)
     }
 
 out:
+    if (vfu_ctx->migr_trans_pending) {
+        assert(ret == 0);
+        vfu_ctx->migr_trans_msg = msg;
+        /* NB the message is freed in vfu_migr_done */
+        return 0;
+    }
     if (msg->hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
          */
         ret = 0;
     } else {
-        if (vfu_ctx->migr_trans_pending) {
-            vfu_ctx->migr_trans_msg = msg;
-            /* NB the message is freed in vfu_migr_done */
-            return 0;
-        }
 
         ret = do_reply(vfu_ctx, msg, ret);
     }
@@ -1982,11 +1983,11 @@ vfu_migr_done(vfu_ctx_t *vfu_ctx, int err)
     assert(vfu_ctx != NULL);
     assert(vfu_ctx->migr_trans_pending);
 
-    if (vfu_ctx->migr_trans_msg != NULL) {
+    if (!vfu_ctx->migr_trans_msg->hdr.flags.no_reply) {
         do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, err);
-        free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
-        vfu_ctx->migr_trans_msg = NULL;
     }
+    free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
+    vfu_ctx->migr_trans_msg = NULL;
 
     vfu_ctx->migr_trans_pending = false;
 }
