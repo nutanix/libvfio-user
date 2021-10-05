@@ -169,11 +169,10 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 
         err = dma_unregister == NULL ? 0 : dma_unregister(data, &region->info);
         if (err < 0) {
-            if (err != -EBUSY) {
+            if (errno != EBUSY) {
                 vfu_log(dma->vfu_ctx, LOG_ERR,
-                        "failed to dma_unregister() DMA region [%p, %p): %s",
-                        region->info.iova.iov_base, iov_end(&region->info.iova),
-                        strerror(-err));
+                        "failed to dma_unregister() DMA region [%p, %p): %m",
+                        region->info.iova.iov_base, iov_end(&region->info.iova));
             }
             return ERROR_INT(-err);
         }

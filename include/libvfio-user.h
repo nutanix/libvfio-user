@@ -416,17 +416,17 @@ typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /*
  * Function that is called when the guest unregisters a DMA region.
- * The callback should return 0 on success and -errno on failure.
+ * The callback should return 0 on success and -1 on failure setting errno.
  * (although unregister should not fail: this will not stop a guest from
  * unregistering the region).
  * This callback is required if you want to be able to access guest memory
  * directly via a mapping.
  *
  * The device must release all references to that region before the callback
- * returns. If the device returns -EBUSY then libvfio-user does not respond
- * to the client and does not process new messages until vfu_async_done is
- * called by the device, effectively making the DMA unmap operation
- * asynchronous.
+ * returns. If the device returns -1 and errno is set to EBUSY then
+ * libvfio-user does not respond to the client and does not process new
+ * messages until vfu_async_done is called by the device, effectively making
+ * the DMA unmap operation asynchronous.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
