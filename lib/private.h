@@ -175,6 +175,8 @@ struct vfu_ctx {
     size_t                  client_max_data_xfer_size;
 
     struct migration        *migration;
+    bool                    migr_trans_pending;
+    vfu_msg_t               *migr_trans_msg;
 
     enum vfu_ctx_pending    pending;
 
