@@ -512,7 +512,7 @@ typedef struct {
      * threading model does not allow blocking.
      *
      * The user must not call functions vfu_dma_read or vfu_dma_write, doing so
-     * rresults in undefined behavior.
+     * results in undefined behavior.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
