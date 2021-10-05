@@ -100,6 +100,13 @@ VFIO_IRQ_SET_ACTION_TRIGGER = (1 << 5)
 
 VFIO_DMA_UNMAP_FLAG_ALL = (1 << 1)
 
+VFIO_DEVICE_STATE_STOP = (0)
+VFIO_DEVICE_STATE_RUNNING =  (1 << 0)
+VFIO_DEVICE_STATE_SAVING = (1 << 1)
+VFIO_DEVICE_STATE_RESUMING = (1 << 2)
+VFIO_DEVICE_STATE_MASK = ((1 << 3) - 1)
+
+
 # libvfio-user defines
 
 VFU_TRANS_SOCK = 0
@@ -433,7 +440,7 @@ class vfio_user_bitmap_range(Structure):
         ("bitmap", vfio_user_bitmap)
     ]
 
-transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
+transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
 get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
 prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
                                 c.POINTER(c.c_uint64))
@@ -513,6 +520,8 @@ lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
                                      c.c_uint64)
 
+lib.vfu_migr_done.argtypes = (c.c_void_p, c.c_int)
+
 
 def to_byte(val):
     """Cast an int to a byte value."""
@@ -563,7 +572,7 @@ def get_reply(sock, expect=0):
     assert errno == expect
     return buf[16:]
 
-def msg(ctx, sock, cmd, payload, expect=0, fds=None):
+def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
     """Round trip a request and reply to the server."""
     hdr = vfio_user_header(cmd, size=len(payload))
 
@@ -576,6 +585,8 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None):
     ret = vfu_run_ctx(ctx)
     assert ret >= 0
 
+    if not rsp:
+        return
     return get_reply(sock, expect=expect)
 
 def get_reply_fds(sock, expect=0):
@@ -643,7 +654,7 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
     return count
 
 def access_region(ctx, sock, is_write, region, offset, count,
-                  data=None, expect=0):
+                  data=None, expect=0, rsp=True):
     # struct vfio_user_region_access
     payload = struct.pack("QII", offset, region, count)
     if is_write:
@@ -651,15 +662,16 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
 
-    result = msg(ctx, sock, cmd, payload, expect=expect)
+    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp)
 
     if is_write:
         return None
 
     return skip("QII", result)
 
-def write_region(ctx, sock, region, offset, count, data, expect=0):
-    access_region(ctx, sock, True, region, offset, count, data, expect=expect)
+def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True):
+    access_region(ctx, sock, True, region, offset, count, data, expect=expect,
+                  rsp=rsp)
 
 def read_region(ctx, sock, region, offset, count, expect=0):
     return access_region(ctx, sock, False, region, offset, count, expect=expect)
@@ -858,4 +870,8 @@ def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
     assert ctx != None
 
     return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch)
+
+def vfu_migr_done(ctx, err):
+    return lib.vfu_migr_done(ctx, err)
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

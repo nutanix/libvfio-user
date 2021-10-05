@@ -423,6 +423,11 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
                 "migration: transition from state %s to state %s",
                  migr_states[old_device_state].name,
                  migr_states[*device_state].name);
+        } else if (errno == EBUSY) {
+            vfu_log(vfu_ctx, LOG_DEBUG,
+                "migration: transition from state %s to state %s deferred",
+                 migr_states[old_device_state].name,
+                 migr_states[*device_state].name);
         } else {
             vfu_log(vfu_ctx, LOG_ERR,
                 "migration: failed to transition from state %s to state %s",
