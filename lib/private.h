@@ -177,10 +177,6 @@ struct vfu_ctx {
     struct migration        *migration;
 
     enum vfu_ctx_pending    pending;
-
-    uint64_t                pending_dma_unmap_addr;
-    uint64_t                pending_dma_unmap_size;
-
     vfu_msg_t               *pending_msg;
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];

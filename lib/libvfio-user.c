@@ -826,8 +826,6 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         ret = errno;
         if (errno == EBUSY) {
             vfu_ctx->pending = VFU_CTX_PENDING_DMA_UNMAP;
-            vfu_ctx->pending_dma_unmap_addr = dma_unmap->addr;
-            vfu_ctx->pending_dma_unmap_size = dma_unmap->size;
             return 0;
         }
         vfu_log(vfu_ctx, LOG_WARNING,
@@ -1995,9 +1993,10 @@ vfu_async_done(vfu_ctx_t *vfu_ctx, int reply_errno)
     assert(vfu_ctx->pending != VFU_CTX_PENDING_NONE);
 
     if (vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP) {
+        struct vfio_user_dma_unmap *dma_unmap = vfu_ctx->pending_msg->in_data;
         ret = dma_controller_remove_region(vfu_ctx->dma,
-                                       (void *)vfu_ctx->pending_dma_unmap_addr,
-                                       vfu_ctx->pending_dma_unmap_size,
+                                       (void *)dma_unmap->addr,
+                                       dma_unmap->size,
                                        NULL, vfu_ctx);
         assert(ret == 0); // cannot fail
     }
