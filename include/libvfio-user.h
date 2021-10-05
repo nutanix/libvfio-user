@@ -586,10 +586,10 @@ typedef struct {
  * behavior.
  *
  * @vfu_ctx: the libvfio-user context
- * @err: 0 for success, -1 on error having set errno.
+ * @reply_errno: 0 for success or errno on error.
  */
 void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int err);
+vfu_migr_done(vfu_ctx_t *vfu_ctx, int reply_errno);
 
 
 #ifndef VFIO_DEVICE_STATE_STOP

@@ -336,7 +336,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
-        && errno == EBUSY && vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+        && errno == EBUSY && (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB)) {
         /*
          * We don't support async behavior for the non-blocking mode simply
          * because we don't have a use case yet, the only user of migration
@@ -1221,12 +1221,12 @@ exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 }
 
 static int
-do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_ret)
+do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
 {
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    int ret = vfu_ctx->tran->reply(vfu_ctx, msg, reply_ret == 0 ? 0 : errno);
+    int ret = vfu_ctx->tran->reply(vfu_ctx, msg, reply_errno);
 
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
@@ -1303,8 +1303,7 @@ out:
          */
         ret = 0;
     } else {
-
-        ret = do_reply(vfu_ctx, msg, ret);
+        ret = do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
     }
 
     free_msg(vfu_ctx, msg);
@@ -1978,13 +1977,13 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
 }
 
 EXPORT void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int err)
+vfu_migr_done(vfu_ctx_t *vfu_ctx, int reply_errno)
 {
     assert(vfu_ctx != NULL);
     assert(vfu_ctx->migr_trans_pending);
 
     if (!vfu_ctx->migr_trans_msg->hdr.flags.no_reply) {
-        do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, err);
+        do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, reply_errno);
     }
     free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
     vfu_ctx->migr_trans_msg = NULL;
