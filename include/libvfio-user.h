@@ -430,8 +430,10 @@ typedef int (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
  *
  * The callback can be asynchronous, just like vfu_dma_register_cb_t.
  *
- * The device must release all references to that region before the callback
- * returns.
+ * If operating synchronously, the device must release all references to that
+ * region before the callback returns. Otherwise, if operating asynchronously,
+ * the device must release all references to that region before the device calls
+ * vfu_async_done.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
@@ -592,9 +594,9 @@ typedef struct {
 } vfu_migration_callbacks_t;
 
 /*
- * Completes a pending migration state transition or DMA unmap operation.
+ * Completes a pending migration state transition or DMA /mapunmap operation.
  * Calling this function when there is no pending migration state transition or
- * DMA unmap operation results in undefined behavior.
+ * DMA map/unmap operation results in undefined behavior.
  *
  * @vfu_ctx: the libvfio-user context
  * @reply_errno: 0 for success or errno on error.
