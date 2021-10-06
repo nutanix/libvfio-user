@@ -36,10 +36,24 @@ import errno
 
 ctx = None
 
+
+global dma_register_cb_err
+dma_register_cb_err = 0
+
+
+@vfu_dma_register_cb_t
+def dma_register_cb(ctx, state):
+    global dma_register_cb_err
+    if dma_register_cb_err != 0:
+        c.set_errno(dma_register_cb_err)
+        return -1
+    return 0
+
+
 def test_dma_region_too_big():
     global ctx
 
-    ctx = prepare_ctx_for_dma()
+    ctx = prepare_ctx_for_dma(dma_register=dma_register_cb)
     assert ctx != None
 
     sock = connect_client(ctx)
@@ -70,6 +84,34 @@ def test_dma_region_too_many():
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
     disconnect_client(ctx, sock)
+
+
+def test_dma_map_busy():
+    sock = connect_client(ctx)
+
+    global dma_register_cb_err
+    dma_register_cb_err = errno.EBUSY
+
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ |
+               VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x10000, size=0x1000)
+
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.EBUSY
+
+    vfu_async_done(ctx, 0)
+
+    dma_register_cb_err = 0
+
+    get_reply(sock)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == 0
+
 
 def test_dma_region_cleanup():
     vfu_destroy_ctx(ctx)

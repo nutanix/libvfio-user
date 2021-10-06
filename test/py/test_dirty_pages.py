@@ -36,11 +36,10 @@ ctx = None
 
 @vfu_dma_register_cb_t
 def dma_register(ctx, info):
-    pass
+    return 0
 
 @vfu_dma_unregister_cb_t
 def dma_unregister(ctx, info):
-    pass
     return 0
 
 def test_dirty_pages_setup():

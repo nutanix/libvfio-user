@@ -174,7 +174,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
                         "failed to dma_unregister() DMA region [%p, %p): %m",
                         region->info.iova.iov_base, iov_end(&region->info.iova));
             }
-            return ERROR_INT(-err);
+            return err;
         }
 
         assert(region->refcnt == 0);

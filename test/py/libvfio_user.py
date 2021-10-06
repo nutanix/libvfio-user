@@ -502,9 +502,10 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
-vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.POINTER(vfu_dma_info_t))
+vfu_dma_register_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
+                                    c.POINTER(vfu_dma_info_t), use_errno=True)
 vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
-                                      c.POINTER(vfu_dma_info_t))
+                                      c.POINTER(vfu_dma_info_t), use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
@@ -569,7 +570,7 @@ def get_reply(sock, expect=0):
     buf = sock.recv(4096)
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
-    assert errno == expect
+    assert errno == expect, "XXX expect=%s, errno=%s" % (expect, errno)
     return buf[16:]
 
 def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
@@ -686,20 +687,21 @@ def ext_cap_hdr(buf, offset):
 
 @vfu_dma_register_cb_t
 def _dma_register(ctx, info):
-    pass
+    return 0
 
 @vfu_dma_unregister_cb_t
 def _dma_unregister(ctx, info):
     return 0
 
-def prepare_ctx_for_dma(dma_unregister=_dma_unregister):
+def prepare_ctx_for_dma(dma_register=_dma_unregister,
+                        dma_unregister=_dma_unregister):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx != None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
 
-    ret = vfu_setup_device_dma(ctx, _dma_register, dma_unregister)
+    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)

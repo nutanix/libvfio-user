@@ -152,6 +152,7 @@ struct dma_controller;
 enum vfu_ctx_pending {
     VFU_CTX_PENDING_NONE,
     VFU_CTX_PENDING_MIGR,
+    VFU_CTX_PENDING_DMA_MAP,
     VFU_CTX_PENDING_DMA_UNMAP
 };
 

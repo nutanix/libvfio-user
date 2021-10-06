@@ -151,7 +151,7 @@ static void _sa_handler(int signum)
     errno = _errno;
 }
 
-static void
+static int
 dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
@@ -168,6 +168,7 @@ dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 
     server_data->regions[idx].iova = info->iova;
     server_data->regions[idx].prot = info->prot;
+    return 0;
 }
 
 static int

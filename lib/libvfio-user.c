@@ -667,7 +667,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 {
     char rstr[1024];
     int fd = -1;
-    int ret;
+    int ret, idx;
     uint32_t prot = 0;
 
     assert(vfu_ctx != NULL);
@@ -713,18 +713,22 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                     dma_map->size, fd, dma_map->offset,
                                     prot);
     if (ret < 0) {
-        ret = errno;
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
         if (fd != -1) {
             close(fd);
         }
-        return ERROR_INT(ret);
+        return ret;
     }
-
+    idx = ret;
+    ret = 0;
     if (vfu_ctx->dma_register != NULL) {
-        vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
+        ret = vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[idx].info);
+        if (ret == -1 && errno == EBUSY) {
+            vfu_ctx->pending = VFU_CTX_PENDING_DMA_MAP;
+            ret = 0;
+        }
     }
-    return 0;
+    return ret;
 }
 
 int
@@ -823,14 +827,13 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                        vfu_ctx->dma_unregister,
                                        vfu_ctx);
     if (ret < 0) {
-        ret = errno;
         if (errno == EBUSY) {
             vfu_ctx->pending = VFU_CTX_PENDING_DMA_UNMAP;
             return 0;
         }
         vfu_log(vfu_ctx, LOG_WARNING,
                "failed to remove DMA region %s: %m", rstr);
-        return ERROR_INT(ret);
+        return ret;
     }
 
 out:
@@ -1850,6 +1853,12 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
         return ERROR_INT(EINVAL);
     }
 
+    /*
+     * TODO We don't allow this because it complicates dirty page tracking when
+     * the DMA unmap callback is asynchronous: if the client calls vfu_map_sg
+     * after it has returned EBUSY from the DMA unmap callback then we'll miss
+     * this dirty page.
+     */
     if (unlikely(vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP)) {
         return ERROR_INT(EBUSY);
     }

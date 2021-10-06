@@ -37,21 +37,35 @@ ctx = None
 sock = None
 
 
-def test_dma_unmap_setup(dma_unregister=None):
+global dma_unregister_cb_err
+dma_unregister_cb_err = 0
+
+
+@vfu_dma_unregister_cb_t
+def dma_unregister_cb(ctx, state):
+    global dma_unregsiter_cb_err
+    if dma_unregister_cb_err != 0:
+        c.set_errno(dma_unregister_cb_err)
+        return -1
+    return 0
+
+
+def test_dma_unmap_setup():
     global ctx, sock
 
-    ctx = prepare_ctx_for_dma(dma_unregister)
+    ctx = prepare_ctx_for_dma(dma_unregister=dma_unregister_cb)
     assert ctx != None
     payload = struct.pack("II", 0, 0)
 
     sock = connect_client(ctx)
 
-    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
-        flags=(VFIO_USER_F_DMA_REGION_READ |
-               VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x1000, size=4096)
+    for i in range(1, 3):
+        payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+            flags=(VFIO_USER_F_DMA_REGION_READ |
+                   VFIO_USER_F_DMA_REGION_WRITE),
+            offset=0, addr=0x1000 * i, size=4096)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
 
 def test_dma_unmap_short_write():
@@ -73,7 +87,7 @@ def test_dma_unmap_invalid_flags():
 def test_dma_unmap():
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
-                                  flags=0, addr=0x1000, size=4096)
+                                  flags=0, addr=0x1000, size=0x1000)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
 
 
@@ -83,6 +97,29 @@ def test_dma_unmap_invalid_addr():
                                   addr=0x10000, size=4096)
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOENT)
+
+
+def test_dma_unmap_async():
+
+    global dma_unregister_cb_err
+    dma_unregister_cb_err = errno.EBUSY
+
+    payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
+                                  flags=0, addr=0x2000, size=0x1000)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.EBUSY
+
+    vfu_async_done(ctx, 0)
+
+    get_reply(sock)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == 0
+
+    dma_unregister_cb_err = 0
 
 
 def test_dma_unmap_all():
@@ -116,44 +153,7 @@ def test_dma_unmap_all_invalid_flags():
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
 
-_dma_unregister_cb = None
-
-
-@vfu_dma_unregister_cb_t
-def dma_unregister_cb(ctx, info):
-    global _dma_unregister_cb
-    return _dma_unregister_cb(ctx, info)
-
-
-def test_dma_unmap_async():
-
-    test_dma_unmap_cleanup()
-
-    global _dma_unregister_cb
-    _dma_unregister_cb = lambda ctx, info: -errno.EBUSY
-
-    test_dma_unmap_setup(dma_unregister_cb)
-
-    payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
-                                  flags=0, addr=0x1000, size=4096)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False)
-
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
-
-    vfu_async_done(ctx, 0)
-
-    get_reply(sock)
-
-    ret = vfu_run_ctx(ctx)
-    assert ret == 0
-
-
 def test_dma_unmap_cleanup():
-
-    global _dma_unregister_cb
-    _dma_unregister_cb = lambda ctx, info: 0
 
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
