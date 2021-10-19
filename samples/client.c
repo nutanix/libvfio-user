@@ -276,8 +276,8 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
 
         ssize_t ret;
         void *addr;
-        char pathname[BUFSIZ];
-        char buf[PATH_MAX];
+        char pathname[PATH_MAX];
+        char buf[PATH_MAX] = "";
 
         ret = snprintf(pathname, sizeof(pathname), "/proc/self/fd/%d", fds[i]);
         assert(ret != -1 && (size_t)ret < sizeof(pathname));
@@ -285,7 +285,6 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
         if (ret == -1) {
             err(EXIT_FAILURE, "failed to resolve file descriptor %d", fds[i]);
         }
-        buf[ret + 1] = '\0';
         addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
                     MAP_SHARED, fds[i], region_info->offset +
                     sparse->areas[i].offset);
@@ -295,6 +294,9 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
                 i, buf, sparse->areas[i].offset,
                 sparse->areas[i].offset + sparse->areas[i].size - 1);
         }
+
+        ret = munmap(addr, sparse->areas[i].size);
+        assert(ret == 0);
     }
 }
 
@@ -1080,12 +1082,13 @@ map_dma_regions(int sock, struct vfio_user_dma_map *dma_regions,
 
 int main(int argc, char *argv[])
 {
-	int ret, sock, irq_fd;
+    char template[] = "/tmp/libvfio-user.XXXXXX";
+    int ret, sock, irq_fd;
     struct vfio_user_dma_map *dma_regions;
     struct vfio_user_device_info client_dev_info = {0};
     int *dma_region_fds;
     int i;
-    FILE *fp;
+    int tmpfd;
     int server_max_fds;
     size_t server_max_data_xfer_size;
     size_t pgsize;
@@ -1159,13 +1162,15 @@ int main(int argc, char *argv[])
      */
     nr_dma_regions = server_max_fds << 1;
 
-    if ((fp = tmpfile()) == NULL) {
-        err(EXIT_FAILURE, "failed to create DMA file");
+    if ((tmpfd = mkstemp(template)) == -1) {
+        err(EXIT_FAILURE, "failed to create backing file");
     }
 
-    if ((ret = ftruncate(fileno(fp), nr_dma_regions * sysconf(_SC_PAGESIZE))) == -1) {
+    if ((ret = ftruncate(tmpfd, nr_dma_regions * sysconf(_SC_PAGESIZE))) == -1) {
         err(EXIT_FAILURE, "failed to truncate file");
     }
+
+    unlink(template);
 
     dma_regions = alloca(sizeof(*dma_regions) * nr_dma_regions);
     dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
@@ -1176,7 +1181,7 @@ int main(int argc, char *argv[])
         dma_regions[i].size = sysconf(_SC_PAGESIZE);
         dma_regions[i].offset = dma_regions[i].addr;
         dma_regions[i].flags = VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE;
-        dma_region_fds[i] = fileno(fp);
+        dma_region_fds[i] = tmpfd;
     }
 
     map_dma_regions(sock, dma_regions, dma_region_fds, nr_dma_regions);

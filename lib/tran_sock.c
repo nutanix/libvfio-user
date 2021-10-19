@@ -419,6 +419,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
     if (ret >= (int)sizeof(addr.sun_path)) {
         ret = ENAMETOOLONG;
+        goto out;
     } else if (ret < 0) {
         ret = EINVAL;
         goto out;
@@ -438,7 +439,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 
 out:
     if (ret != 0) {
-        if (ts->listen_fd != -1) {
+        if (ts != NULL && ts->listen_fd != -1) {
             close(ts->listen_fd);
         }
         free(ts);

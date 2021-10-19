@@ -418,6 +418,7 @@ page_align(size_t size)
 
 int main(int argc, char *argv[])
 {
+    char template[] = "/tmp/libvfio-user.XXXXXX";
     int ret;
     bool verbose = false;
     int opt;
@@ -430,7 +431,7 @@ int main(int argc, char *argv[])
         }
     };
     vfu_ctx_t *vfu_ctx;
-    FILE *fp;
+    int tmpfd;
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
@@ -494,9 +495,11 @@ int main(int argc, char *argv[])
      * We choose to use a single file which contains both BAR1 and the migration
      * registers. They could also be completely different files.
      */
-    if ((fp = tmpfile()) == NULL) {
+    if ((tmpfd = mkstemp(template)) == -1) {
         err(EXIT_FAILURE, "failed to create backing file");
     }
+
+    unlink(template);
 
     server_data.bar1_size = bar1_size;
 
@@ -509,11 +512,11 @@ int main(int argc, char *argv[])
     migr_data_size = page_align(bar1_size + sizeof(time_t));
     migr_size = migr_regs_size + migr_data_size;
 
-    if (ftruncate(fileno(fp), server_data.bar1_size + migr_size) == -1) {
+    if (ftruncate(tmpfd, server_data.bar1_size + migr_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate backing file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
-                            MAP_SHARED, fileno(fp), 0);
+                            MAP_SHARED, tmpfd, 0);
     if (server_data.bar1 == MAP_FAILED) {
         err(EXIT_FAILURE, "failed to mmap BAR1");
     }
@@ -524,7 +527,7 @@ int main(int argc, char *argv[])
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_BAR1_REGION_IDX,
                            server_data.bar1_size, &bar1_access,
                            VFU_REGION_FLAG_RW, bar1_mmap_areas, 2,
-                           fileno(fp), 0);
+                           tmpfd, 0);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
@@ -544,7 +547,7 @@ int main(int argc, char *argv[])
      */
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
                            NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
-                           ARRAY_SIZE(migr_mmap_areas), fileno(fp),
+                           ARRAY_SIZE(migr_mmap_areas), tmpfd,
                            server_data.bar1_size);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup migration region");
