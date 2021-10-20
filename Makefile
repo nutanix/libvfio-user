@@ -52,6 +52,7 @@ ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
 
+GIT_SHA = $(shell git rev-parse --short HEAD)
 CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
 RSTLINT= $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
 
@@ -134,6 +135,13 @@ pre-push: realclean
 	make test CC=gcc
 	make pytest-valgrind
 	make install DESTDIR=tmp.install
+
+coverity: realclean
+	curl -sS -L -o coverity.tar.gz -d "token=$$COVERITY_TOKEN&project=nutanix%2Flibvfio-user" https://scan.coverity.com/download/cxx/linux64
+	tar xf coverity.tar.gz
+	./cov-analysis-linux64-*/bin/cov-build --dir cov-int make -j4 all
+	tar czf coverity-results.tar.gz cov-int
+	curl --form token=$$COVERITY_TOKEN --form email=$$COVERITY_EMAIL --form file=@coverity-results.tar.gz --form version="$(GIT_SHA)"  https://scan.coverity.com/builds?project=nutanix%2Flibvfio-user
 
 GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 
