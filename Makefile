@@ -54,7 +54,8 @@ endif
 
 GIT_SHA = $(shell git rev-parse --short HEAD)
 CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
-RSTLINT= $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
+RSTLINT = $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
+FLAKE8 = $(shell bash -c "command -v flake8 /bin/true" | head -1)
 
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
@@ -65,7 +66,6 @@ INSTALL_PREFIX ?= /usr/local
 .PHONY: pre-push clean realclean tags gcov
 
 all install: $(BUILD_DIR)/Makefile
-	$(RSTLINT) docs/vfio-user.rst
 	+$(MAKE) -C $(BUILD_DIR) $@
 
 #
@@ -126,6 +126,8 @@ endif
 	cd $(BUILD_DIR)/test; ctest --verbose
 
 pre-push: realclean
+	$(RSTLINT) docs/vfio-user.rst
+	$(FLAKE8) --extend-ignore=F405,F403,E128,E131,E127 $$(find . -name '*.py')
 	make test WITH_ASAN=1
 	make realclean
 	make test CC=clang BUILD_TYPE=rel

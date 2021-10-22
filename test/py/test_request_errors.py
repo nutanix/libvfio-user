@@ -28,21 +28,20 @@
 #
 
 from libvfio_user import *
-import ctypes as c
 import errno
 import os
-import sys
 
 ctx = None
 sock = None
 
 argsz = len(vfio_irq_set())
 
+
 def test_request_errors_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -55,6 +54,7 @@ def test_request_errors_setup():
 
     sock = connect_client(ctx)
 
+
 def test_too_small():
     # struct vfio_user_header
     hdr = struct.pack("HHIII", 0xbad1, VFIO_USER_DEVICE_SET_IRQS,
@@ -63,6 +63,7 @@ def test_too_small():
     sock.send(hdr)
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
+
 
 def test_too_large():
     # struct vfio_user_header
@@ -73,6 +74,7 @@ def test_too_large():
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_unsolicited_reply():
     # struct vfio_user_header
     hdr = struct.pack("HHIII", 0xbad2, VFIO_USER_DEVICE_SET_IRQS,
@@ -82,6 +84,7 @@ def test_unsolicited_reply():
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_bad_command():
     hdr = vfio_user_header(VFIO_USER_MAX, size=1)
 
@@ -89,11 +92,13 @@ def test_bad_command():
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_no_payload():
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=0)
     sock.send(hdr)
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
+
 
 def test_bad_request_closes_fds():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -119,6 +124,7 @@ def test_bad_request_closes_fds():
 
     os.close(fd1)
     os.close(fd2)
+
 
 def test_request_errors_cleanup():
     vfu_destroy_ctx(ctx)

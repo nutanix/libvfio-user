@@ -31,7 +31,6 @@
 # Note that we don't use enum here, as class.value is a little verbose
 #
 
-from collections import namedtuple
 from types import SimpleNamespace
 import ctypes as c
 import array
@@ -39,7 +38,6 @@ import errno
 import json
 import mmap
 import os
-import pathlib
 import socket
 import struct
 import syslog
@@ -101,7 +99,7 @@ VFIO_IRQ_SET_ACTION_TRIGGER = (1 << 5)
 VFIO_DMA_UNMAP_FLAG_ALL = (1 << 1)
 
 VFIO_DEVICE_STATE_STOP = (0)
-VFIO_DEVICE_STATE_RUNNING =  (1 << 0)
+VFIO_DEVICE_STATE_RUNNING = (1 << 0)
 VFIO_DEVICE_STATE_SAVING = (1 << 1)
 VFIO_DEVICE_STATE_RESUMING = (1 << 2)
 VFIO_DEVICE_STATE_MASK = ((1 << 3) - 1)
@@ -130,21 +128,21 @@ MAX_DMA_REGIONS = 16
 MAX_DMA_SIZE = (8 * ONE_TB)
 
 # enum vfio_user_command
-VFIO_USER_VERSION                   = 1
-VFIO_USER_DMA_MAP                   = 2
-VFIO_USER_DMA_UNMAP                 = 3
-VFIO_USER_DEVICE_GET_INFO           = 4
-VFIO_USER_DEVICE_GET_REGION_INFO    = 5
-VFIO_USER_DEVICE_GET_REGION_IO_FDS  = 6
-VFIO_USER_DEVICE_GET_IRQ_INFO       = 7
-VFIO_USER_DEVICE_SET_IRQS           = 8
-VFIO_USER_REGION_READ               = 9
-VFIO_USER_REGION_WRITE              = 10
-VFIO_USER_DMA_READ                  = 11
-VFIO_USER_DMA_WRITE                 = 12
-VFIO_USER_DEVICE_RESET              = 13
-VFIO_USER_DIRTY_PAGES               = 14
-VFIO_USER_MAX                       = 15
+VFIO_USER_VERSION = 1
+VFIO_USER_DMA_MAP = 2
+VFIO_USER_DMA_UNMAP = 3
+VFIO_USER_DEVICE_GET_INFO = 4
+VFIO_USER_DEVICE_GET_REGION_INFO = 5
+VFIO_USER_DEVICE_GET_REGION_IO_FDS = 6
+VFIO_USER_DEVICE_GET_IRQ_INFO = 7
+VFIO_USER_DEVICE_SET_IRQS = 8
+VFIO_USER_REGION_READ = 9
+VFIO_USER_REGION_WRITE = 10
+VFIO_USER_DMA_READ = 11
+VFIO_USER_DMA_WRITE = 12
+VFIO_USER_DEVICE_RESET = 13
+VFIO_USER_DIRTY_PAGES = 14
+VFIO_USER_MAX = 15
 
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
@@ -157,16 +155,16 @@ VFU_PCI_DEV_BAR2_REGION_IDX = 2
 VFU_PCI_DEV_BAR3_REGION_IDX = 3
 VFU_PCI_DEV_BAR4_REGION_IDX = 4
 VFU_PCI_DEV_BAR5_REGION_IDX = 5
-VFU_PCI_DEV_ROM_REGION_IDX  = 6
-VFU_PCI_DEV_CFG_REGION_IDX  = 7
-VFU_PCI_DEV_VGA_REGION_IDX  = 8
+VFU_PCI_DEV_ROM_REGION_IDX = 6
+VFU_PCI_DEV_CFG_REGION_IDX = 7
+VFU_PCI_DEV_VGA_REGION_IDX = 8
 VFU_PCI_DEV_MIGR_REGION_IDX = 9
-VFU_PCI_DEV_NUM_REGIONS     = 10
+VFU_PCI_DEV_NUM_REGIONS = 10
 
-VFU_REGION_FLAG_READ  = 1
+VFU_REGION_FLAG_READ = 1
 VFU_REGION_FLAG_WRITE = 2
 VFU_REGION_FLAG_RW = (VFU_REGION_FLAG_READ | VFU_REGION_FLAG_WRITE)
-VFU_REGION_FLAG_MEM   = 4
+VFU_REGION_FLAG_MEM = 4
 VFU_REGION_FLAG_ALWAYS_CB = 8
 
 VFIO_USER_F_DMA_REGION_READ = (1 << 0)
@@ -184,10 +182,10 @@ VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
 
 # enum vfu_dev_irq_type
 VFU_DEV_INTX_IRQ = 0
-VFU_DEV_MSI_IRQ  = 1
+VFU_DEV_MSI_IRQ = 1
 VFU_DEV_MSIX_IRQ = 2
-VFU_DEV_ERR_IRQ  = 3
-VFU_DEV_REQ_IRQ  = 4
+VFU_DEV_ERR_IRQ = 3
+VFU_DEV_REQ_IRQ = 4
 VFU_DEV_NUM_IRQS = 5
 
 # enum vfu_reset_type
@@ -197,9 +195,9 @@ VFU_RESET_PCI_FLR = 2
 
 # vfu_pci_type_t
 VFU_PCI_TYPE_CONVENTIONAL = 0
-VFU_PCI_TYPE_PCI_X_1      = 1
-VFU_PCI_TYPE_PCI_X_2      = 2
-VFU_PCI_TYPE_EXPRESS      = 3
+VFU_PCI_TYPE_PCI_X_1 = 1
+VFU_PCI_TYPE_PCI_X_2 = 2
+VFU_PCI_TYPE_EXPRESS = 3
 
 VFU_CAP_FLAG_EXTENDED = (1 << 0)
 VFU_CAP_FLAG_CALLBACK = (1 << 1)
@@ -219,6 +217,7 @@ libc = c.CDLL("libc.so.6", use_errno=True)
 # Structures
 #
 
+
 class Structure(c.Structure):
     def __len__(self):
         """Handy method to return length in bytes."""
@@ -230,6 +229,7 @@ class Structure(c.Structure):
         obj = cls.from_buffer_copy(buf)
         return obj, buf[c.sizeof(obj):]
 
+
 class vfu_bar_t(c.Union):
     _pack_ = 1
     _fields_ = [
@@ -237,12 +237,14 @@ class vfu_bar_t(c.Union):
         ("io", c.c_int32)
     ]
 
+
 class vfu_pci_hdr_intr_t(Structure):
     _pack_ = 1
     _fields_ = [
         ("iline", c.c_byte),
         ("ipin", c.c_byte)
     ]
+
 
 class vfu_pci_hdr_t(Structure):
     _pack_ = 1
@@ -269,11 +271,13 @@ class vfu_pci_hdr_t(Structure):
         ("mlat", c.c_byte)
     ]
 
+
 class iovec_t(Structure):
     _fields_ = [
         ("iov_base", c.c_void_p),
         ("iov_len", c.c_int32)
     ]
+
 
 class vfio_irq_info(Structure):
     _pack_ = 1
@@ -283,6 +287,7 @@ class vfio_irq_info(Structure):
         ("index", c.c_uint32),
         ("count", c.c_uint32),
     ]
+
 
 class vfio_irq_set(Structure):
     _pack_ = 1
@@ -294,6 +299,7 @@ class vfio_irq_set(Structure):
         ("count", c.c_uint32),
     ]
 
+
 class vfio_user_device_info(Structure):
     _pack_ = 1
     _fields_ = [
@@ -302,6 +308,7 @@ class vfio_user_device_info(Structure):
         ("num_regions", c.c_uint32),
         ("num_irqs", c.c_uint32),
     ]
+
 
 class vfio_region_info(Structure):
     _pack_ = 1
@@ -314,6 +321,7 @@ class vfio_region_info(Structure):
         ("offset", c.c_uint64),
     ]
 
+
 class vfio_region_info_cap_type(Structure):
     _pack_ = 1
     _fields_ = [
@@ -323,6 +331,7 @@ class vfio_region_info_cap_type(Structure):
         ("type", c.c_uint32),
         ("subtype", c.c_uint32),
     ]
+
 
 class vfio_region_info_cap_sparse_mmap(Structure):
     _pack_ = 1
@@ -334,12 +343,14 @@ class vfio_region_info_cap_sparse_mmap(Structure):
         ("reserved", c.c_uint32),
     ]
 
+
 class vfio_region_sparse_mmap_area(Structure):
     _pack_ = 1
     _fields_ = [
         ("offset", c.c_uint64),
         ("size", c.c_uint64),
     ]
+
 
 class vfio_user_region_io_fds_request(Structure):
     _pack_ = 1
@@ -349,6 +360,7 @@ class vfio_user_region_io_fds_request(Structure):
         ("index", c.c_uint32),
         ("count", c.c_uint32)
     ]
+
 
 class vfio_user_sub_region_ioeventfd(Structure):
     _pack_ = 1
@@ -362,6 +374,7 @@ class vfio_user_sub_region_ioeventfd(Structure):
         ("datamatch", c.c_uint64)
     ]
 
+
 class vfio_user_sub_region_ioregionfd(Structure):
     _pack_ = 1
     _fields_ = [
@@ -374,12 +387,14 @@ class vfio_user_sub_region_ioregionfd(Structure):
         ("user_data", c.c_uint64)
     ]
 
+
 class vfio_user_sub_region_io_fd(c.Union):
     _pack_ = 1
     _fields_ = [
         ("sub_region_ioeventfd", vfio_user_sub_region_ioeventfd),
         ("sub_region_ioregionfd", vfio_user_sub_region_ioregionfd)
     ]
+
 
 class vfio_user_region_io_fds_reply(Structure):
     _pack_ = 1
@@ -389,6 +404,7 @@ class vfio_user_region_io_fds_reply(Structure):
         ("index", c.c_uint32),
         ("count", c.c_uint32)
     ]
+
 
 class vfio_user_dma_map(Structure):
     _pack_ = 1
@@ -400,6 +416,7 @@ class vfio_user_dma_map(Structure):
         ("size", c.c_uint64),
     ]
 
+
 class vfio_user_dma_unmap(Structure):
     _pack_ = 1
     _fields_ = [
@@ -408,6 +425,7 @@ class vfio_user_dma_unmap(Structure):
         ("addr", c.c_uint64),
         ("size", c.c_uint64),
     ]
+
 
 class vfu_dma_info_t(Structure):
     _fields_ = [
@@ -418,6 +436,7 @@ class vfu_dma_info_t(Structure):
         ("prot", c.c_uint32)
     ]
 
+
 class vfio_user_dirty_pages(Structure):
     _pack_ = 1
     _fields_ = [
@@ -425,12 +444,14 @@ class vfio_user_dirty_pages(Structure):
         ("flags", c.c_uint32)
     ]
 
+
 class vfio_user_bitmap(Structure):
     _pack_ = 1
     _fields_ = [
         ("pgsize", c.c_uint64),
         ("size", c.c_uint64)
     ]
+
 
 class vfio_user_bitmap_range(Structure):
     _pack_ = 1
@@ -440,6 +461,7 @@ class vfio_user_bitmap_range(Structure):
         ("bitmap", vfio_user_bitmap)
     ]
 
+
 transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
 get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
 prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
@@ -448,6 +470,7 @@ read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p,
                              c.c_uint64, c.c_uint64)
 write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_uint64)
 data_written_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_uint64)
+
 
 class vfu_migration_callbacks_t(Structure):
     _fields_ = [
@@ -460,6 +483,7 @@ class vfu_migration_callbacks_t(Structure):
         ("data_written", data_written_cb_t),
     ]
 
+
 class dma_sg_t(Structure):
     _fields_ = [
         ("dma_addr", c.c_void_p),
@@ -467,13 +491,14 @@ class dma_sg_t(Structure):
         ("length", c.c_uint64),
         ("offset", c.c_uint64),
         ("writeable", c.c_bool),
-        ("le_next", c.c_void_p), # FIXME add struct for LIST_ENTRY
+        ("le_next", c.c_void_p),
         ("le_prev", c.c_void_p),
     ]
 
 #
 # Util functions
 #
+
 
 lib.vfu_create_ctx.argtypes = (c.c_int, c.c_char_p, c.c_int,
                                c.c_void_p, c.c_int)
@@ -502,7 +527,8 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
-vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.POINTER(vfu_dma_info_t))
+vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p,
+                                    c.POINTER(vfu_dma_info_t))
 vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
                                       c.POINTER(vfu_dma_info_t))
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
@@ -527,22 +553,27 @@ def to_byte(val):
     """Cast an int to a byte value."""
     return val.to_bytes(1, 'little')
 
+
 def skip(fmt, buf):
     """Return the data remaining after skipping the given elements."""
     return buf[struct.calcsize(fmt):]
+
 
 def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
 
+
 def eventfd(initval=0, flags=0):
     libc.eventfd.argtypes = (c.c_uint, c.c_int)
     return libc.eventfd(initval, flags)
+
 
 def connect_sock():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(SOCK_PATH)
     return sock
+
 
 def connect_client(ctx):
     sock = connect_sock()
@@ -557,6 +588,7 @@ def connect_client(ctx):
     payload = get_reply(sock, expect=0)
     return sock
 
+
 def disconnect_client(ctx, sock):
     sock.close()
 
@@ -565,12 +597,14 @@ def disconnect_client(ctx, sock):
     assert ret == -1
     assert c.get_errno() == errno.ENOTCONN
 
+
 def get_reply(sock, expect=0):
     buf = sock.recv(4096)
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
     assert errno == expect
     return buf[16:]
+
 
 def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
     """Round trip a request and reply to the server."""
@@ -589,6 +623,7 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
         return
     return get_reply(sock, expect=expect)
 
+
 def get_reply_fds(sock, expect=0):
     """Receives a message from a socket and pulls the returned file descriptors
        out of the message."""
@@ -599,15 +634,16 @@ def get_reply_fds(sock, expect=0):
                                                               data[0:16])
     assert errno == expect
 
-    cmsg_level, cmsg_type, packed_fd = ancillary[0] if len(ancillary) != 0 else \
-                                        (0, 0, [])
+    cmsg_level, cmsg_type, packed_fd = ancillary[0] if len(ancillary) != 0 \
+                                                    else (0, 0, [])
     unpacked_fds = []
     for i in range(0, len(packed_fd), 4):
-        [unpacked_fd] = struct.unpack_from("i", packed_fd, offset = i)
+        [unpacked_fd] = struct.unpack_from("i", packed_fd, offset=i)
         unpacked_fds.append(unpacked_fd)
     assert len(packed_fd)/4 == len(unpacked_fds)
     assert (msg_flags & VFIO_USER_F_TYPE_REPLY) != 0
     return (unpacked_fds, data[16:])
+
 
 def msg_fds(ctx, sock, cmd, payload, expect=0, fds=None):
     """Round trip a request and reply to the server. With the server returning
@@ -623,17 +659,21 @@ def msg_fds(ctx, sock, cmd, payload, expect=0, fds=None):
     vfu_run_ctx(ctx)
     return get_reply_fds(sock, expect=expect)
 
+
 def get_pci_header(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)
     return c.cast(ptr, c.POINTER(vfu_pci_hdr_t)).contents
+
 
 def get_pci_cfg_space(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)
     return c.cast(ptr, c.POINTER(c.c_char))[0:PCI_CFG_SPACE_SIZE]
 
+
 def get_pci_ext_cfg_space(ctx):
     ptr = lib.vfu_pci_get_config_space(ctx)
     return c.cast(ptr, c.POINTER(c.c_char))[0:PCI_CFG_SPACE_EXP_SIZE]
+
 
 def read_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = get_pci_ext_cfg_space(ctx) if extended else get_pci_cfg_space(ctx)
@@ -641,6 +681,7 @@ def read_pci_cfg_space(ctx, buf, count, offset, extended=False):
     for i in range(count):
         buf[i] = space[offset+i]
     return count
+
 
 def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
     max_offset = PCI_CFG_SPACE_EXP_SIZE if extended else PCI_CFG_SPACE_SIZE
@@ -652,6 +693,7 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
     for i in range(count):
         space[offset+i] = buf[i]
     return count
+
 
 def access_region(ctx, sock, is_write, region, offset, count,
                   data=None, expect=0, rsp=True):
@@ -669,12 +711,16 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     return skip("QII", result)
 
+
 def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True):
     access_region(ctx, sock, True, region, offset, count, data, expect=expect,
                   rsp=rsp)
 
+
 def read_region(ctx, sock, region, offset, count, expect=0):
-    return access_region(ctx, sock, False, region, offset, count, expect=expect)
+    return access_region(ctx, sock, False, region, offset, count,
+                         expect=expect)
+
 
 def ext_cap_hdr(buf, offset):
     """Read an extended cap header."""
@@ -684,18 +730,21 @@ def ext_cap_hdr(buf, offset):
     cap_next >>= 4
     return cap_id, cap_next
 
+
 @vfu_dma_register_cb_t
 def dma_register(ctx, info):
     pass
+
 
 @vfu_dma_unregister_cb_t
 def dma_unregister(ctx, info):
     pass
     return 0
 
+
 def prepare_ctx_for_dma():
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -712,11 +761,14 @@ def prepare_ctx_for_dma():
 # Library wrappers
 #
 
+
 msg_id = 1
+
 
 @c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_char_p)
 def log(ctx, level, msg):
     print(msg.decode("utf-8"))
+
 
 def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
     global msg_id
@@ -727,6 +779,7 @@ def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
     msg_id += 1
 
     return buf
+
 
 def vfu_create_ctx(trans=VFU_TRANS_SOCK, sock_path=SOCK_PATH, flags=0,
                    private=None, dev_type=VFU_DEV_TYPE_PCI):
@@ -740,8 +793,10 @@ def vfu_create_ctx(trans=VFU_TRANS_SOCK, sock_path=SOCK_PATH, flags=0,
 
     return ctx
 
+
 def vfu_realize_ctx(ctx):
     return lib.vfu_realize_ctx(ctx)
+
 
 def vfu_attach_ctx(ctx, expect=0):
     ret = lib.vfu_attach_ctx(ctx)
@@ -752,8 +807,10 @@ def vfu_attach_ctx(ctx, expect=0):
         assert c.get_errno() == expect
     return ret
 
+
 def vfu_run_ctx(ctx):
     return lib.vfu_run_ctx(ctx)
+
 
 def vfu_destroy_ctx(ctx):
     lib.vfu_destroy_ctx(ctx)
@@ -761,9 +818,10 @@ def vfu_destroy_ctx(ctx):
     if os.path.exists(SOCK_PATH):
         os.remove(SOCK_PATH)
 
+
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
                      mmap_areas=None, nr_mmap_areas=None, fd=-1, offset=0):
-    assert ctx != None
+    assert ctx is not None
 
     c_mmap_areas = None
 
@@ -790,50 +848,59 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
 
     return ret
 
+
 def vfu_setup_device_reset_cb(ctx, cb):
-    assert ctx != None
+    assert ctx is not None
     return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
 
+
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
-    assert ctx != None
+    assert ctx is not None
     return lib.vfu_setup_device_nr_irqs(ctx, irqtype, count)
+
 
 def vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_EXPRESS,
                  hdr_type=PCI_HEADER_TYPE_NORMAL):
-    assert ctx != None
+    assert ctx is not None
     return lib.vfu_pci_init(ctx, pci_type, hdr_type, 0)
 
+
 def vfu_pci_add_capability(ctx, pos, flags, data):
-    assert ctx != None
+    assert ctx is not None
 
     databuf = (c.c_byte * len(data)).from_buffer(bytearray(data))
     return lib.vfu_pci_add_capability(ctx, pos, flags, databuf)
 
+
 def vfu_pci_find_capability(ctx, extended, cap_id):
-    assert ctx != None
+    assert ctx is not None
 
     return lib.vfu_pci_find_capability(ctx, extended, cap_id)
 
+
 def vfu_pci_find_next_capability(ctx, extended, offset, cap_id):
-    assert ctx != None
+    assert ctx is not None
 
     return lib.vfu_pci_find_next_capability(ctx, extended, offset, cap_id)
 
+
 def vfu_irq_trigger(ctx, subindex):
-    assert ctx != None
+    assert ctx is not None
 
     return lib.vfu_irq_trigger(ctx, subindex)
 
+
 def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
-    assert ctx != None
+    assert ctx is not None
 
     return lib.vfu_setup_device_dma(ctx, c.cast(register_cb,
                                                 vfu_dma_register_cb_t),
                                          c.cast(unregister_cb,
                                                 vfu_dma_unregister_cb_t))
 
+
 def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
-    assert ctx != None
+    assert ctx is not None
 
     @c.CFUNCTYPE(c.c_int)
     def stub():
@@ -851,9 +918,10 @@ def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
 
     return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
 
+
 def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
                    prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
-    assert ctx != None
+    assert ctx is not None
 
     sg = (dma_sg_t * max_sg)()
 
@@ -863,13 +931,17 @@ def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
 def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
     return lib.vfu_map_sg(ctx, sg, iovec, cnt, flags)
 
+
 def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
     return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
 
-def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
-    assert ctx != None
 
-    return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch)
+def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
+    assert ctx is not None
+
+    return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size,
+                                    flags, datamatch)
+
 
 def vfu_migr_done(ctx, err):
     return lib.vfu_migr_done(ctx, err)

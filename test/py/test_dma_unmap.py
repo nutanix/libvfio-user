@@ -28,19 +28,18 @@
 #  DAMAGE.
 #
 
-import ctypes
 import errno
 from libvfio_user import *
-import tempfile
 
 ctx = None
 sock = None
+
 
 def test_dma_unmap_setup():
     global ctx, sock
 
     ctx = prepare_ctx_for_dma()
-    assert ctx != None
+    assert ctx is not None
     payload = struct.pack("II", 0, 0)
 
     sock = connect_client(ctx)
@@ -52,15 +51,18 @@ def test_dma_unmap_setup():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
+
 def test_dma_unmap_short_write():
 
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
+
 def test_dma_unmap_bad_argsz():
 
-    payload = vfio_user_dma_unmap(argsz=8, flags=0x2323, addr=0x1000, size=4096)
+    vfio_user_dma_unmap(argsz=8, flags=0x2323, addr=0x1000, size=4096)
+
 
 def test_dma_unmap_invalid_flags():
 
@@ -68,11 +70,13 @@ def test_dma_unmap_invalid_flags():
                                   flags=0x4, addr=0x1000, size=4096)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOTSUP)
 
+
 def test_dma_unmap():
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x1000, size=4096)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
+
 
 def test_dma_unmap_all():
 
@@ -89,12 +93,14 @@ def test_dma_unmap_all():
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
 
+
 def test_dma_unmap_all_invalid_addr():
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0x10000, size=4096)
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
 
 def test_dma_unmap_all_invalid_flags():
 
@@ -103,6 +109,7 @@ def test_dma_unmap_all_invalid_flags():
                addr=0, size=0)
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
 
 def test_dma_unmap_cleanup():
     disconnect_client(ctx, sock)
