@@ -36,6 +36,7 @@ ctx = None
 global trans_cb_err
 trans_cb_err = 0
 
+
 @transition_cb_t
 def trans_cb(ctx, state):
     global trans_cb_err
@@ -49,7 +50,7 @@ def test_migration_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
                            flags=VFU_REGION_FLAG_RW)

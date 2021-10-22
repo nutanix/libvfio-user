@@ -34,17 +34,19 @@ import tempfile
 
 ctx = None
 
+
 def test_map_sg_with_invalid_region():
     global ctx
 
     ctx = prepare_ctx_for_dma()
-    assert ctx != None
+    assert ctx is not None
 
     sg = dma_sg_t()
     iovec = iovec_t()
     ret = vfu_map_sg(ctx, sg, iovec)
     assert ret == -1
     assert ctypes.get_errno() == errno.EINVAL
+
 
 def test_map_sg_without_fd():
     sock = connect_client(ctx)
@@ -62,6 +64,7 @@ def test_map_sg_without_fd():
     assert ctypes.get_errno() == errno.EFAULT
 
     disconnect_client(ctx, sock)
+
 
 def test_map_multiple_sge():
     sock = connect_client(ctx)
@@ -88,6 +91,7 @@ def test_map_multiple_sge():
 
     disconnect_client(ctx, sock)
 
+
 def test_unmap_sg():
     sock = connect_client(ctx)
     regions = 4
@@ -110,6 +114,7 @@ def test_unmap_sg():
     vfu_unmap_sg(ctx, sg, iovec, cnt=3)
 
     disconnect_client(ctx, sock)
+
 
 def test_map_unmap_sg_cleanup():
     vfu_destroy_ctx(ctx)

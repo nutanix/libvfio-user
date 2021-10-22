@@ -31,9 +31,10 @@ import ctypes as c
 import errno
 from libvfio_user import *
 
+
 def test_vfu_realize_ctx_twice():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
@@ -43,9 +44,10 @@ def test_vfu_realize_ctx_twice():
 
     vfu_destroy_ctx(ctx)
 
+
 def test_vfu_unrealized_ctx():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_run_ctx(ctx)
     assert ret == -1
@@ -53,18 +55,20 @@ def test_vfu_unrealized_ctx():
 
     vfu_destroy_ctx(ctx)
 
+
 def test_vfu_realize_ctx_default():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
     vfu_destroy_ctx(ctx)
 
+
 def test_vfu_realize_ctx_pci_bars():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=4096,
                            flags=VFU_REGION_FLAG_RW)
@@ -83,9 +87,10 @@ def test_vfu_realize_ctx_pci_bars():
 
     vfu_destroy_ctx(ctx)
 
+
 def test_vfu_realize_ctx_irqs():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_INTX_IRQ, 1)
     assert ret == 0
@@ -99,9 +104,10 @@ def test_vfu_realize_ctx_irqs():
 
     vfu_destroy_ctx(ctx)
 
+
 def test_vfu_realize_ctx_caps():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0

@@ -33,11 +33,12 @@ import errno
 
 ctx = None
 
+
 def test_pci_cap_setup():
     global ctx
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
     assert ret == 0
@@ -46,11 +47,13 @@ def test_pci_cap_setup():
                            size=PCI_CFG_SPACE_SIZE, flags=VFU_REGION_FLAG_RW)
     assert ret == 0
 
+
 def test_pci_cap_bad_flags():
     pos = vfu_pci_add_capability(ctx, pos=0, flags=999,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
+
 
 def test_pci_cap_no_cb():
     pos = vfu_pci_add_capability(ctx, pos=0, flags=VFU_CAP_FLAG_CALLBACK,
@@ -58,17 +61,20 @@ def test_pci_cap_no_cb():
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
 
+
 def test_pci_cap_unknown_cap():
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
               data=struct.pack("ccHH", b'\x81', b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.ENOTSUP
 
+
 def test_pci_cap_bad_pos():
     pos = vfu_pci_add_capability(ctx, pos=PCI_CFG_SPACE_SIZE, flags=0,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
+
 
 @vfu_region_access_cb_t
 def pci_region_cb(ctx, buf, count, offset, is_write):
@@ -77,13 +83,14 @@ def pci_region_cb(ctx, buf, count, offset, is_write):
 
     return write_pci_cfg_space(ctx, buf, count, offset)
 
+
 def test_pci_cap_setup_cb():
     global ctx
 
     vfu_destroy_ctx(ctx)
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
     assert ret == 0
@@ -92,6 +99,7 @@ def test_pci_cap_setup_cb():
                            size=PCI_CFG_SPACE_SIZE, cb=pci_region_cb,
                            flags=VFU_REGION_FLAG_RW)
     assert ret == 0
+
 
 cap_offsets = (
     PCI_STD_HEADER_SIZEOF,
@@ -102,6 +110,7 @@ cap_offsets = (
     0x90,
     0xa0
 )
+
 
 def test_add_caps():
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
@@ -132,6 +141,7 @@ def test_add_caps():
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
+
 
 def test_find_caps():
     offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_PM)
@@ -191,39 +201,42 @@ def test_find_caps():
     assert offset == 0
     assert c.get_errno() == errno.ENOENT
 
+
 def test_pci_cap_write_hdr():
     sock = connect_client(ctx)
 
     # offset of struct cap_hdr
-    offset=cap_offsets[0]
-    data=b'\x01'
+    offset = cap_offsets[0]
+    data = b'\x01'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
     disconnect_client(ctx, sock)
 
+
 def test_pci_cap_readonly():
     sock = connect_client(ctx)
 
     # start of vendor payload
-    offset=cap_offsets[1] + 2
-    data=b'\x01'
+    offset = cap_offsets[1] + 2
+    data = b'\x01'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
     # offsetof(struct vsc, data)
-    offset=cap_offsets[1] + 3
+    offset = cap_offsets[1] + 3
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=3)
     assert payload == b'abc'
 
     disconnect_client(ctx, sock)
 
+
 def test_pci_cap_callback():
     sock = connect_client(ctx)
 
     # offsetof(struct vsc, data)
-    offset=cap_offsets[2] + 3
+    offset = cap_offsets[2] + 3
     data = b"Hello world."
 
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
@@ -240,60 +253,64 @@ def test_pci_cap_callback():
 
     disconnect_client(ctx, sock)
 
+
 def test_pci_cap_write_pmcs():
     sock = connect_client(ctx)
 
     # struct pc
 
-    offset=cap_offsets[0] + 3
-    data=b'\x01\x02'
+    offset = cap_offsets[0] + 3
+    data = b'\x01\x02'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EINVAL)
 
-    offset=cap_offsets[0] + 2
-    data=b'\x01'
+    offset = cap_offsets[0] + 2
+    data = b'\x01'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EINVAL)
 
-    offset=cap_offsets[0] + 2
-    data=b'\x01\x02'
+    offset = cap_offsets[0] + 2
+    data = b'\x01\x02'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.ENOTSUP)
 
     # struct pmcs
 
-    offset=cap_offsets[0] + 5
-    data=b'\x01\x02'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                 count=len(data), data=data, expect=errno.EINVAL)
-
-    offset=cap_offsets[0] + 4
-    data=b'\x01'
+    offset = cap_offsets[0] + 5
+    data = b'\x01\x02'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EINVAL)
 
     offset = cap_offsets[0] + 4
-    data=b'\x01\x02'
+    data = b'\x01'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                 count=len(data), data=data, expect=errno.EINVAL)
+
+    offset = cap_offsets[0] + 4
+    data = b'\x01\x02'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
 
     assert get_pci_cfg_space(ctx)[offset:offset+2] == data
 
     # pmcsr_se
-    offset=cap_offsets[0] + 6
-    data=b'\x01'
+    offset = cap_offsets[0] + 6
+    data = b'\x01'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.ENOTSUP)
 
     # data
-    offset=cap_offsets[0] + 7
-    data=b'\x01'
+    offset = cap_offsets[0] + 7
+    data = b'\x01'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.ENOTSUP)
 
     disconnect_client(ctx, sock)
 
+
 reset_flag = -1
+
+
 @c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
 def vfu_reset_cb(ctx, reset_type):
     assert reset_type == VFU_RESET_PCI_FLR or reset_type == VFU_RESET_LOST_CONN
@@ -301,18 +318,19 @@ def vfu_reset_cb(ctx, reset_type):
     reset_flag = reset_type
     return 0
 
+
 def test_pci_cap_write_px():
     sock = connect_client(ctx)
     ret = vfu_setup_device_reset_cb(ctx, vfu_reset_cb)
     assert ret == 0
 
-    #flrc
+    # flrc
     cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
                       b'\x10', *[b'\0' for _ in range(52)])
     pos = vfu_pci_add_capability(ctx, pos=cap_offsets[5], flags=0, data=cap)
     assert pos == cap_offsets[5]
 
-    #iflr
+    # iflr
     offset = cap_offsets[5] + 8
     data = b'\x00\x80'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
@@ -322,6 +340,7 @@ def test_pci_cap_write_px():
     disconnect_client(ctx, sock)
     assert reset_flag == VFU_RESET_LOST_CONN
 
+
 def test_pci_cap_write_msix():
     # FIXME
     pass
@@ -329,7 +348,8 @@ def test_pci_cap_write_msix():
 
 def test_pci_cap_write_pxdc2():
     sock = connect_client(ctx)
-    offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) + PCI_EXP_DEVCTL2
+    offset = (vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) +
+              PCI_EXP_DEVCTL2)
     data = b'\xde\xad'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
@@ -341,7 +361,8 @@ def test_pci_cap_write_pxdc2():
 
 def test_pci_cap_write_pxlc2():
     sock = connect_client(ctx)
-    offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) + PCI_EXP_LNKCTL2
+    offset = (vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) +
+              PCI_EXP_LNKCTL2)
     data = b'\xbe\xef'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)

@@ -30,11 +30,12 @@
 from libvfio_user import *
 import errno
 
+
 def test_device_get_info():
     global ctx
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=4096,
                            flags=VFU_REGION_FLAG_RW)
@@ -56,13 +57,15 @@ def test_device_get_info():
 
     # bad argsz
 
-    payload = vfio_user_device_info(argsz=8, flags=0, num_regions=0, num_irqs=0)
+    payload = vfio_user_device_info(argsz=8, flags=0,
+                                    num_regions=0, num_irqs=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload, expect=errno.EINVAL)
 
     # valid with larger argsz
 
-    payload = vfio_user_device_info(argsz=32, flags=0, num_regions=0, num_irqs=0)
+    payload = vfio_user_device_info(argsz=32, flags=0,
+                                    num_regions=0, num_irqs=0)
 
     result = msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload)
 

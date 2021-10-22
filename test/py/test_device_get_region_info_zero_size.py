@@ -28,20 +28,18 @@
 #
 
 from libvfio_user import *
-import errno
-import tempfile
-import os
 
 ctx = None
 sock = None
 
 argsz = len(vfio_region_info())
 
+
 def test_device_get_region_info_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
@@ -59,7 +57,8 @@ def test_device_get_region_info_zero_sized_region():
                               index=index, cap_offset=0,
                               size=0, offset=0)
 
-        hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO, size=len(payload))
+        hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO,
+                               size=len(payload))
         sock.send(hdr + payload)
         vfu_run_ctx(ctx)
         result = get_reply(sock)

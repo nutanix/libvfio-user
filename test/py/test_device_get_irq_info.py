@@ -35,11 +35,12 @@ sock = None
 
 argsz = len(vfio_irq_info())
 
+
 def test_device_get_irq_info_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -55,6 +56,7 @@ def test_device_get_irq_info_setup():
     assert ret == 0
 
     sock = connect_client(ctx)
+
 
 def test_device_get_irq_info_bad_in():
     payload = struct.pack("II", 0, 0)
@@ -72,6 +74,7 @@ def test_device_get_irq_info_bad_in():
                             count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload, expect=errno.EINVAL)
+
 
 def test_device_get_irq_info():
 
@@ -117,6 +120,7 @@ def test_device_get_irq_info():
     assert info.flags == VFIO_IRQ_INFO_EVENTFD
     assert info.index == VFU_DEV_MSIX_IRQ
     assert info.count == 2048
+
 
 def test_device_get_irq_info_cleanup():
     disconnect_client(ctx, sock)

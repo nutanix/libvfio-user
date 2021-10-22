@@ -31,24 +31,28 @@ from libvfio_user import *
 import ctypes as c
 import errno
 
+
 def test_vfu_create_ctx_bad_trans():
     ctx = vfu_create_ctx(trans=VFU_TRANS_SOCK + 1)
-    assert ctx == None
+    assert ctx is None
     assert c.get_errno() == errno.ENOTSUP
+
 
 def test_vfu_create_ctx_bad_flags():
     ctx = vfu_create_ctx(flags=999)
-    assert ctx == None
+    assert ctx is None
     assert c.get_errno() == errno.EINVAL
+
 
 def test_vfu_create_ctx_bad_dev_type():
     ctx = vfu_create_ctx(dev_type=VFU_DEV_TYPE_PCI + 4)
-    assert ctx == None
+    assert ctx is None
     assert c.get_errno() == errno.ENOTSUP
+
 
 def test_vfu_create_ctx_default():
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
