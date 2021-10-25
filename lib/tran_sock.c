@@ -419,6 +419,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", vfu_ctx->uuid);
     if (ret >= (int)sizeof(addr.sun_path)) {
         ret = ENAMETOOLONG;
+        goto out;
     } else if (ret < 0) {
         ret = EINVAL;
         goto out;
@@ -438,10 +439,12 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 
 out:
     if (ret != 0) {
-        if (ts->listen_fd != -1) {
-            close(ts->listen_fd);
+        if (ts != NULL) {
+            if (ts->listen_fd != -1) {
+                close(ts->listen_fd);
+            }
+            free(ts);
         }
-        free(ts);
         return ERROR_INT(ret);
     }
 
@@ -751,6 +754,7 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
     if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: failed to accept: %m", __func__);
         return -1;
     }
 

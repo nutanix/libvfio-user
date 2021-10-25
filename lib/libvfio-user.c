@@ -58,7 +58,8 @@
 #include "private.h"
 #include "tran_sock.h"
 
-static void vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason);
+static int
+vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason);
 
 EXPORT void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
@@ -335,19 +336,11 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
-    if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
-        && errno == EBUSY && (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB)) {
-        /*
-         * We don't support async behavior for the non-blocking mode simply
-         * because we don't have a use case yet, the only user of migration
-         * is SPDK and it operates in non-blocking mode. We don't know the
-         * implications of enabling this in blocking mode as we haven't looked
-         * at the details.
-         */
-        vfu_ctx->pending = VFU_CTX_PENDING_MIGR;
-        return 0;
-    }
     if (ret != in_ra->count) {
+        if (ret == -1 && errno == EBUSY
+            && vfu_ctx->pending.state == VFU_CTX_PENDING_MIGR) {
+            return ret;
+        }
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %m",
                 msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
                 in_ra->offset, in_ra->offset + in_ra->count - 1);
@@ -661,30 +654,12 @@ consume_fd(int *fds, size_t nr_fds, size_t index)
    return fd;
 }
 
-int
-handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-               struct vfio_user_dma_map *dma_map)
+static int
+handle_dma_map_quiesced(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                        struct vfio_user_dma_map *dma_map)
 {
-    char rstr[1024];
-    int fd = -1;
-    int ret, idx;
+    int ret, idx, fd = -1;
     uint32_t prot = 0;
-
-    assert(vfu_ctx != NULL);
-    assert(msg != NULL);
-    assert(dma_map != NULL);
-
-    if (msg->in_size < sizeof(*dma_map) || dma_map->argsz < sizeof(*dma_map)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad DMA map region size=%zu argsz=%u",
-                msg->in_size, dma_map->argsz);
-        return ERROR_INT(EINVAL);
-    }
-
-    snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) offset=%#lx flags=%#x",
-             dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
-             dma_map->flags);
-
-    vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
 
     if (dma_map->flags & VFIO_USER_F_DMA_REGION_READ) {
         prot |= PROT_READ;
@@ -704,7 +679,10 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     if (msg->nr_in_fds > 0) {
         fd = consume_fd(msg->in_fds, msg->nr_in_fds, 0);
         if (fd < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "failed to add DMA region [%#lx, %#lx) offset=%#lx flags=%#x: %m",
+                    dma_map->addr, dma_map->addr + dma_map->size,
+                    dma_map->offset, dma_map->flags);
             return -1;
         }
     }
@@ -713,7 +691,10 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                     dma_map->size, fd, dma_map->offset,
                                     prot);
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
+        vfu_log(vfu_ctx, LOG_ERR,
+                "failed to add DMA region [%#lx, %#lx) offset=%#lx flags=%#x: %m",
+                dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
+                dma_map->flags);
         if (fd != -1) {
             close(fd);
         }
@@ -723,45 +704,57 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     ret = 0;
     if (vfu_ctx->dma_register != NULL) {
         ret = vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[idx].info);
-        if (ret == -1 && errno == EBUSY) {
-            vfu_ctx->pending = VFU_CTX_PENDING_DMA_MAP;
-            ret = 0;
-        }
+        assert(ret == 0); // FIXME what's the point of returning an error in the first place? Shouldn't this be void?
     }
     return ret;
 }
 
 int
-handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
-                 struct vfio_user_dma_unmap *dma_unmap)
+handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+               struct vfio_user_dma_map *dma_map)
 {
-    size_t out_size;
-    int ret = 0;
-    bool unmap_all = false;
-    char rstr[1024];
+    int ret;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
-    assert(dma_unmap != NULL);
+    assert(dma_map != NULL);
 
-    if (msg->in_size < sizeof(*dma_unmap) || dma_unmap->argsz < sizeof(*dma_unmap)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
-                msg->in_size, dma_unmap->argsz);
+    if (msg->in_size < sizeof(*dma_map) || dma_map->argsz < sizeof(*dma_map)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA map region size=%zu argsz=%u",
+                msg->in_size, dma_map->argsz);
         return ERROR_INT(EINVAL);
     }
 
-    if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
-            (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
-        return ERROR_INT(EINVAL);
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "adding DMA region [%#lx, %#lx) offset=%#lx flags=%#x",
+            dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
+            dma_map->flags);
+
+    if (vfu_ctx->quiesce != NULL) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+        ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno == EBUSY) {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device will quiesce asynchronously");
+                vfu_ctx->pending.state = VFU_CTX_PENDING_DMA_MAP;
+            } else {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
+            }
+            return ret;
+        } else {
+            vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
+        }
     }
 
-    snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) flags=%#x",
-             dma_unmap->addr, dma_unmap->addr + dma_unmap->size, dma_unmap->flags);
+    return handle_dma_map_quiesced(vfu_ctx, msg, dma_map);
+}
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
-
-    out_size = sizeof(*dma_unmap);
+static int
+handle_dma_unmap_quiesced(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                          struct vfio_user_dma_unmap *dma_unmap)
+{
+    int ret = 0;
+    size_t out_size = sizeof(*dma_unmap);
 
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
         if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
@@ -789,7 +782,6 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                     "both to be zero", dma_unmap->addr, dma_unmap->size);
             return ERROR_INT(EINVAL);
         }
-        unmap_all = true;
     } else if (dma_unmap->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
         return ERROR_INT(ENOTSUP);
@@ -801,7 +793,8 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
 
-    if (unmap_all) {
+
+    if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
         dma_controller_remove_all_regions(vfu_ctx->dma,
                                           vfu_ctx->dma_unregister, vfu_ctx);
         goto out;
@@ -828,18 +821,58 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                        vfu_ctx);
     if (ret < 0) {
         if (errno == EBUSY) {
-            vfu_ctx->pending = VFU_CTX_PENDING_DMA_UNMAP;
+            vfu_ctx->pending.state = VFU_CTX_PENDING_DMA_UNMAP;
             return 0;
         }
         vfu_log(vfu_ctx, LOG_WARNING,
-               "failed to remove DMA region %s: %m", rstr);
+                "failed to remove DMA region [%#lx, %#lx) flags=%#x: %m",
+                dma_unmap->addr, dma_unmap->addr + dma_unmap->size,
+                dma_unmap->flags);
         return ret;
     }
-
 out:
     msg->out_size = out_size;
 
     return ret;
+}
+
+int
+handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                 struct vfio_user_dma_unmap *dma_unmap)
+{
+    int ret = 0;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+    assert(dma_unmap != NULL);
+
+    if (msg->in_size < sizeof(*dma_unmap) || dma_unmap->argsz < sizeof(*dma_unmap)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
+                msg->in_size, dma_unmap->argsz);
+        return ERROR_INT(EINVAL);
+    }
+
+    if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
+            (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
+        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
+        return ERROR_INT(EINVAL);
+    }
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region [%#lx, %#lx) flags=%#x",
+            dma_unmap->addr, dma_unmap->addr + dma_unmap->size,
+            dma_unmap->flags);
+
+    if (vfu_ctx->quiesce != NULL) {
+        ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno == EBUSY) {
+                vfu_ctx->pending.state = VFU_CTX_PENDING_DMA_UNMAP;
+            }
+            return ret;
+        }
+    }
+
+    return handle_dma_unmap_quiesced(vfu_ctx, msg, dma_unmap);
 }
 
 static int
@@ -860,10 +893,29 @@ do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     return 0;
 }
 
+static int
+handle_device_reset_quiesced(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    return do_device_reset(vfu_ctx, reason);
+}
+
 int
 handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
-    return do_device_reset(vfu_ctx, reason);
+    int ret;
+
+    if (vfu_ctx->quiesce != NULL) {
+        ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno == EBUSY) {
+                vfu_ctx->pending.state = VFU_CTX_PENDING_DEVICE_RESET;
+            }
+            vfu_ctx->pending.device_reset_reason = reason;
+            return ret;
+        }
+    }
+
+    return handle_device_reset_quiesced(vfu_ctx, reason);
 }
 
 static int
@@ -1065,13 +1117,9 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
             return -1;
 
         case ENOMSG:
-            vfu_reset_ctx(vfu_ctx, "closed");
-            return ERROR_INT(ENOTCONN);
-
         case ECONNRESET:
-            vfu_reset_ctx(vfu_ctx, "reset");
+            vfu_reset_ctx(vfu_ctx, errno);
             return ERROR_INT(ENOTCONN);
-
         default:
             vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %m");
             return -1;
@@ -1238,11 +1286,8 @@ do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
 
-        if (errno == ECONNRESET) {
-            vfu_reset_ctx(vfu_ctx, "reset");
-            errno = ENOTCONN;
-        } else if (errno == ENOMSG) {
-            vfu_reset_ctx(vfu_ctx, "closed");
+        if (errno == ECONNRESET || errno == ENOMSG) {
+            vfu_reset_ctx(vfu_ctx, errno);
             errno = ENOTCONN;
         }
     }
@@ -1290,17 +1335,17 @@ process_request(vfu_ctx_t *vfu_ctx)
         goto out;
     }
 
+    errno = 0;
     ret = exec_command(vfu_ctx, msg);
 
-    if (ret < 0) {
+    if (ret < 0 && errno != EBUSY) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
                 msg->hdr.cmd);
     }
 
 out:
-    if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
-        assert(ret == 0);
-        vfu_ctx->pending_msg = msg;
+    if (vfu_ctx->pending.state != VFU_CTX_PENDING_NONE) {
+        vfu_ctx->pending.msg = msg;
         /* NB the message is freed in vfu_migr_done */
         return 0;
     }
@@ -1408,13 +1453,19 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
         return ERROR_INT(EINVAL);
     }
 
+    if (vfu_ctx->pending.shutdown) {
+        return ERROR_INT(ESHUTDOWN);
+    }
+
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
 
     do {
-        if (vfu_ctx->pending != VFU_CTX_PENDING_NONE) {
+        if (vfu_ctx->pending.state != VFU_CTX_PENDING_NONE) {
             return ERROR_INT(EBUSY);
         }
         err = process_request(vfu_ctx);
+
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s: process_request returned %d, errno=%d", __func__, err, errno);
 
         if (err == 0) {
             reqs_processed++;
@@ -1441,15 +1492,17 @@ free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
 }
 
 static void
-vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
+vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx, int reason)
 {
-    vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
+    vfu_log(vfu_ctx, LOG_INFO, "%s: reset context because: %s", __func__,
+            strerror(reason));
 
     if (vfu_ctx->dma != NULL) {
         dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
                                           vfu_ctx);
     }
 
+    /* FIXME what happens if the device reset callback fails? */
     do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
@@ -1461,16 +1514,37 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
     }
 }
 
-EXPORT void
-vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
+static int
+vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
 {
-
-    if (vfu_ctx == NULL) {
-        return;
+    if (vfu_ctx->quiesce != NULL
+        && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+        int ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno == EBUSY) {
+                vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
+                vfu_ctx->pending.ctx_reset_errno = reason;
+                return ret;
+            }
+            vfu_log(vfu_ctx, LOG_ERR, "failed to quiesce device: %m");
+            /*
+             * FIXME how do we handle this failure? Do we mark the device broken
+             * so the only option for the user to destroy the device via
+             * vfu_ctx_destroy? Even if we do that, vfu_destroy_ctx must reset
+             * the context which requires quiescing the device, so technically
+             * we can't proceed, do destroy the context even if the device
+             * might still be using it?
+             */
+            return ret;
+        }
     }
+    vfu_reset_ctx_quiesced(vfu_ctx, reason);
+    return 0;
+}
 
-    vfu_reset_ctx(vfu_ctx, "destroyed");
-
+static void
+vfu_destroy_ctx_after_reset(vfu_ctx_t *vfu_ctx)
+{
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
 
@@ -1486,6 +1560,27 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
+}
+
+EXPORT int
+vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
+{
+    int ret;
+
+    if (vfu_ctx == NULL) {
+        return 0;
+    }
+
+    vfu_ctx->pending.shutdown = true;
+    ret = vfu_reset_ctx(vfu_ctx, ESHUTDOWN);
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "failed to reset: %m");
+        return ret;
+    }
+
+    vfu_destroy_ctx_after_reset(vfu_ctx);
+
+    return 0;
 }
 
 EXPORT void *
@@ -1764,6 +1859,14 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
 }
 
 EXPORT int
+vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx, vfu_device_quiesce_cb_t *quiesce)
+{
+    assert(vfu_ctx != NULL);
+    vfu_ctx->quiesce = quiesce;
+    return 0;
+}
+
+EXPORT int
 vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister)
 {
@@ -1859,7 +1962,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
      * after it has returned EBUSY from the DMA unmap callback then we'll miss
      * this dirty page.
      */
-    if (unlikely(vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP)) {
+    if (unlikely(vfu_ctx->pending.state == VFU_CTX_PENDING_DMA_UNMAP)) {
         return ERROR_INT(EBUSY);
     }
 
@@ -1940,11 +2043,8 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 
         if (ret < 0) {
             ret = errno;
-            if (ret == ENOMSG) {
-                vfu_reset_ctx(vfu_ctx, "closed");
-                ret = ENOTCONN;
-            } else if (errno == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, "reset");
+            if (ret == ENOMSG || ret == ECONNRESET) {
+                vfu_reset_ctx(vfu_ctx, ret);
                 ret = ENOTCONN;
             }
             free(rbuf);
@@ -1976,14 +2076,14 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 EXPORT int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
-    assert(vfu_ctx->pending == VFU_CTX_PENDING_NONE);
+    assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sg, data);
 }
 
 EXPORT int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
-    assert(vfu_ctx->pending == VFU_CTX_PENDING_NONE);
+    assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sg, data);
 }
 
@@ -1994,28 +2094,72 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
 }
 
 EXPORT int
-vfu_async_done(vfu_ctx_t *vfu_ctx, int reply_errno)
+vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
 {
-    int ret = 0;
+    int ret;
 
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->pending != VFU_CTX_PENDING_NONE);
 
-    if (vfu_ctx->pending == VFU_CTX_PENDING_DMA_UNMAP) {
-        struct vfio_user_dma_unmap *dma_unmap = vfu_ctx->pending_msg->in_data;
-        ret = dma_controller_remove_region(vfu_ctx->dma,
-                                       (void *)dma_unmap->addr,
-                                       dma_unmap->size,
-                                       NULL, vfu_ctx);
-        assert(ret == 0); // cannot fail
+    if (vfu_ctx->quiesce == NULL
+        || vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "invalid call to quiesce callback, state=%d",
+                vfu_ctx->pending.state);
+        return ERROR_INT(EINVAL);
     }
 
-    if (!vfu_ctx->pending_msg->hdr.flags.no_reply) {
-        ret = do_reply(vfu_ctx, vfu_ctx->pending_msg, reply_errno);
+    if (quiesce_errno == 0) {
+        switch (vfu_ctx->pending.state) {
+        case VFU_CTX_PENDING_MIGR:
+            ret = migr_trans_to_valid_state(vfu_ctx, vfu_ctx->migration,
+                                            vfu_ctx->pending.migr_dev_state, true);
+            break;
+        case VFU_CTX_PENDING_DMA_MAP:
+            ret = handle_dma_map_quiesced(vfu_ctx, vfu_ctx->pending.msg,
+                                          vfu_ctx->pending.msg->in_data);
+            break;
+        case VFU_CTX_PENDING_DMA_UNMAP:
+            ret = handle_dma_unmap_quiesced(vfu_ctx, vfu_ctx->pending.msg,
+                                            vfu_ctx->pending.msg->in_data);
+            break;
+        case VFU_CTX_PENDING_DEVICE_RESET:
+            ret = handle_device_reset_quiesced(vfu_ctx,
+                                               vfu_ctx->pending.device_reset_reason);
+            break;
+        case VFU_CTX_PENDING_CTX_RESET:
+            ret = vfu_reset_ctx(vfu_ctx, vfu_ctx->pending.ctx_reset_errno);
+            break;
+        default:
+            assert(false);
+        }
+
+        if (vfu_ctx->pending.shutdown) {
+            vfu_destroy_ctx_after_reset(vfu_ctx);
+            return 0;
+        }
+    } else {
+        ret = -1;
+        errno = quiesce_errno;
     }
-    free_msg(vfu_ctx, vfu_ctx->pending_msg);
-    vfu_ctx->pending_msg = NULL;
-    vfu_ctx->pending = VFU_CTX_PENDING_NONE;
+
+    /*
+     * We only reply when there is a message sent by the clinet to reply to
+     * (e.g. vfu_dma_map is initiated by the server). The context is usually
+     * reset when there's a failure receiving a request or replying to a
+     * request, so we don't reply in that case either.
+     */
+    if (vfu_ctx->pending.msg != NULL
+        && vfu_ctx->pending.state != VFU_CTX_PENDING_CTX_RESET
+        && !vfu_ctx->pending.msg->hdr.flags.no_reply) {
+        int reply_ret = do_reply(vfu_ctx, vfu_ctx->pending.msg, ret < 0 ? errno : 0);
+        if (reply_ret < 0 && !(ret < 0)) {
+            ret = reply_ret;
+        }
+    }
+    free_msg(vfu_ctx, vfu_ctx->pending.msg);
+    vfu_ctx->pending.msg = NULL;
+    vfu_ctx->pending.state = VFU_CTX_PENDING_NONE;
+
     return ret;
 }
 

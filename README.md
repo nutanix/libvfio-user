@@ -77,6 +77,30 @@ The kernel headers are necessary because VFIO structs and defines are reused.
 
 Finally build your program and link with `libvfio-user.so`.
 
+
+Testing
+=======
+
+
+Debugging Test Errors
+---------------------
+
+Sometimes debugging Valgrind errors on Python unit tests can be tricky. To
+run specific tests use the pytest `-k` option in `PYTESTCMD` in the Makefile.
+
+
+Coverity
+========
+
+Build according to:
+
+	https://scan.coverity.com/download?tab=cxx
+
+E.g.:
+
+	../cov-analysis-linux64-2019.03/bin/cov-build --dir cov-int make
+
+
 Supported features
 ==================
 

@@ -174,7 +174,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx);
  *
  * @vfu_ctx: the libvfio-user context to destroy
  */
-void
+int
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
@@ -342,6 +342,51 @@ typedef enum vfu_reset_type {
 } vfu_reset_type_t;
 
 /*
+ * Device callback for quiescing the device.
+ *
+ * livfio-user uses this callback to tell the device that it must quiesce its
+ * operation. After returning from this callback, the device can continue to
+ * operate however it cannot use any of the following libvfio-user functions:
+ * vfu_addr_to_sg, vfu_map_sg, vfu_unmap_sg, vfu_dma_read, and vfu_dma_write.
+ * The device must also be prepared for the following callbacks to be executed:
+ * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
+ * These callbacks only called after the device has been quiesced.
+ *
+ * If the device returns -1 with errno set to EBUSY, then the device is not
+ * quiesced until the device calls vfu_device_quiesced. During this time the
+ * device is allowed to use the aforementioned libvfio-user functions.
+ *
+ * @vfu_ctx: the libvfio-user context
+ *
+ * @returns: 0 on success, -1 on failure with errno set.
+ */
+typedef int (vfu_device_quiesce_cb_t)(vfu_ctx_t *vfu_ctx);
+
+/**
+ * Sets up the device quiesce callback.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @reset: device reset callback
+ */
+int
+vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx,
+                            vfu_device_quiesce_cb_t *quiesce_cb);
+
+/*
+ * Called by the device to complete a pending quiesce operation. After the
+ * function returns the device is unquiesced.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @quiesce_errno: 0 for success or errno in case the device fails to quiesce,
+ *                 in which case the operation requiring the quiesce is failed
+ *                 and the device is reset.
+ *
+ * @returns 0 on success, or -1 on failure. Sets errno.
+ */
+int
+vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno);
+
+/*
  * Callback function that is called when the device must be reset.
  */
 typedef int (vfu_reset_cb_t)(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type);
@@ -409,11 +454,6 @@ typedef struct vfu_dma_info {
  * Called when a guest registers one of its DMA regions via a VFIO_USER_DMA_MAP
  * message.
  *
- * If the callback returns -1 and errno is set to EBUSY then
- * libvfio-user does not respond to the client and does not process new
- * messages until vfu_async_done is called by the device, effectively making
- * the DMA map operation asynchronous.
- *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
  *
@@ -426,14 +466,8 @@ typedef int (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
  * callback should return 0 on success and -1 on failure setting errno.
  * (although unregister should not fail: this will not stop a guest from
  * unregistering the region).  This callback is required if you want to be able
- * to access guest memory directly via a mapping.
- *
- * The callback can be asynchronous, just like vfu_dma_register_cb_t.
- *
- * If operating synchronously, the device must release all references to that
- * region before the callback returns. Otherwise, if operating asynchronously,
- * the device must release all references to that region before the device calls
- * vfu_async_done.
+ * to access guest memory directly via a mapping. The device must release all
+ * references to that region before the callback returns.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
@@ -516,16 +550,6 @@ typedef struct {
      *
      * The callback should return -1 on error, setting errno.
      *
-     * When operating in non-blocking mode (LIBVFIO_USER_FLAG_ATTACH_NB was
-     * passed to vfu_create_ctx) and -1 is returned with errno set to EBUSY,
-     * transitioning to the new state becomes asynchronous: libvfio-user does
-     * not send a response to the client and does not process any new messages.
-     * Transitioning to the new device state is completed by calling
-     * vfu_async_done. This behavior can be beneficial for devices whose
-     * threading model does not allow blocking.
-     *
-     * The user must not call functions vfu_dma_read or vfu_dma_write, doing so
-     * results in undefined behavior.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -592,20 +616,6 @@ typedef struct {
     int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
-
-/*
- * Completes a pending migration state transition or DMA /mapunmap operation.
- * Calling this function when there is no pending migration state transition or
- * DMA map/unmap operation results in undefined behavior.
- *
- * @vfu_ctx: the libvfio-user context
- * @reply_errno: 0 for success or errno on error.
- *
- * @returns 0 on success, or -1 on failure. Sets errno.
- */
-int
-vfu_async_done(vfu_ctx_t *vfu_ctx, int reply_errno);
-
 
 #ifndef VFIO_DEVICE_STATE_STOP
 

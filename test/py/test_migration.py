@@ -27,11 +27,23 @@
 #  DAMAGE.
 #
 
+from unittest.mock import patch
 from libvfio_user import *
 import ctypes as c
 import errno
 
 ctx = None
+quiesce_cb_err = 0
+sock = 0
+
+@vfu_device_quiesce_cb_t
+def quiesce_cb(ctx):
+    global quiesce_cb_err
+    if quiesce_cb_err != 0:
+        c.set_errno(quiesce_cb_err)
+        return -1
+    return 0
+
 
 global trans_cb_err
 trans_cb_err = 0
@@ -71,6 +83,9 @@ def test_migration_setup():
     ret = vfu_setup_device_migration_callbacks(ctx, cbs, offset=0x4000)
     assert ret == 0
 
+    ret = vfu_setup_device_quiesce_cb(ctx, quiesce_cb)
+    assert ret == 0
+
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -78,6 +93,8 @@ def test_migration_setup():
 
 
 def test_migration_trans_sync():
+
+    global ctx, sock
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -88,8 +105,9 @@ def test_migration_trans_sync():
 
 
 def test_migration_trans_sync_err():
+    """Tests the device returning an error when the migration state is written to."""
 
-    global trans_cb_err
+    global ctx, sock, trans_cb_err
     trans_cb_err = errno.EPERM
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
@@ -99,11 +117,13 @@ def test_migration_trans_sync_err():
     ret = vfu_run_ctx(ctx)
     assert ret == 0
 
+    trans_cb_err = 0
+
 
 def test_migration_trans_async():
 
-    global trans_cb_err
-    trans_cb_err = errno.EBUSY
+    global ctx, sock, quiesce_cb_err
+    quiesce_cb_err = errno.EBUSY
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -113,7 +133,7 @@ def test_migration_trans_async():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_async_done(ctx, 0)
+    vfu_device_quiesced(ctx, 0)
 
     get_reply(sock)
 
@@ -122,9 +142,10 @@ def test_migration_trans_async():
 
 
 def test_migration_trans_async_err():
+    """Tests writing to the migration state register, the device not being able to immediately quiesced, and then finally the device failing to transition to the new migration state."""
 
-    global trans_cb_err
-    trans_cb_err = errno.EBUSY
+    global ctx, sock, trans_cb_err, quiesce_cb_err
+    trans_cb_err = errno.ENOTTY
 
     data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -134,10 +155,12 @@ def test_migration_trans_async_err():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_async_done(ctx, errno.ENOTTY)
+    vfu_device_quiesced(ctx, 0)
 
     get_reply(sock, errno.ENOTTY)
 
-    vfu_destroy_ctx(ctx)
+    quiesce_cb_err = 0
+    ret = vfu_destroy_ctx(ctx)
+    assert ret == 0, "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

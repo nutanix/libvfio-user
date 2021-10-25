@@ -27,6 +27,9 @@
 #  DAMAGE.
 #
 
+from unittest import mock
+from unittest.mock import patch, Mock, create_autospec
+
 from libvfio_user import *
 import ctypes as c
 import errno
@@ -36,7 +39,27 @@ import sys
 ctx = None
 sock = None
 
+# Passing an Mock object to vfu_setup_device_quiesce doesn't work at all, not
+# sure what's wrong, using a Mock object in an actual function is the only way
+# I managed to make it work.
+mock_quiesce_cb = Mock()
+
+@vfu_device_quiesce_cb_t
+def quiesce_cb(ctx):
+    global mock_quiesce_cb
+    return mock_quiesce_cb(ctx)
+
+global mock_reset_cb
+mock_reset_cb = Mock()
+
+@vfu_reset_cb_t
+def reset_cb(ctx, reset_type):
+    global mock_reset_cb
+    return mock_reset_cb(ctx, reset_type)
+
+
 argsz = len(vfio_irq_set())
+
 
 def test_request_errors_setup():
     global ctx, sock
@@ -48,6 +71,12 @@ def test_request_errors_setup():
     assert ret == 0
 
     ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, 2048)
+    assert ret == 0
+
+    ret = vfu_setup_device_quiesce_cb(ctx, quiesce_cb)
+    assert ret == 0
+
+    ret = vfu_setup_device_reset_cb(ctx, reset_cb)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -120,5 +149,78 @@ def test_bad_request_closes_fds():
     os.close(fd1)
     os.close(fd2)
 
+
+def test_disconnected_socket():
+    """Tests that calling vfu_run_ctx on a disconnected socket results in resetting the context and returning ENOTCONN."""
+
+    global mock_quiesce_cb
+    mock_quiesce_cb.return_value = 0
+
+    global sock
+    sock.close()
+
+    global mock_reset_cb
+    mock_reset_cb.return_value = 0
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTCONN
+
+    # quiece callback gets called during reset
+    # FIXME how can we ensure that quiesce is called before reset?
+    mock_quiesce_cb.assert_called_with(ctx)
+    mock_reset_cb.assert_called_with(ctx, VFU_RESET_LOST_CONN)
+
+
+def test_disconnected_socket_quiesce_busy():
+    """Tests that calling vfu_run_ctx on a disconnected socket results in resetting the context which returns EBUSY."""
+
+    global ctx
+    ret = vfu_destroy_ctx(ctx)
+    assert ret == 0
+
+    # FIXME this should be done in setup
+    test_request_errors_setup()
+
+    global mock_quiesce_cb
+    mock_quiesce_cb.reset_mock()
+    def side_effect(ctx):
+        c.set_errno(errno.EBUSY)
+        return -1
+    mock_quiesce_cb.side_effect = side_effect
+
+    global sock
+    sock.close()
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTCONN
+
+    # quiesce callback must be called during reset
+    mock_quiesce_cb.assert_called_once_with(ctx)
+
+    # device hasn't finished quiescing
+    for _ in range(0, 3):
+        ret = vfu_run_ctx(ctx)
+        assert ret == -1
+        assert c.get_errno() == errno.EBUSY
+
+    # device quiesced
+    vfu_device_quiesced(ctx, 0)
+
+    ret = vfu_run_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTCONN
+
+    # no further calls to the quiesce callback should have been made
+    mock_quiesce_cb.assert_called_once_with(ctx)
+
+
 def test_request_errors_cleanup():
-    vfu_destroy_ctx(ctx)
+    global mock_quiesce_cb
+    mock_quiesce_cb.side_effect = None
+    mock_quiesce_cb.return_value = 0
+    ret = vfu_destroy_ctx(ctx)
+    assert ret == 0, "ret=%s errno=%s" % (ret, c.get_errno())
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

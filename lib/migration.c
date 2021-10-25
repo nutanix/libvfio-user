@@ -154,8 +154,20 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
                                        uint32_t device_state, bool notify)
 {
     if (notify) {
-        int ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
-                                     device_state);
+        int ret;
+        if (vfu_ctx->quiesce != NULL
+            && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+            ret = vfu_ctx->quiesce(vfu_ctx);
+            if (ret < 0) {
+                if (errno == EBUSY) {
+                    vfu_ctx->pending.state = VFU_CTX_PENDING_MIGR;
+                    vfu_ctx->pending.migr_dev_state = device_state;
+                }
+                return ret;
+            }
+        }
+        ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
+                                 device_state);
         if (ret != 0) {
             return ret;
         }
@@ -421,11 +433,6 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
         if (ret == 0) {
             vfu_log(vfu_ctx, LOG_DEBUG,
                 "migration: transition from state %s to state %s",
-                 migr_states[old_device_state].name,
-                 migr_states[*device_state].name);
-        } else if (errno == EBUSY) {
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                "migration: transition from state %s to state %s deferred",
                  migr_states[old_device_state].name,
                  migr_states[*device_state].name);
         } else {

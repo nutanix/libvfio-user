@@ -37,15 +37,15 @@ ctx = None
 sock = None
 
 
-global dma_unregister_cb_err
-dma_unregister_cb_err = 0
+global quiesce_cb_err
+quiesce_cb_err = 0
 
 
-@vfu_dma_unregister_cb_t
-def dma_unregister_cb(ctx, state):
-    global dma_unregsiter_cb_err
-    if dma_unregister_cb_err != 0:
-        c.set_errno(dma_unregister_cb_err)
+@vfu_device_quiesce_cb_t
+def quiesce_cb(ctx):
+    global quiesce_cb_err
+    if quiesce_cb_err != 0:
+        c.set_errno(quiesce_cb_err)
         return -1
     return 0
 
@@ -53,7 +53,7 @@ def dma_unregister_cb(ctx, state):
 def test_dma_unmap_setup():
     global ctx, sock
 
-    ctx = prepare_ctx_for_dma(dma_unregister=dma_unregister_cb)
+    ctx = prepare_ctx_for_dma(quiesce=quiesce_cb)
     assert ctx != None
     payload = struct.pack("II", 0, 0)
 
@@ -101,8 +101,8 @@ def test_dma_unmap_invalid_addr():
 
 def test_dma_unmap_async():
 
-    global dma_unregister_cb_err
-    dma_unregister_cb_err = errno.EBUSY
+    global quiesce_cb_err
+    quiesce_cb_err = errno.EBUSY
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x2000, size=0x1000)
@@ -112,14 +112,14 @@ def test_dma_unmap_async():
     assert ret == -1
     assert c.get_errno() == errno.EBUSY
 
-    vfu_async_done(ctx, 0)
+    vfu_device_quiesced(ctx, 0)
 
     get_reply(sock)
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
 
-    dma_unregister_cb_err = 0
+    quiesce_cb_err = 0
 
 
 def test_dma_unmap_all():
@@ -157,5 +157,7 @@ def test_dma_unmap_cleanup():
 
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
+
+# FIXME need to add unit tests that test errors in get_request_header, do_reply, vfu_dma_transfer
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab
