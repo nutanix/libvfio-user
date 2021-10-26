@@ -79,3 +79,5 @@ def test_device_get_info():
     disconnect_client(ctx, sock)
 
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

@@ -223,3 +223,5 @@ def test_device_get_region_info_migr():
 
 def test_device_get_region_info_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

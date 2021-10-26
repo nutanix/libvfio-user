@@ -296,3 +296,5 @@ def test_device_set_irqs_enable_trigger_bool():
 
 def test_device_set_irqs_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

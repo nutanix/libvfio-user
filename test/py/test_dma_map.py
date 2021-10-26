@@ -28,7 +28,7 @@
 #
 
 from unittest import mock
-from unittest.mock import Mock
+from unittest.mock import patch
 
 from libvfio_user import *
 import errno
@@ -38,41 +38,19 @@ import errno
 #
 
 ctx = None
-quiesce_cb_err = 0
-mock_reset_cb = Mock(return_value=0)
-
-
-@vfu_reset_cb_t
-def reset_cb(ctx, reset_type):
-    global mock_reset_cb
-    return mock_reset_cb(ctx, reset_type)
-
-
-@vfu_device_quiesce_cb_t
-def quiesce_cb(ctx):
-    global quiesce_cb_err
-    if quiesce_cb_err != 0:
-        c.set_errno(quiesce_cb_err)
-        return -1
-    return 0
 
 
 def setup_function(function):
-    global mock_quiesce_cb, ctx, sock
-    mock_reset_cb.reset_mock()
-    ctx = prepare_ctx_for_dma(quiesce=quiesce_cb, reset=reset_cb)
+    global ctx, sock
+    ctx = prepare_ctx_for_dma()
     assert ctx is not None
     sock = connect_client(ctx)
 
 
 def teardown_function(function):
-    global mock_quiesce_cb, ctx, sock, quiesce_cb_err
+    global ctx, sock
     disconnect_client(ctx, sock)
-    quiesce_cb_err = 0
-    mock_reset_cb.return_value = 0
-    ret = vfu_destroy_ctx(ctx)
-    assert ret == 0, \
-           "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
+    vfu_destroy_ctx(ctx)
 
 
 def test_dma_region_too_big():
@@ -103,9 +81,9 @@ def test_dma_region_too_many():
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
 
-def test_dma_map_busy():
-    global ctx, sock, quiesce_cb_err
-    quiesce_cb_err = errno.EBUSY
+@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+def test_dma_map_busy(mock_quiesce):
+    global ctx, sock
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
@@ -114,9 +92,7 @@ def test_dma_map_busy():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    vfu_run_ctx(ctx, errno.EBUSY)
 
     vfu_device_quiesced(ctx, 0)
 
@@ -128,26 +104,25 @@ def test_dma_map_busy():
 
 # FIXME need the same test for (1) DMA unmap, (2) device reset, and
 # (3) migration, where quiesce returns EBUSY but replying fails.
-def test_dma_map_busy_reply_fail():
+@patch('libvfio_user.reset_cb')
+@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+def test_dma_map_busy_reply_fail(mock_quiesce, mock_reset):
     """Tests mapping a DMA region where the quiesce callback returns EBUSY and
     replying fails."""
 
-    global ctx, sock, quiesce_cb_err
+    global ctx, sock
 
     # Send a DMA map command.
-    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+    payload = vfio_user_dma_map(
+        argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=0x1000)
 
-    # device will be busy quiescing
-    quiesce_cb_err = errno.EBUSY
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload,
+                     rsp=False)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
-
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    vfu_run_ctx(ctx, errno.EBUSY)
 
     # TODO check that quiesce has been called
 
@@ -155,17 +130,15 @@ def test_dma_map_busy_reply_fail():
     sock.close()
 
     # device reset callback should not have been called so far
-    assert mock_reset_cb.call_count == 0
+    assert mock_reset.call_count == 0
 
     # device quiesces
     vfu_device_quiesced(ctx, 0)
 
     # device reset callback should be called
-    mock_reset_cb.assert_has_calls([mock.call(ctx, True)])
+    mock_reset.assert_has_calls([mock.call(ctx, True)])
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.ENOTCONN
+    vfu_run_ctx(ctx, errno.ENOTCONN)
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

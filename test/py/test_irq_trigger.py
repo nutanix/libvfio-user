@@ -85,3 +85,5 @@ def test_irq_trigger():
 
 def test_irq_trigger_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab

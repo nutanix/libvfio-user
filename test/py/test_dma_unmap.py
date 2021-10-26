@@ -29,29 +29,17 @@
 #
 
 import errno
+from unittest.mock import patch
 from libvfio_user import *
 
 ctx = None
 sock = None
 
 
-global quiesce_cb_err
-quiesce_cb_err = 0
-
-
-@vfu_device_quiesce_cb_t
-def quiesce_cb(ctx):
-    global quiesce_cb_err
-    if quiesce_cb_err != 0:
-        c.set_errno(quiesce_cb_err)
-        return -1
-    return 0
-
-
 def test_dma_unmap_setup():
     global ctx, sock
 
-    ctx = prepare_ctx_for_dma(quiesce=quiesce_cb)
+    ctx = prepare_ctx_for_dma()
     assert ctx is not None
     payload = struct.pack("II", 0, 0)
 
@@ -100,18 +88,14 @@ def test_dma_unmap_invalid_addr():
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOENT)
 
 
-def test_dma_unmap_async():
-
-    global quiesce_cb_err
-    quiesce_cb_err = errno.EBUSY
+@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+def test_dma_unmap_async(mock_quiesce):
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x2000, size=0x1000)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    ret = vfu_run_ctx(ctx, errno.EBUSY)
 
     vfu_device_quiesced(ctx, 0)
 
@@ -119,8 +103,6 @@ def test_dma_unmap_async():
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
-
-    quiesce_cb_err = 0
 
 
 def test_dma_unmap_all():

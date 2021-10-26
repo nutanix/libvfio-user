@@ -75,3 +75,5 @@ def test_device_get_region_info_zero_sized_region():
         assert info.offset == 0
 
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

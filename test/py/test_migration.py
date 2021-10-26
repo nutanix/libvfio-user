@@ -30,35 +30,27 @@
 from libvfio_user import *
 import ctypes as c
 import errno
+from unittest.mock import patch
 
 ctx = None
-quiesce_cb_err = 0
 sock = 0
 
 
-@vfu_device_quiesce_cb_t
-def quiesce_cb(ctx):
-    global quiesce_cb_err
-    if quiesce_cb_err != 0:
-        c.set_errno(quiesce_cb_err)
-        return -1
-    return 0
-
-
-global trans_cb_err
-trans_cb_err = 0
-
-
-@transition_cb_t
 def trans_cb(ctx, state):
-    global trans_cb_err
-    if trans_cb_err != 0:
-        c.set_errno(trans_cb_err)
+    return 0
+
+
+# TODO use mock
+@transition_cb_t
+def __trans_cb(ctx, state):
+    ret = trans_cb(ctx, state)
+    if ret < 0:
+        c.set_errno(-ret)
         return -1
     return 0
 
 
-def test_migration_setup():
+def setup_function(function):
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
@@ -74,7 +66,7 @@ def test_migration_setup():
 
     cbs = vfu_migration_callbacks_t()
     cbs.version = VFU_MIGR_CALLBACKS_VERS
-    cbs.transition = trans_cb
+    cbs.transition = __trans_cb
     cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
     cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
     cbs.read_data = c.cast(stub, read_data_cb_t)
@@ -84,13 +76,18 @@ def test_migration_setup():
     ret = vfu_setup_device_migration_callbacks(ctx, cbs, offset=0x4000)
     assert ret == 0
 
-    ret = vfu_setup_device_quiesce_cb(ctx, quiesce_cb)
+    ret = vfu_setup_device_quiesce_cb(ctx)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
     sock = connect_client(ctx)
+
+
+def teardown_function(function):
+    global ctx
+    vfu_destroy_ctx(ctx)
 
 
 def test_migration_trans_sync():
@@ -105,12 +102,12 @@ def test_migration_trans_sync():
     assert ret == 0
 
 
-def test_migration_trans_sync_err():
+@patch(__name__ + '.trans_cb', return_value=-errno.EPERM)
+def test_migration_trans_sync_err(mock_trans):
     """Tests the device returning an error when the migration state is written
     to."""
 
-    global ctx, sock, trans_cb_err
-    trans_cb_err = errno.EPERM
+    global ctx, sock
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
@@ -119,21 +116,18 @@ def test_migration_trans_sync_err():
     ret = vfu_run_ctx(ctx)
     assert ret == 0
 
-    trans_cb_err = 0
 
+@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+def test_migration_trans_async(mock_quiesce):
 
-def test_migration_trans_async():
-
-    global ctx, sock, quiesce_cb_err
-    quiesce_cb_err = errno.EBUSY
+    global ctx, sock
+    mock_quiesce
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    ret = vfu_run_ctx(ctx, errno.EBUSY)
 
     vfu_device_quiesced(ctx, 0)
 
@@ -143,29 +137,23 @@ def test_migration_trans_async():
     assert ret == 0
 
 
-def test_migration_trans_async_err():
+@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+@patch(__name__ + '.trans_cb', return_value=-errno.ENOTTY)
+def test_migration_trans_async_err(mock_trans, mock_quiesce):
     """Tests writing to the migration state register, the device not being able
-    to immediately quiesced, and then finally the device failing to transition
+    to immediately quiesce, and then finally the device failing to transition
     to the new migration state."""
 
-    global ctx, sock, trans_cb_err, quiesce_cb_err
-    trans_cb_err = errno.ENOTTY
+    global ctx, sock
 
     data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    vfu_run_ctx(ctx, errno.EBUSY)
 
     vfu_device_quiesced(ctx, 0)
 
     get_reply(sock, errno.ENOTTY)
-
-    quiesce_cb_err = 0
-    ret = vfu_destroy_ctx(ctx)
-    assert ret == 0, \
-           "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

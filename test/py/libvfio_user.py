@@ -745,17 +745,43 @@ def dma_unregister(ctx, info):
     return 0
 
 
-def vfu_setup_device_quiesce_cb(ctx, quiesce_cb):
-    assert ctx is not None
+def quiesce_cb(ctx):
+    return 0
 
+
+@vfu_device_quiesce_cb_t
+def _quiesce_cb(ctx):
+    ret = quiesce_cb(ctx)
+    if ret < 0:
+        c.set_errno(-ret)
+        return -1
+    return 0
+
+
+def vfu_setup_device_quiesce_cb(ctx, quiesce_cb=_quiesce_cb):
+    assert ctx is not None
     return lib.vfu_setup_device_quiesce_cb(ctx,
                                            c.cast(quiesce_cb,
                                                   vfu_device_quiesce_cb_t))
 
 
+def reset_cb(ctx, reset_type):
+    return 0
+
+
+@vfu_reset_cb_t
+def _reset_cb(ctx, reset_type):
+    return reset_cb(ctx, reset_type)
+
+
+def vfu_setup_device_reset_cb(ctx, cb=_reset_cb):
+    assert ctx is not None
+    return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
+
+
 def prepare_ctx_for_dma(dma_register=dma_unregister,
-                        dma_unregister=dma_unregister, quiesce=None,
-                        reset=None):
+                        dma_unregister=dma_unregister, quiesce=_quiesce_cb,
+                        reset=_reset_cb):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
 
@@ -837,12 +863,19 @@ def vfu_attach_ctx(ctx, expect=0):
     return ret
 
 
-def vfu_run_ctx(ctx):
-    return lib.vfu_run_ctx(ctx)
+def vfu_run_ctx(ctx, expect_errno=None):
+    ret = lib.vfu_run_ctx(ctx)
+    if expect_errno is not None:
+        assert ret < 0 and expect_errno == c.get_errno()
+    return ret
 
 
-def vfu_destroy_ctx(ctx):
+def vfu_destroy_ctx(ctx, expected_errno=None):
     ret = lib.vfu_destroy_ctx(ctx)
+    if expected_errno is None:
+        assert ret == 0
+    else:
+        assert ret < 0 and expected_errno == c.get_errno()
     ctx = None
     if os.path.exists(SOCK_PATH):
         os.remove(SOCK_PATH)
@@ -877,11 +910,6 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
         os.close(fd)
 
     return ret
-
-
-def vfu_setup_device_reset_cb(ctx, cb):
-    assert ctx is not None
-    return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
 
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
