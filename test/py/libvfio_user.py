@@ -528,11 +528,13 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 vfu_device_quiesce_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, use_errno=True)
-lib.vfu_setup_device_quiesce_cb.argtypes = (c.c_void_p, vfu_device_quiesce_cb_t)
+lib.vfu_setup_device_quiesce_cb.argtypes = (c.c_void_p,
+                                            vfu_device_quiesce_cb_t)
 vfu_dma_register_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
                                     c.POINTER(vfu_dma_info_t), use_errno=True)
 vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
-                                      c.POINTER(vfu_dma_info_t), use_errno=True)
+                                      c.POINTER(vfu_dma_info_t),
+                                      use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
@@ -744,14 +746,16 @@ def dma_unregister(ctx, info):
 
 
 def vfu_setup_device_quiesce_cb(ctx, quiesce_cb):
-    assert ctx != None
+    assert ctx is not None
 
-    return lib.vfu_setup_device_quiesce_cb(ctx, c.cast(quiesce_cb,
-                                                       vfu_device_quiesce_cb_t))
+    return lib.vfu_setup_device_quiesce_cb(ctx,
+                                           c.cast(quiesce_cb,
+                                                  vfu_device_quiesce_cb_t))
 
 
 def prepare_ctx_for_dma(dma_register=dma_unregister,
-                        dma_unregister=dma_unregister, quiesce=None, reset=None):
+                        dma_unregister=dma_unregister, quiesce=None,
+                        reset=None):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
 

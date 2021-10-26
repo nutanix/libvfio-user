@@ -63,7 +63,8 @@ def teardown_function(function):
 
 
 def test_device_quiesced_no_quiesce_requested():
-    """Checks that vfu_device_quiesce returns an error if called when there is no pending quiesce operation."""
+    """Checks that vfu_device_quiesce returns an error if called when there is
+    no pending quiesce operation."""
 
     global ctx, mock_quiesce_cb
     ret = vfu_device_quiesced(ctx, 0)
@@ -73,7 +74,8 @@ def test_device_quiesced_no_quiesce_requested():
 
 
 def test_device_quiesce_error():
-    """Checks that if the device quiesce callbacks fails then the operation that requested it also fails with the same error."""
+    """Checks that if the device quiesce callbacks fails then the operation
+    that requested it also fails with the same error."""
 
     global ctx, mock_quiesce_cb, sock
 

@@ -27,8 +27,7 @@
 #  DAMAGE.
 #
 
-from unittest import mock
-from unittest.mock import patch, Mock, create_autospec
+from unittest.mock import Mock
 
 from libvfio_user import *
 import errno
@@ -42,13 +41,16 @@ sock = None
 # I managed to make it work.
 mock_quiesce_cb = Mock()
 
+
 @vfu_device_quiesce_cb_t
 def quiesce_cb(ctx):
     global mock_quiesce_cb
     return mock_quiesce_cb(ctx)
 
+
 global mock_reset_cb
 mock_reset_cb = Mock()
+
 
 @vfu_reset_cb_t
 def reset_cb(ctx, reset_type):
@@ -155,7 +157,8 @@ def test_bad_request_closes_fds():
 
 
 def test_disconnected_socket():
-    """Tests that calling vfu_run_ctx on a disconnected socket results in resetting the context and returning ENOTCONN."""
+    """Tests that calling vfu_run_ctx on a disconnected socket results in
+    resetting the context and returning ENOTCONN."""
 
     global mock_quiesce_cb
     mock_quiesce_cb.return_value = 0
@@ -177,7 +180,8 @@ def test_disconnected_socket():
 
 
 def test_disconnected_socket_quiesce_busy():
-    """Tests that calling vfu_run_ctx on a disconnected socket results in resetting the context which returns EBUSY."""
+    """Tests that calling vfu_run_ctx on a disconnected socket results in
+    resetting the context which returns EBUSY."""
 
     global ctx
     ret = vfu_destroy_ctx(ctx)
@@ -188,6 +192,7 @@ def test_disconnected_socket_quiesce_busy():
 
     global mock_quiesce_cb
     mock_quiesce_cb.reset_mock()
+
     def side_effect(ctx):
         c.set_errno(errno.EBUSY)
         return -1

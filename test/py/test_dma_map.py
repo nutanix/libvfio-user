@@ -28,7 +28,7 @@
 #
 
 from unittest import mock
-from unittest.mock import patch, Mock, create_autospec
+from unittest.mock import Mock
 
 from libvfio_user import *
 import errno
@@ -71,7 +71,8 @@ def teardown_function(function):
     quiesce_cb_err = 0
     mock_reset_cb.return_value = 0
     ret = vfu_destroy_ctx(ctx)
-    assert ret == 0, "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
+    assert ret == 0, \
+           "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
 
 
 def test_dma_region_too_big():
@@ -83,8 +84,6 @@ def test_dma_region_too_big():
         offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
-
-
 
 
 def test_dma_region_too_many():
@@ -121,8 +120,6 @@ def test_dma_map_busy():
 
     vfu_device_quiesced(ctx, 0)
 
-    dma_register_cb_err = 0
-
     get_reply(sock)
 
     ret = vfu_run_ctx(ctx)
@@ -132,7 +129,8 @@ def test_dma_map_busy():
 # FIXME need the same test for (1) DMA unmap, (2) device reset, and
 # (3) migration, where quiesce returns EBUSY but replying fails.
 def test_dma_map_busy_reply_fail():
-    """Tests mapping a DMA region where the quiesce callback returns EBUSY and replying fails."""
+    """Tests mapping a DMA region where the quiesce callback returns EBUSY and
+    replying fails."""
 
     global ctx, sock, quiesce_cb_err
 

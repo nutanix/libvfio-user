@@ -27,7 +27,6 @@
 #  DAMAGE.
 #
 
-from unittest.mock import patch
 from libvfio_user import *
 import ctypes as c
 import errno
@@ -35,6 +34,7 @@ import errno
 ctx = None
 quiesce_cb_err = 0
 sock = 0
+
 
 @vfu_device_quiesce_cb_t
 def quiesce_cb(ctx):
@@ -106,7 +106,8 @@ def test_migration_trans_sync():
 
 
 def test_migration_trans_sync_err():
-    """Tests the device returning an error when the migration state is written to."""
+    """Tests the device returning an error when the migration state is written
+    to."""
 
     global ctx, sock, trans_cb_err
     trans_cb_err = errno.EPERM
@@ -143,7 +144,9 @@ def test_migration_trans_async():
 
 
 def test_migration_trans_async_err():
-    """Tests writing to the migration state register, the device not being able to immediately quiesced, and then finally the device failing to transition to the new migration state."""
+    """Tests writing to the migration state register, the device not being able
+    to immediately quiesced, and then finally the device failing to transition
+    to the new migration state."""
 
     global ctx, sock, trans_cb_err, quiesce_cb_err
     trans_cb_err = errno.ENOTTY
@@ -162,6 +165,7 @@ def test_migration_trans_async_err():
 
     quiesce_cb_err = 0
     ret = vfu_destroy_ctx(ctx)
-    assert ret == 0, "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
+    assert ret == 0, \
+           "failed to destroy context, ret=%s, errno=%s" % (ret, c.get_errno())
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

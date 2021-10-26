@@ -28,12 +28,10 @@
 #
 
 from libvfio_user import *
-import ctypes as c
 import errno
 import tempfile
 import os
 import struct
-import ctypes
 
 ctx = None
 sock = None

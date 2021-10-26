@@ -66,7 +66,6 @@ def test_dma_unmap_setup():
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
 
-
 def test_dma_unmap_short_write():
 
     payload = struct.pack("II", 0, 0)
@@ -162,6 +161,7 @@ def test_dma_unmap_cleanup():
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
 
-# FIXME need to add unit tests that test errors in get_request_header, do_reply, vfu_dma_transfer
+# FIXME need to add unit tests that test errors in get_request_header,
+# do_reply, vfu_dma_transfer
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab
