@@ -529,7 +529,6 @@ lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 vfu_device_quiesce_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, use_errno=True)
 lib.vfu_setup_device_quiesce_cb.argtypes = (c.c_void_p, vfu_device_quiesce_cb_t)
-# FIXME return type is void on master
 vfu_dma_register_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
                                     c.POINTER(vfu_dma_info_t), use_errno=True)
 vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,

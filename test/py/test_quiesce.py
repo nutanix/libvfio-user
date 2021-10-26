@@ -31,7 +31,6 @@ from libvfio_user import *
 import errno
 from unittest.mock import Mock
 
-# FIXME test quiesce callback when there's not quiesce pending
 
 ctx = None
 mock_quiesce_cb = None
