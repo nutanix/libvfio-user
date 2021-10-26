@@ -29,12 +29,10 @@
 
 from libvfio_user import *
 import errno
-import json
-import os
-import socket
 import struct
 
 ctx = None
+
 
 def client_version_json(expect=0, json=''):
     sock = connect_sock()
@@ -50,14 +48,16 @@ def client_version_json(expect=0, json=''):
 
     return payload
 
+
 def test_server_setup():
     global ctx
 
     ctx = vfu_create_ctx()
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
+
 
 def test_short_write():
     sock = connect_sock()
@@ -67,6 +67,7 @@ def test_short_write():
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_long_write():
     sock = connect_sock()
     hdr = vfio_user_header(VFIO_USER_VERSION, size=SERVER_MAX_MSG_SIZE + 1)
@@ -75,6 +76,7 @@ def test_long_write():
     ret = vfu_attach_ctx(ctx, expect=errno.EINVAL)
     assert ret == -1
     assert c.get_errno() == errno.EINVAL
+
 
 def test_bad_command():
     sock = connect_sock()
@@ -86,6 +88,7 @@ def test_bad_command():
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_invalid_major():
     sock = connect_sock()
 
@@ -95,6 +98,7 @@ def test_invalid_major():
 
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
+
 
 def test_invalid_json_missing_NUL():
     sock = connect_sock()
@@ -107,44 +111,54 @@ def test_invalid_json_missing_NUL():
     vfu_attach_ctx(ctx, expect=errno.EINVAL)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_invalid_json_missing_closing_brace():
     client_version_json(errno.EINVAL,  b"{")
+
 
 def test_invalid_json_missing_closing_quote():
     client_version_json(errno.EINVAL, b'"')
 
+
 def test_invalid_json_bad_capabilities_object():
     client_version_json(errno.EINVAL, b'{ "capabilities": "23" }')
+
 
 def test_invalid_json_bad_max_fds():
     client_version_json(errno.EINVAL,
                         b'{ "capabilities": { "max_msg_fds": "foo" } }')
 
-def test_invalid_json_bad_max_fds():
-    client_version_json(errno.EINVAL,
-                        b'{ "capabilities": { "max_msg_fds": -1 } }')
 
 def test_invalid_json_bad_max_fds2():
     client_version_json(errno.EINVAL,
+                        b'{ "capabilities": { "max_msg_fds": -1 } }')
+
+
+def test_invalid_json_bad_max_fds3():
+    client_version_json(errno.EINVAL,
                         b'{ "capabilities": { "max_msg_fds": %d } }' %
                         (VFIO_USER_CLIENT_MAX_FDS_LIMIT + 1))
+
 
 def test_invalid_json_bad_migration_object():
     client_version_json(errno.EINVAL,
                         b'{ "capabilities": { "migration": "23" } }')
 
+
 def test_invalid_json_bad_pgsize():
     client_version_json(errno.EINVAL, b'{ "capabilities": ' +
                         b'{ "migration": { "pgsize": "foo" } } }')
+
 
 #
 # FIXME: need vfu_setup_device_migration_callbacks() to be able to test this
 # failure mode.
 #
-def test_invalid_json_bad_pgsize():
+def test_invalid_json_bad_pgsize2():
     if False:
         client_version_json(errno.EINVAL,
             b'{ "capabilities": { "migration": { "pgsize": 4095 } } }')
+
 
 def test_valid_negotiate_no_json():
     sock = connect_sock()
@@ -167,11 +181,13 @@ def test_valid_negotiate_no_json():
 
     disconnect_client(ctx, sock)
 
+
 def test_valid_negotiate_empty_json():
     client_version_json(json=b'{}')
 
     # notice client closed connection
     vfu_run_ctx(ctx)
+
 
 def test_valid_negotiate_json():
     client_version_json(json=bytes(
@@ -181,6 +197,7 @@ def test_valid_negotiate_json():
 
     # notice client closed connection
     vfu_run_ctx(ctx)
+
 
 def test_destroying():
     vfu_destroy_ctx(ctx)

@@ -34,19 +34,22 @@ import tempfile
 
 ctx = None
 
+
 @vfu_dma_register_cb_t
 def dma_register(ctx, info):
     return 0
+
 
 @vfu_dma_unregister_cb_t
 def dma_unregister(ctx, info):
     return 0
 
+
 def test_dirty_pages_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -57,7 +60,7 @@ def test_dirty_pages_setup():
     f = tempfile.TemporaryFile()
     f.truncate(0x2000)
 
-    mmap_areas = [ (0x1000, 0x1000) ]
+    mmap_areas = [(0x1000, 0x1000)]
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
                            flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
@@ -78,10 +81,12 @@ def test_dirty_pages_setup():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
+
 def test_dirty_pages_short_write():
     payload = struct.pack("I", 8)
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+
 
 def test_dirty_pages_bad_argsz():
     payload = vfio_user_dirty_pages(argsz=4,
@@ -89,11 +94,13 @@ def test_dirty_pages_bad_argsz():
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
 
+
 def test_dirty_pages_start_no_migration():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.ENOTSUP)
+
 
 def test_dirty_pages_start_bad_flags():
     #
@@ -121,16 +128,19 @@ def start_logging():
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
 
+
 def test_dirty_pages_start():
     start_logging()
     # should be idempotent
     start_logging()
+
 
 def test_dirty_pages_get_short_read():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+
 
 #
 # This should in fact work; update when it does.
@@ -146,6 +156,7 @@ def test_dirty_pages_get_sub_range():
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.ENOTSUP)
 
+
 def test_dirty_pages_get_bad_page_size():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
@@ -157,6 +168,7 @@ def test_dirty_pages_get_bad_page_size():
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
 
+
 def test_dirty_pages_get_bad_bitmap_size():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
@@ -167,6 +179,7 @@ def test_dirty_pages_get_bad_bitmap_size():
     payload = bytes(dirty_pages) + bytes(br)
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+
 
 def test_dirty_pages_get_short_reply():
     dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
@@ -186,6 +199,7 @@ def test_dirty_pages_get_short_reply():
 
     assert dirty_pages.argsz == argsz
     assert dirty_pages.flags == VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP
+
 
 def test_dirty_pages_get_unmodified():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
@@ -231,8 +245,10 @@ def get_dirty_page_bitmap():
     br, result = vfio_user_bitmap_range.pop_from_buffer(result)
     return struct.unpack("Q", result)[0]
 
+
 sg3 = None
 iovec3 = None
+
 
 def test_dirty_pages_get_modified():
     ret, sg1 = vfu_addr_to_sg(ctx, dma_addr=0x10000, length=0x1000)
@@ -260,7 +276,7 @@ def test_dirty_pages_get_modified():
 
     # unmap segment, dirty bitmap should be the same
     vfu_unmap_sg(ctx, sg1, iovec1)
-    bitmap = get_dirty_page_bitmap() 
+    bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b11110001
 
     # check again, previously unmapped segment should be clean
@@ -299,6 +315,7 @@ def test_dirty_pages_stop():
     # FIXME we have a memory leak as we don't free dirty bitmaps when
     # destroying the context.
     stop_logging()
+
 
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)

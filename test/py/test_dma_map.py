@@ -86,6 +86,7 @@ def test_dma_region_too_big():
 
 
 
+
 def test_dma_region_too_many():
     global ctx, sock
 
@@ -96,9 +97,9 @@ def test_dma_region_too_many():
             offset=0, addr=0x1000 * i, size=4096)
 
         if i == MAX_DMA_REGIONS + 1:
-            expect=errno.EINVAL
+            expect = errno.EINVAL
         else:
-            expect=0
+            expect = 0
 
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 

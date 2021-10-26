@@ -30,18 +30,18 @@
 from libvfio_user import *
 import errno
 import tempfile
-import os
 
 ctx = None
 sock = None
 
 argsz = len(vfio_region_info())
 
+
 def test_device_get_region_info_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR1_REGION_IDX, size=4096,
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
@@ -50,7 +50,7 @@ def test_device_get_region_info_setup():
     f = tempfile.TemporaryFile()
     f.truncate(65536)
 
-    mmap_areas = [ (0x2000, 0x1000), (0x4000, 0x2000) ]
+    mmap_areas = [(0x2000, 0x1000), (0x4000, 0x2000)]
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX, size=0x8000,
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),
@@ -60,7 +60,7 @@ def test_device_get_region_info_setup():
     f = tempfile.TemporaryFile()
     f.truncate(0x2000)
 
-    mmap_areas = [ (0x1000, 0x1000) ]
+    mmap_areas = [(0x1000, 0x1000)]
 
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
                            flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
@@ -72,12 +72,14 @@ def test_device_get_region_info_setup():
 
     sock = connect_client(ctx)
 
+
 def test_device_get_region_info_short_write():
 
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
         expect=errno.EINVAL)
+
 
 def test_device_get_region_info_bad_argsz():
 
@@ -88,6 +90,7 @@ def test_device_get_region_info_bad_argsz():
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
         expect=errno.EINVAL)
 
+
 def test_device_get_region_info_bad_index():
 
     payload = vfio_region_info(argsz=argsz, flags=0,
@@ -96,6 +99,7 @@ def test_device_get_region_info_bad_index():
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
         expect=errno.EINVAL)
+
 
 def test_device_get_region_info_larger_argsz():
 
@@ -116,6 +120,7 @@ def test_device_get_region_info_larger_argsz():
     assert info.cap_offset == 0
     assert info.size == 4096
     assert info.offset == 0
+
 
 def test_device_get_region_info_small_argsz_caps():
     global sock
@@ -140,6 +145,7 @@ def test_device_get_region_info_small_argsz_caps():
 
     # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)
+
 
 def test_device_get_region_info_caps():
     global sock
@@ -175,6 +181,7 @@ def test_device_get_region_info_caps():
 
     # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)
+
 
 def test_device_get_region_info_migr():
     global sock
@@ -212,6 +219,7 @@ def test_device_get_region_info_migr():
 
     # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)
+
 
 def test_device_get_region_info_cleanup():
     vfu_destroy_ctx(ctx)

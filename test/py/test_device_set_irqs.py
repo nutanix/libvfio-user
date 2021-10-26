@@ -28,21 +28,20 @@
 #
 
 from libvfio_user import *
-import ctypes as c
 import errno
 import os
-import sys
 
 ctx = None
 sock = None
 
 argsz = len(vfio_irq_set())
 
+
 def test_device_set_irqs_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -59,16 +58,19 @@ def test_device_set_irqs_setup():
 
     sock = connect_client(ctx)
 
+
 def test_device_set_irqs_no_irq_set():
     hdr = vfio_user_header(VFIO_USER_DEVICE_SET_IRQS, size=0)
     sock.send(hdr)
     vfu_run_ctx(ctx)
     get_reply(sock, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_short_write():
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_argsz():
     payload = vfio_irq_set(argsz=3, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -77,12 +79,14 @@ def test_device_set_irqs_bad_argsz():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_bad_index():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_NUM_IRQS,
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
@@ -91,12 +95,14 @@ def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_bad_flags_DATA_NONE_and_DATA_BOOL():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
                            VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_DATA_BOOL,
                            index=VFU_DEV_MSIX_IRQ, start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_start_count_range():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
@@ -105,12 +111,14 @@ def test_device_set_irqs_bad_start_count_range():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
-def test_device_set_irqs_bad_start_count_range():
+
+def test_device_set_irqs_bad_start_count_range2():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
                            start=2049, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_action_for_err_irq():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
@@ -119,12 +127,14 @@ def test_device_set_irqs_bad_action_for_err_irq():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_bad_action_for_req_irq():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_REQ_IRQ,
                            start=0, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_start_for_count_0():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
@@ -133,6 +143,7 @@ def test_device_set_irqs_bad_start_for_count_0():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_bad_action_for_count_0():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
@@ -140,12 +151,14 @@ def test_device_set_irqs_bad_action_for_count_0():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_bad_action_and_data_type_for_count_0():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_bad_fds_for_DATA_BOOL():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -161,6 +174,7 @@ def test_device_set_irqs_bad_fds_for_DATA_BOOL():
 
     os.close(fd)
 
+
 def test_device_set_irqs_bad_fds_for_DATA_NONE():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_MSIX_IRQ,
@@ -173,6 +187,7 @@ def test_device_set_irqs_bad_fds_for_DATA_NONE():
 
     os.close(fd)
 
+
 def test_device_set_irqs_bad_fds_for_count_2():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
@@ -184,6 +199,7 @@ def test_device_set_irqs_bad_fds_for_count_2():
         fds=[fd])
 
     os.close(fd)
+
 
 def test_device_set_irqs_disable():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -198,6 +214,7 @@ def test_device_set_irqs_disable():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload)
 
+
 def test_device_set_irqs_enable():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
@@ -207,6 +224,7 @@ def test_device_set_irqs_enable():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
 
+
 def test_device_set_irqs_trigger_bool_too_small():
     payload = vfio_irq_set(argsz=argsz + 1, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_BOOL, index=VFU_DEV_MSIX_IRQ,
@@ -214,6 +232,7 @@ def test_device_set_irqs_trigger_bool_too_small():
     payload = bytes(payload) + struct.pack("?", False)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
+
 
 def test_device_set_irqs_trigger_bool_too_large():
     payload = vfio_irq_set(argsz=argsz + 3, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -223,6 +242,7 @@ def test_device_set_irqs_trigger_bool_too_large():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, expect=errno.EINVAL)
 
+
 def test_device_set_irqs_enable_update():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
@@ -231,6 +251,7 @@ def test_device_set_irqs_enable_update():
     fd = eventfd()
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
+
 
 def test_device_set_irqs_enable_trigger_none():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
@@ -251,6 +272,7 @@ def test_device_set_irqs_enable_trigger_none():
     assert struct.unpack("Q", os.read(fd1, 8))[0] == 4
     assert struct.unpack("Q", os.read(fd2, 8))[0] == 9
 
+
 def test_device_set_irqs_enable_trigger_bool():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
                            VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
@@ -270,6 +292,7 @@ def test_device_set_irqs_enable_trigger_bool():
 
     assert struct.unpack("Q", os.read(fd1, 8))[0] == 4
     assert struct.unpack("Q", os.read(fd2, 8))[0] == 9
+
 
 def test_device_set_irqs_cleanup():
     vfu_destroy_ctx(ctx)

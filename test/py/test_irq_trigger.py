@@ -34,11 +34,12 @@ import errno
 ctx = None
 sock = None
 
+
 def test_irq_trigger_setup():
     global ctx, sock
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
-    assert ctx != None
+    assert ctx is not None
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
@@ -51,6 +52,7 @@ def test_irq_trigger_setup():
 
     sock = connect_client(ctx)
 
+
 def test_irq_trigger_bad_subindex():
     ret = vfu_irq_trigger(ctx, 2048)
     assert ret == -1
@@ -60,10 +62,12 @@ def test_irq_trigger_bad_subindex():
     assert ret == -1
     assert c.get_errno() == errno.EINVAL
 
+
 def test_irq_trigger_no_interrupt():
     ret = vfu_irq_trigger(ctx, 0)
     assert ret == -1
     assert c.get_errno() == errno.ENOENT
+
 
 def test_irq_trigger():
     # struct vfio_irq_set
@@ -74,9 +78,10 @@ def test_irq_trigger():
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
 
-    ret = vfu_irq_trigger(ctx, 8)
+    vfu_irq_trigger(ctx, 8)
 
     assert struct.unpack("Q", os.read(fd, 8))[0] == 5
+
 
 def test_irq_trigger_cleanup():
     vfu_destroy_ctx(ctx)

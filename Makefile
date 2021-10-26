@@ -52,8 +52,10 @@ ifeq ($(VERBOSE),)
     MAKEFLAGS += -s
 endif
 
+GIT_SHA = $(shell git rev-parse --short HEAD)
 CMAKE = $(shell bash -c "command -v cmake3 cmake" | head -1)
-RSTLINT= $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
+RSTLINT = $(shell bash -c "command -v restructuredtext-lint /bin/true" | head -1)
+FLAKE8 = $(shell bash -c "command -v flake8 /bin/true" | head -1)
 
 BUILD_DIR_BASE = $(CURDIR)/build
 BUILD_DIR = $(BUILD_DIR_BASE)/$(BUILD_TYPE)
@@ -64,7 +66,6 @@ INSTALL_PREFIX ?= /usr/local
 .PHONY: pre-push clean realclean tags gcov
 
 all install: $(BUILD_DIR)/Makefile
-	$(RSTLINT) docs/vfio-user.rst
 	+$(MAKE) -C $(BUILD_DIR) $@
 
 #
@@ -125,6 +126,8 @@ endif
 	cd $(BUILD_DIR)/test; ctest --verbose
 
 pre-push: realclean
+	$(RSTLINT) docs/vfio-user.rst
+	$(FLAKE8) --extend-ignore=F405,F403,E128,E131,E127 $$(find . -name '*.py')
 	make test WITH_ASAN=1
 	make realclean
 	make test CC=clang BUILD_TYPE=rel
@@ -134,6 +137,13 @@ pre-push: realclean
 	make test CC=gcc
 	make pytest-valgrind
 	make install DESTDIR=tmp.install
+
+coverity: realclean
+	curl -sS -L -o coverity.tar.gz -d "token=$$COVERITY_TOKEN&project=nutanix%2Flibvfio-user" https://scan.coverity.com/download/cxx/linux64
+	tar xf coverity.tar.gz
+	./cov-analysis-linux64-*/bin/cov-build --dir cov-int make -j4 all
+	tar czf coverity-results.tar.gz cov-int
+	curl --form token=$$COVERITY_TOKEN --form email=$$COVERITY_EMAIL --form file=@coverity-results.tar.gz --form version="$(GIT_SHA)"  https://scan.coverity.com/builds?project=nutanix%2Flibvfio-user
 
 GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 

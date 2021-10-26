@@ -439,11 +439,8 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 
 out:
     if (ret != 0) {
-        if (ts != NULL) {
-            if (ts->listen_fd != -1) {
-                close(ts->listen_fd);
-            }
-            free(ts);
+        if (ts != NULL && ts->listen_fd != -1) {
+            close(ts->listen_fd);
         }
         return ERROR_INT(ret);
     }
