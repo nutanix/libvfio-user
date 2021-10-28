@@ -1121,7 +1121,9 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 
         case ENOMSG:
         case ECONNRESET:
-            vfu_reset_ctx(vfu_ctx, errno);
+            if (vfu_reset_ctx(vfu_ctx, errno) < 0) {
+                vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+            }
             return ERROR_INT(ENOTCONN);
         default:
             vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %m");
@@ -1290,7 +1292,9 @@ do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
         vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
 
         if (errno == ECONNRESET || errno == ENOMSG) {
-            vfu_reset_ctx(vfu_ctx, errno);
+            if (vfu_reset_ctx(vfu_ctx, errno) < 0) {
+                vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+            }
             errno = ENOTCONN;
         }
     }
@@ -1526,14 +1530,6 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
                 return ret;
             }
             vfu_log(vfu_ctx, LOG_ERR, "failed to quiesce device: %m");
-            /*
-             * FIXME how do we handle this failure? Do we mark the device broken
-             * so the only option for the user to destroy the device via
-             * vfu_ctx_destroy? Even if we do that, vfu_destroy_ctx must reset
-             * the context which requires quiescing the device, so technically
-             * we can't proceed, do destroy the context even if the device
-             * might still be using it?
-             */
             return ret;
         }
     }
@@ -1544,16 +1540,13 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
 EXPORT void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
-    int ret;
-
     if (vfu_ctx == NULL) {
         return;
     }
 
     vfu_ctx->quiesce = NULL;
-    ret = vfu_reset_ctx(vfu_ctx, ESHUTDOWN);
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_WARNING, "failed to reset: %m");
+    if (vfu_reset_ctx(vfu_ctx, ESHUTDOWN) < 0) {
+        vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
     }
 
     free(vfu_ctx->uuid);
@@ -2034,7 +2027,9 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
         if (ret < 0) {
             ret = errno;
             if (ret == ENOMSG || ret == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, ret);
+                if (vfu_reset_ctx(vfu_ctx, ret) < 0) {
+                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+                }
                 ret = ENOTCONN;
             }
             free(rbuf);
