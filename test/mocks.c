@@ -300,12 +300,11 @@ mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
     check_expected(info);
 }
 
-int
+void
 mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
     check_expected(vfu_ctx);
     check_expected(info);
-    return mock();
 }
 
 int

@@ -167,7 +167,6 @@ struct vfu_ctx_pending_info {
         int                     ctx_reset_errno;
         uint32_t                migr_dev_state;
     };
-    bool                        shutdown;
 };
 
 struct vfu_ctx {

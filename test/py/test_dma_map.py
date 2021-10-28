@@ -27,8 +27,8 @@
 #  DAMAGE.
 #
 
-from unittest import mock
 from unittest.mock import patch
+import mmap
 
 from libvfio_user import *
 import errno
@@ -81,8 +81,12 @@ def test_dma_region_too_many():
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
 
-@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
-def test_dma_map_busy(mock_quiesce):
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+@patch('libvfio_user.dma_register')
+def test_dma_map_busy(mock_dma_register, mock_quiesce):
+    """Checks that during a DMA map operation the device is busy quiescing,
+    eventually quiesces and the DMA map operation succeeds."""
+
     global ctx, sock
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
@@ -94,19 +98,40 @@ def test_dma_map_busy(mock_quiesce):
 
     vfu_run_ctx(ctx, errno.EBUSY)
 
+    assert mock_dma_register.call_count == 0
+
     vfu_device_quiesced(ctx, 0)
+
+    # check that DMA register callback got called
+    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10000, iov_len=0x1000),
+        None, iovec_t(None, 0), 0x1000, mmap.PROT_READ | mmap.PROT_WRITE)
+    mock_dma_register.assert_called_once_with(ctx, dma_info)
 
     get_reply(sock)
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
 
+    # the callback shouldn't be called again
+    mock_dma_register.assert_called_once()
+
+    # check that the DMA region has been added
+    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    assert len(sgs) == 1
+    sg = sgs[0]
+    assert sg.dma_addr == 0x10000
+    assert sg.region == 0
+    assert sg.length == 0x1000
+    assert sg.offset == 0
+    assert sg.writeable
+
 
 # FIXME need the same test for (1) DMA unmap, (2) device reset, and
 # (3) migration, where quiesce returns EBUSY but replying fails.
 @patch('libvfio_user.reset_cb')
-@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
-def test_dma_map_busy_reply_fail(mock_quiesce, mock_reset):
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+@patch('libvfio_user.dma_register')
+def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     """Tests mapping a DMA region where the quiesce callback returns EBUSY and
     replying fails."""
 
@@ -119,26 +144,39 @@ def test_dma_map_busy_reply_fail(mock_quiesce, mock_reset):
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=0x1000)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload,
-                     rsp=False)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
 
     vfu_run_ctx(ctx, errno.EBUSY)
 
-    # TODO check that quiesce has been called
+    mock_quiesce.assert_called_once_with(ctx)
 
     # pretend there's a connection failure while the device is still quiescing
     sock.close()
 
-    # device reset callback should not have been called so far
-    assert mock_reset.call_count == 0
+    mock_dma_register.assert_not_called()
+    mock_reset.assert_not_called()
 
     # device quiesces
     vfu_device_quiesced(ctx, 0)
 
-    # device reset callback should be called
-    mock_reset.assert_has_calls([mock.call(ctx, True)])
+    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10000, iov_len=0x1000),
+        None, iovec_t(None, 0), 0x1000, mmap.PROT_READ | mmap.PROT_WRITE)
+    mock_dma_register.assert_called_once_with(ctx, dma_info)
+
+    # device reset callback should be called (by do_reply)
+    mock_reset.assert_called_once_with(ctx, True)
 
     vfu_run_ctx(ctx, errno.ENOTCONN)
+
+    # callbacks shouldn't be called further
+    mock_quiesce.assert_called_once()
+    mock_dma_register.assert_called_once()
+    mock_reset.assert_called_once()
+
+    # check that the DMA region was NOT added
+    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    assert count == -1
+    assert c.get_errno() == errno.ENOENT
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

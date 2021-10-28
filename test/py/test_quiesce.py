@@ -59,14 +59,12 @@ def test_device_quiesced_no_quiesce_requested(mock_quiesce):
     assert mock_quiesce.call_count == 0
 
 
-@patch('libvfio_user.quiesce_cb')
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_device_quiesce_error(mock_quiesce):
     """Checks that if the device quiesce callbacks fails then the operation
     that requested it also fails with the same error."""
 
     global ctx, sock
-
-    mock_quiesce.return_value = -errno.ENOTTY
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
@@ -76,12 +74,12 @@ def test_device_quiesce_error(mock_quiesce):
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, errno.ENOTTY)
 
 
-@patch('libvfio_user.quiesce_cb')
-def test_device_quiesce_error_after_busy(mock_quiesce):
+@patch('libvfio_user.dma_register')
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
+    """Checks that the device fails to quiesce after it was busy quiescing."""
 
     global ctx, sock
-
-    mock_quiesce.return_value = -errno.EBUSY
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
@@ -90,13 +88,18 @@ def test_device_quiesce_error_after_busy(mock_quiesce):
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EBUSY
+    vfu_run_ctx(ctx, errno.EBUSY)
 
     ret = vfu_device_quiesced(ctx, errno.ENOTTY)
     assert ret == -1
     assert c.get_errno() == errno.ENOTTY
+
+    mock_dma_register.assert_not_called()
+
+    # check that the DMA region was NOT added
+    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    assert count == -1
+    assert c.get_errno() == errno.ENOENT
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

@@ -43,11 +43,7 @@ def trans_cb(ctx, state):
 # TODO use mock
 @transition_cb_t
 def __trans_cb(ctx, state):
-    ret = trans_cb(ctx, state)
-    if ret < 0:
-        c.set_errno(-ret)
-        return -1
-    return 0
+    return trans_cb(ctx, state)
 
 
 def setup_function(function):
@@ -102,7 +98,7 @@ def test_migration_trans_sync():
     assert ret == 0
 
 
-@patch(__name__ + '.trans_cb', return_value=-errno.EPERM)
+@patch(__name__ + '.trans_cb', side_effect=fail_with_errno(errno.EPERM))
 def test_migration_trans_sync_err(mock_trans):
     """Tests the device returning an error when the migration state is written
     to."""
@@ -117,7 +113,7 @@ def test_migration_trans_sync_err(mock_trans):
     assert ret == 0
 
 
-@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
 def test_migration_trans_async(mock_quiesce):
 
     global ctx, sock
@@ -137,8 +133,8 @@ def test_migration_trans_async(mock_quiesce):
     assert ret == 0
 
 
-@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
-@patch(__name__ + '.trans_cb', return_value=-errno.ENOTTY)
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+@patch(__name__ + '.trans_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_migration_trans_async_err(mock_trans, mock_quiesce):
     """Tests writing to the migration state register, the device not being able
     to immediately quiesce, and then finally the device failing to transition

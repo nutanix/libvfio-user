@@ -36,7 +36,7 @@ void patch(const char *name);
 
 void mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
-int mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+void mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 int mock_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type);
 

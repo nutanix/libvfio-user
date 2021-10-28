@@ -88,7 +88,7 @@ def test_dma_unmap_invalid_addr():
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOENT)
 
 
-@patch('libvfio_user.quiesce_cb', return_value=-errno.EBUSY)
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
 def test_dma_unmap_async(mock_quiesce):
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),

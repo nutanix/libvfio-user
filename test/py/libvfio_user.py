@@ -41,6 +41,7 @@ import os
 import socket
 import struct
 import syslog
+import copy
 
 # from linux/pci_regs.h and linux/pci_defs.h
 
@@ -278,6 +279,23 @@ class iovec_t(Structure):
         ("iov_len", c.c_int32)
     ]
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.iov_base == other.iov_base \
+            and self.iov_len == other.iov_len
+
+    def __str__(self):
+        return "%s-%s" % \
+            (hex(self.iov_base or 0), hex((self.iov_base or 0) + self.iov_len))
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.iov_base = self.iov_base
+        result.iov_len = self.iov_len
+        return result
+
 
 class vfio_irq_info(Structure):
     _pack_ = 1
@@ -436,6 +454,30 @@ class vfu_dma_info_t(Structure):
         ("prot", c.c_uint32)
     ]
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.iova == other.iova \
+            and self.vaddr == other.vaddr \
+            and self.mapping == other.mapping \
+            and self.page_size == other.page_size \
+            and self.prot == other.prot
+
+    def __str__(self):
+        return "IOVA=%s vaddr=%s mapping=%s page_size=%s prot=%s" % \
+            (self.iova, self.vaddr, self.mapping, hex(self.page_size),
+            bin(self.prot))
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.iova = self.iova
+        result.vaddr = self.vaddr
+        result.mapping = self.mapping
+        result.page_size = self.page_size
+        result.prot = self.prot
+        return result
+
 
 class vfio_user_dirty_pages(Structure):
     _pack_ = 1
@@ -495,6 +537,12 @@ class dma_sg_t(Structure):
         ("le_prev", c.c_void_p),
     ]
 
+    def __str__(self):
+        return "DMA addr=%s, region index=%s, length=%s, offset=%s, RW=%s" % \
+            (hex(self.dma_addr), self.region, hex(self.length),
+                hex(self.offset), self.writeable)
+
+
 #
 # Util functions
 #
@@ -530,9 +578,9 @@ lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
 vfu_device_quiesce_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, use_errno=True)
 lib.vfu_setup_device_quiesce_cb.argtypes = (c.c_void_p,
                                             vfu_device_quiesce_cb_t)
-vfu_dma_register_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
+vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                     c.POINTER(vfu_dma_info_t), use_errno=True)
-vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
+vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                       c.POINTER(vfu_dma_info_t),
                                       use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
@@ -735,14 +783,25 @@ def ext_cap_hdr(buf, offset):
     return cap_id, cap_next
 
 
-@vfu_dma_register_cb_t
 def dma_register(ctx, info):
-    return 0
+    pass
+
+
+@vfu_dma_register_cb_t
+def __dma_register(ctx, info):
+    # The copy is required because in case of deliberate failure (e.g.
+    # test_dma_map_busy_reply_fail) the memory gets deallocated and mock only
+    # records the pointer, so the contents are all null/zero.
+    dma_register(ctx, copy.copy(info.contents))
+
+
+def dma_unregister(ctx, info):
+    pass
 
 
 @vfu_dma_unregister_cb_t
-def dma_unregister(ctx, info):
-    return 0
+def __dma_unregister(ctx, info):
+    dma_unregister(ctx, info)
 
 
 def quiesce_cb(ctx):
@@ -751,11 +810,7 @@ def quiesce_cb(ctx):
 
 @vfu_device_quiesce_cb_t
 def _quiesce_cb(ctx):
-    ret = quiesce_cb(ctx)
-    if ret < 0:
-        c.set_errno(-ret)
-        return -1
-    return 0
+    return quiesce_cb(ctx)
 
 
 def vfu_setup_device_quiesce_cb(ctx, quiesce_cb=_quiesce_cb):
@@ -779,8 +834,8 @@ def vfu_setup_device_reset_cb(ctx, cb=_reset_cb):
     return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
 
 
-def prepare_ctx_for_dma(dma_register=dma_unregister,
-                        dma_unregister=dma_unregister, quiesce=_quiesce_cb,
+def prepare_ctx_for_dma(dma_register=__dma_register,
+                        dma_unregister=__dma_unregister, quiesce=_quiesce_cb,
                         reset=_reset_cb):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -866,20 +921,16 @@ def vfu_attach_ctx(ctx, expect=0):
 def vfu_run_ctx(ctx, expect_errno=None):
     ret = lib.vfu_run_ctx(ctx)
     if expect_errno is not None:
-        assert ret < 0 and expect_errno == c.get_errno()
+        assert ret < 0 and expect_errno == c.get_errno(), \
+            "expected errno=%s, actual=%s" % (expect_errno, c.get_errno())
     return ret
 
 
-def vfu_destroy_ctx(ctx, expected_errno=None):
-    ret = lib.vfu_destroy_ctx(ctx)
-    if expected_errno is None:
-        assert ret == 0
-    else:
-        assert ret < 0 and expected_errno == c.get_errno()
+def vfu_destroy_ctx(ctx):
+    lib.vfu_destroy_ctx(ctx)
     ctx = None
     if os.path.exists(SOCK_PATH):
         os.remove(SOCK_PATH)
-    return ret
 
 
 def vfu_setup_region(ctx, index, size, cb=None, flags=0,
@@ -1003,5 +1054,13 @@ def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
 
 def vfu_device_quiesced(ctx, err):
     return lib.vfu_device_quiesced(ctx, err)
+
+
+def fail_with_errno(err):
+    def side_effect(args, *kwargs):
+        c.set_errno(err)
+        return -1
+    return side_effect
+
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

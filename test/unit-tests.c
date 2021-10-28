@@ -231,7 +231,6 @@ test_handle_dma_unmap(void **state UNUSED)
     expect_value(mock_dma_unregister, vfu_ctx, &vfu_ctx);
     expect_check(mock_dma_unregister, info, check_dma_info,
                  &vfu_ctx.dma->regions[0].info);
-    will_return(mock_dma_unregister, 0);
 
     ret = handle_dma_unmap(&vfu_ctx,
                            mkmsg(VFIO_USER_DMA_UNMAP, &dma_unmap,
@@ -277,7 +276,6 @@ test_handle_dma_unmap_dirty(void **state UNUSED)
     expect_value(mock_dma_unregister, vfu_ctx, &vfu_ctx);
     expect_check(mock_dma_unregister, info, check_dma_info,
                  &vfu_ctx.dma->regions[0].info);
-    will_return(mock_dma_unregister, 0);
 
     ret = handle_dma_unmap(&vfu_ctx,
                            mkmsg(VFIO_USER_DMA_UNMAP, &dma_unmap, size),
@@ -330,7 +328,6 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     expect_check(mock_dma_unregister, info, check_dma_info,
                  &vfu_ctx.dma->regions[0].info);
     /* FIXME add unit test when dma_unregister fails */
-    will_return(mock_dma_unregister, 0);
     patch("dma_controller_unmap_region");
     expect_value(dma_controller_unmap_region, dma, vfu_ctx.dma);
     expect_value(dma_controller_unmap_region, region, &vfu_ctx.dma->regions[0]);
@@ -350,7 +347,6 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
     expect_value(mock_dma_unregister, vfu_ctx, &vfu_ctx);
     expect_check(mock_dma_unregister, info, check_dma_info,
                  &vfu_ctx.dma->regions[0].info);
-    will_return(mock_dma_unregister, 0);
     patch("dma_controller_unmap_region");
     assert_int_equal(0,
         dma_controller_remove_region(vfu_ctx.dma, (void *)0xdeadbeef, 0x100,

@@ -156,7 +156,6 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 {
     int idx;
     dma_memory_region_t *region;
-    int err;
 
     assert(dma != NULL);
 
@@ -167,14 +166,8 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
             continue;
         }
 
-        err = dma_unregister == NULL ? 0 : dma_unregister(data, &region->info);
-        if (err < 0) {
-            if (errno != EBUSY) {
-                vfu_log(dma->vfu_ctx, LOG_ERR,
-                        "failed to dma_unregister() DMA region [%p, %p): %m",
-                        region->info.iova.iov_base, iov_end(&region->info.iova));
-            }
-            return err;
+        if (dma_unregister != NULL) {
+            dma_unregister(data, &region->info);
         }
 
         assert(region->refcnt == 0);
@@ -202,7 +195,6 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 
     for (i = 0; i < dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
-        int err;
 
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "removing DMA region "
                 "iova=[%p, %p) vaddr=%p mapping=[%p, %p)",
@@ -210,12 +202,8 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
                 region->info.vaddr,
                 region->info.mapping.iov_base, iov_end(&region->info.mapping));
 
-        err = dma_unregister == NULL ? 0 : dma_unregister(data, &region->info);
-        if (err != 0) {
-            err = errno;
-            vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to dma_unregister() DMA region [%p, %p): %m",
-                   region->info.iova.iov_base, iov_end(&region->info.iova));
+        if (dma_unregister != NULL) {
+            dma_unregister(data, &region->info);
         }
 
         if (region->info.vaddr != NULL) {

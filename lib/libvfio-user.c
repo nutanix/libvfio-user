@@ -703,9 +703,12 @@ handle_dma_map_quiesced(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     idx = ret;
     ret = 0;
     if (vfu_ctx->dma_register != NULL) {
-        ret = vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[idx].info);
-        assert(ret == 0); // FIXME what's the point of returning an error in the first place? Shouldn't this be void?
+        vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[idx].info);
     }
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "added DMA region [%#lx, %#lx) offset=%#lx flags=%#x",
+            dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
+            dma_map->flags);
     return ret;
 }
 
@@ -1453,10 +1456,6 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
         return ERROR_INT(EINVAL);
     }
 
-    if (vfu_ctx->pending.shutdown) {
-        return ERROR_INT(ESHUTDOWN);
-    }
-
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
 
     do {
@@ -1542,9 +1541,21 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
     return 0;
 }
 
-static void
-vfu_destroy_ctx_after_reset(vfu_ctx_t *vfu_ctx)
+EXPORT void
+vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
+    int ret;
+
+    if (vfu_ctx == NULL) {
+        return;
+    }
+
+    vfu_ctx->quiesce = NULL;
+    ret = vfu_reset_ctx(vfu_ctx, ESHUTDOWN);
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_WARNING, "failed to reset: %m");
+    }
+
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
 
@@ -1560,27 +1571,6 @@ vfu_destroy_ctx_after_reset(vfu_ctx_t *vfu_ctx)
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
     free(vfu_ctx);
-}
-
-EXPORT int
-vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
-{
-    int ret;
-
-    if (vfu_ctx == NULL) {
-        return 0;
-    }
-
-    vfu_ctx->pending.shutdown = true;
-    ret = vfu_reset_ctx(vfu_ctx, ESHUTDOWN);
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "failed to reset: %m");
-        return ret;
-    }
-
-    vfu_destroy_ctx_after_reset(vfu_ctx);
-
-    return 0;
 }
 
 EXPORT void *
@@ -2108,6 +2098,8 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
         return ERROR_INT(EINVAL);
     }
 
+    vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced with error=%d", quiesce_errno);
+
     if (quiesce_errno == 0) {
         switch (vfu_ctx->pending.state) {
         case VFU_CTX_PENDING_MIGR:
@@ -2131,11 +2123,6 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
             break;
         default:
             assert(false);
-        }
-
-        if (vfu_ctx->pending.shutdown) {
-            vfu_destroy_ctx_after_reset(vfu_ctx);
-            return 0;
         }
     } else {
         ret = -1;

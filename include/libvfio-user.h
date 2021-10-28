@@ -170,11 +170,12 @@ int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Destroys libvfio-user context.
+ * Destroys libvfio-user context. During this call the device must be in
+ * quiesced state and the device callbacks can be called.
  *
  * @vfu_ctx: the libvfio-user context to destroy
  */
-int
+void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
@@ -456,25 +457,19 @@ typedef struct vfu_dma_info {
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
- *
- * @returns: 0 on success, -1 on failure with errno set.
  */
-typedef int (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /*
- * Function that is called when the guest unregisters a DMA region.  The
- * callback should return 0 on success and -1 on failure setting errno.
- * (although unregister should not fail: this will not stop a guest from
- * unregistering the region).  This callback is required if you want to be able
- * to access guest memory directly via a mapping. The device must release all
- * references to that region before the callback returns.
+ * Function that is called when the guest unregisters a DMA region.  This
+ * callback is required if you want to be able to access guest memory directly
+ * via a mapping. The device must release all references to that region before
+ * the callback returns.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
-
- * @returns: 0 on success, -1 on failure with errno set.
  */
-typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+typedef void (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /**
  * Set up device DMA registration callbacks. When libvfio-user is notified of a
