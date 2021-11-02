@@ -164,14 +164,16 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  *
  * EAGAIN/EWOULDBLOCK: no more commands to process
  * ENOTCONN: client closed connection, vfu_attach_ctx() should be called again
+ * EBUSY: the device was asked to quiesce and is still quiescing
  * Other errno values are also possible.
  */
 int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Destroys libvfio-user context. During this call the device must be in
- * quiesced state and the device callbacks can be called.
+ * Destroys libvfio-user context. During this call the device must already be
+ * in quiesced state; the quiesce callback is not called. Any other device
+ * callback can be called.
  *
  * @vfu_ctx: the libvfio-user context to destroy
  */
@@ -351,7 +353,7 @@ typedef enum vfu_reset_type {
  * vfu_addr_to_sg, vfu_map_sg, vfu_unmap_sg, vfu_dma_read, and vfu_dma_write.
  * The device must also be prepared for the following callbacks to be executed:
  * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
- * These callbacks only called after the device has been quiesced.
+ * These callbacks are only called after the device has been quiesced.
  *
  * If the device returns -1 with errno set to EBUSY, then the device is not
  * quiesced until the device calls vfu_device_quiesced. During this time the
@@ -367,7 +369,7 @@ typedef int (vfu_device_quiesce_cb_t)(vfu_ctx_t *vfu_ctx);
  * Sets up the device quiesce callback.
  *
  * @vfu_ctx: the libvfio-user context
- * @reset: device reset callback
+ * @quiesce: device quiesce callback
  */
 int
 vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx,

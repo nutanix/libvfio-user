@@ -337,6 +337,12 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret != in_ra->count) {
+        /*
+         * This means that the migration device state register need to be
+         * modified, which requires the device to be quiesced, but the device
+         * could not immediately quiesce. The context remains in pending state
+         * until the device is quiesced.
+         */ 
         if (ret == -1 && errno == EBUSY
             && vfu_ctx->pending.state == VFU_CTX_PENDING_MIGR) {
             return ret;
@@ -687,6 +693,11 @@ handle_dma_map_quiesced(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         }
     }
 
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "adding DMA region [%#lx, %#lx) offset=%#lx flags=%#x",
+            dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
+            dma_map->flags);
+
     ret = dma_controller_add_region(vfu_ctx->dma, (void *)dma_map->addr,
                                     dma_map->size, fd, dma_map->offset,
                                     prot);
@@ -728,13 +739,8 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(EINVAL);
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG,
-            "adding DMA region [%#lx, %#lx) offset=%#lx flags=%#x",
-            dma_map->addr, dma_map->addr + dma_map->size, dma_map->offset,
-            dma_map->flags);
-
     if (vfu_ctx->quiesce != NULL) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+        vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device due to DMA map request");
         ret = vfu_ctx->quiesce(vfu_ctx);
         if (ret < 0) {
             if (errno == EBUSY) {
@@ -823,10 +829,6 @@ handle_dma_unmap_quiesced(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                        vfu_ctx->dma_unregister,
                                        vfu_ctx);
     if (ret < 0) {
-        if (errno == EBUSY) {
-            vfu_ctx->pending.state = VFU_CTX_PENDING_DMA_UNMAP;
-            return 0;
-        }
         vfu_log(vfu_ctx, LOG_WARNING,
                 "failed to remove DMA region [%#lx, %#lx) flags=%#x: %m",
                 dma_unmap->addr, dma_unmap->addr + dma_unmap->size,
@@ -1495,11 +1497,8 @@ free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
 }
 
 static void
-vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx, int reason)
+vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx)
 {
-    vfu_log(vfu_ctx, LOG_INFO, "%s: reset context because: %s", __func__,
-            strerror(reason));
-
     if (vfu_ctx->dma != NULL) {
         dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
                                           vfu_ctx);
@@ -1520,20 +1519,23 @@ vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx, int reason)
 static int
 vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
 {
+    vfu_log(vfu_ctx, LOG_INFO, "%s: reset context because: %s", __func__,
+            strerror(reason));
+
+
     if (vfu_ctx->quiesce != NULL
         && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
         int ret = vfu_ctx->quiesce(vfu_ctx);
         if (ret < 0) {
             if (errno == EBUSY) {
                 vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
-                vfu_ctx->pending.ctx_reset_errno = reason;
                 return ret;
             }
             vfu_log(vfu_ctx, LOG_ERR, "failed to quiesce device: %m");
             return ret;
         }
     }
-    vfu_reset_ctx_quiesced(vfu_ctx, reason);
+    vfu_reset_ctx_quiesced(vfu_ctx);
     return 0;
 }
 
@@ -2125,7 +2127,7 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
     }
 
     /*
-     * We only reply when there is a message sent by the clinet to reply to
+     * We only reply when there is a message sent by the client to reply to
      * (e.g. vfu_dma_map is initiated by the server). The context is usually
      * reset when there's a failure receiving a request or replying to a
      * request, so we don't reply in that case either.

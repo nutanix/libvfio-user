@@ -164,7 +164,6 @@ struct vfu_ctx_pending_info {
     /* when pending == VFU_CTX_PENDING_XXX_RESET */
     union {
         vfu_reset_type_t        device_reset_reason;
-        int                     ctx_reset_errno;
         uint32_t                migr_dev_state;
     };
 };

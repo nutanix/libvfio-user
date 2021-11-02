@@ -92,14 +92,7 @@ run specific tests use the pytest `-k` option in `PYTESTCMD` in the Makefile.
 Coverity
 ========
 
-Build according to:
-
-	https://scan.coverity.com/download?tab=cxx
-
-E.g.:
-
-	../cov-analysis-linux64-2019.03/bin/cov-build --dir cov-int make
-
+`make coverity` automatically uploads a new coverity build.
 
 Supported features
 ==================

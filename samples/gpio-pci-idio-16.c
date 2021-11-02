@@ -128,13 +128,11 @@ migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf,
 static void
 dma_register(UNUSED vfu_ctx_t *vfu_ctx, UNUSED vfu_dma_info_t *info)
 {
-    return;
 }
 
 static void
 dma_unregister(UNUSED vfu_ctx_t *vfu_ctx, UNUSED vfu_dma_info_t *info)
 {
-    return;
 }
 
 int
