@@ -8,7 +8,7 @@ set -e
 if [ "$WITH_ASAN" = 1 ]; then
     valgrind=""
 else
-    valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full --read-inline-info=yes --read-var-info=yes --track-origins=yes"
+    valgrind="valgrind --quiet --trace-children=yes --error-exitcode=1 --leak-check=full"
 fi
 
 sock="/tmp/vfio-user.sock"
