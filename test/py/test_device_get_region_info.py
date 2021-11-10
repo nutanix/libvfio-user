@@ -136,8 +136,7 @@ def test_device_get_region_info_small_argsz_caps():
     assert info.argsz == 80
     assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
                           VFIO_REGION_INFO_FLAG_WRITE |
-                          VFIO_REGION_INFO_FLAG_MMAP |
-                          VFIO_REGION_INFO_FLAG_CAPS)
+                          VFIO_REGION_INFO_FLAG_MMAP)
     assert info.index == VFU_PCI_DEV_BAR2_REGION_IDX
     assert info.cap_offset == 0
     assert info.size == 0x8000
