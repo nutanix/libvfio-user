@@ -37,7 +37,7 @@ jobs:
           yum -y install clang cmake json-c-devel libcmocka-devel \
               openssl-devel valgrind python36-pytest which
           make pre-push VERBOSE=1
-  fedora-34:
+  fedora-35:
     timeout-minutes: 10
     runs-on: ubuntu-latest
     container: fedora
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: pre-push
         run: |
-          dnf -y install --releasever=34 \
+          dnf -y install --releasever=35 \
               gcc make clang cmake json-c-devel libcmocka-devel openssl-devel \
               pciutils diffutils valgrind python3-pytest python3-flake8 which
           make pre-push VERBOSE=1
