@@ -134,6 +134,11 @@ def test_device_get_region_info_small_argsz_caps():
     info, _ = vfio_region_info.pop_from_buffer(result)
 
     assert info.argsz == 80
+
+    '''
+    There are capabilites but we do not expect VFIO_REGION_INFO_FLAG_CAPS
+    to be set because they do not fit in reply as argsz is small
+    '''
     assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
                           VFIO_REGION_INFO_FLAG_WRITE |
                           VFIO_REGION_INFO_FLAG_MMAP)
