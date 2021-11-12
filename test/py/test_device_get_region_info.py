@@ -58,6 +58,25 @@ def test_device_get_region_info_setup():
     assert ret == 0
 
     f = tempfile.TemporaryFile()
+    f.truncate(65536)
+
+    mmap_areas = [(0x1000, 0x1000),
+                  (0x2000, 0x1000),
+                  (0x3000, 0x1000),
+                  (0x4000, 0x1000),
+                  (0x5000, 0x1000),
+                  (0x6000, 0x1000),
+                  (0x7000, 0x1000),
+                  (0x8000, 0x1000),
+                  (0x9000, 0x1000)]
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR3_REGION_IDX,
+                           size=0x10000,
+                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),
+                           mmap_areas=mmap_areas, fd=f.fileno(), offset=0x0)
+    assert ret == 0
+
+    f = tempfile.TemporaryFile()
     f.truncate(0x2000)
 
     mmap_areas = [(0x1000, 0x1000)]
@@ -99,6 +118,17 @@ def test_device_get_region_info_bad_index():
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
         expect=errno.EINVAL)
+
+
+# python tests use max client fds of 8, but this region has 9 mmap areas.
+def test_device_get_region_info_caps_too_few_fds():
+    payload = vfio_region_info(argsz=192, flags=0,
+                          index=VFU_PCI_DEV_BAR3_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
+    payload = bytes(payload) + b'\0' * (192 - 32)
+
+    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
+        expect=errno.ENOSPC)
 
 
 def test_device_get_region_info_larger_argsz():
