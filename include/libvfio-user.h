@@ -90,6 +90,8 @@ dma_sg_size(void);
 
 typedef enum {
     VFU_TRANS_SOCK,
+    // For internal testing only
+    VFU_TRANS_PIPE,
     VFU_TRANS_MAX
 } vfu_trans_t;
 

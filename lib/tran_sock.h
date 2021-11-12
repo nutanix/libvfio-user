@@ -34,27 +34,16 @@
 #define LIB_VFIO_USER_TRAN_SOCK_H
 
 #include "libvfio-user.h"
+#include "tran.h"
+
+extern struct transport_ops tran_sock_ops;
 
 /*
  * These are not public routines, but for convenience, they are used by the
  * sample/test code as well as privately within libvfio-user.
  *
- * Note there is currently only one transport - talking over a UNIX socket.
+ * Note there is currently only one real transport - talking over a UNIX socket.
  */
-
-/* The largest number of fd's we are prepared to receive. */
-// FIXME: value?
-#define VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT (1024)
-
-extern struct transport_ops tran_sock_ops;
-
-/*
- * Parse JSON supplied from the other side into the known parameters. Note: they
- * will not be set if not found in the JSON.
- */
-int
-tran_parse_version_json(const char *json_str, int *client_max_fdsp,
-                        size_t *client_max_data_xfer_sizep, size_t *pgsizep);
 
 /*
  * Send a message to the other end.  The iovecs array should leave the first

@@ -44,7 +44,15 @@ set(LIBOBJS
     $<TARGET_OBJECTS:libvfio-user>
     $<TARGET_OBJECTS:migration>
     $<TARGET_OBJECTS:pci>
+    $<TARGET_OBJECTS:tran>
     $<TARGET_OBJECTS:tran_sock>)
+
+if (WITH_TRAN_PIPE EQUAL 1)
+    set(LIBOBJS ${LIBOBJS}
+        $<TARGET_OBJECTS:tran_pipe>)
+
+    add_library(tran_pipe OBJECT tran_pipe.c)
+endif()
 
 add_library(pci_caps OBJECT pci_caps.c)
 add_library(dma OBJECT dma.c)
@@ -52,6 +60,7 @@ add_library(irq OBJECT irq.c)
 add_library(libvfio-user OBJECT libvfio-user.c)
 add_library(migration OBJECT migration.c)
 add_library(pci OBJECT pci.c)
+add_library(tran OBJECT tran.c)
 add_library(tran_sock OBJECT tran_sock.c)
 
 add_library(vfio-user-shared SHARED ${LIBOBJS})

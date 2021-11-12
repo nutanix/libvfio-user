@@ -56,6 +56,7 @@
 #include "migration.h"
 #include "pci.h"
 #include "private.h"
+#include "tran_pipe.h"
 #include "tran_sock.h"
 
 static int
@@ -1645,9 +1646,15 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         return ERROR_PTR(EINVAL);
     }
 
+#ifdef WITH_TRAN_PIPE
+    if (trans != VFU_TRANS_SOCK && trans != VFU_TRANS_PIPE) {
+        return ERROR_PTR(ENOTSUP);
+    }
+#else
     if (trans != VFU_TRANS_SOCK) {
         return ERROR_PTR(ENOTSUP);
     }
+#endif
 
     if (dev_type != VFU_DEV_TYPE_PCI) {
         return ERROR_PTR(ENOTSUP);
@@ -1659,7 +1666,13 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     }
 
     vfu_ctx->dev_type = dev_type;
-    vfu_ctx->tran = &tran_sock_ops;
+    if (trans == VFU_TRANS_SOCK) {
+        vfu_ctx->tran = &tran_sock_ops;
+    } else {
+#ifdef WITH_TRAN_PIPE
+        vfu_ctx->tran = &tran_pipe_ops;
+#endif
+    }
     vfu_ctx->tran_data = NULL;
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
