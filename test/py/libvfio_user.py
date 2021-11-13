@@ -42,6 +42,8 @@ import socket
 import struct
 import syslog
 
+UINT64_MAX = 18446744073709551615
+
 # from linux/pci_regs.h and linux/pci_defs.h
 
 PCI_HEADER_TYPE_NORMAL = 0
