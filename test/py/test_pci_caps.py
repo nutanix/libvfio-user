@@ -347,10 +347,10 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
     mock_reset.assert_called_once_with(ctx, VFU_RESET_PCI_FLR)
 
     # bad access
-    for o in (-1, +1):
-        for l in (-1, +1):
+    for _off in (-1, +1):
+        for _len in (-1, +1):
             write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
-                         offset=offset+o, count=len(data)+l, data=data,
+                         offset=offset+_off, count=len(data)+_len, data=data,
                          expect=errno.EINVAL)
 
 
