@@ -182,6 +182,18 @@ def test_dirty_pages_get_bad_bitmap_size():
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
 
 
+def test_dirty_pages_get_bad_argsz():
+    dirty_pages = vfio_user_dirty_pages(argsz=SERVER_MAX_DATA_XFER_SIZE + 8,
+        flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
+    bitmap = vfio_user_bitmap(pgsize=0x1000,
+                              size=SERVER_MAX_DATA_XFER_SIZE + 8)
+    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+
+    payload = bytes(dirty_pages) + bytes(br)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+
+
 def test_dirty_pages_get_short_reply():
     dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
