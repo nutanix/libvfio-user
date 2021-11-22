@@ -43,7 +43,6 @@ def setup_function(function):
     sock = connect_client(ctx)
 
 
-@patch('libvfio_user.quiesce_cb', return_value=0)
 def teardown_function(function):
     global ctx, sock
     disconnect_client(ctx, sock)
