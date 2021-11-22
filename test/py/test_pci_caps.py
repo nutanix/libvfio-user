@@ -323,11 +323,17 @@ def __test_pci_cap_write_pmcs(sock):
 @patch("libvfio_user.reset_cb", return_value=0)
 @patch('libvfio_user.quiesce_cb')
 def test_pci_cap_write_px(mock_quiesce, mock_reset):
+    """
+    Tests function level reset.
+    """
+
     sock = connect_client(ctx)
 
     # flrc
     cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
                       b'\x10', *[b'\0' for _ in range(52)])
+    # FIXME adding capability after we've realized the device only works
+    # because of bug #618.
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=cap)
     assert pos == PCI_STD_HEADER_SIZEOF
 
@@ -339,6 +345,12 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
 
     mock_quiesce.assert_called_once_with(ctx)
     mock_reset.assert_called_once_with(ctx, VFU_RESET_PCI_FLR)
+
+    # bad access
+    for o in (-1, +1):
+        for l in (-1, +1):
+            write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset+o,
+                         count=len(data)+l, data=data, expect=errno.EINVAL)
 
 
 def test_pci_cap_write_msix():

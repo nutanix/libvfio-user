@@ -63,8 +63,32 @@ def teardown_function(function):
     vfu_destroy_ctx(ctx)
 
 
+@patch('libvfio_user.quiesce_cb')
+@patch('libvfio_user.migr_trans_cb')
+def test_migragion_bad_access(mock_trans, mock_quiesce):
+    """
+    Tests that attempting to access the migration state register in an
+    non-aligned manner fails.
+
+    This test is important because we tell whether we need to quiesce by
+    checking for a register-sized access, otherwise we'll change migration
+    state without having quiesced.
+    """
+    global ctx, sock
+
+    data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
+    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+                 count=len(data)-1, data=data, expect=errno.EINVAL)
+
+    mock_trans.assert_not_called()
+
+
+@patch('libvfio_user.quiesce_cb')
 @patch('libvfio_user.migr_trans_cb', return_value=0)
-def test_migration_trans_sync(mock_trans):
+def test_migration_trans_sync(mock_trans, mock_quiesce):
+    """
+    Tests transitioning to the saving state.
+    """
 
     global ctx, sock
 
@@ -78,8 +102,9 @@ def test_migration_trans_sync(mock_trans):
 
 @patch('libvfio_user.migr_trans_cb', side_effect=fail_with_errno(errno.EPERM))
 def test_migration_trans_sync_err(mock_trans):
-    """Tests the device returning an error when the migration state is written
-    to."""
+    """
+    Tests the device returning an error when the migration state is written to.
+    """
 
     global ctx, sock
 
@@ -94,6 +119,10 @@ def test_migration_trans_sync_err(mock_trans):
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
 @patch('libvfio_user.migr_trans_cb', return_value=0)
 def test_migration_trans_async(mock_trans, mock_quiesce):
+    """
+    Tests transitioning to the saving state where the device is initially busy
+    quiescing.
+    """
 
     global ctx, sock
     mock_quiesce
@@ -115,9 +144,11 @@ def test_migration_trans_async(mock_trans, mock_quiesce):
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
 @patch('libvfio_user.migr_trans_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_migration_trans_async_err(mock_trans, mock_quiesce):
-    """Tests writing to the migration state register, the device not being able
-    to immediately quiesce, and then finally the device failing to transition
-    to the new migration state."""
+    """
+    Tests writing to the migration state register, the device not being able to
+    immediately quiesce, and then finally the device failing to transition to
+    the new migration state.
+    """
 
     global ctx, sock
 

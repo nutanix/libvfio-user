@@ -442,6 +442,7 @@ out:
         if (ts != NULL && ts->listen_fd != -1) {
             close(ts->listen_fd);
         }
+        free(ts);
         return ERROR_INT(ret);
     }
 
@@ -751,7 +752,6 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ts->conn_fd = accept(ts->listen_fd, NULL, NULL);
     if (ts->conn_fd == -1) {
-        vfu_log(vfu_ctx, LOG_ERR, "%s: failed to accept: %m", __func__);
         return -1;
     }
 

@@ -670,7 +670,7 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
-# TODO rename expect a it's confusing with expect_run_ctx_errno. It's a ugly.
+# TODO rename expect a it's confusing with expect_run_ctx_errno.
 def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True,
         expect_run_ctx_errno=None):
     """Round trip a request and reply to the server."""
