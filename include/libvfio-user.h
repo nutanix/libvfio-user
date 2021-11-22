@@ -162,7 +162,6 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  * @returns the number of requests processed (0 or more); or -1 on error,
  *          with errno set as follows:
  *
- * EAGAIN/EWOULDBLOCK: no more commands to process
  * ENOTCONN: client closed connection, vfu_attach_ctx() should be called again
  * EBUSY: the device was asked to quiesce and is still quiescing
  * Other errno values are also possible.

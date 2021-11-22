@@ -139,11 +139,12 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
         }
 
-        /*
-         * FIXME need to figure out how to break message into smaller messages
-         * so that we don't exceed client_max_fds
-         */
-        assert(nr_mmap_areas <= vfu_ctx->client_max_fds);
+        if (nr_mmap_areas > vfu_ctx->client_max_fds) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: region has nr_mmap_areas=%d, "
+                    "but client only supports %d fds", __func__,
+                    nr_mmap_areas, vfu_ctx->client_max_fds);
+            return ERROR_INT(ENOSPC);
+        }
 
         *fds = malloc(nr_mmap_areas * sizeof(int));
         if (*fds == NULL) {
@@ -431,6 +432,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_region_info *out_info;
     vfu_reg_info_t *vfu_reg;
     size_t caps_size = 0;
+    int ret;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
@@ -483,12 +485,15 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     if (caps_size > 0) {
-        out_info->flags |= VFIO_REGION_INFO_FLAG_CAPS;
         /* Only actually provide the caps if they fit. */
         if (in_info->argsz >= out_info->argsz) {
-            dev_get_caps(vfu_ctx, vfu_reg,
-                         in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                         out_info, &msg->out_fds, &msg->nr_out_fds);
+            out_info->flags |= VFIO_REGION_INFO_FLAG_CAPS;
+            ret = dev_get_caps(vfu_ctx, vfu_reg,
+                               in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
+                               out_info, &msg->out_fds, &msg->nr_out_fds);
+            if (ret < 0) {
+                return ret;
+            }
         }
     }
 

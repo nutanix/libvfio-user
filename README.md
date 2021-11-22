@@ -61,13 +61,10 @@ Build requirements:
  * `cmake` (v2 or above)
  * `apt install libjson-c-dev libcmocka-dev libssl-dev` *or*
  * `yum install json-c-devel libcmocka-devel openssl-devel`
- * `valgrind` for testing
 
 To build:
 
     make && make install
-    # optional
-    make test
 
 By default a debug build is created. To create a release build do:
 
@@ -292,6 +289,11 @@ backed by hugepages:
 
 Becasue SPDK must be run as root, either fix the vfio-user socket permissions
 or configure libvirt to run QEMU as root.
+
+Testing
+=======
+
+See [Testing](docs/testing.md).
 
 History
 =======
