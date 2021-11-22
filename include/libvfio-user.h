@@ -347,17 +347,25 @@ typedef enum vfu_reset_type {
 /*
  * Device callback for quiescing the device.
  *
- * livfio-user uses this callback to tell the device that it must quiesce its
- * operation. After returning from this callback, the device can continue to
- * operate however it cannot use any of the following libvfio-user functions:
+ * vfu_run_ctx uses this callback to request from the device to quiesce its
+ * operation. A quiesced device cannot use the following functions:
  * vfu_addr_to_sg, vfu_map_sg, vfu_unmap_sg, vfu_dma_read, and vfu_dma_write.
- * The device must also be prepared for the following callbacks to be executed:
+ *
+ * The callback can return two values:
+ * 1) 0: this indicates that the device was quiesced. vfu_run_ctx then continues
+ *      to execute and when vfu_run_ctx returns to the caller the device is
+ *      unquiesced.
+ * 2) -1 with errno set to EBUSY: this indicates that the device cannot
+ *      immediately quiesce. In this case, vfu_run_ctx returns -1 with errno
+ *      set to EBUSY and future calls to vfu_run_ctx return the same. Until the
+ *      device quiesces it can continue operate as normal. The device indicates
+ *      that it quiesced by calling vfu_device_quiesced. When
+ *      vfu_device_quiesced returns the device is no longer quiesced.
+ *
+ * A quiesced device should expected for any of the following callbacks to be
+ * executed:
  * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
  * These callbacks are only called after the device has been quiesced.
- *
- * If the device returns -1 with errno set to EBUSY, then the device is not
- * quiesced until the device calls vfu_device_quiesced. During this time the
- * device is allowed to use the aforementioned libvfio-user functions.
  *
  * @vfu_ctx: the libvfio-user context
  *

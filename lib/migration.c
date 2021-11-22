@@ -155,17 +155,6 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
 {
     if (notify) {
         int ret;
-        if (vfu_ctx->quiesce != NULL
-            && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
-            ret = vfu_ctx->quiesce(vfu_ctx);
-            if (ret < 0) {
-                if (errno == EBUSY) {
-                    vfu_ctx->pending.state = VFU_CTX_PENDING_MIGR;
-                    vfu_ctx->pending.migr_dev_state = device_state;
-                }
-                return ret;
-            }
-        }
         ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
                                  device_state);
         if (ret != 0) {

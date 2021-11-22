@@ -424,6 +424,7 @@ class vfio_user_region_io_fds_reply(Structure):
     ]
 
 
+# FIXME add a constructoer where argsz is set automatically
 class vfio_user_dma_map(Structure):
     _pack_ = 1
     _fields_ = [
@@ -543,6 +544,17 @@ class dma_sg_t(Structure):
                 hex(self.offset), self.writeable)
 
 
+class vfio_user_migration_info(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("device_state", c.c_uint32),
+        ("reserved", c.c_uint32),
+        ("pending_bytes", c.c_uint64),
+        ("data_offset", c.c_uint64),
+        ("data_size", c.c_uint64),
+    ]
+
+
 #
 # Util functions
 #
@@ -647,7 +659,7 @@ def disconnect_client(ctx, sock):
     # notice client closed connection
     ret = vfu_run_ctx(ctx)
     assert ret == -1
-    assert c.get_errno() == errno.ENOTCONN
+    assert c.get_errno() == errno.ENOTCONN, os.strerror(c.get_errno())
 
 
 def get_reply(sock, expect=0):
@@ -658,7 +670,9 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
-def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
+# TODO rename expect a it's confusing with expect_run_ctx_errno. It's a ugly.
+def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True,
+        expect_run_ctx_errno=None):
     """Round trip a request and reply to the server."""
     hdr = vfio_user_header(cmd, size=len(payload))
 
@@ -668,8 +682,9 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
     else:
         sock.send(hdr + payload)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret >= 0
+    ret = vfu_run_ctx(ctx, expect_errno=expect_run_ctx_errno)
+    if expect_run_ctx_errno is None:
+        assert ret >= 0, os.strerror(c.get_errno())
 
     if not rsp:
         return
@@ -748,7 +763,7 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
 
 
 def access_region(ctx, sock, is_write, region, offset, count,
-                  data=None, expect=0, rsp=True):
+                  data=None, expect=0, rsp=True, expect_run_ctx_errno=None):
     # struct vfio_user_region_access
     payload = struct.pack("QII", offset, region, count)
     if is_write:
@@ -756,22 +771,26 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
 
-    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp)
+    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp,
+                 expect_run_ctx_errno=expect_run_ctx_errno)
 
     if is_write:
         return None
 
-    return skip("QII", result)
+    if rsp:
+        return skip("QII", result)
 
 
-def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True):
+def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True,
+                 expect_run_ctx_errno=None):
     access_region(ctx, sock, True, region, offset, count, data, expect=expect,
-                  rsp=rsp)
+                  rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
 
 
-def read_region(ctx, sock, region, offset, count, expect=0):
+def read_region(ctx, sock, region, offset, count, expect=0, rsp=True,
+                expect_run_ctx_errno=None):
     return access_region(ctx, sock, False, region, offset, count,
-                         expect=expect)
+        expect=expect, rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
 
 
 def ext_cap_hdr(buf, offset):
@@ -922,7 +941,9 @@ def vfu_run_ctx(ctx, expect_errno=None):
     ret = lib.vfu_run_ctx(ctx)
     if expect_errno is not None:
         assert ret < 0 and expect_errno == c.get_errno(), \
-            "expected errno=%s, actual=%s" % (expect_errno, c.get_errno())
+            "expected '%s' (%d), actual '%s' (%s)" % \
+                (os.strerror(expect_errno), expect_errno,
+                 os.strerror(c.get_errno()), c.get_errno())
     return ret
 
 
@@ -933,7 +954,16 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 
-def vfu_setup_region(ctx, index, size, cb=None, flags=0,
+def pci_region_cb(ctx, buf, count, offset, is_write):
+    pass
+
+
+@vfu_region_access_cb_t
+def __pci_region_cb(ctx, buf, count, offset, is_write):
+    return pci_region_cb(ctx, buf, count, offset, is_write)
+
+
+def vfu_setup_region(ctx, index, size, cb=__pci_region_cb, flags=0,
                      mmap_areas=None, nr_mmap_areas=None, fd=-1, offset=0):
     assert ctx is not None
 
@@ -1008,22 +1038,76 @@ def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
                                                 vfu_dma_unregister_cb_t))
 
 
+# TODO group all callbacks in some class?
+# FIXME some of the migration arguments are probably wrong as in the C version
+# they're pointer. Check how we handle the read/write region callbacks.
+
+def migr_trans_cb(ctx, state):
+    pass
+
+
+@transition_cb_t
+def __migr_trans_cb(ctx, state):
+    return migr_trans_cb(ctx, state)
+
+
+def migr_get_pending_bytes_cb(ctx):
+    pass
+
+
+@get_pending_bytes_cb_t
+def __migr_get_pending_bytes_cb(ctx):
+    return migr_get_pending_bytes_cb(ctx)
+
+
+def migr_prepare_data_cb(ctx, offset, size):
+    pass
+
+
+@prepare_data_cb_t
+def __migr_prepare_data_cb(ctx, offset, size):
+    return migr_prepare_data_cb(ctx, offset, size)
+
+
+def migr_read_data_cb(ctx, buf, count, offset):
+    pass
+
+
+@read_data_cb_t
+def __migr_read_data_cb(ctx, buf, count, offset):
+    return migr_read_data_cb(ctx, buf, count, offset)
+
+
+def migr_write_data_cb(ctx, buf, count, offset):
+    pass
+
+
+@write_data_cb_t
+def __migr_write_data_cb(ctx, buf, count, offset):
+    return migr_write_data_cb(ctx, buf, count, offset)
+
+
+def migr_data_written_cb(ctx, count):
+    pass
+
+
+@data_written_cb_t
+def __migr_data_written_cb(ctx, count):
+    return migr_data_written_cb(ctx, count)
+
+
 def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
     assert ctx is not None
-
-    @c.CFUNCTYPE(c.c_int)
-    def stub():
-        return 0
 
     if not cbs:
         cbs = vfu_migration_callbacks_t()
         cbs.version = VFU_MIGR_CALLBACKS_VERS
-        cbs.transition = c.cast(stub, transition_cb_t)
-        cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
-        cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
-        cbs.read_data = c.cast(stub, read_data_cb_t)
-        cbs.write_data = c.cast(stub, write_data_cb_t)
-        cbs.data_written = c.cast(stub, data_written_cb_t)
+        cbs.transition = __migr_trans_cb
+        cbs.get_pending_bytes = __migr_get_pending_bytes_cb
+        cbs.prepare_data = __migr_prepare_data_cb
+        cbs.read_data = __migr_read_data_cb
+        cbs.write_data = __migr_write_data_cb
+        cbs.data_written = __migr_data_written_cb
 
     return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
 

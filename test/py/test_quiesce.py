@@ -49,8 +49,10 @@ def teardown_function(function):
 
 @patch('libvfio_user.quiesce_cb')
 def test_device_quiesced_no_quiesce_requested(mock_quiesce):
-    """Checks that vfu_device_quiesce returns an error if called when there is
-    no pending quiesce operation."""
+    """
+    Checks that vfu_device_quiesce returns an error if called when there is
+    no pending quiesce operation.
+    """
 
     global ctx
     ret = vfu_device_quiesced(ctx, 0)
@@ -61,8 +63,10 @@ def test_device_quiesced_no_quiesce_requested(mock_quiesce):
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_device_quiesce_error(mock_quiesce):
-    """Checks that if the device quiesce callbacks fails then the operation
-    that requested it also fails with the same error."""
+    """
+    Checks that if the device quiesce callbacks fails then the operation
+    that requested it also fails with the same error.
+    """
 
     global ctx, sock
 
@@ -77,7 +81,9 @@ def test_device_quiesce_error(mock_quiesce):
 @patch('libvfio_user.dma_register')
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
 def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
-    """Checks that the device fails to quiesce after it was busy quiescing."""
+    """
+    Checks that the device fails to quiesce after it was busy quiescing.
+    """
 
     global ctx, sock
 
@@ -86,13 +92,11 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=0x1000)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
-
-    vfu_run_ctx(ctx, errno.EBUSY)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
+        expect_run_ctx_errno=errno.EBUSY)
 
     ret = vfu_device_quiesced(ctx, errno.ENOTTY)
-    assert ret == -1
-    assert c.get_errno() == errno.ENOTTY
+    assert ret == 0
 
     mock_dma_register.assert_not_called()
 

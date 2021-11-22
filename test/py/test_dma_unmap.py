@@ -93,11 +93,11 @@ def test_dma_unmap_async(mock_quiesce):
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x2000, size=0x1000)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False,
+        expect_run_ctx_errno=errno.EBUSY)
 
-    ret = vfu_run_ctx(ctx, errno.EBUSY)
-
-    vfu_device_quiesced(ctx, 0)
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
 
     get_reply(sock)
 
@@ -146,4 +146,4 @@ def test_dma_unmap_cleanup():
 # FIXME need to add unit tests that test errors in get_request_header,
 # do_reply, vfu_dma_transfer
 
-# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

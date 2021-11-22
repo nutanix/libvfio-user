@@ -151,9 +151,7 @@ struct dma_controller;
 
 enum vfu_ctx_pending_state {
     VFU_CTX_PENDING_NONE,
-    VFU_CTX_PENDING_MIGR,
-    VFU_CTX_PENDING_DMA_MAP,
-    VFU_CTX_PENDING_DMA_UNMAP,
+    VFU_CTX_PENDING_MSG,
     VFU_CTX_PENDING_DEVICE_RESET,
     VFU_CTX_PENDING_CTX_RESET
 };
@@ -163,7 +161,6 @@ struct vfu_ctx_pending_info {
     vfu_msg_t                   *msg;
     /* when pending == VFU_CTX_PENDING_XXX_RESET */
     union {
-        vfu_reset_type_t        device_reset_reason;
         uint32_t                migr_dev_state;
     };
 };
@@ -198,6 +195,8 @@ struct vfu_ctx {
     vfu_irqs_t              *irqs;
     bool                    realized;
     vfu_dev_type_t          dev_type;
+
+    ssize_t                 pci_cap_exp_off;
 };
 
 typedef struct ioeventfd {

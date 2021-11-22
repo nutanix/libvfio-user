@@ -36,16 +36,6 @@ ctx = None
 sock = 0
 
 
-def trans_cb(ctx, state):
-    return 0
-
-
-# TODO use mock
-@transition_cb_t
-def __trans_cb(ctx, state):
-    return trans_cb(ctx, state)
-
-
 def setup_function(function):
     global ctx, sock
 
@@ -56,20 +46,7 @@ def setup_function(function):
                            flags=VFU_REGION_FLAG_RW)
     assert ret == 0
 
-    @c.CFUNCTYPE(c.c_int)
-    def stub():
-        return 0
-
-    cbs = vfu_migration_callbacks_t()
-    cbs.version = VFU_MIGR_CALLBACKS_VERS
-    cbs.transition = __trans_cb
-    cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
-    cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
-    cbs.read_data = c.cast(stub, read_data_cb_t)
-    cbs.write_data = c.cast(stub, write_data_cb_t)
-    cbs.data_written = c.cast(stub, data_written_cb_t)
-
-    ret = vfu_setup_device_migration_callbacks(ctx, cbs, offset=0x4000)
+    ret = vfu_setup_device_migration_callbacks(ctx, offset=0x4000)
     assert ret == 0
 
     ret = vfu_setup_device_quiesce_cb(ctx)
@@ -86,7 +63,8 @@ def teardown_function(function):
     vfu_destroy_ctx(ctx)
 
 
-def test_migration_trans_sync():
+@patch('libvfio_user.migr_trans_cb', return_value=0)
+def test_migration_trans_sync(mock_trans):
 
     global ctx, sock
 
@@ -98,7 +76,7 @@ def test_migration_trans_sync():
     assert ret == 0
 
 
-@patch(__name__ + '.trans_cb', side_effect=fail_with_errno(errno.EPERM))
+@patch('libvfio_user.migr_trans_cb', side_effect=fail_with_errno(errno.EPERM))
 def test_migration_trans_sync_err(mock_trans):
     """Tests the device returning an error when the migration state is written
     to."""
@@ -114,18 +92,19 @@ def test_migration_trans_sync_err(mock_trans):
 
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
-def test_migration_trans_async(mock_quiesce):
+@patch('libvfio_user.migr_trans_cb', return_value=0)
+def test_migration_trans_async(mock_trans, mock_quiesce):
 
     global ctx, sock
     mock_quiesce
 
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
-                 count=len(data), data=data, rsp=False)
+                 count=len(data), data=data, rsp=False,
+                 expect_run_ctx_errno=errno.EBUSY)
 
-    ret = vfu_run_ctx(ctx, errno.EBUSY)
-
-    vfu_device_quiesced(ctx, 0)
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
 
     get_reply(sock)
 
@@ -134,7 +113,7 @@ def test_migration_trans_async(mock_quiesce):
 
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
-@patch(__name__ + '.trans_cb', side_effect=fail_with_errno(errno.ENOTTY))
+@patch('libvfio_user.migr_trans_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_migration_trans_async_err(mock_trans, mock_quiesce):
     """Tests writing to the migration state register, the device not being able
     to immediately quiesce, and then finally the device failing to transition
@@ -144,12 +123,14 @@ def test_migration_trans_async_err(mock_trans, mock_quiesce):
 
     data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
-                 count=len(data), data=data, rsp=False)
+                 count=len(data), data=data, rsp=False,
+                 expect_run_ctx_errno=errno.EBUSY)
 
-    vfu_run_ctx(ctx, errno.EBUSY)
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
 
-    vfu_device_quiesced(ctx, 0)
-
+    print("waiting for reply")
     get_reply(sock, errno.ENOTTY)
+    print("received reply")
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
