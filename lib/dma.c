@@ -285,6 +285,8 @@ get_bitmap_size(size_t region_size, size_t pgsize)
 static int
 dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 {
+    assert(region->fd != -1);
+
     ssize_t size = get_bitmap_size(region->info.iova.iov_len, pgsize);
     if (size < 0) {
         return size;
@@ -511,6 +513,11 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 
     for (i = 0; i < (size_t)dma->nregions; i++) {
         dma_memory_region_t *region = &dma->regions[i];
+
+        if (region->fd == -1) {
+            continue;
+        }
+
         if (dirty_page_logging_start_on_region(region, pgsize) < 0) {
             int _errno = errno;
             size_t j;
@@ -593,6 +600,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     region = &dma->regions[sg.region];
+
+    if (region->fd == -1) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "region %d is not mapped", sg.region);
+        return ERROR_INT(EINVAL);
+    }
 
     /*
      * TODO race condition between resetting bitmap and user calling

@@ -29,6 +29,7 @@
 #
 
 import errno
+import tempfile
 from libvfio_user import *
 
 ctx = None
@@ -40,7 +41,18 @@ def test_dma_unmap_setup():
 
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
-    payload = struct.pack("II", 0, 0)
+    f = tempfile.TemporaryFile()
+    f.truncate(0x2000)
+
+    mmap_areas = [(0x1000, 0x1000)]
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
+                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
+                           fd=f.fileno())
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
 
     sock = connect_client(ctx)
 
@@ -76,9 +88,37 @@ def test_dma_unmap_dirty_bad_argsz():
 
     argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap())
     unmap = vfio_user_dma_unmap(argsz=argsz,
-        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x10000, size=4096)
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
     bitmap = vfio_user_bitmap(pgsize=4096, size=(UINT64_MAX - argsz) + 8)
     payload = bytes(unmap) + bytes(bitmap)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+def test_dma_unmap_dirty_not_tracking():
+
+    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
+    unmap = vfio_user_dma_unmap(argsz=argsz,
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
+    bitmap = vfio_user_bitmap(pgsize=4096, size=8)
+    payload = bytes(unmap) + bytes(bitmap) + bytes(8)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+def test_dma_unmap_dirty_not_mapped():
+
+    vfu_setup_device_migration_callbacks(ctx, offset=0x1000)
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+
+    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
+    unmap = vfio_user_dma_unmap(argsz=argsz,
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
+    bitmap = vfio_user_bitmap(pgsize=4096, size=8)
+    payload = bytes(unmap) + bytes(bitmap) + bytes(8)
 
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
