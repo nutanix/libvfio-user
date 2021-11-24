@@ -275,8 +275,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    // FIXME: need to audit later for wraparound
-    if (ra->offset + ra->count > vfu_ctx->reg_info[index].size) {
+    if (satadd_u64(ra->offset, ra->count) > vfu_ctx->reg_info[index].size) {
         vfu_log(vfu_ctx, LOG_ERR, "out of bounds region access %#lx-%#lx "
                 "(size %u)", ra->offset, ra->offset + ra->count,
                 vfu_ctx->reg_info[index].size);
