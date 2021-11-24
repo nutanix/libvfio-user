@@ -893,8 +893,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     dirty_pages_in = msg->in_data;
 
-    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)
-        || dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
+    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in) ||
+        dirty_pages_in->argsz > SERVER_MAX_DATA_XFER_SIZE ||
+        dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid message size=%zu argsz=%u",
                 msg->in_size, dirty_pages_in->argsz);
         return ERROR_INT(EINVAL);
@@ -902,9 +903,15 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     range_in = msg->in_data + sizeof(*dirty_pages_in);
 
-    /* NB: this is bound by MAX_DMA_SIZE. */
-    argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
-            range_in->bitmap.size;
+    /*
+     * range_in is client-controlled, but we only need to protect against
+     * overflow here: we'll take MIN() against a validated value next, and
+     * dma_controller_dirty_page_get() will validate the actual ->bitmap.size
+     * value later, anyway.
+     */
+    argsz = satadd_u64(sizeof(*dirty_pages_out) + sizeof(*range_out),
+                       range_in->bitmap.size);
+
     msg->out_size = MIN(dirty_pages_in->argsz, argsz);
     msg->out_data = malloc(msg->out_size);
     if (msg->out_data == NULL) {
