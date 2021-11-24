@@ -82,6 +82,12 @@ def test_dirty_pages_setup():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x20000, size=0x10000)
+
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+
 
 def test_dirty_pages_short_write():
     payload = struct.pack("I", 8)
@@ -212,6 +218,19 @@ def test_dirty_pages_get_short_reply():
 
     assert dirty_pages.argsz == argsz
     assert dirty_pages.flags == VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP
+
+
+def test_get_dirty_page_bitmap_unmapped():
+    argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
+
+    dirty_pages = vfio_user_dirty_pages(argsz=argsz,
+        flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
+    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
+    br = vfio_user_bitmap_range(iova=0x20000, size=0x10000, bitmap=bitmap)
+
+    payload = bytes(dirty_pages) + bytes(br)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
 
 
 def test_dirty_pages_get_unmodified():
