@@ -15,3 +15,10 @@ The master branch is run through [Coverity](scan.coverity.com) when a new PR
 lands.
 
 You can also run `make gcov` to get code coverage reports.
+
+Debugging Test Errors
+---------------------
+
+Sometimes debugging Valgrind errors on Python unit tests can be tricky. To
+run specific tests use the pytest `-k` option in `PYTESTCMD` in the Makefile.
+

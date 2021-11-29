@@ -843,4 +843,12 @@ vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id)
     return vfu_pci_find_next_capability(vfu_ctx, extended, 0, cap_id);
 }
 
+bool
+access_is_pci_cap_exp(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                      uint64_t offset)
+{
+    return region_index == VFU_PCI_DEV_CFG_REGION_IDX
+           && offset == (size_t)vfu_ctx->pci_cap_exp_off + offsetof(struct pxcap, pxdc);
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -62,7 +62,7 @@ def test_dma_region_too_big():
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect_reply_errno=errno.ENOSPC)
 
 
 def test_dma_region_too_many():
@@ -79,7 +79,7 @@ def test_dma_region_too_many():
         else:
             expect = 0
 
-        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect_reply_errno=expect)
 
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))

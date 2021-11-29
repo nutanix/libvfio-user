@@ -427,7 +427,6 @@ class vfio_user_region_io_fds_reply(Structure):
     ]
 
 
-# FIXME add a constructoer where argsz is set automatically
 class vfio_user_dma_map(Structure):
     _pack_ = 1
     _fields_ = [
@@ -669,12 +668,11 @@ def get_reply(sock, expect=0):
     buf = sock.recv(4096)
     (msg_id, cmd, msg_size, flags, errno) = struct.unpack("HHIII", buf[0:16])
     assert (flags & VFIO_USER_F_TYPE_REPLY) != 0
-    assert errno == expect, "expect=%s, errno=%s" % (expect, errno)
+    assert errno == expect
     return buf[16:]
 
 
-# TODO rename expect a it's confusing with expect_run_ctx_errno.
-def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True,
+def msg(ctx, sock, cmd, payload, expect_reply_errno=0, fds=None, rsp=True,
         expect_run_ctx_errno=None):
     """Round trip a request and reply to the server."""
     hdr = vfio_user_header(cmd, size=len(payload))
@@ -691,7 +689,7 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True,
 
     if not rsp:
         return
-    return get_reply(sock, expect=expect)
+    return get_reply(sock, expect=expect_reply_errno)
 
 
 def get_reply_fds(sock, expect=0):
@@ -774,7 +772,7 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
 
-    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp,
+    result = msg(ctx, sock, cmd, payload, expect_reply_errno=expect, rsp=rsp,
                  expect_run_ctx_errno=expect_run_ctx_errno)
 
     if is_write:
@@ -837,9 +835,9 @@ def _quiesce_cb(ctx):
 
 def vfu_setup_device_quiesce_cb(ctx, quiesce_cb=_quiesce_cb):
     assert ctx is not None
-    return lib.vfu_setup_device_quiesce_cb(ctx,
-                                           c.cast(quiesce_cb,
-                                                  vfu_device_quiesce_cb_t))
+    lib.vfu_setup_device_quiesce_cb(ctx,
+                                       c.cast(quiesce_cb,
+                                              vfu_device_quiesce_cb_t))
 
 
 def reset_cb(ctx, reset_type):
@@ -869,8 +867,7 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     assert ret == 0
 
     if quiesce is not None:
-        ret = vfu_setup_device_quiesce_cb(ctx, quiesce)
-        assert ret == 0
+        vfu_setup_device_quiesce_cb(ctx, quiesce)
 
     if reset is not None:
         ret = vfu_setup_device_reset_cb(ctx, reset)
@@ -1051,7 +1048,6 @@ def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
                                                 vfu_dma_unregister_cb_t))
 
 
-# TODO group all callbacks in some class?
 # FIXME some of the migration arguments are probably wrong as in the C version
 # they're pointer. Check how we handle the read/write region callbacks.
 

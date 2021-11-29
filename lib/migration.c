@@ -557,4 +557,18 @@ migration_set_pgsize(struct migration *migr, size_t pgsize)
     return 0;
 }
 
+bool
+access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                              uint64_t offset)
+{
+    /*
+     * Writing to the migration state register with an unaligned access won't
+     * trigger this check but that's not a problem because
+     * migration_region_access_registers will fail the access.
+     */
+    return region_index == VFU_PCI_DEV_MIGR_REGION_IDX
+           && vfu_ctx->migration != NULL
+           && offset == offsetof(struct vfio_user_migration_info, device_state);
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

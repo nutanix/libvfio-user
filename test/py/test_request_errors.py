@@ -49,8 +49,7 @@ def setup_function(function):
     ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, 2048)
     assert ret == 0
 
-    ret = vfu_setup_device_quiesce_cb(ctx)
-    assert ret == 0
+    vfu_setup_device_quiesce_cb(ctx)
 
     ret = vfu_setup_device_reset_cb(ctx)
     assert ret == 0

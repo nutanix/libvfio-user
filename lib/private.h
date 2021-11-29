@@ -159,10 +159,9 @@ enum vfu_ctx_pending_state {
 struct vfu_ctx_pending_info {
     enum vfu_ctx_pending_state  state;
     vfu_msg_t                   *msg;
+
     /* when pending == VFU_CTX_PENDING_XXX_RESET */
-    union {
-        uint32_t                migr_dev_state;
-    };
+    uint32_t                migr_dev_state;
 };
 
 struct vfu_ctx {

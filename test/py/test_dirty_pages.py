@@ -91,21 +91,24 @@ def test_dirty_pages_setup():
 def test_dirty_pages_short_write():
     payload = struct.pack("I", 8)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_bad_argsz():
     payload = vfio_user_dirty_pages(argsz=4,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_start_no_migration():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.ENOTSUP)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.ENOTSUP)
 
 
 def test_dirty_pages_start_bad_flags():
@@ -119,13 +122,15 @@ def test_dirty_pages_start_bad_flags():
         flags=(VFIO_IOMMU_DIRTY_PAGES_FLAG_START |
                VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP))
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=(VFIO_IOMMU_DIRTY_PAGES_FLAG_START |
                VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP))
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def start_logging():
@@ -145,7 +150,8 @@ def test_dirty_pages_get_short_read():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 #
@@ -160,7 +166,8 @@ def test_dirty_pages_get_sub_range():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.ENOTSUP)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.ENOTSUP)
 
 
 def test_dirty_pages_get_bad_page_size():
@@ -172,7 +179,8 @@ def test_dirty_pages_get_bad_page_size():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_get_bad_bitmap_size():
@@ -184,7 +192,8 @@ def test_dirty_pages_get_bad_bitmap_size():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_get_bad_argsz():
@@ -196,7 +205,8 @@ def test_dirty_pages_get_bad_argsz():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_get_short_reply():
@@ -229,7 +239,8 @@ def test_get_dirty_page_bitmap_unmapped():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_dirty_pages_get_unmodified():

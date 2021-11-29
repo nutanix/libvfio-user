@@ -49,8 +49,7 @@ def setup_function(function):
     ret = vfu_setup_device_migration_callbacks(ctx, offset=0x4000)
     assert ret == 0
 
-    ret = vfu_setup_device_quiesce_cb(ctx)
-    assert ret == 0
+    vfu_setup_device_quiesce_cb(ctx)
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
@@ -65,7 +64,7 @@ def teardown_function(function):
 
 @patch('libvfio_user.quiesce_cb')
 @patch('libvfio_user.migr_trans_cb')
-def test_migragion_bad_access(mock_trans, mock_quiesce):
+def test_migration_bad_access(mock_trans, mock_quiesce):
     """
     Tests that attempting to access the migration state register in an
     non-aligned manner fails.

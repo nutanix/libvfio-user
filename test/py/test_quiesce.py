@@ -64,7 +64,7 @@ def test_device_quiesced_no_quiesce_requested(mock_quiesce):
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.ENOTTY))
 def test_device_quiesce_error(mock_quiesce):
     """
-    Checks that if the device quiesce callbacks fails then the operation
+    Checks that if the device quiesce callback fails then the operation
     that requested it also fails with the same error.
     """
 

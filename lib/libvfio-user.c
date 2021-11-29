@@ -197,32 +197,10 @@ dump_buffer(const char *prefix UNUSED, const char *buf UNUSED,
 }
 
 static bool
-access_is_migration_device_state(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                                 uint64_t offset)
-{
-    /*
-     * Writing to the migration state register with an unaligned access won't
-     * trigger this check but that's not a problem because
-     * migration_region_access_registers will fail the access.
-     */
-    return region_index == VFU_PCI_DEV_MIGR_REGION_IDX
-           && vfu_ctx->migration != NULL
-           && offset == offsetof(struct vfio_user_migration_info, device_state);
-}
-
-static bool
-access_is_pci_cap_exp(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                      uint64_t offset)
-{
-    return region_index == VFU_PCI_DEV_CFG_REGION_IDX
-           && offset == (size_t)vfu_ctx->pci_cap_exp_off + offsetof(struct pxcap, pxdc);
-}
-
-static bool
 access_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
                      uint64_t offset)
 {
-    return access_is_migration_device_state(vfu_ctx, region_index, offset)
+    return access_migration_needs_quiesce(vfu_ctx, region_index, offset)
            || access_is_pci_cap_exp(vfu_ctx, region_index, offset);
 }
 
@@ -1204,24 +1182,26 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 static bool
 command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
 {
+    struct vfio_user_region_access *reg;
+
     if (vfu_ctx->quiesce == NULL) {
         return false;
     }
 
-    if (msg->hdr.cmd == VFIO_USER_DMA_MAP
-        || msg->hdr.cmd == VFIO_USER_DMA_UNMAP) {
+    switch (msg->hdr.cmd) {
+    case VFIO_USER_DMA_MAP:
+    case VFIO_USER_DMA_UNMAP:
         return vfu_ctx->dma != NULL;
-    }
 
-    if (msg->hdr.cmd == VFIO_USER_DEVICE_RESET) {
+    case VFIO_USER_DEVICE_RESET:
         return true;
-    }
 
-    if (msg->hdr.cmd == VFIO_USER_REGION_WRITE) {
-        struct vfio_user_region_access *reg = msg->in_data;
+    case VFIO_USER_REGION_WRITE:
+        reg = msg->in_data;
         if (access_needs_quiesce(vfu_ctx, reg->region, reg->offset)) {
             return true;
         }
+        break;
     }
 
     return false;
@@ -1873,12 +1853,11 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
     return 0;
 }
 
-EXPORT int
+EXPORT void
 vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx, vfu_device_quiesce_cb_t *quiesce)
 {
     assert(vfu_ctx != NULL);
     vfu_ctx->quiesce = quiesce;
-    return 0;
 }
 
 EXPORT int

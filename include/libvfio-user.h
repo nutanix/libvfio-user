@@ -361,7 +361,7 @@ typedef enum vfu_reset_type {
  *      that it quiesced by calling vfu_device_quiesced. When
  *      vfu_device_quiesced returns the device is no longer quiesced.
  *
- * A quiesced device should expected for any of the following callbacks to be
+ * A quiesced device should expect for any of the following callbacks to be
  * executed:
  * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
  * These callbacks are only called after the device has been quiesced.
@@ -376,9 +376,9 @@ typedef int (vfu_device_quiesce_cb_t)(vfu_ctx_t *vfu_ctx);
  * Sets up the device quiesce callback.
  *
  * @vfu_ctx: the libvfio-user context
- * @quiesce: device quiesce callback
+ * @quiesce_cb: device quiesce callback
  */
-int
+void
 vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx,
                             vfu_device_quiesce_cb_t *quiesce_cb);
 
