@@ -42,6 +42,9 @@ import socket
 import struct
 import syslog
 import copy
+import tempfile
+
+UINT64_MAX = 18446744073709551615
 
 # from linux/pci_regs.h and linux/pci_defs.h
 
@@ -872,6 +875,16 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     if reset is not None:
         ret = vfu_setup_device_reset_cb(ctx, reset)
         assert ret == 0
+
+    f = tempfile.TemporaryFile()
+    f.truncate(0x2000)
+
+    mmap_areas = [(0x1000, 0x1000)]
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
+                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
+                           fd=f.fileno())
+    assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0

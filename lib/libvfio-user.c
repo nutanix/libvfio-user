@@ -306,8 +306,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    // FIXME: need to audit later for wraparound
-    if (ra->offset + ra->count > vfu_ctx->reg_info[index].size) {
+    if (satadd_u64(ra->offset, ra->count) > vfu_ctx->reg_info[index].size) {
         vfu_log(vfu_ctx, LOG_ERR, "out of bounds region access %#lx-%#lx "
                 "(size %u)", ra->offset, ra->offset + ra->count,
                 vfu_ctx->reg_info[index].size);
@@ -751,29 +750,74 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     return 0;
 }
 
+/*
+* Ideally, if argsz is too small for the bitmap, we should set argsz in the
+* reply and fail the request with a struct vfio_user_dma_unmap payload.
+* Instead, we simply fail the request - that's what VFIO does anyway.
+*/
+static bool
+is_valid_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+               struct vfio_user_dma_unmap *dma_unmap)
+{
+    size_t struct_size = sizeof(*dma_unmap);
+    size_t min_argsz = sizeof(*dma_unmap);
+
+    switch (dma_unmap->flags) {
+    case VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP:
+        struct_size += sizeof(*dma_unmap->bitmap);
+        /*
+         * Because the saturating add will ensure that any overflow will be
+         * larger than the maximum allowed ->argsz, this is sufficient to check
+         * for that (which we need, because we are about to allocate based upon
+         * this value).
+         */
+        min_argsz = satadd_u64(struct_size, dma_unmap->bitmap->size);
+        break;
+
+    case VFIO_DMA_UNMAP_FLAG_ALL:
+        if (dma_unmap->addr || dma_unmap->size) {
+            vfu_log(vfu_ctx, LOG_ERR, "bad addr=%#lx or size=%#lx, expected "
+                    "both to be zero", dma_unmap->addr, dma_unmap->size);
+            errno = EINVAL;
+            return false;
+        }
+        break;
+
+    case 0:
+        break;
+
+    default:
+        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
+        errno = EINVAL;
+        return false;
+    }
+
+    if (msg->in_size < struct_size ||
+        dma_unmap->argsz < min_argsz ||
+        dma_unmap->argsz > SERVER_MAX_DATA_XFER_SIZE) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
+                msg->in_size, dma_unmap->argsz);
+        errno = EINVAL;
+        return false;
+    }
+
+    return true;
+}
+
 int
 handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap)
 {
     size_t out_size;
     int ret = 0;
-    bool unmap_all = false;
     char rstr[1024];
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
     assert(dma_unmap != NULL);
 
-    if (msg->in_size < sizeof(*dma_unmap) || dma_unmap->argsz < sizeof(*dma_unmap)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
-                msg->in_size, dma_unmap->argsz);
-        return ERROR_INT(EINVAL);
-    }
-
-    if ((dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) &&
-            (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_ALL)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid DMA flags=%#x", dma_unmap->flags);
-        return ERROR_INT(EINVAL);
+    if (!is_valid_unmap(vfu_ctx, msg, dma_unmap)) {
+        return -1;
     }
 
     snprintf(rstr, sizeof(rstr), "[%#lx, %#lx) flags=%#x",
@@ -784,35 +828,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     out_size = sizeof(*dma_unmap);
 
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        if (msg->in_size < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap)
-            || dma_unmap->argsz < sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad message size=%#lx argsz=%#x",
-                    msg->in_size, dma_unmap->argsz);
-
-            /*
-             * Ideally we should set argsz in the reply and fail the request
-             * with a struct vfio_user_dma_unmap payload, however this isn't
-             * currently supported. Instead, we simply fail the request,
-             * that's what VFIO does anyway.
-             */
-            return ERROR_INT(EINVAL);
-        }
-        /*
-         * TODO this could be a separate function, but the implementation is
-         * temporary anyway since we're moving dirty page tracking out of
-         * the DMA controller.
-         */
         out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
-    } else if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
-        if (dma_unmap->addr || dma_unmap->size) {
-            vfu_log(vfu_ctx, LOG_ERR, "bad addr=%#lx or size=%#lx, expected "
-                    "both to be zero", dma_unmap->addr, dma_unmap->size);
-            return ERROR_INT(EINVAL);
-        }
-        unmap_all = true;
-    } else if (dma_unmap->flags != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_unmap->flags);
-        return ERROR_INT(ENOTSUP);
     }
 
     msg->out_data = malloc(out_size);
@@ -821,7 +837,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
     memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
 
-    if (unmap_all) {
+    if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
         dma_controller_remove_all_regions(vfu_ctx->dma,
                                           vfu_ctx->dma_unregister, vfu_ctx);
         goto out;
@@ -896,8 +912,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     dirty_pages_in = msg->in_data;
 
-    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in)
-        || dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
+    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in) ||
+        dirty_pages_in->argsz > SERVER_MAX_DATA_XFER_SIZE ||
+        dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid message size=%zu argsz=%u",
                 msg->in_size, dirty_pages_in->argsz);
         return ERROR_INT(EINVAL);
@@ -905,9 +922,15 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     range_in = msg->in_data + sizeof(*dirty_pages_in);
 
-    /* NB: this is bound by MAX_DMA_SIZE. */
-    argsz = sizeof(*dirty_pages_out) + sizeof(*range_out) +
-            range_in->bitmap.size;
+    /*
+     * range_in is client-controlled, but we only need to protect against
+     * overflow here: we'll take MIN() against a validated value next, and
+     * dma_controller_dirty_page_get() will validate the actual ->bitmap.size
+     * value later, anyway.
+     */
+    argsz = satadd_u64(sizeof(*dirty_pages_out) + sizeof(*range_out),
+                       range_in->bitmap.size);
+
     msg->out_size = MIN(dirty_pages_in->argsz, argsz);
     msg->out_data = malloc(msg->out_size);
     if (msg->out_data == NULL) {

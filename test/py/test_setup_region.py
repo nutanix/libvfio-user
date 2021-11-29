@@ -174,5 +174,24 @@ def test_setup_region_cfg_always_cb():
     disconnect_client(ctx, sock)
 
 
+def test_region_offset_overflow():
+    global ctx
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                           size=PCI_CFG_SPACE_EXP_SIZE, cb=pci_cfg_region_cb,
+                           flags=(VFU_REGION_FLAG_RW))
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                offset=UINT64_MAX, count=256, expect=errno.EINVAL)
+
+    disconnect_client(ctx, sock)
+
+
 def test_setup_region_cleanup():
     vfu_destroy_ctx(ctx)

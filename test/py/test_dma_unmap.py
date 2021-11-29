@@ -40,6 +40,10 @@ def setup_function(function):
     global ctx, sock
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
     sock = connect_client(ctx)
 
 
@@ -73,7 +77,56 @@ def test_dma_unmap_short_write():
 
 def test_dma_unmap_bad_argsz():
 
-    vfio_user_dma_unmap(argsz=8, flags=0x2323, addr=0x1000, size=4096)
+    payload = vfio_user_dma_unmap(argsz=8, flags=0, addr=0x1000, size=4096)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+def test_dma_unmap_bad_argsz2():
+
+    payload = vfio_user_dma_unmap(argsz=SERVER_MAX_DATA_XFER_SIZE + 8, flags=0,
+                                  addr=0x1000, size=4096)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+def test_dma_unmap_dirty_bad_argsz():
+
+    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap())
+    unmap = vfio_user_dma_unmap(argsz=argsz,
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
+    bitmap = vfio_user_bitmap(pgsize=4096, size=(UINT64_MAX - argsz) + 8)
+    payload = bytes(unmap) + bytes(bitmap)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+@with_dma_map(dma_maps=[(0x1000, 4096)])
+def test_dma_unmap_dirty_not_tracking():
+
+    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
+    unmap = vfio_user_dma_unmap(argsz=argsz,
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
+    bitmap = vfio_user_bitmap(pgsize=4096, size=8)
+    payload = bytes(unmap) + bytes(bitmap) + bytes(8)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
+
+
+@with_dma_map(dma_maps=[(0x1000, 4096)])
+def test_dma_unmap_dirty_not_mapped():
+
+    vfu_setup_device_migration_callbacks(ctx, offset=0x1000)
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+
+    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
+    unmap = vfio_user_dma_unmap(argsz=argsz,
+        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
+    bitmap = vfio_user_bitmap(pgsize=4096, size=8)
+    payload = bytes(unmap) + bytes(bitmap) + bytes(8)
+
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
 
 @with_dma_map()
@@ -81,7 +134,7 @@ def test_dma_unmap_invalid_flags():
 
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0x4, addr=0x1000, size=4096)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.ENOTSUP)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, expect=errno.EINVAL)
 
 
 @with_dma_map()
