@@ -58,7 +58,8 @@
 #include "private.h"
 #include "tran_sock.h"
 
-static void vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason);
+static int
+vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason);
 
 EXPORT void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
@@ -193,6 +194,14 @@ dump_buffer(const char *prefix UNUSED, const char *buf UNUSED,
         fprintf(stderr, "\n");
     }
 #endif
+}
+
+static bool
+access_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                     uint64_t offset)
+{
+    return access_migration_needs_quiesce(vfu_ctx, region_index, offset)
+           || access_is_pci_cap_exp(vfu_ctx, region_index, offset);
 }
 
 static ssize_t
@@ -335,18 +344,6 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
-    if (ret == -1 && in_ra->region == VFU_PCI_DEV_MIGR_REGION_IDX
-        && errno == EBUSY && (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB)) {
-        /*
-         * We don't support async behavior for the non-blocking mode simply
-         * because we don't have a use case yet, the only user of migration
-         * is SPDK and it operates in non-blocking mode. We don't know the
-         * implications of enabling this in blocking mode as we haven't looked
-         * at the details.
-         */
-        vfu_ctx->migr_trans_pending = true;
-        return 0;
-    }
     if (ret != in_ra->count) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %m",
                 msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
@@ -1086,13 +1083,16 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
             return -1;
 
         case ENOMSG:
-            vfu_reset_ctx(vfu_ctx, "closed");
-            return ERROR_INT(ENOTCONN);
-
         case ECONNRESET:
-            vfu_reset_ctx(vfu_ctx, "reset");
+            vfu_log(vfu_ctx, LOG_DEBUG, "failed to receive request header: %m");
+            ret = vfu_reset_ctx(vfu_ctx, errno);
+            if (ret < 0) {
+                if (errno != EBUSY) {
+                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+                }
+                return ret;
+            }
             return ERROR_INT(ENOTCONN);
-
         default:
             vfu_log(vfu_ctx, LOG_ERR, "failed to receive request: %m");
             return -1;
@@ -1179,6 +1179,42 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     return true;
 }
 
+static bool
+command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
+{
+    struct vfio_user_region_access *reg;
+
+    if (vfu_ctx->quiesce == NULL) {
+        return false;
+    }
+
+    switch (msg->hdr.cmd) {
+    case VFIO_USER_DMA_MAP:
+    case VFIO_USER_DMA_UNMAP:
+        return vfu_ctx->dma != NULL;
+
+    case VFIO_USER_DEVICE_RESET:
+        return true;
+
+    case VFIO_USER_REGION_WRITE:
+        if (msg->in_size < sizeof(*reg)) {
+            /*
+             * bad request, it will be eventually failed by
+             * handle_region_access
+             *
+             */
+            return false;
+        }
+        reg = msg->in_data;
+        if (access_needs_quiesce(vfu_ctx, reg->region, reg->offset)) {
+            return true;
+        }
+        break;
+    }
+
+    return false;
+}
+
 int
 exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
@@ -1259,11 +1295,14 @@ do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
 
-        if (errno == ECONNRESET) {
-            vfu_reset_ctx(vfu_ctx, "reset");
-            errno = ENOTCONN;
-        } else if (errno == ENOMSG) {
-            vfu_reset_ctx(vfu_ctx, "closed");
+        if (errno == ECONNRESET || errno == ENOMSG) {
+            ret = vfu_reset_ctx(vfu_ctx, errno);
+            if (ret < 0) {
+                if (errno != EBUSY) {
+                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+                }
+                return ret;
+            }
             errno = ENOTCONN;
         }
     }
@@ -1278,53 +1317,68 @@ do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
  * possibly reply.
  */
 static int
-process_request(vfu_ctx_t *vfu_ctx)
+process_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    vfu_msg_t *msg = NULL;
     int ret;
 
     assert(vfu_ctx != NULL);
 
-    ret = get_request_header(vfu_ctx, &msg);
-
-    if (ret < 0) {
-        return ret;
-    }
-
-    if (!is_valid_header(vfu_ctx, msg)) {
-        ret = ERROR_INT(EINVAL);
-        goto out;
-    }
-
-    msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
-
-    if (msg->in_size > 0) {
-        ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
+    if (msg == NULL) {
+        ret = get_request_header(vfu_ctx, &msg);
 
         if (ret < 0) {
+            return ret;
+        }
+
+        if (!is_valid_header(vfu_ctx, msg)) {
+            ret = ERROR_INT(EINVAL);
             goto out;
         }
-    }
 
-    if (!should_exec_command(vfu_ctx, msg->hdr.cmd)) {
-        ret = ERROR_INT(EINVAL);
-        goto out;
+        msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
+
+        if (msg->in_size > 0) {
+            ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
+
+            if (ret < 0) {
+                goto out;
+            }
+        }
+
+        if (!should_exec_command(vfu_ctx, msg->hdr.cmd)) {
+            ret = ERROR_INT(EINVAL);
+            goto out;
+        }
+
+        if (command_needs_quiesce(vfu_ctx, msg)) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+            ret = vfu_ctx->quiesce(vfu_ctx);
+            if (ret < 0) {
+                if (errno == EBUSY) {
+                    vfu_log(vfu_ctx, LOG_DEBUG, "device will quiesce asynchronously");
+                    vfu_ctx->pending.state = VFU_CTX_PENDING_MSG;
+                    vfu_ctx->pending.msg = msg;
+                    /* NB the message is freed in vfu_device_quiesced */
+                    return ret;
+                } else {
+                    vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
+                }
+                goto out;
+            } else {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
+            }
+        }
     }
+    errno = 0;
 
     ret = exec_command(vfu_ctx, msg);
 
-    if (ret < 0) {
+    if (ret < 0 && errno != EBUSY) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
                 msg->hdr.cmd);
     }
 
 out:
-    if (vfu_ctx->migr_trans_pending) {
-        assert(ret == 0);
-        vfu_ctx->migr_trans_msg = msg;
-        /* NB the message is freed in vfu_migr_done */
-        return 0;
-    }
     if (msg->hdr.flags.no_reply) {
         /*
          * A failed client request is not a failure of process_request() itself.
@@ -1333,7 +1387,6 @@ out:
     } else {
         ret = do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
     }
-
     free_msg(vfu_ctx, msg);
     return ret;
 }
@@ -1426,16 +1479,17 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
     assert(vfu_ctx != NULL);
 
     if (!vfu_ctx->realized) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "device not realized");
         return ERROR_INT(EINVAL);
     }
 
     blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
 
     do {
-        if (vfu_ctx->migr_trans_pending) {
+        if (vfu_ctx->pending.state != VFU_CTX_PENDING_NONE) {
             return ERROR_INT(EBUSY);
         }
-        err = process_request(vfu_ctx);
+        err = process_request(vfu_ctx, NULL);
 
         if (err == 0) {
             reqs_processed++;
@@ -1462,15 +1516,14 @@ free_sparse_mmap_areas(vfu_ctx_t *vfu_ctx)
 }
 
 static void
-vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
+vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx)
 {
-    vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  reason);
-
     if (vfu_ctx->dma != NULL) {
         dma_controller_remove_all_regions(vfu_ctx->dma, vfu_ctx->dma_unregister,
                                           vfu_ctx);
     }
 
+    /* FIXME what happens if the device reset callback fails? */
     do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
@@ -1482,15 +1535,38 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, const char *reason)
     }
 }
 
+static int
+vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
+{
+    vfu_log(vfu_ctx, LOG_INFO, "%s: %s", __func__,  strerror(reason));
+
+    if (vfu_ctx->quiesce != NULL
+        && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+        int ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno == EBUSY) {
+                vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
+                return ret;
+            }
+            vfu_log(vfu_ctx, LOG_ERR, "failed to quiesce device: %m");
+            return ret;
+        }
+    }
+    vfu_reset_ctx_quiesced(vfu_ctx);
+    return 0;
+}
+
 EXPORT void
 vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
 {
-
     if (vfu_ctx == NULL) {
         return;
     }
 
-    vfu_reset_ctx(vfu_ctx, "destroyed");
+    vfu_ctx->quiesce = NULL;
+    if (vfu_reset_ctx(vfu_ctx, ESHUTDOWN) < 0) {
+        vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+    }
 
     free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
@@ -1548,6 +1624,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     vfu_ctx->pvt = pvt;
     vfu_ctx->flags = flags;
     vfu_ctx->log_level = LOG_ERR;
+    vfu_ctx->pci_cap_exp_off = -1;
 
     vfu_ctx->uuid = strdup(path);
     if (vfu_ctx->uuid == NULL) {
@@ -1784,6 +1861,13 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset)
     return 0;
 }
 
+EXPORT void
+vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx, vfu_device_quiesce_cb_t *quiesce)
+{
+    assert(vfu_ctx != NULL);
+    vfu_ctx->quiesce = quiesce;
+}
+
 EXPORT int
 vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister)
@@ -1874,6 +1958,8 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
         return ERROR_INT(EINVAL);
     }
 
+    assert(vfu_ctx->pending.state != VFU_CTX_PENDING_MSG);
+
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
         return -1;
@@ -1951,11 +2037,10 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 
         if (ret < 0) {
             ret = errno;
-            if (ret == ENOMSG) {
-                vfu_reset_ctx(vfu_ctx, "closed");
-                ret = ENOTCONN;
-            } else if (errno == ECONNRESET) {
-                vfu_reset_ctx(vfu_ctx, "reset");
+            if (ret == ENOMSG || ret == ECONNRESET) {
+                if (vfu_reset_ctx(vfu_ctx, ret) < 0) {
+                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+                }
                 ret = ENOTCONN;
             }
             free(rbuf);
@@ -1987,14 +2072,14 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 EXPORT int
 vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
-    assert(!vfu_ctx->migr_trans_pending);
+    assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sg, data);
 }
 
 EXPORT int
 vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data)
 {
-    assert(!vfu_ctx->migr_trans_pending);
+    assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
     return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sg, data);
 }
 
@@ -2004,19 +2089,44 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
     return dma_sg_is_mappable(vfu_ctx->dma, sg);
 }
 
-EXPORT void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int reply_errno)
+EXPORT int
+vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
 {
+    int ret;
+
     assert(vfu_ctx != NULL);
-    assert(vfu_ctx->migr_trans_pending);
 
-    if (!vfu_ctx->migr_trans_msg->hdr.flags.no_reply) {
-        do_reply(vfu_ctx, vfu_ctx->migr_trans_msg, reply_errno);
+    if (vfu_ctx->quiesce == NULL
+        || vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "invalid call to quiesce callback, state=%d",
+                vfu_ctx->pending.state);
+        return ERROR_INT(EINVAL);
     }
-    free_msg(vfu_ctx, vfu_ctx->migr_trans_msg);
-    vfu_ctx->migr_trans_msg = NULL;
 
-    vfu_ctx->migr_trans_pending = false;
+    vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced with error=%d", quiesce_errno);
+
+    if (quiesce_errno == 0) {
+        switch (vfu_ctx->pending.state) {
+        case VFU_CTX_PENDING_MSG:
+            ret = process_request(vfu_ctx, vfu_ctx->pending.msg);
+            break;
+        case VFU_CTX_PENDING_CTX_RESET:
+            vfu_reset_ctx_quiesced(vfu_ctx);
+            ret = 0;
+            break;
+        default:
+            assert(false);
+        }
+    } else {
+        ret = 0;
+        free_msg(vfu_ctx, vfu_ctx->pending.msg);
+    }
+
+    vfu_ctx->pending.msg = NULL;
+    vfu_ctx->pending.state = VFU_CTX_PENDING_NONE;
+
+    return ret;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

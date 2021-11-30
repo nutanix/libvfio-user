@@ -72,6 +72,10 @@ ssize_t
 pci_cap_access(vfu_ctx_t *ctx, char *buf, size_t count, loff_t offset,
                bool is_write);
 
+bool
+access_is_pci_cap_exp(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                      uint64_t offset);
+
 #endif /* LIB_VFIO_USER_PCI_CAPS_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -193,5 +193,29 @@ def test_region_offset_overflow():
     disconnect_client(ctx, sock)
 
 
+def test_access_region_zero_count():
+    global ctx
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX,
+                           size=0x1000, flags=VFU_REGION_FLAG_RW)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    payload = read_region(ctx, sock, VFU_PCI_DEV_BAR0_REGION_IDX, offset=0,
+                          count=0)
+    assert payload == b''
+
+    write_region(ctx, sock, VFU_PCI_DEV_BAR0_REGION_IDX, offset=0, count=0,
+                 data=payload)
+
+    disconnect_client(ctx, sock)
+
+
 def test_setup_region_cleanup():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

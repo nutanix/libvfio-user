@@ -154,8 +154,9 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
                                        uint32_t device_state, bool notify)
 {
     if (notify) {
-        int ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
-                                     device_state);
+        int ret;
+        ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
+                                 device_state);
         if (ret != 0) {
             return ret;
         }
@@ -423,11 +424,6 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
                 "migration: transition from state %s to state %s",
                  migr_states[old_device_state].name,
                  migr_states[*device_state].name);
-        } else if (errno == EBUSY) {
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                "migration: transition from state %s to state %s deferred",
-                 migr_states[old_device_state].name,
-                 migr_states[*device_state].name);
         } else {
             vfu_log(vfu_ctx, LOG_ERR,
                 "migration: failed to transition from state %s to state %s",
@@ -559,6 +555,20 @@ migration_set_pgsize(struct migration *migr, size_t pgsize)
 
     migr->pgsize = pgsize;
     return 0;
+}
+
+bool
+access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                              uint64_t offset)
+{
+    /*
+     * Writing to the migration state register with an unaligned access won't
+     * trigger this check but that's not a problem because
+     * migration_region_access_registers will fail the access.
+     */
+    return region_index == VFU_PCI_DEV_MIGR_REGION_IDX
+           && vfu_ctx->migration != NULL
+           && offset == offsetof(struct vfio_user_migration_info, device_state);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

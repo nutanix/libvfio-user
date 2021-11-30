@@ -170,7 +170,7 @@ dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
     server_data->regions[idx].prot = info->prot;
 }
 
-static int
+static void
 dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
@@ -181,11 +181,8 @@ dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
             server_data->regions[idx].iova.iov_base == info->iova.iov_base) {
             server_data->regions[idx].iova.iov_base = NULL;
             server_data->regions[idx].iova.iov_len = 0;
-            return 0;
         }
     }
-
-    return ERROR_INT(EINVAL);
 }
 
 static void

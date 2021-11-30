@@ -127,9 +127,6 @@ MOCK_DECLARE(int, state_trans_notify, vfu_ctx_t *vfu_ctx,
              int (*fn)(vfu_ctx_t *, vfu_migr_state_t),
              uint32_t vfio_device_state);
 
-MOCK_DECLARE(ssize_t, migr_trans_to_valid_state, vfu_ctx_t *vfu_ctx,
-             struct migration *migr, uint32_t device_state, bool notify);
-
 #endif
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

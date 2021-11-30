@@ -28,12 +28,10 @@
 #
 
 from libvfio_user import *
-import ctypes as c
 import errno
 import tempfile
 import os
 import struct
-import ctypes
 
 ctx = None
 sock = None
@@ -90,7 +88,7 @@ def test_device_get_region_io_fds_bad_flags():
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_bad_count():
@@ -101,7 +99,7 @@ def test_device_get_region_io_fds_bad_count():
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_buffer_too_small():
@@ -111,7 +109,7 @@ def test_device_get_region_io_fds_buffer_too_small():
             index=VFU_PCI_DEV_BAR2_REGION_IDX, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_buffer_too_large():
@@ -122,7 +120,7 @@ def test_device_get_region_io_fds_buffer_too_large():
                                             count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_no_fds():
@@ -130,7 +128,8 @@ def test_device_get_region_io_fds_no_fds():
     payload = vfio_user_region_io_fds_request(argsz=512, flags=0,
                                 index=VFU_PCI_DEV_BAR1_REGION_IDX, count=0)
 
-    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload, expect=0)
+    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+              expect_reply_errno=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
 
@@ -146,7 +145,7 @@ def test_device_get_region_io_fds_no_regions_setup():
                                 index=VFU_PCI_DEV_BAR3_REGION_IDX, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_region_no_mmap():
@@ -155,7 +154,7 @@ def test_device_get_region_io_fds_region_no_mmap():
                                 index=VFU_PCI_DEV_BAR5_REGION_IDX, count=0)
 
     ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-              expect=0)
+              expect_reply_errno=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
 
@@ -171,7 +170,7 @@ def test_device_get_region_io_fds_region_out_of_range():
                                               index=512, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
-        expect=errno.EINVAL)
+        expect_reply_errno=errno.EINVAL)
 
 
 def test_device_get_region_io_fds_fds_read_write():
@@ -325,3 +324,5 @@ def test_device_get_region_info_cleanup():
     for i in fds:
         os.close(i)
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

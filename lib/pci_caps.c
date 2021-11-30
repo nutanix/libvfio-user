@@ -623,11 +623,13 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 
     if (flags & ~(VFU_CAP_FLAG_EXTENDED | VFU_CAP_FLAG_CALLBACK |
         VFU_CAP_FLAG_READONLY)) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad flags %#x", flags);
         return ERROR_INT(EINVAL);
     }
 
     if ((flags & VFU_CAP_FLAG_CALLBACK) &&
         vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].cb == NULL) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "no callback");
         return ERROR_INT(EINVAL);
     }
 
@@ -641,6 +643,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case VFU_PCI_TYPE_EXPRESS:
             break;
         default:
+            vfu_log(vfu_ctx, LOG_DEBUG, "bad PCI type %#x", vfu_ctx->pci.type);
             return ERROR_INT(EINVAL);
         }
 
@@ -669,6 +672,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         cap.size = cap_size(vfu_ctx, data, extended);
 
         if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "bad PCIe capability offset");
             return ERROR_INT(EINVAL);
         }
 
@@ -708,6 +712,9 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         cap.size = cap_size(vfu_ctx, data, extended);
 
         if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
+                vfu_log(vfu_ctx, LOG_DEBUG,
+                        "PCI capability past end of config space, %#lx >= %#lx",
+                        cap.off + cap.size, pci_config_space_size(vfu_ctx));
             return ERROR_INT(EINVAL);
         }
 
@@ -730,6 +737,10 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         vfu_ctx->pci.nr_caps++;
     }
 
+
+    if (cap.id == PCI_CAP_ID_EXP) {
+        vfu_ctx->pci_cap_exp_off = cap.off;
+    }
     return cap.off;
 }
 
@@ -830,6 +841,14 @@ EXPORT size_t
 vfu_pci_find_capability(vfu_ctx_t *vfu_ctx, bool extended, int cap_id)
 {
     return vfu_pci_find_next_capability(vfu_ctx, extended, 0, cap_id);
+}
+
+bool
+access_is_pci_cap_exp(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                      uint64_t offset)
+{
+    size_t _offset = vfu_ctx->pci_cap_exp_off + offsetof(struct pxcap, pxdc);
+    return region_index == VFU_PCI_DEV_CFG_REGION_IDX && offset == _offset;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

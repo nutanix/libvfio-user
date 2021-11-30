@@ -163,13 +163,16 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx);
  *          with errno set as follows:
  *
  * ENOTCONN: client closed connection, vfu_attach_ctx() should be called again
+ * EBUSY: the device was asked to quiesce and is still quiescing
  * Other errno values are also possible.
  */
 int
 vfu_run_ctx(vfu_ctx_t *vfu_ctx);
 
 /**
- * Destroys libvfio-user context.
+ * Destroys libvfio-user context. During this call the device must already be
+ * in quiesced state; the quiesce callback is not called. Any other device
+ * callback can be called.
  *
  * @vfu_ctx: the libvfio-user context to destroy
  */
@@ -341,6 +344,59 @@ typedef enum vfu_reset_type {
 } vfu_reset_type_t;
 
 /*
+ * Device callback for quiescing the device.
+ *
+ * vfu_run_ctx uses this callback to request from the device to quiesce its
+ * operation. A quiesced device cannot use the following functions:
+ * vfu_addr_to_sg, vfu_map_sg, vfu_unmap_sg, vfu_dma_read, and vfu_dma_write.
+ *
+ * The callback can return two values:
+ * 1) 0: this indicates that the device was quiesced. vfu_run_ctx then continues
+ *      to execute and when vfu_run_ctx returns to the caller the device is
+ *      unquiesced.
+ * 2) -1 with errno set to EBUSY: this indicates that the device cannot
+ *      immediately quiesce. In this case, vfu_run_ctx returns -1 with errno
+ *      set to EBUSY and future calls to vfu_run_ctx return the same. Until the
+ *      device quiesces it can continue operate as normal. The device indicates
+ *      that it quiesced by calling vfu_device_quiesced. When
+ *      vfu_device_quiesced returns the device is no longer quiesced.
+ *
+ * A quiesced device should expect for any of the following callbacks to be
+ * executed:
+ * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
+ * These callbacks are only called after the device has been quiesced.
+ *
+ * @vfu_ctx: the libvfio-user context
+ *
+ * @returns: 0 on success, -1 on failure with errno set.
+ */
+typedef int (vfu_device_quiesce_cb_t)(vfu_ctx_t *vfu_ctx);
+
+/**
+ * Sets up the device quiesce callback.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @quiesce_cb: device quiesce callback
+ */
+void
+vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx,
+                            vfu_device_quiesce_cb_t *quiesce_cb);
+
+/*
+ * Called by the device to complete a pending quiesce operation. After the
+ * function returns the device is unquiesced.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @quiesce_errno: 0 for success or errno in case the device fails to quiesce,
+ *                 in which case the operation requiring the quiesce is failed
+ *                 and the device is reset.
+ *
+ * @returns 0 on success, or -1 on failure. Sets errno.
+ */
+int
+vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno);
+
+/*
  * Callback function that is called when the device must be reset.
  */
 typedef int (vfu_reset_cb_t)(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type);
@@ -414,19 +470,15 @@ typedef struct vfu_dma_info {
 typedef void (vfu_dma_register_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /*
- * Function that is called when the guest unregisters a DMA region. The device
- * must release all references to that region before the callback returns.
- * This is required if you want to be able to access guest memory directly via
- * a mapping.
- *
- * The callback should return 0 on success, -1 with errno set on failure
- * (although unregister should not fail: this will not stop a guest from
- * unregistering the region).
+ * Function that is called when the guest unregisters a DMA region.  This
+ * callback is required if you want to be able to access guest memory directly
+ * via a mapping. The device must release all references to that region before
+ * the callback returns.
  *
  * @vfu_ctx: the libvfio-user context
  * @info: the DMA info
  */
-typedef int (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
+typedef void (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info);
 
 /**
  * Set up device DMA registration callbacks. When libvfio-user is notified of a
@@ -502,16 +554,6 @@ typedef struct {
      *
      * The callback should return -1 on error, setting errno.
      *
-     * When operating in non-blocking mode (LIBVFIO_USER_FLAG_ATTACH_NB was
-     * passed to vfu_create_ctx) and -1 is returned with errno set to EBUSY,
-     * transitioning to the new state becomes asynchronous: libvfio-user does
-     * not send a response to the client and does not process any new messages.
-     * Transitioning to the new device state is completed by calling
-     * vfu_migr_done. This behavior can be beneficial for devices whose
-     * threading model does not allow blocking.
-     *
-     * The user must not call functions vfu_dma_read or vfu_dma_write, doing so
-     * results in undefined behavior.
      *
      * TODO rename to vfu_migration_state_transition_callback
      * FIXME maybe we should create a single callback and pass the state?
@@ -578,18 +620,6 @@ typedef struct {
     int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
-
-/*
- * Completes a pending migration state transition. Calling this function when
- * there is no pending migration state transition results in undefined
- * behavior.
- *
- * @vfu_ctx: the libvfio-user context
- * @reply_errno: 0 for success or errno on error.
- */
-void
-vfu_migr_done(vfu_ctx_t *vfu_ctx, int reply_errno);
-
 
 #ifndef VFIO_DEVICE_STATE_STOP
 

@@ -71,6 +71,10 @@ MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
 MOCK_DECLARE(ssize_t, handle_device_state, vfu_ctx_t *vfu_ctx,
              struct migration *migr, uint32_t device_state, bool notify);
 
+bool
+access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                              uint64_t offset);
+
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

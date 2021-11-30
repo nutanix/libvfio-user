@@ -149,11 +149,25 @@ struct pci_dev {
 
 struct dma_controller;
 
+enum vfu_ctx_pending_state {
+    VFU_CTX_PENDING_NONE,
+    VFU_CTX_PENDING_MSG,
+    VFU_CTX_PENDING_DEVICE_RESET,
+    VFU_CTX_PENDING_CTX_RESET
+};
+
+struct vfu_ctx_pending_info {
+    enum vfu_ctx_pending_state  state;
+    vfu_msg_t                   *msg;
+
+    /* when pending == VFU_CTX_PENDING_XXX_RESET */
+    uint32_t                migr_dev_state;
+};
+
 struct vfu_ctx {
     void                    *pvt;
     struct dma_controller   *dma;
-    vfu_reset_cb_t          *reset;
-    int           log_level;
+    int                     log_level;
     vfu_log_fn_t            *log;
     size_t                  nr_regions;
     vfu_reg_info_t          *reg_info;
@@ -162,20 +176,26 @@ struct vfu_ctx {
     void                    *tran_data;
     uint64_t                flags;
     char                    *uuid;
+
+    /* device callbacks */
+    vfu_device_quiesce_cb_t *quiesce;
+    vfu_reset_cb_t          *reset;
     vfu_dma_register_cb_t   *dma_register;
     vfu_dma_unregister_cb_t *dma_unregister;
 
     int                     client_max_fds;
     size_t                  client_max_data_xfer_size;
 
+    struct vfu_ctx_pending_info pending;
+
     struct migration        *migration;
-    bool                    migr_trans_pending;
-    vfu_msg_t               *migr_trans_msg;
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];
     vfu_irqs_t              *irqs;
     bool                    realized;
     vfu_dev_type_t          dev_type;
+
+    ssize_t                 pci_cap_exp_off;
 };
 
 typedef struct ioeventfd {
@@ -227,6 +247,9 @@ handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
 MOCK_DECLARE(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
 
 MOCK_DECLARE(bool, should_exec_command, vfu_ctx_t *vfu_ctx, uint16_t cmd);
+
+MOCK_DECLARE(ssize_t, migr_trans_to_valid_state, vfu_ctx_t *vfu_ctx,
+             struct migration *migr, uint32_t device_state, bool notify);
 
 #endif /* LIB_VFIO_USER_PRIVATE_H */
 

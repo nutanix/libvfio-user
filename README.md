@@ -74,6 +74,11 @@ The kernel headers are necessary because VFIO structs and defines are reused.
 
 Finally build your program and link with `libvfio-user.so`.
 
+Coverity
+========
+
+`make coverity` automatically uploads a new coverity build.
+
 Supported features
 ==================
 

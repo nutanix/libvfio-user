@@ -201,3 +201,5 @@ def test_valid_negotiate_json():
 
 def test_destroying():
     vfu_destroy_ctx(ctx)
+
+# ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

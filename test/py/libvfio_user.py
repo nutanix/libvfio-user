@@ -41,6 +41,8 @@ import os
 import socket
 import struct
 import syslog
+import copy
+import tempfile
 
 UINT64_MAX = 18446744073709551615
 
@@ -280,6 +282,23 @@ class iovec_t(Structure):
         ("iov_len", c.c_int32)
     ]
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.iov_base == other.iov_base \
+            and self.iov_len == other.iov_len
+
+    def __str__(self):
+        return "%s-%s" % \
+            (hex(self.iov_base or 0), hex((self.iov_base or 0) + self.iov_len))
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.iov_base = self.iov_base
+        result.iov_len = self.iov_len
+        return result
+
 
 class vfio_irq_info(Structure):
     _pack_ = 1
@@ -438,6 +457,30 @@ class vfu_dma_info_t(Structure):
         ("prot", c.c_uint32)
     ]
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.iova == other.iova \
+            and self.vaddr == other.vaddr \
+            and self.mapping == other.mapping \
+            and self.page_size == other.page_size \
+            and self.prot == other.prot
+
+    def __str__(self):
+        return "IOVA=%s vaddr=%s mapping=%s page_size=%s prot=%s" % \
+            (self.iova, self.vaddr, self.mapping, hex(self.page_size),
+            bin(self.prot))
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.iova = self.iova
+        result.vaddr = self.vaddr
+        result.mapping = self.mapping
+        result.page_size = self.page_size
+        result.prot = self.prot
+        return result
+
 
 class vfio_user_dirty_pages(Structure):
     _pack_ = 1
@@ -497,6 +540,23 @@ class dma_sg_t(Structure):
         ("le_prev", c.c_void_p),
     ]
 
+    def __str__(self):
+        return "DMA addr=%s, region index=%s, length=%s, offset=%s, RW=%s" % \
+            (hex(self.dma_addr), self.region, hex(self.length),
+                hex(self.offset), self.writeable)
+
+
+class vfio_user_migration_info(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("device_state", c.c_uint32),
+        ("reserved", c.c_uint32),
+        ("pending_bytes", c.c_uint64),
+        ("data_offset", c.c_uint64),
+        ("data_size", c.c_uint64),
+    ]
+
+
 #
 # Util functions
 #
@@ -529,10 +589,14 @@ lib.vfu_pci_find_next_capability.argtypes = (c.c_void_p, c.c_bool, c.c_ulong,
                                              c.c_int)
 lib.vfu_pci_find_next_capability.restype = (c.c_ulong)
 lib.vfu_irq_trigger.argtypes = (c.c_void_p, c.c_uint)
+vfu_device_quiesce_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, use_errno=True)
+lib.vfu_setup_device_quiesce_cb.argtypes = (c.c_void_p,
+                                            vfu_device_quiesce_cb_t)
 vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p,
-                                    c.POINTER(vfu_dma_info_t))
-vfu_dma_unregister_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p,
-                                      c.POINTER(vfu_dma_info_t))
+                                    c.POINTER(vfu_dma_info_t), use_errno=True)
+vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
+                                      c.POINTER(vfu_dma_info_t),
+                                      use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
@@ -548,7 +612,7 @@ lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
                                      c.c_uint64)
 
-lib.vfu_migr_done.argtypes = (c.c_void_p, c.c_int)
+lib.vfu_device_quiesced.argtypes = (c.c_void_p, c.c_int)
 
 
 def to_byte(val):
@@ -597,7 +661,7 @@ def disconnect_client(ctx, sock):
     # notice client closed connection
     ret = vfu_run_ctx(ctx)
     assert ret == -1
-    assert c.get_errno() == errno.ENOTCONN
+    assert c.get_errno() == errno.ENOTCONN, os.strerror(c.get_errno())
 
 
 def get_reply(sock, expect=0):
@@ -608,7 +672,8 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
-def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
+def msg(ctx, sock, cmd, payload, expect_reply_errno=0, fds=None, rsp=True,
+        expect_run_ctx_errno=None):
     """Round trip a request and reply to the server."""
     hdr = vfio_user_header(cmd, size=len(payload))
 
@@ -618,12 +683,13 @@ def msg(ctx, sock, cmd, payload, expect=0, fds=None, rsp=True):
     else:
         sock.send(hdr + payload)
 
-    ret = vfu_run_ctx(ctx)
-    assert ret >= 0
+    ret = vfu_run_ctx(ctx, expect_errno=expect_run_ctx_errno)
+    if expect_run_ctx_errno is None:
+        assert ret >= 0, os.strerror(c.get_errno())
 
     if not rsp:
         return
-    return get_reply(sock, expect=expect)
+    return get_reply(sock, expect=expect_reply_errno)
 
 
 def get_reply_fds(sock, expect=0):
@@ -698,7 +764,7 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
 
 
 def access_region(ctx, sock, is_write, region, offset, count,
-                  data=None, expect=0, rsp=True):
+                  data=None, expect=0, rsp=True, expect_run_ctx_errno=None):
     # struct vfio_user_region_access
     payload = struct.pack("QII", offset, region, count)
     if is_write:
@@ -706,22 +772,26 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
 
-    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp)
+    result = msg(ctx, sock, cmd, payload, expect_reply_errno=expect, rsp=rsp,
+                 expect_run_ctx_errno=expect_run_ctx_errno)
 
     if is_write:
         return None
 
-    return skip("QII", result)
+    if rsp:
+        return skip("QII", result)
 
 
-def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True):
+def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True,
+                 expect_run_ctx_errno=None):
     access_region(ctx, sock, True, region, offset, count, data, expect=expect,
-                  rsp=rsp)
+                  rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
 
 
-def read_region(ctx, sock, region, offset, count, expect=0):
+def read_region(ctx, sock, region, offset, count, expect=0, rsp=True,
+                expect_run_ctx_errno=None):
     return access_region(ctx, sock, False, region, offset, count,
-                         expect=expect)
+        expect=expect, rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
 
 
 def ext_cap_hdr(buf, offset):
@@ -733,18 +803,60 @@ def ext_cap_hdr(buf, offset):
     return cap_id, cap_next
 
 
-@vfu_dma_register_cb_t
 def dma_register(ctx, info):
     pass
 
 
-@vfu_dma_unregister_cb_t
+@vfu_dma_register_cb_t
+def __dma_register(ctx, info):
+    # The copy is required because in case of deliberate failure (e.g.
+    # test_dma_map_busy_reply_fail) the memory gets deallocated and mock only
+    # records the pointer, so the contents are all null/zero.
+    dma_register(ctx, copy.copy(info.contents))
+
+
 def dma_unregister(ctx, info):
     pass
+
+
+@vfu_dma_unregister_cb_t
+def __dma_unregister(ctx, info):
+    dma_unregister(ctx, info)
+
+
+def quiesce_cb(ctx):
     return 0
 
 
-def prepare_ctx_for_dma():
+@vfu_device_quiesce_cb_t
+def _quiesce_cb(ctx):
+    return quiesce_cb(ctx)
+
+
+def vfu_setup_device_quiesce_cb(ctx, quiesce_cb=_quiesce_cb):
+    assert ctx is not None
+    lib.vfu_setup_device_quiesce_cb(ctx,
+                                       c.cast(quiesce_cb,
+                                              vfu_device_quiesce_cb_t))
+
+
+def reset_cb(ctx, reset_type):
+    return 0
+
+
+@vfu_reset_cb_t
+def _reset_cb(ctx, reset_type):
+    return reset_cb(ctx, reset_type)
+
+
+def vfu_setup_device_reset_cb(ctx, cb=_reset_cb):
+    assert ctx is not None
+    return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
+
+
+def prepare_ctx_for_dma(dma_register=__dma_register,
+                        dma_unregister=__dma_unregister, quiesce=_quiesce_cb,
+                        reset=_reset_cb):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
 
@@ -752,6 +864,23 @@ def prepare_ctx_for_dma():
     assert ret == 0
 
     ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    assert ret == 0
+
+    if quiesce is not None:
+        vfu_setup_device_quiesce_cb(ctx, quiesce)
+
+    if reset is not None:
+        ret = vfu_setup_device_reset_cb(ctx, reset)
+        assert ret == 0
+
+    f = tempfile.TemporaryFile()
+    f.truncate(0x2000)
+
+    mmap_areas = [(0x1000, 0x1000)]
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
+                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
+                           fd=f.fileno())
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -769,7 +898,15 @@ msg_id = 1
 
 @c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_char_p)
 def log(ctx, level, msg):
-    print(msg.decode("utf-8"))
+    lvl2str = {syslog.LOG_EMERG: "EMERGENCY",
+                syslog.LOG_ALERT: "ALERT",
+                syslog.LOG_CRIT: "CRITICAL",
+                syslog.LOG_ERR: "ERROR",
+                syslog.LOG_WARNING: "WANRING",
+                syslog.LOG_NOTICE: "NOTICE",
+                syslog.LOG_INFO: "INFO",
+                syslog.LOG_DEBUG: "DEBUG"}
+    print(lvl2str[level] + ": " + msg.decode("utf-8"))
 
 
 def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
@@ -803,15 +940,21 @@ def vfu_realize_ctx(ctx):
 def vfu_attach_ctx(ctx, expect=0):
     ret = lib.vfu_attach_ctx(ctx)
     if expect == 0:
-        assert ret == 0
+        assert ret == 0, "failed to attach: %s" % os.strerror(c.get_errno())
     else:
         assert ret == -1
         assert c.get_errno() == expect
     return ret
 
 
-def vfu_run_ctx(ctx):
-    return lib.vfu_run_ctx(ctx)
+def vfu_run_ctx(ctx, expect_errno=None):
+    ret = lib.vfu_run_ctx(ctx)
+    if expect_errno is not None:
+        assert ret < 0 and expect_errno == c.get_errno(), \
+            "expected '%s' (%d), actual '%s' (%s)" % \
+                (os.strerror(expect_errno), expect_errno,
+                 os.strerror(c.get_errno()), c.get_errno())
+    return ret
 
 
 def vfu_destroy_ctx(ctx):
@@ -821,7 +964,16 @@ def vfu_destroy_ctx(ctx):
         os.remove(SOCK_PATH)
 
 
-def vfu_setup_region(ctx, index, size, cb=None, flags=0,
+def pci_region_cb(ctx, buf, count, offset, is_write):
+    pass
+
+
+@vfu_region_access_cb_t
+def __pci_region_cb(ctx, buf, count, offset, is_write):
+    return pci_region_cb(ctx, buf, count, offset, is_write)
+
+
+def vfu_setup_region(ctx, index, size, cb=__pci_region_cb, flags=0,
                      mmap_areas=None, nr_mmap_areas=None, fd=-1, offset=0):
     assert ctx is not None
 
@@ -849,11 +1001,6 @@ def vfu_setup_region(ctx, index, size, cb=None, flags=0,
         os.close(fd)
 
     return ret
-
-
-def vfu_setup_device_reset_cb(ctx, cb):
-    assert ctx is not None
-    return lib.vfu_setup_device_reset_cb(ctx, c.cast(cb, vfu_reset_cb_t))
 
 
 def vfu_setup_device_nr_irqs(ctx, irqtype, count):
@@ -901,22 +1048,75 @@ def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
                                                 vfu_dma_unregister_cb_t))
 
 
+# FIXME some of the migration arguments are probably wrong as in the C version
+# they're pointer. Check how we handle the read/write region callbacks.
+
+def migr_trans_cb(ctx, state):
+    pass
+
+
+@transition_cb_t
+def __migr_trans_cb(ctx, state):
+    return migr_trans_cb(ctx, state)
+
+
+def migr_get_pending_bytes_cb(ctx):
+    pass
+
+
+@get_pending_bytes_cb_t
+def __migr_get_pending_bytes_cb(ctx):
+    return migr_get_pending_bytes_cb(ctx)
+
+
+def migr_prepare_data_cb(ctx, offset, size):
+    pass
+
+
+@prepare_data_cb_t
+def __migr_prepare_data_cb(ctx, offset, size):
+    return migr_prepare_data_cb(ctx, offset, size)
+
+
+def migr_read_data_cb(ctx, buf, count, offset):
+    pass
+
+
+@read_data_cb_t
+def __migr_read_data_cb(ctx, buf, count, offset):
+    return migr_read_data_cb(ctx, buf, count, offset)
+
+
+def migr_write_data_cb(ctx, buf, count, offset):
+    pass
+
+
+@write_data_cb_t
+def __migr_write_data_cb(ctx, buf, count, offset):
+    return migr_write_data_cb(ctx, buf, count, offset)
+
+
+def migr_data_written_cb(ctx, count):
+    pass
+
+
+@data_written_cb_t
+def __migr_data_written_cb(ctx, count):
+    return migr_data_written_cb(ctx, count)
+
+
 def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
     assert ctx is not None
-
-    @c.CFUNCTYPE(c.c_int)
-    def stub():
-        return 0
 
     if not cbs:
         cbs = vfu_migration_callbacks_t()
         cbs.version = VFU_MIGR_CALLBACKS_VERS
-        cbs.transition = c.cast(stub, transition_cb_t)
-        cbs.get_pending_bytes = c.cast(stub, get_pending_bytes_cb_t)
-        cbs.prepare_data = c.cast(stub, prepare_data_cb_t)
-        cbs.read_data = c.cast(stub, read_data_cb_t)
-        cbs.write_data = c.cast(stub, write_data_cb_t)
-        cbs.data_written = c.cast(stub, data_written_cb_t)
+        cbs.transition = __migr_trans_cb
+        cbs.get_pending_bytes = __migr_get_pending_bytes_cb
+        cbs.prepare_data = __migr_prepare_data_cb
+        cbs.read_data = __migr_read_data_cb
+        cbs.write_data = __migr_write_data_cb
+        cbs.data_written = __migr_data_written_cb
 
     return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
 
@@ -945,7 +1145,15 @@ def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
                                     flags, datamatch)
 
 
-def vfu_migr_done(ctx, err):
-    return lib.vfu_migr_done(ctx, err)
+def vfu_device_quiesced(ctx, err):
+    return lib.vfu_device_quiesced(ctx, err)
+
+
+def fail_with_errno(err):
+    def side_effect(args, *kwargs):
+        c.set_errno(err)
+        return -1
+    return side_effect
+
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
