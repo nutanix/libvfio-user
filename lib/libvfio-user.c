@@ -1197,6 +1197,14 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
         return true;
 
     case VFIO_USER_REGION_WRITE:
+        if (msg->in_size < sizeof(*reg)) {
+            /*
+             * bad request, it will be eventually failed by
+             * handle_region_access
+             *
+             */
+            return false;
+        }
         reg = msg->in_data;
         if (access_needs_quiesce(vfu_ctx, reg->region, reg->offset)) {
             return true;

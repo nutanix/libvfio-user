@@ -49,57 +49,52 @@ def teardown_function(function):
     vfu_destroy_ctx(ctx)
 
 
-def with_pci(config_space=True, realize=False):
-    """Function decorator that initializes the device as a PCI device."""
-    def __with_pci(func):
-        def wrapper(*args, **kwargs):
-            global ctx
-            ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
-            assert ret == 0
-            if config_space:
-                ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
-                                       size=PCI_CFG_SPACE_SIZE,
-                                       flags=VFU_REGION_FLAG_RW)
-                assert ret == 0
-            if realize:
-                ret = vfu_realize_ctx(ctx)
-                assert ret == 0
-            func(*args, **kwargs)
-        return wrapper
-    return __with_pci
+def setup_pci_dev(config_space=True, realize=False):
+    global ctx
+    ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
+    assert ret == 0
+    if config_space:
+        ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                               size=PCI_CFG_SPACE_SIZE,
+                               flags=VFU_REGION_FLAG_RW)
+        assert ret == 0
+    if realize:
+        ret = vfu_realize_ctx(ctx)
+        assert ret == 0
 
 
-@with_pci()
 def test_pci_cap_bad_flags():
     """Tests adding a PCI capability with bad VFU_CAP_FLAG_ flags."""
+    setup_pci_dev()
     pos = vfu_pci_add_capability(ctx, pos=0, flags=999,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
 
 
-@with_pci(config_space=False)
 def test_pci_cap_no_cb():
-    """Tests adding a PCI capability VFU_CAP_FLAG_CALLBACK without a callback.
     """
+    Tests adding a PCI capability VFU_CAP_FLAG_CALLBACK without a callback.
+    """
+    setup_pci_dev(config_space=False)
     pos = vfu_pci_add_capability(ctx, pos=0, flags=VFU_CAP_FLAG_CALLBACK,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.EINVAL
 
 
-@with_pci()
 def test_pci_cap_unknown_cap():
     """Tests adding an unknown PCI capability."""
+    setup_pci_dev()
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
               data=struct.pack("ccHH", b'\x81', b'\0', 0, 0))
     assert pos == -1
     assert c.get_errno() == errno.ENOTSUP
 
 
-@with_pci()
 def test_pci_cap_bad_pos():
     """Tests adding a PCI capability at an invalid position."""
+    setup_pci_dev()
     pos = vfu_pci_add_capability(ctx, pos=PCI_CFG_SPACE_SIZE, flags=0,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == -1
@@ -124,9 +119,9 @@ cap_offsets = (
 )
 
 
-@with_pci()
 @patch("libvfio_user.pci_region_cb", side_effect=__pci_region_cb)
 def test_add_caps(mock_pci_region_cb):
+    setup_pci_dev()
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
               data=struct.pack("ccHH", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0))
     assert pos == cap_offsets[0]
@@ -326,14 +321,13 @@ def _setup_flrc(ctx):
     assert pos == PCI_STD_HEADER_SIZEOF
 
 
-@with_pci(realize=True)
 @patch("libvfio_user.reset_cb", return_value=0)
 @patch('libvfio_user.quiesce_cb')
 def test_pci_cap_write_px(mock_quiesce, mock_reset):
     """
     Tests function level reset.
     """
-
+    setup_pci_dev(realize=True)
     sock = connect_client(ctx)
 
     _setup_flrc(ctx)
@@ -360,8 +354,9 @@ def test_pci_cap_write_msix():
     pass
 
 
-@with_pci(realize=True)
 def test_pci_cap_write_pxdc2():
+
+    setup_pci_dev(realize=True)
     sock = connect_client(ctx)
 
     _setup_flrc(ctx)
@@ -376,9 +371,9 @@ def test_pci_cap_write_pxdc2():
     assert payload == data
 
 
-@with_pci(realize=True)
-def test_pci_cap_write_pxlc2(realize=True):
+def test_pci_cap_write_pxlc2():
 
+    setup_pci_dev(realize=True)
     _setup_flrc(ctx)
 
     sock = connect_client(ctx)

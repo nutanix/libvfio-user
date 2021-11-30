@@ -53,21 +53,15 @@ def teardown_function(function):
     vfu_destroy_ctx(ctx)
 
 
-def with_dma_map(dma_maps=[(0x0, 0x1000)]):
-    """Function decorator that initializes the device as a PCI device."""
-    def __with_dma_map(func):
-        def wrapper(*args, **kwargs):
-            global ctx, sock
-            for i in dma_maps:
-                payload = struct.pack("II", 0, 0)
-                payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
-                    flags=(VFIO_USER_F_DMA_REGION_READ |
-                           VFIO_USER_F_DMA_REGION_WRITE),
-                    offset=0, addr=i[0], size=i[1])
-                msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
-            func(*args, **kwargs)
-        return wrapper
-    return __with_dma_map
+def setup_dma_regions(dma_regions=[(0x0, 0x1000)]):
+    global ctx, sock
+    for dma_region in dma_regions:
+        payload = struct.pack("II", 0, 0)
+        payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+            flags=(VFIO_USER_F_DMA_REGION_READ |
+                   VFIO_USER_F_DMA_REGION_WRITE),
+            offset=0, addr=dma_region[0], size=dma_region[1])
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
 
 def test_dma_unmap_short_write():
@@ -103,9 +97,9 @@ def test_dma_unmap_dirty_bad_argsz():
         expect_reply_errno=errno.EINVAL)
 
 
-@with_dma_map(dma_maps=[(0x1000, 4096)])
 def test_dma_unmap_dirty_not_tracking():
 
+    setup_dma_regions([(0x1000, 4096)])
     argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
     unmap = vfio_user_dma_unmap(argsz=argsz,
         flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=0x1000, size=4096)
@@ -116,9 +110,9 @@ def test_dma_unmap_dirty_not_tracking():
         expect_reply_errno=errno.EINVAL)
 
 
-@with_dma_map(dma_maps=[(0x1000, 4096)])
 def test_dma_unmap_dirty_not_mapped():
 
+    setup_dma_regions([(0x1000, 4096)])
     vfu_setup_device_migration_callbacks(ctx, offset=0x1000)
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
@@ -135,26 +129,26 @@ def test_dma_unmap_dirty_not_mapped():
         expect_reply_errno=errno.EINVAL)
 
 
-@with_dma_map()
 def test_dma_unmap_invalid_flags():
 
+    setup_dma_regions()
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0x4, addr=0x1000, size=4096)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
         expect_reply_errno=errno.EINVAL)
 
 
-@with_dma_map()
 def test_dma_unmap():
 
+    setup_dma_regions()
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x0, size=0x1000)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
 
 
-@with_dma_map()
 def test_dma_unmap_invalid_addr():
 
+    setup_dma_regions()
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   addr=0x10000, size=4096)
 
@@ -162,10 +156,11 @@ def test_dma_unmap_invalid_addr():
         expect_reply_errno=errno.ENOENT)
 
 
-@with_dma_map()
-@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+@patch('libvfio_user.quiesce_cb')
 def test_dma_unmap_async(mock_quiesce):
 
+    setup_dma_regions()
+    mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x0, size=0x1000)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False,
@@ -180,8 +175,9 @@ def test_dma_unmap_async(mock_quiesce):
     assert ret == 0
 
 
-@with_dma_map((0x1000*i, 0x1000) for i in range(MAX_DMA_REGIONS))
 def test_dma_unmap_all():
+
+    setup_dma_regions((0x1000*i, 0x1000) for i in range(MAX_DMA_REGIONS))
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0, size=0)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
