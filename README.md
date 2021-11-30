@@ -238,7 +238,7 @@ the emulated GPIO device's pins:
 
 Other devices based on libvfio-user:
 
-* nvmf/vfio-user: a virtual NVMe controller using SPDK (docs/spdk.md)[docs/spdk.md]
+* nvmf/vfio-user: a virtual NVMe controller using SPDK [docs/spdk.md](docs/spdk.md)
 
 libvirt
 -------
