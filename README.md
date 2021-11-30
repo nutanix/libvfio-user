@@ -238,7 +238,7 @@ the emulated GPIO device's pins:
 
 Other devices based on libvfio-user:
 
-* SPDK: see docs/spdk.md
+* SPDK: see [docs/spdk.md]
 
 libvirt
 -------

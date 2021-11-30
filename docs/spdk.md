@@ -46,7 +46,7 @@ libvirt
 -------
 
 To use the nvmf/vfio-user target with a libvirt quest, in addition to the
-libvirtd configuration documented in the [README](README.md) the guest RAM must
+libvirtd configuration documented in the [README](../README.md) the guest RAM must
 be backed by hugepages:
 
     <memoryBacking>
