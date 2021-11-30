@@ -278,6 +278,8 @@ backed by hugepages:
 Becasue SPDK must be run as root, either fix the vfio-user socket permissions
 or configure libvirt to run QEMU as root.
 
+:doc:`docs/spdk.md` explains how to setup SPDK.
+
 Testing
 =======
 
