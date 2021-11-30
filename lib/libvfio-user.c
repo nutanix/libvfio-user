@@ -1062,6 +1062,118 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     errno = saved_errno;
 }
 
+static int
+do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
+{
+    int ret;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->hdr.flags.no_reply) {
+        /*
+         * A failed client request is not a failure of handle_request() itself.
+         */
+        return 0;
+    }
+
+    ret = vfu_ctx->tran->reply(vfu_ctx, msg, reply_errno);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
+
+        if (errno == ECONNRESET || errno == ENOMSG) {
+            ret = vfu_reset_ctx(vfu_ctx, errno);
+            if (ret < 0) {
+                if (errno != EBUSY) {
+                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
+                }
+                return ret;
+            }
+            errno = ENOTCONN;
+        }
+    }
+
+    return ret;
+}
+
+static int
+handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    int ret = 0;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    msg->processed_cmd = true;
+
+    switch (msg->hdr.cmd) {
+    case VFIO_USER_DMA_MAP:
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dma_map(vfu_ctx, msg, msg->in_data);
+        }
+        break;
+
+    case VFIO_USER_DMA_UNMAP:
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dma_unmap(vfu_ctx, msg, msg->in_data);
+        }
+        break;
+
+    case VFIO_USER_DEVICE_GET_INFO:
+        ret = handle_device_get_info(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_DEVICE_GET_REGION_INFO:
+        ret = handle_device_get_region_info(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_DEVICE_GET_REGION_IO_FDS:
+        ret = handle_device_get_region_io_fds(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_DEVICE_GET_IRQ_INFO:
+        ret = handle_device_get_irq_info(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_DEVICE_SET_IRQS:
+        ret = handle_device_set_irqs(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_REGION_READ:
+    case VFIO_USER_REGION_WRITE:
+        ret = handle_region_access(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_DEVICE_RESET:
+        vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
+        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
+        break;
+
+    case VFIO_USER_DIRTY_PAGES:
+        // FIXME: don't allow migration calls if migration == NULL
+        if (vfu_ctx->dma != NULL) {
+            ret = handle_dirty_pages(vfu_ctx, msg);
+        } else {
+            ret = 0;
+        }
+        break;
+
+    default:
+        msg->processed_cmd = false;
+        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);
+        ret = ERROR_INT(EINVAL);
+        break;
+    }
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
+                msg->hdr.cmd);
+    }
+
+    return do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
+}
+
 /*
  * Note that we avoid any malloc() before we see data, as this is used for
  * polling by SPDK.
@@ -1215,180 +1327,127 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
     return false;
 }
 
-int
-exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
-{
-    int ret = 0;
-
-    msg->processed_cmd = true;
-
-    switch (msg->hdr.cmd) {
-    case VFIO_USER_DMA_MAP:
-        if (vfu_ctx->dma != NULL) {
-            ret = handle_dma_map(vfu_ctx, msg, msg->in_data);
-        }
-        break;
-
-    case VFIO_USER_DMA_UNMAP:
-        if (vfu_ctx->dma != NULL) {
-            ret = handle_dma_unmap(vfu_ctx, msg, msg->in_data);
-        }
-        break;
-
-    case VFIO_USER_DEVICE_GET_INFO:
-        ret = handle_device_get_info(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_DEVICE_GET_REGION_INFO:
-        ret = handle_device_get_region_info(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_DEVICE_GET_REGION_IO_FDS:
-        ret = handle_device_get_region_io_fds(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_DEVICE_GET_IRQ_INFO:
-        ret = handle_device_get_irq_info(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_DEVICE_SET_IRQS:
-        ret = handle_device_set_irqs(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_REGION_READ:
-    case VFIO_USER_REGION_WRITE:
-        ret = handle_region_access(vfu_ctx, msg);
-        break;
-
-    case VFIO_USER_DEVICE_RESET:
-        vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
-        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
-        break;
-
-    case VFIO_USER_DIRTY_PAGES:
-        // FIXME: don't allow migration calls if migration == NULL
-        if (vfu_ctx->dma != NULL) {
-            ret = handle_dirty_pages(vfu_ctx, msg);
-        } else {
-            ret = 0;
-        }
-        break;
-
-    default:
-        msg->processed_cmd = false;
-        vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);
-        ret = ERROR_INT(EINVAL);
-        break;
-    }
-
-    return ret;
-}
-
-static int
-do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
-{
-    assert(vfu_ctx != NULL);
-    assert(msg != NULL);
-
-    int ret = vfu_ctx->tran->reply(vfu_ctx, msg, reply_errno);
-
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to reply: %m");
-
-        if (errno == ECONNRESET || errno == ENOMSG) {
-            ret = vfu_reset_ctx(vfu_ctx, errno);
-            if (ret < 0) {
-                if (errno != EBUSY) {
-                    vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
-                }
-                return ret;
-            }
-            errno = ENOTCONN;
-        }
-    }
-
-    return ret;
-}
-
 /*
- * Handle requests over the vfio-user socket. This can return immediately if we
- * are non-blocking, and there is no request from the client ready to read from
- * the socket. Otherwise, we synchronously process the request in place, and
- * possibly reply.
+ * Acquire a request from the vfio-user socket. Returns 0 on success, or -1 with
+ * errno set as follows:
+ *
+ * EAGAIN/EWOULDBLOCK: no request was ready to read from the socket
+ * ENOMSG: a message was read and replied to, no further handling is needed.
+ * E*: other errors that should be returned to the caller
  */
 static int
-process_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 {
+    vfu_msg_t *msg = NULL;
     int ret;
 
     assert(vfu_ctx != NULL);
 
-    if (msg == NULL) {
-        ret = get_request_header(vfu_ctx, &msg);
+    *msgp = NULL;
+
+    ret = get_request_header(vfu_ctx, &msg);
+
+    if (ret < 0) {
+        return ret;
+    }
+
+    if (!is_valid_header(vfu_ctx, msg)) {
+        ret = ERROR_INT(EINVAL);
+        goto err;
+    }
+
+    msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
+
+    if (msg->in_size > 0) {
+        ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
 
         if (ret < 0) {
+            goto err;
+        }
+    }
+
+    if (!should_exec_command(vfu_ctx, msg->hdr.cmd)) {
+        ret = ERROR_INT(EINVAL);
+        goto err;
+    }
+
+    if (command_needs_quiesce(vfu_ctx, msg)) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+        ret = vfu_ctx->quiesce(vfu_ctx);
+        if (ret < 0) {
+            if (errno != EBUSY) {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
+                goto err;
+            }
+
+            vfu_log(vfu_ctx, LOG_DEBUG, "device will quiesce asynchronously");
+            vfu_ctx->pending.state = VFU_CTX_PENDING_MSG;
+            vfu_ctx->pending.msg = msg;
+            /* NB the message is freed in vfu_device_quiesced */
             return ret;
         }
 
-        if (!is_valid_header(vfu_ctx, msg)) {
-            ret = ERROR_INT(EINVAL);
-            goto out;
-        }
-
-        msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
-
-        if (msg->in_size > 0) {
-            ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
-
-            if (ret < 0) {
-                goto out;
-            }
-        }
-
-        if (!should_exec_command(vfu_ctx, msg->hdr.cmd)) {
-            ret = ERROR_INT(EINVAL);
-            goto out;
-        }
-
-        if (command_needs_quiesce(vfu_ctx, msg)) {
-            vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
-            ret = vfu_ctx->quiesce(vfu_ctx);
-            if (ret < 0) {
-                if (errno == EBUSY) {
-                    vfu_log(vfu_ctx, LOG_DEBUG, "device will quiesce asynchronously");
-                    vfu_ctx->pending.state = VFU_CTX_PENDING_MSG;
-                    vfu_ctx->pending.msg = msg;
-                    /* NB the message is freed in vfu_device_quiesced */
-                    return ret;
-                } else {
-                    vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
-                }
-                goto out;
-            } else {
-                vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
-            }
-        }
-    }
-    errno = 0;
-
-    ret = exec_command(vfu_ctx, msg);
-
-    if (ret < 0 && errno != EBUSY) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
-                msg->hdr.cmd);
+        vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
     }
 
-out:
-    if (msg->hdr.flags.no_reply) {
-        /*
-         * A failed client request is not a failure of process_request() itself.
-         */
-        ret = 0;
-    } else {
-        ret = do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
-    }
+    *msgp = msg;
+    return 0;
+
+err:
+    ret = do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
     free_msg(vfu_ctx, msg);
-    return ret;
+    if (ret != 0) {
+        return ret;
+    }
+
+    /* We handled the message already. */
+    return ERROR_INT(ENOMSG);
+}
+
+EXPORT int
+vfu_run_ctx(vfu_ctx_t *vfu_ctx)
+{
+    int reqs_processed = 0;
+    bool blocking;
+    int err;
+
+    assert(vfu_ctx != NULL);
+
+    if (!vfu_ctx->realized) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "device not realized");
+        return ERROR_INT(EINVAL);
+    }
+
+    blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+
+    do {
+        vfu_msg_t *msg;
+
+        if (vfu_ctx->pending.state != VFU_CTX_PENDING_NONE) {
+            return ERROR_INT(EBUSY);
+        }
+
+        err = get_request(vfu_ctx, &msg);
+
+        if (err == 0) {
+            err = handle_request(vfu_ctx, msg);
+            free_msg(vfu_ctx, msg);
+            reqs_processed++;
+        } else {
+            /*
+             * If there was no request to read, or we already handled the
+             * (error) reply, that's not a failure of vfu_run_ctx() itself.
+             */
+            switch (errno) {
+            case ENOMSG:
+            case EAGAIN:
+                err = 0;
+                break;
+            }
+        }
+    } while (err == 0 && blocking);
+
+    return err == 0 ? reqs_processed : err;
 }
 
 EXPORT int
@@ -1467,40 +1526,6 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     vfu_ctx->realized = true;
 
     return 0;
-}
-
-EXPORT int
-vfu_run_ctx(vfu_ctx_t *vfu_ctx)
-{
-    int reqs_processed = 0;
-    bool blocking;
-    int err;
-
-    assert(vfu_ctx != NULL);
-
-    if (!vfu_ctx->realized) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "device not realized");
-        return ERROR_INT(EINVAL);
-    }
-
-    blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
-
-    do {
-        if (vfu_ctx->pending.state != VFU_CTX_PENDING_NONE) {
-            return ERROR_INT(EBUSY);
-        }
-        err = process_request(vfu_ctx, NULL);
-
-        if (err == 0) {
-            reqs_processed++;
-        } else {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                err = 0;
-            }
-        }
-    } while (err == 0 && blocking);
-
-    return err == 0 ? reqs_processed : err;
 }
 
 static void
@@ -2109,7 +2134,8 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
     if (quiesce_errno == 0) {
         switch (vfu_ctx->pending.state) {
         case VFU_CTX_PENDING_MSG:
-            ret = process_request(vfu_ctx, vfu_ctx->pending.msg);
+            ret = handle_request(vfu_ctx, vfu_ctx->pending.msg);
+            free_msg(vfu_ctx, vfu_ctx->pending.msg);
             break;
         case VFU_CTX_PENDING_CTX_RESET:
             vfu_reset_ctx_quiesced(vfu_ctx);
