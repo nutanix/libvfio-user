@@ -236,6 +236,11 @@ the emulated GPIO device's pins:
     cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
     for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
 
+Other devices based on libvfio-user:
+
+* nvmf/vfio-user: a virtual NVMe controller using SPDK, see
+  [docs/spdk.md](docs/spdk.md) for more details.
+
 libvirt
 -------
 
@@ -256,27 +261,6 @@ libvirt
       <qemu:arg value='vfio-user-pci,socket=/var/run/vfio-user.sock,x-enable-migration=on'/>
     </qemu:commandline>
 
-
-nvmf/vfio-user
---------------
-
-[SPDK v21.01](https://github.com/spdk/spdk/releases/tag/v21.01) added
-experimental support for a virtual NVMe controller. The controller can be
-used with the same command line as the one used for GPIO.
-
-To use the nvmf/vfio-user target with a libvirt quest, the guest RAM must be
-backed by hugepages:
-
-    <memoryBacking>
-      <hugepages>
-        <page size='2048' unit='KiB'/>
-      </hugepages>
-      <source type='memfd'/>
-      <access mode='shared'/>
-    </memoryBacking>
-
-Becasue SPDK must be run as root, either fix the vfio-user socket permissions
-or configure libvirt to run QEMU as root.
 
 Testing
 =======
