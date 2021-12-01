@@ -35,7 +35,7 @@ import tempfile
 ctx = None
 
 
-def test_device_set_irqs_setup():
+def test_setup_region_setup():
     global ctx
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
@@ -211,6 +211,30 @@ def test_access_region_zero_count():
 
     write_region(ctx, sock, VFU_PCI_DEV_BAR0_REGION_IDX, offset=0, count=0,
                  data=payload)
+
+    disconnect_client(ctx, sock)
+
+
+def test_access_region_large_count():
+    global ctx
+
+    sock = connect_client(ctx)
+
+    read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=0,
+                count=SERVER_MAX_DATA_XFER_SIZE + 8, expect=errno.EINVAL)
+
+    disconnect_client(ctx, sock)
+
+
+def test_region_offset_too_short():
+    global ctx
+
+    sock = connect_client(ctx)
+
+    payload = struct.pack("Q", 0)
+
+    msg(ctx, sock, VFIO_USER_REGION_WRITE, payload,
+        expect_reply_errno=errno.EINVAL)
 
     disconnect_client(ctx, sock)
 
