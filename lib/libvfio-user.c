@@ -1167,8 +1167,8 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m", msg->hdr.msg_id,
-                msg->hdr.cmd);
+        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: cmd %d failed: %m",
+                msg->hdr.msg_id, msg->hdr.cmd);
     }
 
     return do_reply(vfu_ctx, msg, ret == 0 ? 0 : errno);
