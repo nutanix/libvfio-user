@@ -347,8 +347,15 @@ typedef enum vfu_reset_type {
  * Device callback for quiescing the device.
  *
  * vfu_run_ctx uses this callback to request from the device to quiesce its
- * operation. A quiesced device cannot use the following functions:
- * vfu_addr_to_sg, vfu_map_sg, vfu_unmap_sg, vfu_dma_read, and vfu_dma_write.
+ * operation. A quiesced device cannot call any of the following functions:
+ *  - vfu_addr_to_sg,
+ *  - vfu_map_sg,
+ *  - vfu_unmap_sg,
+ *  - vfu_dma_read, and
+ *  - vfu_dma_write,
+ * unless it does so from a device callback.
+ * Calling any of these functions while quiesced from outside a device callback
+ * results in undefined behavior.
  *
  * The callback can return two values:
  * 1) 0: this indicates that the device was quiesced. vfu_run_ctx then continues
@@ -362,9 +369,37 @@ typedef enum vfu_reset_type {
  *      vfu_device_quiesced returns the device is no longer quiesced.
  *
  * A quiesced device should expect for any of the following callbacks to be
- * executed:
- * vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and transition.
- * These callbacks are only called after the device has been quiesced.
+ * executed: vfu_dma_register_cb_t, vfu_unregister_cb_t, vfu_reset_cb_t, and
+ * the migration transition callback. These callbacks are only called after the
+ * device has been quiesced.
+ *
+ * The following example demonstrates how a device can use vfu_map_sg and
+ * friends while quiesced:
+ *
+ * A DMA region is mapped, libvfio-user calls the quiesce callback but the
+ * cannot immediately quiesce:
+ *
+ *     int quiesce_cb(vfu_ctx_t *vfu_ctx) {
+ *         errno = EBUSY;
+ *         return -1;
+ *     }
+ *
+ * While quiescing, the device can continue operate as normal, including
+ * calling functions such as vfu_map_sg. Then, the device finishes quiescing:
+ *
+ *  vfu_quiesce_done(vfu_ctx, 0);
+ *
+ * From this point onwards the device cannot call functions such as vfu_map_sg.
+ * libvfio-user eventually calls the dma_register device callback before
+ * vfu_quiesce_done returns. In this callback the device is allowed to
+ * call functions such as vfu_map_sg:
+ *
+ *     void (dma_register_cb(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info) {
+ *         vfu_map_sg(ctx, ...);
+ *     }
+ *
+ * Once vfu_quiesce_done returns, the device is unquiesced.
+ *
  *
  * @vfu_ctx: the libvfio-user context
  *

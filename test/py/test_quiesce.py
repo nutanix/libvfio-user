@@ -30,6 +30,7 @@
 from libvfio_user import *
 import errno
 from unittest.mock import patch
+import mmap
 
 
 ctx = None
@@ -105,5 +106,50 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
     assert count == -1
     assert c.get_errno() == errno.ENOENT
 
+
+@patch('libvfio_user.dma_register')
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+def test_allowed_funcs_in_quiesce(mock_quiesce, mock_dma_register):
+    """
+    Tests that vfu_addr_to_sg, vfu_map_sg, and vfu_unmap_sg can be called by
+    device callabcks even if the device is quiesced.
+    """
+
+    def side_effect(ctx, info):
+        count, sgs = vfu_addr_to_sg(ctx, 0x1000, 0x1000)
+        assert count == 1
+        sg = sgs[0]
+        assert sg.dma_addr == 0x10000 and sg.region == 0 \
+            and sg.length == 0x1000 and sg.offset == 0 and sg.writeable
+        ret = vfu_map_sg(ctx, sg, iovec)
+        assert ret == 0
+        assert iovec[0].iov_base != 0
+        assert iovec[0].iov_len == 0x1000
+        assert ret == 0
+        vfu_unmap_sg(ctx, sg, iovec)
+    mock_dma_register.side_effect = side_effect
+
+    global ctx, sock
+
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ |
+               VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x10000, size=0x1000)
+
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
+        expect_run_ctx_errno=errno.EBUSY)
+
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+
+    expected_info = vfu_dma_info_t(iovec_t(0x10000, 0x1000), 0, iovec_t(0, 0),
+                                   0x1000, mmap.PROT_READ | mmap.PROT_WRITE)
+    mock_dma_register.assert_called_once_with(ctx, expected_info)
+
+    # TODO test DMA map with quiesce returning 0 (1) instead of EBUSY
+    # TODO test DMA unmap with quiesce returning 0 (2) and EBUSY (3)
+    # TODO test device reset callback with quiesce returning 0 (4) and EBUSY
+    # (4)
+    # TODO test migration callback
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

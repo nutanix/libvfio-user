@@ -1958,8 +1958,6 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
         return ERROR_INT(EINVAL);
     }
 
-    assert(vfu_ctx->pending.state != VFU_CTX_PENDING_MSG);
-
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
         return -1;
