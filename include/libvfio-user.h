@@ -347,15 +347,10 @@ typedef enum vfu_reset_type {
  * Device callback for quiescing the device.
  *
  * vfu_run_ctx uses this callback to request from the device to quiesce its
- * operation. A quiesced device cannot call any of the following functions:
- *  - vfu_addr_to_sg,
- *  - vfu_map_sg,
- *  - vfu_unmap_sg,
- *  - vfu_dma_read, and
- *  - vfu_dma_write,
- * unless it does so from a device callback.
- * Calling any of these functions while quiesced from outside a device callback
- * results in undefined behavior.
+ * operation. A quiesced device must call the following functions:
+ *  - vfu_dma_read and vfu_dma_write,
+ *  - vfu_addr_to_sg, vfu_map_sg, and vfu_unmap_sg, unless it does so from a
+ *    device callback.
  *
  * The callback can return two values:
  * 1) 0: this indicates that the device was quiesced. vfu_run_ctx then continues
