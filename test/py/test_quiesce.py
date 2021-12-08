@@ -112,7 +112,7 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
 def test_allowed_funcs_in_quiesce(mock_quiesce, mock_dma_register):
     """
     Tests that vfu_addr_to_sg, vfu_map_sg, and vfu_unmap_sg can be called by
-    device callabcks even if the device is quiesced.
+    device callbacks even if the device is quiesced.
     """
 
     def side_effect(ctx, info):

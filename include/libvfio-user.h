@@ -377,22 +377,23 @@ typedef enum vfu_reset_type {
  * friends while quiesced:
  *
  * A DMA region is mapped, libvfio-user calls the quiesce callback but the
- * cannot immediately quiesce:
+ * device cannot immediately quiesce:
  *
  *     int quiesce_cb(vfu_ctx_t *vfu_ctx) {
  *         errno = EBUSY;
  *         return -1;
  *     }
  *
- * While quiescing, the device can continue operate as normal, including
+ * While quiescing, the device can continue to operate as normal, including
  * calling functions such as vfu_map_sg. Then, the device finishes quiescing:
  *
  *  vfu_quiesce_done(vfu_ctx, 0);
  *
- * From this point onwards the device cannot call functions such as vfu_map_sg.
- * libvfio-user eventually calls the dma_register device callback before
- * vfu_quiesce_done returns. In this callback the device is allowed to
- * call functions such as vfu_map_sg:
+ * At this point, the device must have stopped using functions like
+ * vfu_map_sg(), for example by pausing any I/O threads.  libvfio-user
+ * eventually calls the dma_register device callback before vfu_quiesce_done
+ * returns. In this callback the device is allowed to call functions such as
+ * vfu_map_sg:
  *
  *     void (dma_register_cb(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info) {
  *         vfu_map_sg(ctx, ...);
