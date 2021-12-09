@@ -228,9 +228,6 @@ int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
 int
-exec_command(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
-
-int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                struct vfio_user_dma_map *dma_map);
 
