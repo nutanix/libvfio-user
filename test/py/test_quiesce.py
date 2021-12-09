@@ -155,8 +155,8 @@ def test_allowed_funcs_in_quiesced_dma_register(mock_quiesce,
     _map_dma_region(ctx, sock)
     # FIXME it's difficult to check that mock_dma_register has been called with
     # the expected DMA info because we don't know the vaddr and the mapping
-    # (2nd and 3rd arguments of vfu_dma_info_t) as they're values returnd from
-    # mmap(0) so they can't be predicted. Using mock.ANY in their places fails
+    # (2nd and 3rd arguments of vfu_dma_info_t) as they're values returned from
+    # mmap(0) so they can't be predicted. Using mock.ANY in their place fails
     # with "TypeError: cannot be converted to pointer". In any case this is
     # tested by other unit tests.
     mock_dma_register.assert_called_once_with(ctx, mock.ANY)
