@@ -46,7 +46,7 @@ def setup_function(function):
                            flags=VFU_REGION_FLAG_RW)
     assert ret == 0
 
-    ret = vfu_setup_device_migration_callbacks(ctx, offset=0x4000)
+    ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
     vfu_setup_device_quiesce_cb(ctx)
