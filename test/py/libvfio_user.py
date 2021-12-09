@@ -672,9 +672,17 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
-def msg(ctx, sock, cmd, payload, expect_reply_errno=0, fds=None, rsp=True,
-        expect_run_ctx_errno=None):
-    """Round trip a request and reply to the server."""
+def msg(ctx, sock, cmd, payload=bytearray(), expect_reply_errno=0, fds=None,
+        rsp=True, expect_run_ctx_errno=None):
+    """
+    Round trip a request and reply to the server. vfu_run_ctx will be
+    called once for the server to process the incoming message,
+    @expect_run_ctx_errrno checks the return value of vfu_run_ctx. If a
+    response is not expected then @rsp must be set to False, otherwise this
+    function will block indefinitely.
+    """
+    # FIXME if expect_run_ctx_errno == errno.EBUSY then shouldn't it implied
+    # that rsp == False?
     hdr = vfio_user_header(cmd, size=len(payload))
 
     if fds:
@@ -821,7 +829,7 @@ def dma_unregister(ctx, info):
 
 @vfu_dma_unregister_cb_t
 def __dma_unregister(ctx, info):
-    dma_unregister(ctx, info)
+    dma_unregister(ctx, copy.copy(info.contents))
 
 
 def quiesce_cb(ctx):
@@ -856,7 +864,7 @@ def vfu_setup_device_reset_cb(ctx, cb=_reset_cb):
 
 def prepare_ctx_for_dma(dma_register=__dma_register,
                         dma_unregister=__dma_unregister, quiesce=_quiesce_cb,
-                        reset=_reset_cb):
+                        reset=_reset_cb, migration_callbacks=False):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
 
@@ -882,6 +890,10 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
                            flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
                            fd=f.fileno())
     assert ret == 0
+
+    if migration_callbacks:
+        ret = vfu_setup_device_migration_callbacks(ctx)
+        assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
@@ -949,10 +961,10 @@ def vfu_attach_ctx(ctx, expect=0):
 
 def vfu_run_ctx(ctx, expect_errno=None):
     ret = lib.vfu_run_ctx(ctx)
-    if expect_errno is not None:
+    if expect_errno:
         assert ret < 0 and expect_errno == c.get_errno(), \
-            "expected '%s' (%d), actual '%s' (%s)" % \
-                (os.strerror(expect_errno), expect_errno,
+            "ret=%s, expected '%s' (%d), actual '%s' (%s)" % \
+                (ret, os.strerror(expect_errno), expect_errno,
                  os.strerror(c.get_errno()), c.get_errno())
     return ret
 
@@ -1105,7 +1117,7 @@ def __migr_data_written_cb(ctx, count):
     return migr_data_written_cb(ctx, count)
 
 
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0):
+def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
     assert ctx is not None
 
     if not cbs:
