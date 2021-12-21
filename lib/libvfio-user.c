@@ -2013,6 +2013,7 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
     size_t rlen;
     void *rbuf;
 
+    assert(cmd == VFIO_USER_DMA_READ || cmd == VFIO_USER_DMA_WRITE);
     assert(vfu_ctx != NULL);
     assert(sg != NULL);
 

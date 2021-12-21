@@ -1162,6 +1162,8 @@ int main(int argc, char *argv[])
      */
     nr_dma_regions = server_max_fds << 1;
 
+    umask(0022);
+
     if ((tmpfd = mkstemp(template)) == -1) {
         err(EXIT_FAILURE, "failed to create backing file");
     }

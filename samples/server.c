@@ -41,6 +41,7 @@
 #include <openssl/md5.h>
 #include <sys/mman.h>
 #include <sys/param.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 
 #include "common.h"
@@ -482,6 +483,8 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup BAR0 region");
     }
+
+    umask(0022);
 
     /*
      * Setup BAR1 to be 3 pages in size where only the first and the last pages
