@@ -1214,22 +1214,15 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
     *msgp = alloc_msg(&hdr, fds, nr_fds);
 
     if (*msgp == NULL) {
-        ret = -1;
-        goto out;
-    }
-
-    return 0;
-
-out:
-    if (ret != 0) {
         int saved_errno = errno;
         for (i = 0; i < nr_fds; i++) {
             close(fds[i]);
         }
         errno = saved_errno;
+        return -1;
     }
 
-    return ret;
+    return 0;
 }
 
 static bool
