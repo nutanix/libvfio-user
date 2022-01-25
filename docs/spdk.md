@@ -9,7 +9,7 @@ GPIO.
 Use Oracle's QEMU d377d483f9 from https://github.com/oracle/qemu:
 
 	git clone https://github.com/oracle/qemu qemu-orcl
-	cd qemu-ocrl
+	cd qemu-orcl
 	git submodule update --init --recursive
 	./configure --enable-multiprocess
 	make
