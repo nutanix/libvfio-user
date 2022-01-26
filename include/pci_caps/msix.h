@@ -39,23 +39,26 @@
 extern "C" {
 #endif
 
+/* Message Control for MSI-X */
 struct mxc {
-	uint16_t ts:11;
-	uint16_t reserved:3;
-	uint16_t fm:1;
-	uint16_t mxe:1;
+	uint16_t ts:11;         /* RO */
+	uint16_t reserved:3;    /* read must return 0, write has no effect */
+	uint16_t fm:1;          /* RW */ /* FIXME must set to 0 after reset, check that we do this */
+	uint16_t mxe:1;         /* RW */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mxc) == PCI_MSIX_FLAGS, "bad MXC size");
 
+/* Table Offset / Table BIR for MSI-X */
 struct mtab {
-	uint32_t tbir:3;
-	uint32_t to:29;
+	uint32_t tbir:3;    /* RO */
+	uint32_t to:29;     /* RO */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mtab) == PCI_MSIX_TABLE, "bad MTAB size");
 
+/* PBA Offset / PBA BIR for MSI-X */
 struct mpba {
-	uint32_t pbir:3;
-	uint32_t pbao:29;
+	uint32_t pbir:3;    /* RO */
+	uint32_t pbao:29;   /* RO */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mtab) == PCI_MSIX_PBA - PCI_MSIX_TABLE,
                "bad MPBA size");

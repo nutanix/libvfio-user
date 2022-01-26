@@ -63,6 +63,7 @@ PCI_CAP_LIST_NEXT = 1
 
 PCI_CAP_ID_PM = 0x1
 PCI_CAP_ID_VNDR = 0x9
+PCI_CAP_ID_MSIX = 0x11
 PCI_CAP_ID_EXP = 0x10
 
 PCI_EXP_DEVCTL2 = 40
@@ -74,6 +75,13 @@ PCI_EXT_CAP_ID_VNDR = 0x0b
 PCI_EXT_CAP_DSN_SIZEOF = 12
 
 PCI_EXT_CAP_VNDR_HDR_SIZEOF = 8
+
+# MSI-X registers
+PCI_MSIX_FLAGS = 2 # Message Control
+PCI_MSIX_FLAGS_MASKALL = 0x4000	# Mask all vectors for this function
+PCI_MSIX_FLAGS_ENABLE = 0x8000 # MSI-X enable
+PCI_CAP_MSIX_SIZEOF = 12 # size of MSIX registers
+
 
 # from linux/vfio.h
 

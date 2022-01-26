@@ -167,49 +167,36 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
 }
 
 static ssize_t
-handle_mxc_write(vfu_ctx_t *vfu_ctx, struct msixcap *msix,
-                 const struct mxc *const mxc)
+cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
+               size_t count, loff_t offset)
 {
-    assert(msix != NULL);
-    assert(mxc != NULL);
+    struct msixcap *msix = cap_data(vfu_ctx, cap);
+    struct msixcap new_msix = { { 0 } };
 
-    if (mxc->mxe != msix->mxc.mxe) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X",
-                mxc->mxe ? "enable" : "disable");
-        msix->mxc.mxe = mxc->mxe;
-    }
+    memcpy((char *)&new_msix + offset - cap->off, buf, count);
 
-    if (mxc->fm != msix->mxc.fm) {
-        if (mxc->fm) {
+    /*
+     * Same as doing &= (PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE), but
+     * prefer to log what's changing.
+     */
+
+    if (msix->mxc.fm != new_msix.mxc.fm) {
+        if (new_msix.mxc.fm) {
             vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked");
         } else {
             vfu_log(vfu_ctx, LOG_DEBUG,
                    "vector's mask bit determines whether vector is masked");
         }
-        msix->mxc.fm = mxc->fm;
+        msix->mxc.fm = new_msix.mxc.fm;
     }
 
-    return sizeof(struct mxc);
-}
-
-static ssize_t
-cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
-               size_t count, loff_t offset)
-{
-    struct msixcap *msix = cap_data(vfu_ctx, cap);
-
-    if (count == sizeof(struct mxc)) {
-        switch (offset - cap->off) {
-        case offsetof(struct msixcap, mxc):
-            return handle_mxc_write(vfu_ctx, msix, (struct mxc *)buf);
-        default:
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "invalid MSI-X write offset %ld", offset);
-            return ERROR_INT(EINVAL);
-        }
+    if (msix->mxc.mxe != new_msix.mxc.mxe) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X",
+                msix->mxc.mxe ? "enable" : "disable");
+        msix->mxc.mxe = new_msix.mxc.mxe;
     }
-    vfu_log(vfu_ctx, LOG_ERR, "invalid MSI-X write size %lu", count);
-    return ERROR_INT(EINVAL);
+
+    return count;
 }
 
 static int
