@@ -348,6 +348,7 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
                          offset=offset+_off, count=len(data)+_len, data=data,
                          expect=errno.EINVAL)
 
+
 def to_bytes_le(n, length=1):
     return n.to_bytes(length, 'little')
 
