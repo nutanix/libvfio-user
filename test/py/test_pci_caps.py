@@ -393,9 +393,8 @@ def test_pci_cap_write_msix():
                  offset=offset + PCI_MSIX_FLAGS + 1,
                  count=len(data), data=data)
     # read back entire MSI-X
-    expected = to_bytes_le(PCI_CAP_ID_MSIX) + \
-        b'\x00' + to_bytes_le(flags, 2) + b'\x00\x00\x00\x00' + \
-        b'\x00\x00\x00\x00'
+    expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00' + \
+        to_bytes_le(flags, 2) + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00'
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=PCI_CAP_MSIX_SIZEOF)
     assert expected == payload
