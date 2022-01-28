@@ -363,7 +363,6 @@ def test_pci_cap_write_msix():
     assert pos == cap_offsets[0]
 
     offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_MSIX)
-    print(offset)
 
     # write exactly to Message Control: mask all vectors and enable MSI-X
     data = b'\xff\xff'
