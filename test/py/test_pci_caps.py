@@ -348,13 +348,18 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
                          offset=offset+_off, count=len(data)+_len, data=data,
                          expect=errno.EINVAL)
 
+def to_bytes_le(n, length=1):
+    return n.to_bytes(length, 'little')
+
 
 def test_pci_cap_write_msix():
     setup_pci_dev(realize=True)
     sock = connect_client(ctx)
 
+    flags = PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
-              data=struct.pack("ccHII", to_byte(PCI_CAP_ID_MSIX), b'\0', 0 , 0, 0))
+              data=struct.pack("ccHII", to_byte(PCI_CAP_ID_MSIX), b'\0', 0, 0,
+                               0))
     assert pos == cap_offsets[0]
 
     offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_MSIX)
@@ -365,13 +370,11 @@ def test_pci_cap_write_msix():
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS,
                  count=len(data), data=data)
-    data = b'\xff\xff' + \
-        (PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE).to_bytes(c.sizeof(c.c_ushort), 'little')
+    data = b'\xff\xff' + to_bytes_le(flags, 2)
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=len(data))
-    expected = PCI_CAP_ID_MSIX.to_bytes(c.sizeof(c.c_byte), 'little') + \
-        b'\x00' + \
-        (PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE).to_bytes(c.sizeof(c.c_ushort), 'little')
+    expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00' + \
+        to_bytes_le(PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE, 2)
     assert expected == payload
 
     # reset
@@ -379,24 +382,19 @@ def test_pci_cap_write_msix():
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS,
                  count=len(data), data=data)
-    expected = PCI_CAP_ID_MSIX.to_bytes(c.sizeof(c.c_byte), 'little') + \
-        b'\x00\x00'
+    expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00\x00'
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=len(expected))
     assert expected == payload
 
     # write 2 bytes to Message Control + 1: mask all vectors and enable MSI-X
-    data = ((PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE) >> 8).to_bytes(c.sizeof(c.c_byte), 'little') + \
-        b'\xff'
+    data = to_bytes_le(flags >> 8) + b'\xff'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS + 1,
                  count=len(data), data=data)
     # read back entire MSI-X
-    expected = PCI_CAP_ID_MSIX.to_bytes(c.sizeof(c.c_byte), 'little') + \
-        b'\x00' + \
-        (PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE).to_bytes(c.sizeof(c.c_ushort), 'little') + \
-        b'\x00\x00\x00\x00' + \
-        b'\x00\x00\x00\x00'
+    expected = to_bytes_le(PCI_CAP_ID_MSIX) + \
+        b'\x00' + to_bytes_le(flags, 2) + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00'
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=PCI_CAP_MSIX_SIZEOF)
     assert expected == payload
