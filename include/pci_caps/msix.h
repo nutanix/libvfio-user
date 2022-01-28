@@ -43,7 +43,7 @@ extern "C" {
 struct mxc {
 	uint16_t ts:11;         /* RO */
 	uint16_t reserved:3;    /* read must return 0, write has no effect */
-	uint16_t fm:1;          /* RW */ /* FIXME must set to 0 after reset, check that we do this */
+	uint16_t fm:1;          /* RW */
 	uint16_t mxe:1;         /* RW */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mxc) == PCI_MSIX_FLAGS, "bad MXC size");
