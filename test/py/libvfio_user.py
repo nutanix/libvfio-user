@@ -78,7 +78,7 @@ PCI_EXT_CAP_VNDR_HDR_SIZEOF = 8
 
 # MSI-X registers
 PCI_MSIX_FLAGS = 2  # Message Control
-PCI_MSIX_TABLE = 4 # Table offset
+PCI_MSIX_TABLE = 4  # Table offset
 PCI_MSIX_FLAGS_MASKALL = 0x4000  # Mask all vectors for this function
 PCI_MSIX_FLAGS_ENABLE = 0x8000  # MSI-X enable
 PCI_CAP_MSIX_SIZEOF = 12  # size of MSIX registers

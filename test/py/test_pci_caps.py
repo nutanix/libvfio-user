@@ -359,8 +359,8 @@ def test_pci_cap_write_msix():
 
     flags = PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
-                                 data=struct.pack("ccHII", \
-                                                  to_byte(PCI_CAP_ID_MSIX), \
+                                 data=struct.pack("ccHII",
+                                                  to_byte(PCI_CAP_ID_MSIX),
                                                   b'\0', 0, 0, 0))
     assert pos == cap_offsets[0]
 
@@ -412,7 +412,7 @@ def test_pci_cap_write_msix():
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_TABLE,
                  count=len(data), data=data)
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, \
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                           offset=offset + PCI_MSIX_FLAGS, count=2)
     assert payload == to_bytes_le(PCI_MSIX_FLAGS_ENABLE, 2)
 
