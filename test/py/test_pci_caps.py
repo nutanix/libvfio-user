@@ -359,8 +359,9 @@ def test_pci_cap_write_msix():
 
     flags = PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
-              data=struct.pack("ccHII", to_byte(PCI_CAP_ID_MSIX), b'\0', 0, 0,
-                               0))
+                                 data=struct.pack("ccHII", \
+                                                  to_byte(PCI_CAP_ID_MSIX), \
+                                                  b'\0', 0, 0, 0))
     assert pos == cap_offsets[0]
 
     offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_MSIX)
@@ -388,6 +389,7 @@ def test_pci_cap_write_msix():
     assert expected == payload
 
     # write 2 bytes to Message Control + 1: mask all vectors and enable MSI-X
+    # This looks bizarre, but some versions of QEMU do this.
     data = to_bytes_le(flags >> 8) + b'\xff'
     write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS + 1,
@@ -398,6 +400,21 @@ def test_pci_cap_write_msix():
     payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                           count=PCI_CAP_MSIX_SIZEOF)
     assert expected == payload
+
+    # reset with MSI-X enabled
+    data = to_bytes_le(PCI_MSIX_FLAGS_ENABLE, 2)
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSIX_FLAGS,
+                 count=len(data), data=data)
+
+    # write 1 byte past Message Control, MSI-X should still be enabled
+    data = b'\x00'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSIX_TABLE,
+                 count=len(data), data=data)
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, \
+                          offset=offset + PCI_MSIX_FLAGS, count=2)
+    assert payload == to_bytes_le(PCI_MSIX_FLAGS_ENABLE, 2)
 
 
 def test_pci_cap_write_pxdc2():

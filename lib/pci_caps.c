@@ -171,7 +171,7 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
                size_t count, loff_t offset)
 {
     struct msixcap *msix = cap_data(vfu_ctx, cap);
-    struct msixcap new_msix = { { 0 } };
+    struct msixcap new_msix = *msix;
 
     memcpy((char *)&new_msix + offset - cap->off, buf, count);
 
