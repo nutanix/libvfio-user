@@ -900,6 +900,11 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     range_in = msg->in_data + sizeof(*dirty_pages_in);
 
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "get dirty bitmap IOVA=[%#lx, %#lx) pgsize=%#lx size=%#lx",
+            range_in->iova, range_in->size, range_in->bitmap.pgsize,
+            range_in->bitmap.size);
+
     /*
      * range_in is client-controlled, but we only need to protect against
      * overflow here: we'll take MIN() against a validated value next, and
