@@ -2038,7 +2038,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
 }
 
 EXPORT void
-vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
+vfu_mark_sg_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, int cnt)
 {
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
@@ -2046,7 +2046,20 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
 
     quiesce_check_allowed(vfu_ctx);
 
-    return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
+    return dma_mark_sg_dirty(vfu_ctx->dma, sg, cnt);
+}
+
+EXPORT void
+vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg,
+             struct iovec *iov UNUSED, int cnt)
+{
+    if (unlikely(vfu_ctx->dma_unregister == NULL)) {
+        return;
+    }
+
+    quiesce_check_allowed(vfu_ctx);
+
+    return dma_unmap_sg(vfu_ctx->dma, sg, cnt);
 }
 
 static int
