@@ -246,11 +246,9 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
         }
 
         if (sg->writeable) {
-            if (dma->dirty_pgsize > 0) {
-                _dma_mark_dirty(dma, region, sg);
-            }
             LIST_INSERT_HEAD(&dma->maps, sg, entry);
         }
+
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
@@ -266,13 +264,39 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
 }
 
 static inline void
-dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
-	     UNUSED struct iovec *iov, int cnt)
+dma_mark_sg_dirty(dma_controller_t *dma, dma_sg_t *sg, int cnt)
 {
+    dma_memory_region_t *region;
 
     assert(dma != NULL);
     assert(sg != NULL);
-    assert(iov != NULL);
+    assert(cnt > 0);
+
+    do {
+        if (sg->region >= dma->nregions) {
+            return;
+        }
+
+        region = &dma->regions[sg->region];
+
+        if (sg->writeable) {
+            if (dma->dirty_pgsize > 0) {
+                _dma_mark_dirty(dma, region, sg);
+            }
+        }
+
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "mark dirty %p-%p",
+                sg->dma_addr + sg->offset,
+                sg->dma_addr + sg->offset + sg->length);
+        sg++;
+    } while (--cnt > 0);
+}
+
+static inline void
+dma_unmap_sg(dma_controller_t *dma, dma_sg_t *sg, int cnt)
+{
+    assert(dma != NULL);
+    assert(sg != NULL);
     assert(cnt > 0);
 
     do {
@@ -289,9 +313,15 @@ dma_unmap_sg(dma_controller_t *dma, const dma_sg_t *sg,
             /* bad region */
             continue;
         }
+
         if (sg->writeable) {
             LIST_REMOVE(sg, entry);
+
+            if (dma->dirty_pgsize > 0) {
+                _dma_mark_dirty(dma, r, sg);
+            }
         }
+
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);

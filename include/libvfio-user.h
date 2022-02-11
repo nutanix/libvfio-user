@@ -771,6 +771,19 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to unmap
+ * @cnt: number of scatter/gather entries to unmap
+ */
+void
+vfu_mark_sg_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, int cnt);
+
+/**
+ * Unmaps scatter/gather entries (previously mapped by vfu_map_sg()) from
+ * the process's virtual memory.
+ *
+ * This will automatically mark the sg as dirty if needed.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @sg: array of scatter/gather entries to unmap
  * @iov: array of iovec structures for each scatter/gather entry
  * @cnt: number of scatter/gather entries to unmap
  */
