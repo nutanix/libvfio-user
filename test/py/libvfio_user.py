@@ -547,8 +547,6 @@ class dma_sg_t(Structure):
         ("length", c.c_uint64),
         ("offset", c.c_uint64),
         ("writeable", c.c_bool),
-        ("le_next", c.c_void_p),
-        ("le_prev", c.c_void_p),
     ]
 
     def __str__(self):
