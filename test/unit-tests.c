@@ -267,7 +267,6 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     assert_int_equal(0x1000, r->info.page_size);
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
-    assert_int_equal(0, r->refcnt);
     assert_int_equal(PROT_NONE, r->info.prot);
 }
 
