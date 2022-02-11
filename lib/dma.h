@@ -96,7 +96,6 @@ typedef struct {
     vfu_dma_info_t info;
     int fd;                     // File descriptor to mmap
     off_t offset;               // File offset
-    int refcnt;                 // Number of users of this region
     char *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
 
@@ -255,7 +254,6 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
                 sg->dma_addr + sg->offset + sg->length);
         iov->iov_base = region->info.vaddr + sg->offset;
         iov->iov_len = sg->length;
-        region->refcnt++;
 
         sg++;
         iov++;
@@ -326,7 +324,6 @@ dma_unmap_sg(dma_controller_t *dma, dma_sg_t *sg, int cnt)
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
-        r->refcnt--;
         sg++;
     } while (--cnt > 0);
 }

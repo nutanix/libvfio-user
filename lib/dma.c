@@ -172,8 +172,6 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
             dma->vfu_ctx->in_cb = CB_NONE;
         }
 
-        assert(region->refcnt == 0);
-
         if (region->info.vaddr != NULL) {
             dma_controller_unmap_region(dma, region);
         } else {
