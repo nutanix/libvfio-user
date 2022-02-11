@@ -1301,6 +1301,9 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
     case VFIO_USER_DEVICE_RESET:
         return true;
 
+    case VFIO_USER_DIRTY_PAGES:
+        return true;
+
     case VFIO_USER_REGION_WRITE:
         if (msg->in_size < sizeof(*reg)) {
             /*

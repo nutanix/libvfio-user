@@ -28,11 +28,13 @@
 #
 
 from libvfio_user import *
+import ctypes as c
 import errno
 import mmap
 import tempfile
 
 ctx = None
+quiesce_errno = 0
 
 
 @vfu_dma_register_cb_t
@@ -45,6 +47,14 @@ def dma_unregister(ctx, info):
     return 0
 
 
+@vfu_device_quiesce_cb_t
+def quiesce_cb(ctx):
+    if quiesce_errno:
+        c.set_errno(errno.EBUSY)
+        return -1
+    return 0
+
+
 def test_dirty_pages_setup():
     global ctx, sock
 
@@ -53,6 +63,8 @@ def test_dirty_pages_setup():
 
     ret = vfu_pci_init(ctx)
     assert ret == 0
+
+    vfu_setup_device_quiesce_cb(ctx, quiesce_cb=quiesce_cb)
 
     ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
     assert ret == 0
@@ -271,7 +283,12 @@ def test_dirty_pages_get_unmodified():
     assert br.bitmap.size == 8
 
 
-def get_dirty_page_bitmap():
+def get_dirty_page_bitmap_result(resp):
+    dirty_pages, resp = vfio_user_dirty_pages.pop_from_buffer(resp)
+    br, resp = vfio_user_bitmap_range.pop_from_buffer(resp)
+    return struct.unpack("Q", resp)[0]
+
+def send_dirty_page_bitmap(busy=False):
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
@@ -281,11 +298,11 @@ def get_dirty_page_bitmap():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    result = msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    return msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, busy=busy)
 
-    dirty_pages, result = vfio_user_dirty_pages.pop_from_buffer(result)
-    br, result = vfio_user_bitmap_range.pop_from_buffer(result)
-    return struct.unpack("Q", result)[0]
+def get_dirty_page_bitmap():
+    result = send_dirty_page_bitmap()
+    return get_dirty_page_bitmap_result(result)
 
 
 sg3 = None
@@ -345,13 +362,75 @@ def test_dirty_pages_stop():
     vfu_unmap_sg(ctx, sg3, iovec3)
     assert get_dirty_page_bitmap() == 0b11110000
 
-    # bitmap should be clear after it was unmapped before previous reqeust for
+    # bitmap should be clear after it was unmapped before previous request for
     # dirty pages
     assert get_dirty_page_bitmap() == 0b00000000
 
     # FIXME we have a memory leak as we don't free dirty bitmaps when
     # destroying the context.
     stop_logging()
+
+
+def test_dirty_pages_start_with_quiesce():
+    global quiesce_errno
+
+    quiesce_errno = errno.EBUSY
+
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
+
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+
+    # now should be able to get the reply
+    get_reply(sock, expect=0)
+
+    quiesce_errno = 0
+
+
+def test_dirty_pages_bitmap_with_quiesce():
+    global quiesce_errno
+
+    quiesce_errno = errno.EBUSY
+
+    ret, sg1 = vfu_addr_to_sg(ctx, dma_addr=0x10000, length=0x1000)
+    assert ret == 1
+    iovec1 = iovec_t()
+    ret = vfu_map_sg(ctx, sg1, iovec1)
+    assert ret == 0
+
+    send_dirty_page_bitmap(busy=True)
+
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+
+    # now should be able to get the reply
+    result = get_reply(sock, expect=0)
+    bitmap = get_dirty_page_bitmap_result(result)
+    assert bitmap == 0b00000001
+
+    quiesce_errno = 0
+
+
+def test_dirty_pages_stop_with_quiesce():
+    global quiesce_errno
+
+    quiesce_errno = errno.EBUSY
+
+    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
+                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
+
+    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
+
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+
+    # now should be able to get the reply
+    get_reply(sock, expect=0)
+
+    quiesce_errno = 0
 
 
 def test_dirty_pages_cleanup():
