@@ -89,7 +89,6 @@ struct dma_sg {
     uint64_t length;
     uint64_t offset;
     bool writeable;
-    LIST_ENTRY(dma_sg) entry;
 };
 
 typedef struct {
@@ -105,7 +104,6 @@ typedef struct dma_controller {
     int nregions;
     struct vfu_ctx *vfu_ctx;
     size_t dirty_pgsize;        // Dirty page granularity
-    LIST_HEAD(, dma_sg) maps;
     dma_memory_region_t regions[0];
 } dma_controller_t;
 
@@ -245,10 +243,6 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
             return ERROR_INT(EFAULT);
         }
 
-        if (sg->writeable) {
-            LIST_INSERT_HEAD(&dma->maps, sg, entry);
-        }
-
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
@@ -294,30 +288,22 @@ dma_mark_sg_dirty(dma_controller_t *dma, dma_sg_t *sg, int cnt)
 static inline void
 dma_unmap_sg(dma_controller_t *dma, dma_sg_t *sg, int cnt)
 {
+    dma_memory_region_t *region;
+
     assert(dma != NULL);
     assert(sg != NULL);
     assert(cnt > 0);
 
     do {
-        dma_memory_region_t *r;
-        /*
-         * FIXME this double loop will be removed if we replace the array with
-         * tfind(3)
-         */
-        for (r = dma->regions;
-             r < dma->regions + dma->nregions &&
-             r->info.iova.iov_base != sg->dma_addr;
-             r++);
-        if (r > dma->regions + dma->nregions) {
-            /* bad region */
-            continue;
+        if (sg->region >= dma->nregions) {
+            return;
         }
 
-        if (sg->writeable) {
-            LIST_REMOVE(sg, entry);
+        region = &dma->regions[sg->region];
 
+        if (sg->writeable) {
             if (dma->dirty_pgsize > 0) {
-                _dma_mark_dirty(dma, r, sg);
+                _dma_mark_dirty(dma, region, sg);
             }
         }
 

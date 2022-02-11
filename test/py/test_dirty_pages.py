@@ -347,7 +347,7 @@ def test_dirty_pages_get_modified():
     vfu_unmap_sg(ctx, sg1, iovec1)
     vfu_unmap_sg(ctx, sg4, iovec4)
     bitmap = get_dirty_page_bitmap()
-    assert bitmap == 0b11110101
+    assert bitmap == 0b11110001
 
     # after another two unmaps, should just be one dirty page
     vfu_unmap_sg(ctx, sg2, iovec2)

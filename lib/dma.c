@@ -99,7 +99,6 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
     dma->nregions = 0;
     memset(dma->regions, 0, max_regions * sizeof(dma->regions[0]));
     dma->dirty_pgsize = 0;
-    LIST_INIT(&dma->maps);
 
     return dma;
 }
@@ -468,22 +467,6 @@ out:
     return cnt;
 }
 
-static void
-dma_mark_dirty_sgs(dma_controller_t *dma)
-{
-    struct dma_sg *sg;
-
-    if (dma->dirty_pgsize == 0) {
-        return;
-    }
-
-    LIST_FOREACH(sg, &dma->maps, entry) {
-        if (sg->writeable) {
-            _dma_mark_dirty(dma, &dma->regions[sg->region], sg);
-        }
-    }
-}
-
 int
 dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
@@ -522,8 +505,6 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
         }
     }
     dma->dirty_pgsize = pgsize;
-
-    dma_mark_dirty_sgs(dma);
 
     vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: started logging");
 
@@ -627,8 +608,6 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size);
 #endif
     memset(region->dirty_bitmap, 0, size);
-
-    dma_mark_dirty_sgs(dma);
 
     return 0;
 }
