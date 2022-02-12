@@ -48,13 +48,13 @@
  *   is registered with the DMA controllers at a unique, non-overlapping
  *   linear span of the DMA address space.
  * - To perform DMA, the application should first build a scatter-gather
- *   list (sglist) of dma_sg_t from DMA addresses. Then the sglist
- *   can be mapped using dma_map_sg() into the process's virtual address space
- *   as an iovec for direct access, and unmapped using dma_unmap_sg() when done.
+ *   list (sgl) of dma_sg_t from DMA addresses. Then the sgl
+ *   can be mapped using dma_sgl_get() into the process's virtual address space
+ *   as an iovec for direct access, and unmapped using dma_sgl_put() when done.
  *   Every region is mapped into the application's virtual address space
  *   at registration time with R/W permissions.
- *   dma_map_sg() ignores all protection bits and only does lookups and
- *   returns pointers to the previously mapped regions. dma_unmap_sg() is
+ *   dma_sgl_get() ignores all protection bits and only does lookups and
+ *   returns pointers to the previously mapped regions. dma_sgl_put() is
  *   effectively a no-op.
  */
 
@@ -134,11 +134,11 @@ MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
 MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
              dma_memory_region_t *region);
 
-// Helper for dma_addr_to_sg() slow path.
+// Helper for dma_addr_to_sgl() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
                    vfu_dma_addr_t dma_addr, uint64_t len,
-                   dma_sg_t *sg, int max_sg, int prot);
+                   dma_sg_t *sg, int max_nr_sgs, int prot);
 
 static void
 _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
@@ -187,13 +187,13 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
  *     -1 if
  *          - the DMA address span is invalid
  *          - protection violation (errno=EACCES)
- *     (-x - 1) if @max_sg is too small, where x is the number of sg entries
+ *     (-x - 1) if @max_nr_sgs is too small, where x is the number of sg entries
  *     necessary to complete this request.
  */
 static inline int
-dma_addr_to_sg(const dma_controller_t *dma,
-               vfu_dma_addr_t dma_addr, size_t len,
-               dma_sg_t *sg, int max_sg, int prot)
+dma_addr_to_sgl(const dma_controller_t *dma,
+                vfu_dma_addr_t dma_addr, size_t len,
+                dma_sg_t *sgl, size_t max_nr_sgs, int prot)
 {
     static __thread int region_hint;
     int cnt, ret;
@@ -202,11 +202,11 @@ dma_addr_to_sg(const dma_controller_t *dma,
     const void *region_end = iov_end(&region->info.iova);
 
     // Fast path: single region.
-    if (likely(max_sg > 0 && len > 0 &&
+    if (likely(max_nr_sgs > 0 && len > 0 &&
                dma_addr >= region->info.iova.iov_base &&
                dma_addr + len <= region_end &&
                region_hint < dma->nregions)) {
-        ret = dma_init_sg(dma, sg, dma_addr, len, prot, region_hint);
+        ret = dma_init_sg(dma, sgl, dma_addr, len, prot, region_hint);
         if (ret < 0) {
             return ret;
         }
@@ -214,23 +214,25 @@ dma_addr_to_sg(const dma_controller_t *dma,
         return 1;
     }
     // Slow path: search through regions.
-    cnt = _dma_addr_sg_split(dma, dma_addr, len, sg, max_sg, prot);
+    cnt = _dma_addr_sg_split(dma, dma_addr, len, sgl, max_nr_sgs, prot);
     if (likely(cnt > 0)) {
-        region_hint = sg->region;
+        region_hint = sgl[0].region;
     }
     return cnt;
 }
 
 static inline int
-dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
-           int cnt)
+dma_sgl_get(dma_controller_t *dma, dma_sg_t *sgl, struct iovec *iov, size_t cnt)
 {
     dma_memory_region_t *region;
+    dma_sg_t *sg;
 
     assert(dma != NULL);
-    assert(sg != NULL);
+    assert(sgl != NULL);
     assert(iov != NULL);
     assert(cnt > 0);
+
+    sg = sgl;
 
     do {
         if (sg->region >= dma->nregions) {
@@ -256,13 +258,16 @@ dma_map_sg(dma_controller_t *dma, dma_sg_t *sg, struct iovec *iov,
 }
 
 static inline void
-dma_mark_sg_dirty(dma_controller_t *dma, dma_sg_t *sg, int cnt)
+dma_sgl_mark_dirty(dma_controller_t *dma, dma_sg_t *sgl, size_t cnt)
 {
     dma_memory_region_t *region;
+    dma_sg_t *sg;
 
     assert(dma != NULL);
-    assert(sg != NULL);
+    assert(sgl != NULL);
     assert(cnt > 0);
+
+    sg = sgl;
 
     do {
         if (sg->region >= dma->nregions) {
@@ -285,13 +290,16 @@ dma_mark_sg_dirty(dma_controller_t *dma, dma_sg_t *sg, int cnt)
 }
 
 static inline void
-dma_unmap_sg(dma_controller_t *dma, dma_sg_t *sg, int cnt)
+dma_sgl_put(dma_controller_t *dma, dma_sg_t *sgl, size_t cnt)
 {
     dma_memory_region_t *region;
+    dma_sg_t *sg;
 
     assert(dma != NULL);
-    assert(sg != NULL);
+    assert(sgl != NULL);
     assert(cnt > 0);
+
+    sg = sgl;
 
     do {
         if (sg->region >= dma->nregions) {

@@ -119,7 +119,7 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     mock_dma_register.assert_called_once()
 
     # check that the DMA region has been added
-    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
     assert len(sgs) == 1
     sg = sgs[0]
     assert sg.dma_addr == 0x10000 and sg.region == 0 and sg.length == 0x1000 \
@@ -224,7 +224,7 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     mock_reset.assert_called_once()
 
     # check that the DMA region was NOT added
-    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
     assert count == -1
     assert c.get_errno() == errno.ENOENT
 

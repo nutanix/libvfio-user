@@ -310,45 +310,45 @@ iovec3 = None
 
 
 def test_dirty_pages_get_modified():
-    ret, sg1 = vfu_addr_to_sg(ctx, dma_addr=0x10000, length=0x1000)
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10000, length=0x1000)
     assert ret == 1
     iovec1 = iovec_t()
-    ret = vfu_map_sg(ctx, sg1, iovec1)
+    ret = vfu_sgl_get(ctx, sg1, iovec1)
     assert ret == 0
 
     # read only
-    ret, sg2 = vfu_addr_to_sg(ctx, dma_addr=0x11000, length=0x1000,
-                              prot=mmap.PROT_READ)
+    ret, sg2 = vfu_addr_to_sgl(ctx, dma_addr=0x11000, length=0x1000,
+                               prot=mmap.PROT_READ)
     assert ret == 1
     iovec2 = iovec_t()
-    ret = vfu_map_sg(ctx, sg2, iovec2)
+    ret = vfu_sgl_get(ctx, sg2, iovec2)
     assert ret == 0
 
-    ret, sg3 = vfu_addr_to_sg(ctx, dma_addr=0x12000, length=0x1000)
+    ret, sg3 = vfu_addr_to_sgl(ctx, dma_addr=0x12000, length=0x1000)
     assert ret == 1
     iovec3 = iovec_t()
-    ret = vfu_map_sg(ctx, sg3, iovec3)
+    ret = vfu_sgl_get(ctx, sg3, iovec3)
     assert ret == 0
 
-    ret, sg4 = vfu_addr_to_sg(ctx, dma_addr=0x14000, length=0x4000)
+    ret, sg4 = vfu_addr_to_sgl(ctx, dma_addr=0x14000, length=0x4000)
     assert ret == 1
     iovec4 = iovec_t()
-    ret = vfu_map_sg(ctx, sg4, iovec4)
+    ret = vfu_sgl_get(ctx, sg4, iovec4)
     assert ret == 0
 
-    # not unmapped yet, dirty bitmap should be zero
+    # not put yet, dirty bitmap should be zero
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b00000000
 
-    # unmap segments, dirty bitmap should be updated
-    vfu_unmap_sg(ctx, sg1, iovec1)
-    vfu_unmap_sg(ctx, sg4, iovec4)
+    # put SGLs, dirty bitmap should be updated
+    vfu_sgl_put(ctx, sg1, iovec1)
+    vfu_sgl_put(ctx, sg4, iovec4)
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b11110001
 
-    # after another two unmaps, should just be one dirty page
-    vfu_unmap_sg(ctx, sg2, iovec2)
-    vfu_unmap_sg(ctx, sg3, iovec3)
+    # after another two puts, should just be one dirty page
+    vfu_sgl_put(ctx, sg2, iovec2)
+    vfu_sgl_put(ctx, sg3, iovec3)
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b00000100
 

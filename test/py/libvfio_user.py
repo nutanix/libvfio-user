@@ -610,12 +610,12 @@ lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
     c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
-lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
-                               c.POINTER(dma_sg_t), c.c_int, c.c_int)
-lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
-                           c.c_int, c.c_int)
-lib.vfu_unmap_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
-                             c.POINTER(iovec_t), c.c_int)
+lib.vfu_addr_to_sgl.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
+                                c.POINTER(dma_sg_t), c.c_size_t, c.c_int)
+lib.vfu_sgl_get.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
+                            c.c_size_t, c.c_int)
+lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
+                            c.POINTER(iovec_t), c.c_size_t)
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
@@ -1142,21 +1142,22 @@ def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
     return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
 
 
-def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
-                   prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
+def vfu_addr_to_sgl(ctx, dma_addr, length, max_nr_sgs=1,
+                    prot=(mmap.PROT_READ | mmap.PROT_WRITE)):
     assert ctx is not None
 
-    sg = (dma_sg_t * max_sg)()
+    sg = (dma_sg_t * max_nr_sgs)()
 
-    return (lib.vfu_addr_to_sg(ctx, dma_addr, length, sg, max_sg, prot), sg)
-
-
-def vfu_map_sg(ctx, sg, iovec, cnt=1, flags=0):
-    return lib.vfu_map_sg(ctx, sg, iovec, cnt, flags)
+    return (lib.vfu_addr_to_sgl(ctx, dma_addr, length,
+                                sg, max_nr_sgs, prot), sg)
 
 
-def vfu_unmap_sg(ctx, sg, iovec, cnt=1):
-    return lib.vfu_unmap_sg(ctx, sg, iovec, cnt)
+def vfu_sgl_get(ctx, sg, iovec, cnt=1, flags=0):
+    return lib.vfu_sgl_get(ctx, sg, iovec, cnt, flags)
+
+
+def vfu_sgl_put(ctx, sg, iovec, cnt=1):
+    return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
 
 
 def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):

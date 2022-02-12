@@ -413,7 +413,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
                    vfu_dma_addr_t dma_addr, uint64_t len,
-                   dma_sg_t *sg, int max_sg, int prot)
+                   dma_sg_t *sg, int max_nr_sgs, int prot)
 {
     int idx;
     int cnt = 0, ret;
@@ -429,7 +429,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
             while (dma_addr >= region_start && dma_addr < region_end) {
                 size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
-                if (cnt < max_sg) {
+                if (cnt < max_nr_sgs) {
                     ret = dma_init_sg(dma, &sg[cnt], dma_addr, region_len, prot, idx);
                     if (ret < 0) {
                         return ret;
@@ -456,7 +456,7 @@ out:
         // There is still a region which was not found.
         assert(len > 0);
         return ERROR_INT(ENOENT);
-    } else if (cnt > max_sg) {
+    } else if (cnt > max_nr_sgs) {
         cnt = -cnt - 1;
     }
     errno = 0;
@@ -541,7 +541,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * is purely for simplifying the implementation. We MUST allow arbitrary
      * IOVAs.
      */
-    ret = dma_addr_to_sg(dma, addr, len, &sg, 1, PROT_NONE);
+    ret = dma_addr_to_sgl(dma, addr, len, &sg, 1, PROT_NONE);
     if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
         return ERROR_INT(ENOTSUP);
     }
@@ -574,10 +574,6 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    /*
-     * TODO race condition between resetting bitmap and user calling
-     * vfu_map_sg/vfu_unmap_sg().
-     */
     memcpy(bitmap, region->dirty_bitmap, size);
     memset(region->dirty_bitmap, 0, size);
 

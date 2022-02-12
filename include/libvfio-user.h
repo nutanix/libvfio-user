@@ -347,10 +347,8 @@ typedef enum vfu_reset_type {
  * Device callback for quiescing the device.
  *
  * vfu_run_ctx uses this callback to request from the device to quiesce its
- * operation. A quiesced device must call the following functions:
- *  - vfu_dma_read and vfu_dma_write,
- *  - vfu_addr_to_sg, vfu_map_sg, and vfu_unmap_sg, unless it does so from a
- *    device callback.
+ * operation. A quiesced device must not call vfu_addr_to_sgl() or vfu_sgl_*(),
+ * unless it does so from a quiesce callback.
  *
  * The callback can return two values:
  * 1) 0: this indicates that the device was quiesced. vfu_run_ctx then continues
@@ -368,7 +366,7 @@ typedef enum vfu_reset_type {
  * the migration transition callback. These callbacks are only called after the
  * device has been quiesced.
  *
- * The following example demonstrates how a device can use vfu_map_sg and
+ * The following example demonstrates how a device can use the SG routines and
  * friends while quiesced:
  *
  * A DMA region is mapped, libvfio-user calls the quiesce callback but the
@@ -380,18 +378,18 @@ typedef enum vfu_reset_type {
  *     }
  *
  * While quiescing, the device can continue to operate as normal, including
- * calling functions such as vfu_map_sg. Then, the device finishes quiescing:
+ * calling functions such as vfu_sgl_get(). Then, the device finishes quiescing:
  *
  *  vfu_quiesce_done(vfu_ctx, 0);
  *
  * At this point, the device must have stopped using functions like
- * vfu_map_sg(), for example by pausing any I/O threads.  libvfio-user
+ * vfu_sgl_get(), for example by pausing any I/O threads.  libvfio-user
  * eventually calls the dma_register device callback before vfu_quiesce_done
  * returns. In this callback the device is allowed to call functions such as
- * vfu_map_sg:
+ * vfu_sgl_get()
  *
  *     void (dma_register_cb(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info) {
- *         vfu_map_sg(ctx, ...);
+ *         vfu_sgl_get(ctx, ...);
  *     }
  *
  * Once vfu_quiesce_done returns, the device is unquiesced.
@@ -450,7 +448,7 @@ vfu_setup_device_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_cb_t *reset);
  *
  * @iova: guest DMA range. This is the guest physical range (as we don't
  *   support vIOMMU) that the guest registers for DMA, via a VFIO_USER_DMA_MAP
- *   message, and is the address space used as input to vfu_addr_to_sg().
+ *   message, and is the address space used as input to vfu_addr_to_sgl().
  * @vaddr: if the range is mapped into this process, this is the virtual address
  *   of the start of the region.
  * @mapping: if @vaddr is non-NULL, this range represents the actual range
@@ -516,9 +514,9 @@ typedef void (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
  * DMA range addition or removal, these callbacks will be invoked.
  *
  * If this function is not called, guest DMA regions are not accessible via
- * vfu_addr_to_sg().
+ * vfu_addr_to_sgl().
  *
- * To directly access this DMA memory via a local mapping with vfu_map_sg(), at
+ * To directly access this DMA memory via a local mapping with vfu_sgl_get(), at
  * least @dma_unregister must be provided.
  *
  * @vfu_ctx: the libvfio-user context
@@ -727,33 +725,34 @@ vfu_irq_trigger(vfu_ctx_t *vfu_ctx, uint32_t subindex);
  * @vfu_ctx: the libvfio-user context
  * @dma_addr: the guest physical address
  * @len: size of memory to be mapped
- * @sg: array that receives the scatter/gather entries to be mapped
- * @max_sg: maximum number of elements in above array
+ * @sgl: array that receives the scatter/gather entries to be mapped
+ * @max_nr_sgs: maximum number of elements in above array
  * @prot: protection as defined in <sys/mman.h>
  *
  * @returns the number of scatter/gather entries created on success, and on
  * failure:
  *  -1:         if the GPA address span is invalid (errno=ENOENT) or
  *              protection violation (errno=EACCES)
- *  (-x - 1):   if @max_sg is too small, where x is the number of scatter/gather
+ *  (-x - 1):   if @max_nr_sgs is too small, where x is the number of SG
  *              entries necessary to complete this request (errno=0).
  */
 int
-vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
-               dma_sg_t *sg, int max_sg, int prot);
+vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
+                dma_sg_t *sgl, size_t max_nr_sgs, int prot);
 
 /**
- * Maps scatter/gather entries from the guest's physical address space to the
- * process's virtual memory. It is the caller's responsibility to remove the
- * mappings by calling vfu_unmap_sg().
+ * Populate the given iovec array (accessible in the process's virtual memory),
+ * based upon the SGL previously built via vfu_addr_to_sgl().
+ * It is the caller's responsibility to return the release the iovecs via
+ * vfu_sgl_put().
  *
  * This is only supported when a @dma_unregister callback is provided to
  * vfu_setup_device_dma().
  *
  * @vfu_ctx: the libvfio-user context
- * @sg: array of scatter/gather entries returned by vfu_addr_to_sg. These
- *      entries must not be modified and the array must not be deallocated
- *      until vfu_unmap_sg() has been called.
+ * @sgl: array of scatter/gather entries returned by vfu_addr_to_sg. These
+ *       entries must not be modified and the array must not be deallocated
+ *       until vfu_sgl_put() has been called.
  * @iov: array of iovec structures (defined in <sys/uio.h>) to receive each
  *       mapping
  * @cnt: number of scatter/gather entries to map
@@ -762,38 +761,36 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
-           int flags);
+vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
+            int flags);
 
 /**
- * Unmaps scatter/gather entries (previously mapped by vfu_map_sg()) from
- * the process's virtual memory.
+ * Mark the given SGL as dirty (written to).
  *
  * @vfu_ctx: the libvfio-user context
- * @sg: array of scatter/gather entries to unmap
- * @cnt: number of scatter/gather entries to unmap
+ * @sgl: array of scatter/gather entries to mark dirty
+ * @cnt: number of scatter/gather entries to mark dirty
  */
 void
-vfu_mark_sg_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, int cnt);
+vfu_sgl_mark_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt);
 
 /**
- * Unmaps scatter/gather entries (previously mapped by vfu_map_sg()) from
- * the process's virtual memory.
+ * Release the iovec array previously acquired by vfu_sgl_get().
  *
- * This will automatically mark the sg as dirty if needed.
+ * This will automatically mark the sgl as dirty if needed.
  *
  * @vfu_ctx: the libvfio-user context
- * @sg: array of scatter/gather entries to unmap
+ * @sgl: array of scatter/gather entries to unmap
  * @iov: array of iovec structures for each scatter/gather entry
  * @cnt: number of scatter/gather entries to unmap
  */
 void
-vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt);
+vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt);
 
 /**
  * Read from the dma region exposed by the client. This can be used as an
- * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
- * notification callbacks have not been provided.
+ * alternative to reading from a vfu_sgl_get() mapping, if the region is not
+ * directly mappable, or DMA notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -802,12 +799,12 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt);
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
+vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t cnt, void *data);
 
 /**
- * Write to the dma region exposed by the client.  This can be used as an
- * alternative to vfu_map_sg(), if the region is not directly mappable, or DMA
- * notification callbacks have not been provided.
+ * Write to the dma region exposed by the client. This can be used as an
+ * alternative to reading from a vfu_sgl_get() mapping, if the region is not
+ * directly mappable, or DMA notification callbacks have not been provided.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg
@@ -816,7 +813,7 @@ vfu_dma_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_dma_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, void *data);
+vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t cnt, void *data);
 
 /*
  * Supported PCI regions.

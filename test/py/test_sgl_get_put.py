@@ -35,7 +35,7 @@ import tempfile
 ctx = None
 
 
-def test_map_sg_with_invalid_region():
+def test_sgl_get_with_invalid_region():
     global ctx
 
     ctx = prepare_ctx_for_dma()
@@ -43,12 +43,12 @@ def test_map_sg_with_invalid_region():
 
     sg = dma_sg_t()
     iovec = iovec_t()
-    ret = vfu_map_sg(ctx, sg, iovec)
+    ret = vfu_sgl_get(ctx, sg, iovec)
     assert ret == -1
     assert ctypes.get_errno() == errno.EINVAL
 
 
-def test_map_sg_without_fd():
+def test_sgl_get_without_fd():
     sock = connect_client(ctx)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
@@ -59,14 +59,14 @@ def test_map_sg_without_fd():
     sg = dma_sg_t()
     iovec = iovec_t()
     sg.region = 0
-    ret = vfu_map_sg(ctx, sg, iovec)
+    ret = vfu_sgl_get(ctx, sg, iovec)
     assert ret == -1
     assert ctypes.get_errno() == errno.EFAULT
 
     disconnect_client(ctx, sock)
 
 
-def test_map_multiple_sge():
+def test_get_multiple_sge():
     sock = connect_client(ctx)
     regions = 4
     f = tempfile.TemporaryFile()
@@ -78,12 +78,12 @@ def test_map_multiple_sge():
             offset=0, addr=0x1000 * i, size=4096)
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
-    ret, sg = vfu_addr_to_sg(ctx, dma_addr=0x1000, length=4096 * 3, max_sg=3,
-                             prot=mmap.PROT_READ)
+    ret, sg = vfu_addr_to_sgl(ctx, dma_addr=0x1000, length=4096 * 3,
+                              max_nr_sgs=3, prot=mmap.PROT_READ)
     assert ret == 3
 
     iovec = (iovec_t * 3)()
-    ret = vfu_map_sg(ctx, sg, iovec, cnt=3)
+    ret = vfu_sgl_get(ctx, sg, iovec, cnt=3)
     assert ret == 0
     assert iovec[0].iov_len == 4096
     assert iovec[1].iov_len == 4096
@@ -92,7 +92,7 @@ def test_map_multiple_sge():
     disconnect_client(ctx, sock)
 
 
-def test_unmap_sg():
+def test_sgl_put():
     sock = connect_client(ctx)
     regions = 4
     f = tempfile.TemporaryFile()
@@ -104,19 +104,19 @@ def test_unmap_sg():
             offset=0, addr=0x1000 * i, size=4096)
         msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
-    ret, sg = vfu_addr_to_sg(ctx, dma_addr=0x1000, length=4096 * 3, max_sg=3,
-                             prot=mmap.PROT_READ)
+    ret, sg = vfu_addr_to_sgl(ctx, dma_addr=0x1000, length=4096 * 3,
+                              max_nr_sgs=3, prot=mmap.PROT_READ)
     assert ret == 3
 
     iovec = (iovec_t * 3)()
-    ret = vfu_map_sg(ctx, sg, iovec, cnt=3)
+    ret = vfu_sgl_get(ctx, sg, iovec, cnt=3)
     assert ret == 0
-    vfu_unmap_sg(ctx, sg, iovec, cnt=3)
+    vfu_sgl_put(ctx, sg, iovec, cnt=3)
 
     disconnect_client(ctx, sock)
 
 
-def test_map_unmap_sg_cleanup():
+def test_sgl_get_put_cleanup():
     vfu_destroy_ctx(ctx)
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:
