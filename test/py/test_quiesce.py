@@ -102,7 +102,7 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
     mock_dma_register.assert_not_called()
 
     # check that the DMA region was NOT added
-    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
     assert count == -1
     assert c.get_errno() == errno.ENOENT
 
@@ -110,18 +110,18 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
 # DMA map/unmap, migration device state transition, and reset callbacks
 # have the same function signature in Python
 def _side_effect(ctx, _):
-    count, sgs = vfu_addr_to_sg(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
     assert count == 1
     sg = sgs[0]
     assert sg.dma_addr == 0x10000 and sg.region == 0 \
         and sg.length == 0x1000 and sg.offset == 0 and sg.writeable
     iovec = iovec_t()
-    ret = vfu_map_sg(ctx, sg, iovec)
+    ret = vfu_sgl_get(ctx, sg, iovec)
     assert ret == 0, "%s" % c.get_errno()
     assert iovec.iov_base != 0
     assert iovec.iov_len == 0x1000
     assert ret == 0
-    vfu_unmap_sg(ctx, sg, iovec)
+    vfu_sgl_put(ctx, sg, iovec)
     return 0
 
 

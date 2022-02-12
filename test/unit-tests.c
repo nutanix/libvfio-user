@@ -310,7 +310,7 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
 }
 
 static void
-test_dma_addr_to_sg(void **state UNUSED)
+test_dma_addr_to_sgl(void **state UNUSED)
 {
     dma_memory_region_t *r, *r1;
     dma_sg_t sg[2];
@@ -325,8 +325,8 @@ test_dma_addr_to_sg(void **state UNUSED)
 
     /* fast path, region hint hit */
     r->info.prot = PROT_WRITE;
-    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, sg, 1, PROT_READ);
+    ret = dma_addr_to_sgl(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
+                          0x400, sg, 1, PROT_READ);
     assert_int_equal(1, ret);
     assert_int_equal(r->info.iova.iov_base, sg[0].dma_addr);
     assert_int_equal(0, sg[0].region);
@@ -337,20 +337,20 @@ test_dma_addr_to_sg(void **state UNUSED)
 
     errno = 0;
     r->info.prot = PROT_WRITE;
-    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x6000,
-                         0x400, sg, 1, PROT_READ);
+    ret = dma_addr_to_sgl(vfu_ctx.dma, (vfu_dma_addr_t)0x6000,
+                          0x400, sg, 1, PROT_READ);
     assert_int_equal(-1, ret);
     assert_int_equal(ENOENT, errno);
 
     r->info.prot = PROT_READ;
-    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, sg, 1, PROT_WRITE);
+    ret = dma_addr_to_sgl(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
+                          0x400, sg, 1, PROT_WRITE);
     assert_int_equal(-1, ret);
     assert_int_equal(EACCES, errno);
 
     r->info.prot = PROT_READ|PROT_WRITE;
-    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
-                         0x400, sg, 1, PROT_READ);
+    ret = dma_addr_to_sgl(vfu_ctx.dma, (vfu_dma_addr_t)0x2000,
+                          0x400, sg, 1, PROT_READ);
     assert_int_equal(1, ret);
 
     vfu_ctx.dma->nregions = 2;
@@ -359,8 +359,8 @@ test_dma_addr_to_sg(void **state UNUSED)
     r1->info.iova.iov_len = 0x2000;
     r1->info.vaddr = (void *)0xcafebabe;
     r1->info.prot = PROT_WRITE;
-    ret = dma_addr_to_sg(vfu_ctx.dma, (vfu_dma_addr_t)0x1000,
-                         0x5000, sg, 2, PROT_READ);
+    ret = dma_addr_to_sgl(vfu_ctx.dma, (vfu_dma_addr_t)0x1000,
+                          0x5000, sg, 2, PROT_READ);
     assert_int_equal(2, ret);
     assert_int_equal(0x4000, sg[0].length);
     assert_int_equal(r->info.iova.iov_base, sg[0].dma_addr);
@@ -374,7 +374,7 @@ test_dma_addr_to_sg(void **state UNUSED)
     assert_int_equal(0, sg[1].offset);
     assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg[1]));
 
-    assert_int_equal(0, dma_map_sg(vfu_ctx.dma, sg, iov, 2));
+    assert_int_equal(0, dma_sgl_get(vfu_ctx.dma, sg, iov, 2));
     assert_int_equal(r->info.vaddr + sg[0].offset, iov[0].iov_base);
     assert_int_equal(sg[0].length, iov[0].iov_len);
     assert_int_equal(r1->info.vaddr + sg[1].offset, iov[1].iov_base);
@@ -672,7 +672,7 @@ main(void)
         cmocka_unit_test_setup(test_dma_controller_add_region_no_fd, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
-        cmocka_unit_test_setup(test_dma_addr_to_sg, setup),
+        cmocka_unit_test_setup(test_dma_addr_to_sgl, setup),
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
         cmocka_unit_test_setup_teardown(test_setup_migration_region_size_ok,
