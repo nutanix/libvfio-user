@@ -332,11 +332,6 @@ def stop_logging():
 
     msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
 
-    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
-                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
-
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
-
 
 def test_dirty_pages_stop():
     stop_logging()
