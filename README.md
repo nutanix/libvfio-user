@@ -103,7 +103,8 @@ make libvfio-user multi-thread safe.
 The library (and the protocol) are actively under development, and should not
 yet be considered a stable API or interface.
 
-The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h).
+The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h),
+along with some additional [documentation](docs/).
 
 Mailing List & Chat
 ===================
