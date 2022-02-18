@@ -206,7 +206,7 @@ def test_reply_fail_quiesce_busy(mock_get_pending_bytes, mock_quiesce,
     read_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX,
                 vfio_user_migration_info.pending_bytes.offset,
                 vfio_user_migration_info.pending_bytes.size, rsp=False,
-                expect_run_ctx_errno=errno.EBUSY)
+                busy=True)
 
     # vfu_run_ctx will try to reset the context and to do that it needs to
     # quiesce the device first

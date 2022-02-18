@@ -62,7 +62,7 @@ def test_dma_region_too_big():
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect_reply_errno=errno.ENOSPC)
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
 
 
 def test_dma_region_too_many():
@@ -79,7 +79,7 @@ def test_dma_region_too_many():
         else:
             expect = 0
 
-        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect_reply_errno=expect)
+        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
@@ -98,7 +98,7 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
         offset=0, addr=0x10000, size=0x1000)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
-        expect_run_ctx_errno=errno.EBUSY)
+        busy=True)
 
     assert mock_dma_register.call_count == 0
 
@@ -195,7 +195,7 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
         offset=0, addr=0x10000, size=0x1000)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
-        expect_run_ctx_errno=errno.EBUSY)
+        busy=True)
 
     mock_quiesce.assert_called_once_with(ctx)
 

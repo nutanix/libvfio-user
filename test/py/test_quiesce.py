@@ -94,7 +94,7 @@ def test_device_quiesce_error_after_busy(mock_quiesce, mock_dma_register):
         offset=0, addr=0x10000, size=0x1000)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
-        expect_run_ctx_errno=errno.EBUSY)
+        busy=True)
 
     ret = vfu_device_quiesced(ctx, errno.ENOTTY)
     assert ret == 0
@@ -125,23 +125,19 @@ def _side_effect(ctx, _):
     return 0
 
 
-def _map_dma_region(ctx, sock, expect_run_ctx_errno=0):
-    rsp = expect_run_ctx_errno != errno.EBUSY
+def _map_dma_region(ctx, sock, busy=False):
     f = tempfile.TemporaryFile()
     f.truncate(0x1000)
     map_payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10000, size=0x1000)
-    msg(ctx, sock, VFIO_USER_DMA_MAP, map_payload, rsp=rsp,
-        expect_run_ctx_errno=expect_run_ctx_errno, fds=[f.fileno()])
+    msg(ctx, sock, VFIO_USER_DMA_MAP, map_payload, busy=busy, fds=[f.fileno()])
 
 
-def _unmap_dma_region(ctx, sock, expect_run_ctx_errno=0):
-    rsp = expect_run_ctx_errno != errno.EBUSY
+def _unmap_dma_region(ctx, sock, busy=False):
     unmap_payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   addr=0x10000, size=0x1000)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, unmap_payload, rsp=rsp,
-        expect_run_ctx_errno=expect_run_ctx_errno)
+    msg(ctx, sock, VFIO_USER_DMA_UNMAP, unmap_payload, busy=busy)
 
 
 @patch('libvfio_user.dma_register', side_effect=_side_effect)
@@ -193,7 +189,7 @@ def test_allowed_funcs_in_quiesced_dma_unregister_busy(mock_quiesce,
     global ctx, sock
     _map_dma_region(ctx, sock)
     mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
-    _unmap_dma_region(ctx, sock, expect_run_ctx_errno=errno.EBUSY)
+    _unmap_dma_region(ctx, sock, busy=True)
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
     mock_dma_unregister.assert_called_once_with(ctx, mock.ANY)
@@ -223,7 +219,7 @@ def test_allowed_funcs_in_quiesed_migration_busy(mock_quiesce,
     data = VFIO_DEVICE_STATE_STOP.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
-                 expect_run_ctx_errno=errno.EBUSY)
+                 busy=True)
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
     mock_trans.assert_called_once_with(ctx, VFIO_DEVICE_STATE_STOP)
@@ -245,7 +241,7 @@ def test_allowed_funcs_in_quiesced_reset_busy(mock_quiesce, mock_reset):
     _map_dma_region(ctx, sock)
     mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
     msg(ctx, sock, VFIO_USER_DEVICE_RESET, rsp=False,
-        expect_run_ctx_errno=errno.EBUSY)
+        busy=True)
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
     mock_reset.assert_called_once_with(ctx, VFU_RESET_DEVICE)

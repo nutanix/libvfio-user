@@ -668,9 +668,7 @@ def disconnect_client(ctx, sock):
     sock.close()
 
     # notice client closed connection
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.ENOTCONN, os.strerror(c.get_errno())
+    vfu_run_ctx(ctx, errno.ENOTCONN)
 
 
 def get_reply(sock, expect=0):
@@ -681,17 +679,18 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
-def msg(ctx, sock, cmd, payload=bytearray(), expect_reply_errno=0, fds=None,
-        rsp=True, expect_run_ctx_errno=None):
+def msg(ctx, sock, cmd, payload=bytearray(), expect=0, fds=None,
+        rsp=True, busy=False):
     """
     Round trip a request and reply to the server. vfu_run_ctx will be
     called once for the server to process the incoming message,
-    @expect_run_ctx_errrno checks the return value of vfu_run_ctx. If a
-    response is not expected then @rsp must be set to False, otherwise this
-    function will block indefinitely.
+    If a response is not expected then @rsp must be set to False, otherwise
+    this function will block indefinitely.
+    If busy is True, then we expect the server to have returned EBUSY from a
+    quiesce callback, and hence vfu_run_ctx(); in this case, there will be no
+    response: it can later be retrieved, post vfu_device_quiesced(), with
+    get_reply().
     """
-    # FIXME if expect_run_ctx_errno == errno.EBUSY then shouldn't it implied
-    # that rsp == False?
     hdr = vfio_user_header(cmd, size=len(payload))
 
     if fds:
@@ -700,13 +699,15 @@ def msg(ctx, sock, cmd, payload=bytearray(), expect_reply_errno=0, fds=None,
     else:
         sock.send(hdr + payload)
 
-    ret = vfu_run_ctx(ctx, expect_errno=expect_run_ctx_errno)
-    if expect_run_ctx_errno is None:
-        assert ret >= 0, os.strerror(c.get_errno())
+    if busy:
+        vfu_run_ctx(ctx, errno.EBUSY)
+        rsp = False
+    else:
+        vfu_run_ctx(ctx)
 
     if not rsp:
         return
-    return get_reply(sock, expect=expect_reply_errno)
+    return get_reply(sock, expect=expect)
 
 
 def get_reply_fds(sock, expect=0):
@@ -781,7 +782,7 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
 
 
 def access_region(ctx, sock, is_write, region, offset, count,
-                  data=None, expect=0, rsp=True, expect_run_ctx_errno=None):
+                  data=None, expect=0, rsp=True, busy=False):
     # struct vfio_user_region_access
     payload = struct.pack("QII", offset, region, count)
     if is_write:
@@ -789,8 +790,7 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
     cmd = VFIO_USER_REGION_WRITE if is_write else VFIO_USER_REGION_READ
 
-    result = msg(ctx, sock, cmd, payload, expect_reply_errno=expect, rsp=rsp,
-                 expect_run_ctx_errno=expect_run_ctx_errno)
+    result = msg(ctx, sock, cmd, payload, expect=expect, rsp=rsp, busy=busy)
 
     if is_write:
         return None
@@ -800,15 +800,15 @@ def access_region(ctx, sock, is_write, region, offset, count,
 
 
 def write_region(ctx, sock, region, offset, count, data, expect=0, rsp=True,
-                 expect_run_ctx_errno=None):
+                 busy=False):
     access_region(ctx, sock, True, region, offset, count, data, expect=expect,
-                  rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
+                  rsp=rsp, busy=busy)
 
 
 def read_region(ctx, sock, region, offset, count, expect=0, rsp=True,
-                expect_run_ctx_errno=None):
+                busy=False):
     return access_region(ctx, sock, False, region, offset, count,
-        expect=expect, rsp=rsp, expect_run_ctx_errno=expect_run_ctx_errno)
+        expect=expect, rsp=rsp, busy=busy)
 
 
 def ext_cap_hdr(buf, offset):
@@ -968,13 +968,13 @@ def vfu_attach_ctx(ctx, expect=0):
     return ret
 
 
-def vfu_run_ctx(ctx, expect_errno=None):
+def vfu_run_ctx(ctx, expect=0):
     ret = lib.vfu_run_ctx(ctx)
-    if expect_errno:
-        assert ret < 0 and expect_errno == c.get_errno(), \
-            "ret=%s, expected '%s' (%d), actual '%s' (%s)" % \
-                (ret, os.strerror(expect_errno), expect_errno,
-                 os.strerror(c.get_errno()), c.get_errno())
+    if expect == 0:
+        assert ret >= 0, "vfu_run_ctx(): %s" % os.strerror(c.get_errno())
+    else:
+        assert ret == -1
+        assert c.get_errno() == expect
     return ret
 
 
