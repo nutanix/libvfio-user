@@ -54,7 +54,7 @@ def test_device_get_info():
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
     # bad argsz
 
@@ -62,7 +62,7 @@ def test_device_get_info():
                                     num_regions=0, num_irqs=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
     # valid with larger argsz
 

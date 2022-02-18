@@ -62,21 +62,21 @@ def test_device_get_irq_info_bad_in():
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
     # bad argsz
     payload = vfio_irq_info(argsz=8, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
     # bad index
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_NUM_IRQS,
                             count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_get_irq_info():

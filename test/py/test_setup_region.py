@@ -234,7 +234,7 @@ def test_region_offset_too_short():
     payload = struct.pack("Q", 0)
 
     msg(ctx, sock, VFIO_USER_REGION_WRITE, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
     disconnect_client(ctx, sock)
 

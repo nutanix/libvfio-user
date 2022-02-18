@@ -186,7 +186,7 @@ def test_valid_negotiate_empty_json():
     client_version_json(json=b'{}')
 
     # notice client closed connection
-    vfu_run_ctx(ctx)
+    vfu_run_ctx(ctx, expect=errno.ENOTCONN)
 
 
 def test_valid_negotiate_json():
@@ -196,7 +196,7 @@ def test_valid_negotiate_json():
          "utf-8"))
 
     # notice client closed connection
-    vfu_run_ctx(ctx)
+    vfu_run_ctx(ctx, expect=errno.ENOTCONN)
 
 
 def test_destroying():

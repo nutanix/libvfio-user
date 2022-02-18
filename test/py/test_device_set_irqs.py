@@ -70,7 +70,7 @@ def test_device_set_irqs_short_write():
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_argsz():
@@ -79,7 +79,7 @@ def test_device_set_irqs_bad_argsz():
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_index():
@@ -88,7 +88,7 @@ def test_device_set_irqs_bad_index():
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
@@ -97,7 +97,7 @@ def test_device_set_irqs_bad_flags_MASK_and_UNMASK():
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_flags_DATA_NONE_and_DATA_BOOL():
@@ -106,7 +106,7 @@ def test_device_set_irqs_bad_flags_DATA_NONE_and_DATA_BOOL():
                            index=VFU_DEV_MSIX_IRQ, start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_start_count_range():
@@ -115,7 +115,7 @@ def test_device_set_irqs_bad_start_count_range():
                            start=2047, count=2)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_start_count_range2():
@@ -124,7 +124,7 @@ def test_device_set_irqs_bad_start_count_range2():
                            start=2049, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_action_for_err_irq():
@@ -133,7 +133,7 @@ def test_device_set_irqs_bad_action_for_err_irq():
                            start=0, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_action_for_req_irq():
@@ -142,7 +142,7 @@ def test_device_set_irqs_bad_action_for_req_irq():
                            start=0, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_start_for_count_0():
@@ -151,7 +151,7 @@ def test_device_set_irqs_bad_start_for_count_0():
                            start=1, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_action_for_count_0():
@@ -160,7 +160,7 @@ def test_device_set_irqs_bad_action_for_count_0():
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_action_and_data_type_for_count_0():
@@ -169,7 +169,7 @@ def test_device_set_irqs_bad_action_and_data_type_for_count_0():
                            start=0, count=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_bad_fds_for_DATA_BOOL():
@@ -182,7 +182,7 @@ def test_device_set_irqs_bad_fds_for_DATA_BOOL():
     fd = eventfd()
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL, fds=[fd])
+        expect=errno.EINVAL, fds=[fd])
 
     os.close(fd)
 
@@ -195,7 +195,7 @@ def test_device_set_irqs_bad_fds_for_DATA_NONE():
     fd = eventfd()
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL, fds=[fd])
+        expect=errno.EINVAL, fds=[fd])
 
     os.close(fd)
 
@@ -208,7 +208,7 @@ def test_device_set_irqs_bad_fds_for_count_2():
     fd = eventfd()
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL, fds=[fd])
+        expect=errno.EINVAL, fds=[fd])
 
     os.close(fd)
 
@@ -244,7 +244,7 @@ def test_device_set_irqs_trigger_bool_too_small():
     payload = bytes(payload) + struct.pack("?", False)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_trigger_bool_too_large():
@@ -254,7 +254,7 @@ def test_device_set_irqs_trigger_bool_too_large():
     payload = bytes(payload) + struct.pack("???", False, False, False)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_set_irqs_enable_update():

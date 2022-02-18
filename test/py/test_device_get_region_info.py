@@ -97,7 +97,7 @@ def test_device_get_region_info_short_write():
     payload = struct.pack("II", 0, 0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_get_region_info_bad_argsz():
@@ -107,7 +107,7 @@ def test_device_get_region_info_bad_argsz():
                                size=0, offset=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 def test_device_get_region_info_bad_index():
@@ -117,7 +117,7 @@ def test_device_get_region_info_bad_index():
                                size=0, offset=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
-        expect_reply_errno=errno.EINVAL)
+        expect=errno.EINVAL)
 
 
 # python tests use max client fds of 8, but this region has 9 mmap areas.
@@ -128,7 +128,7 @@ def test_device_get_region_info_caps_too_few_fds():
     payload = bytes(payload) + b'\0' * (192 - 32)
 
     msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
-        expect_reply_errno=errno.ENOSPC)
+        expect=errno.ENOSPC)
 
 
 def test_device_get_region_info_larger_argsz():

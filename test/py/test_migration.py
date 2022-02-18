@@ -129,7 +129,7 @@ def test_migration_trans_async(mock_trans, mock_quiesce):
     data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
-                 expect_run_ctx_errno=errno.EBUSY)
+                 busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
@@ -154,7 +154,7 @@ def test_migration_trans_async_err(mock_trans, mock_quiesce):
     data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
-                 expect_run_ctx_errno=errno.EBUSY)
+                 busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0

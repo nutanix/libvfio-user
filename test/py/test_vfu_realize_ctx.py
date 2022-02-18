@@ -27,7 +27,6 @@
 #  DAMAGE.
 #
 
-import ctypes as c
 import errno
 from libvfio_user import *
 
@@ -49,9 +48,7 @@ def test_vfu_unrealized_ctx():
     ctx = vfu_create_ctx()
     assert ctx is not None
 
-    ret = vfu_run_ctx(ctx)
-    assert ret == -1
-    assert c.get_errno() == errno.EINVAL
+    vfu_run_ctx(ctx, errno.EINVAL)
 
     vfu_destroy_ctx(ctx)
 
