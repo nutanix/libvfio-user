@@ -600,6 +600,17 @@ typedef struct {
      * they have been read (e.g. migration data can be discarded). If the
      * function returns 0 then migration has finished and this function won't
      * be called again.
+     *
+     * The amount of pending migration data returned by the device does not
+     * necessarily have to monotonically decrease over time and does not need
+     * to match the amount of migration data returned via the @size argument in
+     * prepare_data. It can completely fluctuate according to the needs of the
+     * device. These semantics are derived from the pending_bytes register in
+     * VFIO. Therefore the value returned by get_pending_bytes must be
+     * primarily regarded as boolean, either 0 or non-zero, as far as migration
+     * completion is concerned. More advanced vfio-user clients can make
+     * assumptions on how migration is progressing on devices that guarantee
+     * that the amount of pending migration data decreases over time.
      */
     uint64_t (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
 
@@ -609,7 +620,15 @@ typedef struct {
      * receiving migration data when in resuming state.
      *
      * When in pre-copy and stop-and-copy state, the function must return only
-     * after migration data are available at the specified offset.
+     * after migration data are available at the specified offset. This
+     * callback is called once per iteration. The amount of data available
+     * pointed to by @size can be different that the amount of data returned by
+     * get_pending_bytes in the beginning of the iteration.
+     *
+     * In VFIO, the data_offset and data_size registers can be read multiple
+     * times during an iteration and are invariant, libvfio-user simplifies
+     * this by caching the values and returning them when read, guaranteeing
+     * that prepare_data() is called only once per migration iteration.
      *
      * When in resuming state, @offset must be set to where migration data must
      * written. @size points to NULL.
@@ -626,8 +645,6 @@ typedef struct {
      *
      * This function can be called even if the migration data can be memory
      * mapped.
-     *
-     * Does this mean that reading data_offset/data_size updates the values?
      */
     ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
                          uint64_t count, uint64_t offset);
