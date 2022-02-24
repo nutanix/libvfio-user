@@ -1999,7 +1999,7 @@ quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
     assert(vfu_ctx->in_cb || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced);
 }
 #else
-#define quiesce_check_fn_allowed(vfu_ctx)
+#define quiesce_check_allowed(vfu_ctx)
 #endif
 
 EXPORT int
