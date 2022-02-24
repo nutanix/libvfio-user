@@ -1449,6 +1449,11 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
             free_msg(vfu_ctx, msg);
             reqs_processed++;
 #ifdef DEBUG
+            /*
+             * get_request might call the quiesce callback which might
+             * immediatelly quiesce the device, vfu_device_quiesced won't
+             * be called at all.
+             */
             if (vfu_ctx->quiesced) {
                 vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
                 vfu_ctx->quiesced = false;
@@ -1987,6 +1992,16 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
+#ifdef DEBUG
+static void
+quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
+{
+    assert(vfu_ctx->in_cb || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced);
+}
+#else
+#define quiesce_check_fn_allowed(vfu_ctx)
+#endif
+
 EXPORT int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                size_t len, dma_sg_t *sg, int max_sg, int prot)
@@ -1997,9 +2012,7 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
         return ERROR_INT(EINVAL);
     }
 
-#ifdef DEBUG
-    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
-#endif
+    quiesce_check_allowed(vfu_ctx);
 
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
@@ -2014,9 +2027,7 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
         return ERROR_INT(EINVAL);
     }
 
-#ifdef DEBUG
-    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
-#endif
+    quiesce_check_allowed(vfu_ctx);
 
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
@@ -2033,9 +2044,7 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
         return;
     }
 
-#ifdef DEBUG
-    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
-#endif
+    quiesce_check_allowed(vfu_ctx);
 
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
