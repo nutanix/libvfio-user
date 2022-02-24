@@ -552,16 +552,15 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 #ifdef DEBUG
 static void
 log_dirty_bitmap(vfu_ctx_t *vfu_ctx, dma_memory_region_t *region,
-                   char *bitmap, size_t size)
+                 char *bitmap, size_t size)
 {
     size_t i;
     size_t count;
     for (i = 0, count = 0; i < size; i++) {
         count += __builtin_popcount(bitmap[i]);
     }
-    vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get %#lx-%#lx, %zu dirty pages",
-            (unsigned long)region->info.iova.iov_base,
-            (unsigned long)(region->info.iova.iov_base + region->info.iova.iov_len),
+    vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get [%p, %p), %zu dirty pages",
+            region->info.iova.iov_base, iov_end(&region->info.iova),
             count);
 }
 #endif

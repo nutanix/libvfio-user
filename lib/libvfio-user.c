@@ -944,8 +944,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         }
     } else {
         vfu_log(vfu_ctx, LOG_ERR,
-                "dirty pages: get %#lx-%#lx: buffer too small (%u < %lu)",
-                range_in->iova, range_in->size, dirty_pages_in->argsz, argsz);
+                "dirty pages: get [%#lx, %#lx): buffer too small (%u < %lu)",
+                range_in->iova, range_in->iova + range_in->size,
+                dirty_pages_in->argsz, argsz);
     }
 
     return 0;
