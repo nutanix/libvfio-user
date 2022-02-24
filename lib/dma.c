@@ -523,6 +523,8 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 
     dma_mark_dirty_sgs(dma);
 
+    vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: started logging");
+
     return 0;
 }
 
@@ -542,7 +544,26 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
         dma->regions[i].dirty_bitmap = NULL;
     }
     dma->dirty_pgsize = 0;
+
+    vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: stopped logging");
 }
+
+
+#ifdef DEBUG
+static void
+log_dirty_bitmap(vfu_ctx_t *vfu_ctx, dma_memory_region_t *region,
+                 char *bitmap, size_t size)
+{
+    size_t i;
+    size_t count;
+    for (i = 0, count = 0; i < size; i++) {
+        count += __builtin_popcount(bitmap[i]);
+    }
+    vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get [%p, %p), %zu dirty pages",
+            region->info.iova.iov_base, iov_end(&region->info.iova),
+            count);
+}
+#endif
 
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
@@ -600,6 +621,9 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * vfu_map_sg/vfu_unmap_sg().
      */
     memcpy(bitmap, region->dirty_bitmap, size);
+#ifdef DEBUG
+    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size);
+#endif
     memset(region->dirty_bitmap, 0, size);
 
     dma_mark_dirty_sgs(dma);
