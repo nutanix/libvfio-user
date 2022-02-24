@@ -723,7 +723,14 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     if (vfu_ctx->dma_register != NULL) {
+#ifdef DEBUG
+        vfu_ctx->in_cb = true;
+#endif
         vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
+#ifdef DEBUG
+        vfu_ctx->in_cb = false;
+#endif
+
     }
     return 0;
 }
@@ -859,7 +866,13 @@ do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     int ret;
 
     if (vfu_ctx->reset != NULL) {
+#ifdef DEBUG
+        vfu_ctx->in_cb = true;
+#endif
         ret = vfu_ctx->reset(vfu_ctx, reason);
+#ifdef DEBUG
+        vfu_ctx->in_cb = false;
+#endif
         if (ret < 0) {
             return ret;
         }
@@ -1371,7 +1384,13 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 
     if (command_needs_quiesce(vfu_ctx, msg)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+#ifdef DEBUG
+        vfu_ctx->in_cb = true;
+#endif
         ret = vfu_ctx->quiesce(vfu_ctx);
+#ifdef DEBUG
+        vfu_ctx->in_cb = false;
+#endif
         if (ret < 0) {
             if (errno != EBUSY) {
                 vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
@@ -1386,6 +1405,9 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
         }
 
         vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
+#ifdef DEBUG
+        vfu_ctx->quiesced = true;
+#endif
     }
 
     *msgp = msg;
@@ -1431,6 +1453,12 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
             err = handle_request(vfu_ctx, msg);
             free_msg(vfu_ctx, msg);
             reqs_processed++;
+#ifdef DEBUG
+            if (vfu_ctx->quiesced) {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
+                vfu_ctx->quiesced = false;
+            }
+#endif
         } else {
             /*
              * If there was no request to read, or we already handled the
@@ -1565,7 +1593,13 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
 
     if (vfu_ctx->quiesce != NULL
         && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+#ifdef DEBUG
+        vfu_ctx->in_cb = true;
+#endif
         int ret = vfu_ctx->quiesce(vfu_ctx);
+#ifdef DEBUG
+        vfu_ctx->in_cb = false;
+#endif
         if (ret < 0) {
             if (errno == EBUSY) {
                 vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
@@ -1968,6 +2002,10 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
         return ERROR_INT(EINVAL);
     }
 
+#ifdef DEBUG
+    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
+#endif
+
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
 
@@ -1980,6 +2018,10 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
     if (unlikely(vfu_ctx->dma_unregister == NULL) || flags != 0) {
         return ERROR_INT(EINVAL);
     }
+
+#ifdef DEBUG
+    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
+#endif
 
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
@@ -1995,6 +2037,11 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
     }
+
+#ifdef DEBUG
+    assert(vfu_ctx->in_cb || !vfu_ctx->quiesced);
+#endif
+
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
 
@@ -2127,6 +2174,9 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
     }
 
     vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced with error=%d", quiesce_errno);
+#ifdef DEBUG
+    vfu_ctx->quiesced = true;
+#endif
 
     if (quiesce_errno == 0) {
         switch (vfu_ctx->pending.state) {
@@ -2148,6 +2198,11 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
 
     vfu_ctx->pending.msg = NULL;
     vfu_ctx->pending.state = VFU_CTX_PENDING_NONE;
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
+#ifdef DEBUG
+    vfu_ctx->quiesced = false;
+#endif
 
     return ret;
 }

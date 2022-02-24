@@ -167,7 +167,13 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         }
 
         if (dma_unregister != NULL) {
+#ifdef DEBUG
+            dma->vfu_ctx->in_cb = true;
+#endif
             dma_unregister(data, &region->info);
+#ifdef DEBUG
+            dma->vfu_ctx->in_cb = false;
+#endif
         }
 
         assert(region->refcnt == 0);
@@ -203,7 +209,13 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
                 region->info.mapping.iov_base, iov_end(&region->info.mapping));
 
         if (dma_unregister != NULL) {
+#ifdef DEBUG
+            dma->vfu_ctx->in_cb = true;
+#endif
             dma_unregister(data, &region->info);
+#ifdef DEBUG
+            dma->vfu_ctx->in_cb = false;
+#endif
         }
 
         if (region->info.vaddr != NULL) {

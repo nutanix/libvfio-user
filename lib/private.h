@@ -187,6 +187,10 @@ struct vfu_ctx {
     size_t                  client_max_data_xfer_size;
 
     struct vfu_ctx_pending_info pending;
+#ifdef DEBUG
+    bool                    quiesced;
+    bool                    in_cb;
+#endif
 
     struct migration        *migration;
 
