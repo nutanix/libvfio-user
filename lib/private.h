@@ -164,6 +164,16 @@ struct vfu_ctx_pending_info {
     uint32_t                migr_dev_state;
 };
 
+#ifdef DEBUG
+enum cb_type {
+    CB_NONE,
+    CB_DMA_REGISTER,
+    CB_DMA_UNREGISTER,
+    CB_RESET,
+    CB_QUIESCE
+};
+#endif
+
 struct vfu_ctx {
     void                    *pvt;
     struct dma_controller   *dma;
@@ -189,7 +199,7 @@ struct vfu_ctx {
     struct vfu_ctx_pending_info pending;
 #ifdef DEBUG
     bool                    quiesced;
-    bool                    in_cb;
+    enum cb_type            in_cb;
 #endif
 
     struct migration        *migration;

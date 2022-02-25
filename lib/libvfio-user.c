@@ -724,11 +724,11 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if (vfu_ctx->dma_register != NULL) {
 #ifdef DEBUG
-        vfu_ctx->in_cb = true;
+        vfu_ctx->in_cb = CB_DMA_REGISTER;
 #endif
         vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
 #ifdef DEBUG
-        vfu_ctx->in_cb = false;
+        vfu_ctx->in_cb = CB_NONE;
 #endif
 
     }
@@ -867,11 +867,11 @@ do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 
     if (vfu_ctx->reset != NULL) {
 #ifdef DEBUG
-        vfu_ctx->in_cb = true;
+        vfu_ctx->in_cb = CB_RESET;
 #endif
         ret = vfu_ctx->reset(vfu_ctx, reason);
 #ifdef DEBUG
-        vfu_ctx->in_cb = false;
+        vfu_ctx->in_cb = CB_NONE;
 #endif
         if (ret < 0) {
             return ret;
@@ -1386,11 +1386,11 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
     if (command_needs_quiesce(vfu_ctx, msg)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
 #ifdef DEBUG
-        vfu_ctx->in_cb = true;
+        vfu_ctx->in_cb = CB_QUIESCE;
 #endif
         ret = vfu_ctx->quiesce(vfu_ctx);
 #ifdef DEBUG
-        vfu_ctx->in_cb = false;
+        vfu_ctx->in_cb = CB_NONE;
 #endif
         if (ret < 0) {
             if (errno != EBUSY) {
@@ -1600,11 +1600,11 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
     if (vfu_ctx->quiesce != NULL
         && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
 #ifdef DEBUG
-        vfu_ctx->in_cb = true;
+        vfu_ctx->in_cb = CB_QUIESCE;
 #endif
         int ret = vfu_ctx->quiesce(vfu_ctx);
 #ifdef DEBUG
-        vfu_ctx->in_cb = false;
+        vfu_ctx->in_cb = CB_NONE;
 #endif
         if (ret < 0) {
             if (errno == EBUSY) {
@@ -2002,7 +2002,10 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
 static void
 quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
 {
-    assert(vfu_ctx->in_cb || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced);
+    if (!(vfu_ctx->in_cb != CB_NONE || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced)) {
+        vfu_log(vfu_ctx, LOG_ERR, "illegal function in quiesced state");
+        abort();
+    }
 }
 #else
 #define quiesce_check_allowed(vfu_ctx)
