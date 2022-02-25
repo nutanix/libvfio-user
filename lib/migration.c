@@ -426,10 +426,15 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
             return 0;
         }
         old_device_state = migr->info.device_state;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+            "migration: transitioning from state %s to state %s",
+             migr_states[old_device_state].name,
+             migr_states[*device_state].name);
+
         ret = handle_device_state(vfu_ctx, migr, *device_state, true);
         if (ret == 0) {
             vfu_log(vfu_ctx, LOG_DEBUG,
-                "migration: transition from state %s to state %s",
+                "migration: transitioned from state %s to state %s",
                  migr_states[old_device_state].name,
                  migr_states[*device_state].name);
         } else {
