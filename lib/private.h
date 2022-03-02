@@ -170,7 +170,8 @@ enum cb_type {
     CB_DMA_REGISTER,
     CB_DMA_UNREGISTER,
     CB_RESET,
-    CB_QUIESCE
+    CB_QUIESCE,
+    CB_MIGR_STATE
 };
 #endif
 

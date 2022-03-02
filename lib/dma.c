@@ -210,11 +210,11 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 
         if (dma_unregister != NULL) {
 #ifdef DEBUG
-            dma->vfu_ctx->in_cb = true;
+            dma->vfu_ctx->in_cb = CB_DMA_UNREGISTER;
 #endif
             dma_unregister(data, &region->info);
 #ifdef DEBUG
-            dma->vfu_ctx->in_cb = false;
+            dma->vfu_ctx->in_cb = CB_NONE;
 #endif
         }
 
