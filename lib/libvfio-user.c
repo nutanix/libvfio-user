@@ -1457,7 +1457,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
 #ifdef DEBUG
             /*
              * get_request might call the quiesce callback which might
-             * immediatelly quiesce the device, vfu_device_quiesced won't
+             * immediately quiesce the device, vfu_device_quiesced won't
              * be called at all.
              */
             if (vfu_ctx->quiesced) {
