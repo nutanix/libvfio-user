@@ -169,83 +169,75 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     return 0;
 }
 
-inline void
-dump_buffer(const char *prefix UNUSED, const char *buf UNUSED,
-            uint32_t count UNUSED)
+static void
+debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
+                    size_t count, uint64_t offset, bool is_write)
 {
-#ifdef VFU_VERBOSE_LOGGING
-    int i;
-    const size_t bytes_per_line = 0x8;
+    const char *verb = is_write ? "wrote" : "read";
+    uint64_t val;
 
-    if (strcmp(prefix, "")) {
-        fprintf(stderr, "%s\n", prefix);
+    switch (count) {
+    case 8: val = *((uint64_t *)buf); break;
+    case 4: val = *((uint32_t *)buf); break;
+    case 2: val = *((uint16_t *)buf); break;
+    case 1: val = *((uint8_t *)buf); break;
+    default:
+            vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s %zu bytes at %#lx",
+                    region, verb, count, offset);
+            return;
     }
-    for (i = 0; i < (int)count; i++) {
-        if (i % bytes_per_line != 0) {
-            fprintf(stderr, " ");
-        }
-        /* TODO valgrind emits a warning if count is 1 */
-        fprintf(stderr,"0x%02x", *(buf + i));
-        if ((i + 1) % bytes_per_line == 0) {
-            fprintf(stderr, "\n");
-        }
-    }
-    if (i % bytes_per_line != 0) {
-        fprintf(stderr, "\n");
-    }
-#endif
-}
 
-static bool
-access_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                     uint64_t offset)
-{
-    return access_migration_needs_quiesce(vfu_ctx, region_index, offset)
-           || access_is_pci_cap_exp(vfu_ctx, region_index, offset);
+    if (is_write) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: wrote %#zx to (%#lx:%zu)",
+                region, val, offset, count);
+    } else {
+        vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: read %#zx from (%#lx:%zu)",
+                region, val, offset, count);
+    }
 }
 
 static ssize_t
-region_access(vfu_ctx_t *vfu_ctx, size_t region_index, char *buf,
+region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
               size_t count, uint64_t offset, bool is_write)
 {
+    const char *verb = is_write ? "write to" : "read from";
     ssize_t ret;
 
     assert(vfu_ctx != NULL);
     assert(buf != NULL);
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "%s %zu %#lx-%#lx", is_write ? "W" : "R",
-            region_index, offset, offset + count);
-
-    if (is_write) {
-        dump_buffer("buffer write", buf, count);
-    }
-
-    if ((region_index == VFU_PCI_DEV_CFG_REGION_IDX) &&
-        !(vfu_ctx->reg_info[region_index].flags & VFU_REGION_FLAG_ALWAYS_CB)) {
+    if ((region == VFU_PCI_DEV_CFG_REGION_IDX) &&
+        !(vfu_ctx->reg_info[region].flags & VFU_REGION_FLAG_ALWAYS_CB)) {
         ret = pci_config_space_access(vfu_ctx, buf, count, offset, is_write);
         if (ret == -1) {
-            return ret;
+            goto out;
         }
-    } else if (region_index == VFU_PCI_DEV_MIGR_REGION_IDX) {
+    } else if (region == VFU_PCI_DEV_MIGR_REGION_IDX) {
         if (vfu_ctx->migration == NULL) {
-            return ERROR_INT(EINVAL);
+            vfu_log(vfu_ctx, LOG_ERR, "migration not enabled");
+            ret = ERROR_INT(EINVAL);
+            goto out;
         }
 
         ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {
-        vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region_index].cb;
+        vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region].cb;
 
         if (cb == NULL) {
-            vfu_log(vfu_ctx, LOG_ERR, "no callback for region %zu",
-                    region_index);
-            return ERROR_INT(EINVAL);
+            vfu_log(vfu_ctx, LOG_ERR, "no callback for region %zu", region);
+            ret = ERROR_INT(EINVAL);
+            goto out;
         }
 
         ret = cb(vfu_ctx, buf, count, offset, is_write);
     }
 
-    if (!is_write && (size_t)ret == count) {
-        dump_buffer("buffer read", buf, count);
+out:
+    if (ret != (ssize_t)count) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#lx:%zu) failed: %m",
+                region, verb, offset, count);
+    } else {
+        debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
 
     return ret;
@@ -345,9 +337,6 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret != in_ra->count) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to %s %#lx-%#lx: %m",
-                msg->hdr.cmd == VFIO_USER_REGION_WRITE ? "write" : "read",
-                in_ra->offset, in_ra->offset + in_ra->count - 1);
         /* FIXME we should return whatever has been accessed, not an error */
         if (ret >= 0) {
             ret = ERROR_INT(EINVAL);
@@ -1301,6 +1290,14 @@ MOCK_DEFINE(should_exec_command)(vfu_ctx_t *vfu_ctx, uint16_t cmd)
         }
     }
     return true;
+}
+
+static bool
+access_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
+                     uint64_t offset)
+{
+    return access_migration_needs_quiesce(vfu_ctx, region_index, offset)
+           || access_is_pci_cap_exp(vfu_ctx, region_index, offset);
 }
 
 static bool

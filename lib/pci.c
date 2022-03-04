@@ -269,10 +269,6 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
         ret = ERROR_INT(EINVAL);
     }
 
-#ifdef VFU_VERBOSE_LOGGING
-    dump_buffer("PCI header", (const char *)cfg_space->hdr.raw, 0xff);
-#endif
-
     return ret;
 }
 
@@ -292,7 +288,6 @@ pci_hdr_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to write to PCI header: %m");
         } else {
-            dump_buffer("buffer write", buf, count);
             ret = count;
         }
     } else {

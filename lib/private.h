@@ -236,9 +236,6 @@ ERROR_PTR(int err)
     return NULL;
 }
 
-void
-dump_buffer(const char *prefix, const char *buf, uint32_t count);
-
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 
