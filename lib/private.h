@@ -164,7 +164,6 @@ struct vfu_ctx_pending_info {
     uint32_t                migr_dev_state;
 };
 
-#ifdef DEBUG
 enum cb_type {
     CB_NONE,
     CB_DMA_REGISTER,
@@ -173,7 +172,6 @@ enum cb_type {
     CB_QUIESCE,
     CB_MIGR_STATE
 };
-#endif
 
 struct vfu_ctx {
     void                    *pvt;
@@ -198,10 +196,8 @@ struct vfu_ctx {
     size_t                  client_max_data_xfer_size;
 
     struct vfu_ctx_pending_info pending;
-#ifdef DEBUG
     bool                    quiesced;
     enum cb_type            in_cb;
-#endif
 
     struct migration        *migration;
 
