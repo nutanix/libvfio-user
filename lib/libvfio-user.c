@@ -1998,18 +1998,16 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
-#ifdef DEBUG
 static void
 quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
 {
     if (!(vfu_ctx->in_cb != CB_NONE || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced)) {
         vfu_log(vfu_ctx, LOG_ERR, "illegal function in quiesced state");
+#ifdef DEBUG
         abort();
+#endif
     }
 }
-#else
-#define quiesce_check_allowed(vfu_ctx)
-#endif
 
 EXPORT int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
