@@ -712,7 +712,10 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     if (vfu_ctx->dma_register != NULL) {
+        vfu_ctx->in_cb = CB_DMA_REGISTER;
         vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
+        vfu_ctx->in_cb = CB_NONE;
+
     }
     return 0;
 }
@@ -848,7 +851,9 @@ do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     int ret;
 
     if (vfu_ctx->reset != NULL) {
+        vfu_ctx->in_cb = CB_RESET;
         ret = vfu_ctx->reset(vfu_ctx, reason);
+        vfu_ctx->in_cb = CB_NONE;
         if (ret < 0) {
             return ret;
         }
@@ -1369,7 +1374,9 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 
     if (command_needs_quiesce(vfu_ctx, msg)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "quiescing device");
+        vfu_ctx->in_cb = CB_QUIESCE;
         ret = vfu_ctx->quiesce(vfu_ctx);
+        vfu_ctx->in_cb = CB_NONE;
         if (ret < 0) {
             if (errno != EBUSY) {
                 vfu_log(vfu_ctx, LOG_DEBUG, "device failed to quiesce: %m");
@@ -1384,6 +1391,7 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
         }
 
         vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced immediately");
+        vfu_ctx->quiesced = true;
     }
 
     *msgp = msg;
@@ -1429,6 +1437,15 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
             err = handle_request(vfu_ctx, msg);
             free_msg(vfu_ctx, msg);
             reqs_processed++;
+            /*
+             * get_request might call the quiesce callback which might
+             * immediately quiesce the device, vfu_device_quiesced won't
+             * be called at all.
+             */
+            if (vfu_ctx->quiesced) {
+                vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
+                vfu_ctx->quiesced = false;
+            }
         } else {
             /*
              * If there was no request to read, or we already handled the
@@ -1563,7 +1580,9 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
 
     if (vfu_ctx->quiesce != NULL
         && vfu_ctx->pending.state == VFU_CTX_PENDING_NONE) {
+        vfu_ctx->in_cb = CB_QUIESCE;
         int ret = vfu_ctx->quiesce(vfu_ctx);
+        vfu_ctx->in_cb = CB_NONE;
         if (ret < 0) {
             if (errno == EBUSY) {
                 vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
@@ -1956,6 +1975,17 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
+static void
+quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
+{
+    if (!(vfu_ctx->in_cb != CB_NONE || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced)) {
+        vfu_log(vfu_ctx, LOG_ERR, "illegal function in quiesced state");
+#ifdef DEBUG
+        abort();
+#endif
+    }
+}
+
 EXPORT int
 vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                size_t len, dma_sg_t *sg, int max_sg, int prot)
@@ -1965,6 +1995,8 @@ vfu_addr_to_sg(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
     if (unlikely(vfu_ctx->dma == NULL)) {
         return ERROR_INT(EINVAL);
     }
+
+    quiesce_check_allowed(vfu_ctx);
 
     return dma_addr_to_sg(vfu_ctx->dma, dma_addr, len, sg, max_sg, prot);
 }
@@ -1978,6 +2010,8 @@ vfu_map_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt,
     if (unlikely(vfu_ctx->dma_unregister == NULL) || flags != 0) {
         return ERROR_INT(EINVAL);
     }
+
+    quiesce_check_allowed(vfu_ctx);
 
     ret = dma_map_sg(vfu_ctx->dma, sg, iov, cnt);
     if (ret < 0) {
@@ -1993,6 +2027,9 @@ vfu_unmap_sg(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, struct iovec *iov, int cnt)
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
     }
+
+    quiesce_check_allowed(vfu_ctx);
+
     return dma_unmap_sg(vfu_ctx->dma, sg, iov, cnt);
 }
 
@@ -2125,6 +2162,7 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
     }
 
     vfu_log(vfu_ctx, LOG_DEBUG, "device quiesced with error=%d", quiesce_errno);
+    vfu_ctx->quiesced = true;
 
     if (quiesce_errno == 0) {
         switch (vfu_ctx->pending.state) {
@@ -2146,6 +2184,9 @@ vfu_device_quiesced(vfu_ctx_t *vfu_ctx, int quiesce_errno)
 
     vfu_ctx->pending.msg = NULL;
     vfu_ctx->pending.state = VFU_CTX_PENDING_NONE;
+
+    vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
+    vfu_ctx->quiesced = false;
 
     return ret;
 }

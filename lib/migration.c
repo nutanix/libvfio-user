@@ -155,8 +155,12 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
 {
     if (notify) {
         int ret;
+        assert(!vfu_ctx->in_cb);
+        vfu_ctx->in_cb = CB_MIGR_STATE;
         ret = state_trans_notify(vfu_ctx, migr->callbacks.transition,
                                  device_state);
+        vfu_ctx->in_cb = CB_NONE;
+
         if (ret != 0) {
             return ret;
         }
