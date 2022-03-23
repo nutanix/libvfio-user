@@ -95,6 +95,7 @@ PYTESTVALGRIND = \
 	--errors-for-leak-kinds=definite \
 	--show-leak-kinds=definite \
 	--leak-check=full \
+	--exit-on-first-error=yes \
 	--error-exitcode=1 \
 	$(PYTESTCMD)
 
