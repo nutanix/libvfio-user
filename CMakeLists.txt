@@ -39,6 +39,9 @@ include(GNUInstallDirs)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSON REQUIRED json-c)
 
+# for LSP
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
 # for the benefit of the gcov rules
 set(CMAKE_C_OUTPUT_EXTENSION_REPLACE 1)
 
