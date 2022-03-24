@@ -12,18 +12,6 @@ jobs:
           sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
                                   python3-pytest debianutils flake8
           make pre-push VERBOSE=1
-  ubuntu-18:
-    timeout-minutes: 10
-    runs-on: ubuntu-18.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: pre-push
-        run: |
-          # NB: no working flake8
-          sudo apt update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
-                                  python3-pytest debianutils
-          make pre-push VERBOSE=1
   centos-7:
     timeout-minutes: 10
     runs-on: ubuntu-latest

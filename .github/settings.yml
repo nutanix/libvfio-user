@@ -105,7 +105,6 @@ branches:
         # Required. The list of status checks to require in order to merge into this branch
         contexts:
           - centos-7
-          - ubuntu-18
           - ubuntu-20
           - fedora-35
       # Required. Enforce all configured restrictions for administrators. Set to true to enforce required status checks for repository administrators. Set to null to disable.
