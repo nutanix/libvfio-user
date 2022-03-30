@@ -46,7 +46,7 @@
 
 struct migration *
 init_migration(const vfu_migration_callbacks_t *callbacks,
-               uint64_t data_offset, int *err);
+               uint64_t flags, int *err);
 
 ssize_t
 migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
@@ -64,6 +64,9 @@ migration_get_pgsize(struct migration *migr);
 
 int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
+
+uint64_t
+migration_get_flags(struct migration *migr);
 
 MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
              uint32_t to);

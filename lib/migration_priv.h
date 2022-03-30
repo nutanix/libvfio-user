@@ -44,25 +44,10 @@ enum migr_iter_state {
 };
 
 struct migration {
-    /*
-     * TODO if the user provides an FD then should mmap it and use the migration
-     * registers in the file
-     */
-    struct vfio_user_migration_info info;
+    uint64_t flags;
+    enum vfio_device_mig_state state;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
-    uint64_t data_offset;
-
-    /*
-     * This is only for the saving state. The resuming state is simpler so we
-     * don't need it.
-     */
-    struct {
-        enum migr_iter_state state;
-        uint64_t pending_bytes;
-        uint64_t offset;
-        uint64_t size;
-    } iter;
 };
 
 struct migr_state_data {

@@ -67,6 +67,7 @@ enum vfio_user_command {
     VFIO_USER_DMA_WRITE                 = 12,
     VFIO_USER_DEVICE_RESET              = 13,
     VFIO_USER_DIRTY_PAGES               = 14,
+    VFIO_USER_DEVICE_FEATURE            = 15,
     VFIO_USER_MAX,
 };
 
@@ -225,6 +226,43 @@ struct vfio_user_bitmap_range {
 #define VFIO_REGION_SUBTYPE_MIGRATION (1)
 
 #endif /* VFIO_REGION_TYPE_MIGRATION */
+
+#ifndef VFIO_DEVICE_FEATURE
+
+struct vfio_device_feature {
+    __u32   argsz;
+    __u32   flags;
+#define VFIO_DEVICE_FEATURE_MASK    (0xffff) /* 16-bit feature index */
+#define VFIO_DEVICE_FEATURE_GET     (1 << 16) /* Get feature into data[] */
+#define VFIO_DEVICE_FEATURE_SET     (1 << 17) /* Set feature from data[] */
+#define VFIO_DEVICE_FEATURE_PROBE   (1 << 18) /* Probe feature support */
+    __u8    data[];
+} __attribute__((packed));
+
+#endif /* VFIO_DEVICE_FEATURE */
+
+/*
+ * Migration v2
+ */
+#ifndef VFIO_DEVICE_FEATURE_MIGRATION
+#define VFIO_DEVICE_FEATURE_MIGRATION 1
+
+struct vfio_device_feature_migration {
+    __aligned_u64 flags;
+#define VFIO_MIGRATION_STOP_COPY    (1 << 0)
+#define VFIO_MIGRATION_P2P          (1 << 1)
+} __attribute__((packed));
+
+enum vfio_device_mig_state {
+    VFIO_DEVICE_STATE_ERROR = 0,
+    VFIO_DEVICE_STATE_STOP = 1,
+    VFIO_DEVICE_STATE_RUNNING = 2,
+    VFIO_DEVICE_STATE_STOP_COPY = 3,
+    VFIO_DEVICE_STATE_RESUMING = 4,
+    VFIO_DEVICE_STATE_RUNNING_P2P = 5,
+};
+
+#endif /* VFIO_DEVICE_FEATURE_MIGRATION */
 
 #ifdef __cplusplus
 }

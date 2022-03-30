@@ -117,6 +117,16 @@ VFIO_DEVICE_STATE_SAVING = (1 << 1)
 VFIO_DEVICE_STATE_RESUMING = (1 << 2)
 VFIO_DEVICE_STATE_MASK = ((1 << 3) - 1)
 
+# migration v2
+VFIO_DEVICE_FEATURE_MIGRATION  = 1
+VFIO_DEVICE_FEATURE_MASK = (0xffff)
+VFIO_DEVICE_FEATURE_GET = (1 << 16)
+VFIO_DEVICE_FEATURE_SET = (1 << 17)
+VFIO_DEVICE_FEATURE_PROBE = (1 << 18)
+
+VFIO_MIGRATION_STOP_COPY = (1 << 0)
+VFIO_MIGRATION_P2P = (1 << 1)
+
 
 # libvfio-user defines
 
@@ -155,11 +165,15 @@ VFIO_USER_DMA_READ = 11
 VFIO_USER_DMA_WRITE = 12
 VFIO_USER_DEVICE_RESET = 13
 VFIO_USER_DIRTY_PAGES = 14
-VFIO_USER_MAX = 15
+VFIO_USER_DEVICE_FEATURE = 15
+VFIO_USER_MIG_DATA_READ = 16
+VFIO_USER_MIG_DATA_WRITE = 17
+VFIO_USER_MAX = 18
 
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
 
+# FIXME remove
 SIZEOF_VFIO_USER_HEADER = 16
 
 VFU_PCI_DEV_BAR0_REGION_IDX = 0
@@ -171,8 +185,7 @@ VFU_PCI_DEV_BAR5_REGION_IDX = 5
 VFU_PCI_DEV_ROM_REGION_IDX = 6
 VFU_PCI_DEV_CFG_REGION_IDX = 7
 VFU_PCI_DEV_VGA_REGION_IDX = 8
-VFU_PCI_DEV_MIGR_REGION_IDX = 9
-VFU_PCI_DEV_NUM_REGIONS = 10
+VFU_PCI_DEV_NUM_REGIONS = 9
 
 VFU_REGION_FLAG_READ = 1
 VFU_REGION_FLAG_WRITE = 2
@@ -216,7 +229,7 @@ VFU_CAP_FLAG_EXTENDED = (1 << 0)
 VFU_CAP_FLAG_CALLBACK = (1 << 1)
 VFU_CAP_FLAG_READONLY = (1 << 2)
 
-VFU_MIGR_CALLBACKS_VERS = 1
+VFU_MIGR_CALLBACKS_VERS = 2
 
 SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
 
@@ -242,6 +255,19 @@ class Structure(c.Structure):
         obj = cls.from_buffer_copy(buf)
         return obj, buf[c.sizeof(obj):]
 
+
+class _vfio_user_header(c.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("msgid", c.c_uint16),
+        ("cmd", c.c_uint16),
+        ("size", c.c_uint32),
+        ("flags", c.c_uint32),
+        ("error", c.c_uint32),
+    ]
+
+
+assert c.sizeof(_vfio_user_header) == 16
 
 class vfu_bar_t(c.Union):
     _pack_ = 1
@@ -530,11 +556,8 @@ class vfu_migration_callbacks_t(Structure):
     _fields_ = [
         ("version", c.c_int),
         ("transition", transition_cb_t),
-        ("get_pending_bytes", get_pending_bytes_cb_t),
-        ("prepare_data", prepare_data_cb_t),
         ("read_data", read_data_cb_t),
         ("write_data", write_data_cb_t),
-        ("data_written", data_written_cb_t),
     ]
 
 
@@ -555,16 +578,12 @@ class dma_sg_t(Structure):
                 hex(self.offset), self.writeable)
 
 
-class vfio_user_migration_info(Structure):
+class vfio_user_device_feature(Structure):
     _pack_ = 1
     _fields_ = [
-        ("device_state", c.c_uint32),
-        ("reserved", c.c_uint32),
-        ("pending_bytes", c.c_uint64),
-        ("data_offset", c.c_uint64),
-        ("data_size", c.c_uint64),
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32),
     ]
-
 
 #
 # Util functions
@@ -608,8 +627,8 @@ vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                       use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
-lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
-    c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
+lib.vfu_setup_device_migration.argtypes = (c.c_void_p, c.c_uint64,
+    c.POINTER(vfu_migration_callbacks_t))
 lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                c.POINTER(dma_sg_t), c.c_int, c.c_int)
 lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
@@ -901,7 +920,7 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     assert ret == 0
 
     if migration_callbacks:
-        ret = vfu_setup_device_migration_callbacks(ctx)
+        ret = vfu_setup_device_migration(ctx)
         assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -933,8 +952,9 @@ def log(ctx, level, msg):
 def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
     global msg_id
 
-    buf = struct.pack("HHIII", msg_id, cmd, SIZEOF_VFIO_USER_HEADER + size,
-                      VFIO_USER_F_TYPE_COMMAND, error_no)
+    buf = bytearray(_vfio_user_header(msg_id, cmd,
+                                      c.sizeof(_vfio_user_header) + size,
+                                      VFIO_USER_F_TYPE_COMMAND, error_no))
 
     msg_id += 1
 
@@ -1081,24 +1101,6 @@ def __migr_trans_cb(ctx, state):
     return migr_trans_cb(ctx, state)
 
 
-def migr_get_pending_bytes_cb(ctx):
-    pass
-
-
-@get_pending_bytes_cb_t
-def __migr_get_pending_bytes_cb(ctx):
-    return migr_get_pending_bytes_cb(ctx)
-
-
-def migr_prepare_data_cb(ctx, offset, size):
-    pass
-
-
-@prepare_data_cb_t
-def __migr_prepare_data_cb(ctx, offset, size):
-    return migr_prepare_data_cb(ctx, offset, size)
-
-
 def migr_read_data_cb(ctx, buf, count, offset):
     pass
 
@@ -1117,29 +1119,17 @@ def __migr_write_data_cb(ctx, buf, count, offset):
     return migr_write_data_cb(ctx, buf, count, offset)
 
 
-def migr_data_written_cb(ctx, count):
-    pass
-
-
-@data_written_cb_t
-def __migr_data_written_cb(ctx, count):
-    return migr_data_written_cb(ctx, count)
-
-
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
+def vfu_setup_device_migration(ctx, flags=VFIO_MIGRATION_STOP_COPY, cbs=None):
     assert ctx is not None
 
     if not cbs:
         cbs = vfu_migration_callbacks_t()
         cbs.version = VFU_MIGR_CALLBACKS_VERS
         cbs.transition = __migr_trans_cb
-        cbs.get_pending_bytes = __migr_get_pending_bytes_cb
-        cbs.prepare_data = __migr_prepare_data_cb
         cbs.read_data = __migr_read_data_cb
         cbs.write_data = __migr_write_data_cb
-        cbs.data_written = __migr_data_written_cb
 
-    return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
+    return lib.vfu_setup_device_migration(ctx, flags, cbs)
 
 
 def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,

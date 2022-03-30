@@ -82,14 +82,10 @@ vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
 }
 
 static size_t
-get_vfio_caps_size(bool is_migr_reg, vfu_reg_info_t *reg)
+get_vfio_caps_size(vfu_reg_info_t *reg)
 {
     size_t type_size = 0;
     size_t sparse_size = 0;
-
-    if (is_migr_reg) {
-        type_size = sizeof(struct vfio_region_info_cap_type);
-    }
 
     if (reg->nr_mmap_areas != 0) {
         sparse_size = sizeof(struct vfio_region_info_cap_sparse_mmap)
@@ -212,14 +208,6 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
         if (ret == -1) {
             goto out;
         }
-    } else if (region == VFU_PCI_DEV_MIGR_REGION_IDX) {
-        if (vfu_ctx->migration == NULL) {
-            vfu_log(vfu_ctx, LOG_ERR, "migration not enabled");
-            ret = ERROR_INT(EINVAL);
-            goto out;
-        }
-
-        ret = migration_region_access(vfu_ctx, buf, count, offset, is_write);
     } else {
         vfu_region_access_cb_t *cb = vfu_ctx->reg_info[region].cb;
 
@@ -284,8 +272,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (device_is_stopped_and_copying(vfu_ctx->migration) &&
-        index != VFU_PCI_DEV_MIGR_REGION_IDX) {
+    if (device_is_stopped_and_copying(vfu_ctx->migration)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "cannot access region %zu while device in stop-and-copy state",
                 index);
@@ -411,8 +398,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     vfu_reg = &vfu_ctx->reg_info[in_info->index];
 
     if (vfu_reg->size > 0) {
-        caps_size = get_vfio_caps_size(in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                                       vfu_reg);
+        caps_size = get_vfio_caps_size(vfu_reg);
     }
 
     msg->out_size = MIN(sizeof(*out_info) + caps_size, in_info->argsz);
@@ -990,6 +976,119 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return ret;
 }
 
+/*
+ * Based on vfio_check_feature from include/linux/vfio.h, not available in
+ * Linux < v5.6.  TODO confirm kernel version.
+ */
+static int
+vfio_check_feature(uint32_t flags, size_t argsz, uint32_t supported_ops,
+                   size_t minsz)
+{
+    if ((flags & (VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_SET)) &
+        ~supported_ops)
+    {
+        return -EINVAL;
+    }
+    if (flags & VFIO_DEVICE_FEATURE_PROBE)
+    {
+        return 0;
+    }
+    /* Without PROBE one of GET or SET must be requested */
+    if (!(flags & (VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_SET)))
+    {
+        return -EINVAL;
+    }
+    if (argsz < minsz)
+    {
+        return -EINVAL;
+    }
+    return 1;
+}
+
+static int
+handle_device_feature_migration(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                                uint64_t flags, uint32_t argsz) 
+{
+    struct vfio_device_feature_migration mig = {
+        .flags = migration_get_flags(vfu_ctx->migration),
+    };
+    int ret;
+    ret = vfio_check_feature(flags, argsz, VFIO_DEVICE_FEATURE_GET,
+                             sizeof(mig));
+    if (ret != 1)
+    {
+        return ret;
+    }
+    msg->out_data = malloc(sizeof(mig));
+    if (msg->out_data == NULL) {
+        return -1;
+    }
+    msg->out_size = sizeof(mig);
+    memcpy(msg->out_data, &mig, sizeof(mig));
+    return 0;
+}
+
+/* from linux/include/linux/stddef.h */
+
+#ifndef sizeof_field
+#define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
+#endif
+
+#ifndef offsetofend
+#define offsetofend(TYPE, MEMBER) \
+    (offsetof(TYPE, MEMBER) + sizeof_field(TYPE, MEMBER))
+#endif
+
+static int
+handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_device_feature *feature;
+    int ret;
+    static const size_t minsz = offsetofend(struct vfio_device_feature, flags);
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    feature = msg->in_data;
+
+    if (feature->argsz < minsz) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad argsz %u", feature->argsz);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (feature->flags &
+        ~(VFIO_DEVICE_FEATURE_MASK | VFIO_DEVICE_FEATURE_SET |
+          VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_PROBE))
+    {
+        vfu_log(vfu_ctx, LOG_ERR, "unknown flags %#x", feature->flags);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (!(feature->flags & VFIO_DEVICE_FEATURE_PROBE) &&
+        (feature->flags & VFIO_DEVICE_FEATURE_SET) &&
+        (feature->flags & VFIO_DEVICE_FEATURE_GET))
+    {
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags combo %#x", feature->flags);
+        return ERROR_INT(EINVAL);
+    }
+
+    switch (feature->flags & VFIO_DEVICE_FEATURE_MASK) {
+    case VFIO_DEVICE_FEATURE_MIGRATION:
+        if (vfu_ctx->migration == NULL) {
+            return ERROR_INT(ENOTTY);
+        }
+        ret = handle_device_feature_migration(vfu_ctx, msg, feature->flags,
+                                              feature->argsz - minsz);
+        break;
+    default:
+        vfu_log(vfu_ctx, LOG_ERR, "unknown device feature %u",
+                feature->flags & VFIO_DEVICE_FEATURE_MASK);
+        return ERROR_INT(EINVAL);
+    }
+
+    return ret;
+}
+
 static vfu_msg_t *
 alloc_msg(struct vfio_user_header *hdr, int *fds, size_t nr_fds)
 {
@@ -1158,7 +1257,9 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             ret = 0;
         }
         break;
-
+    case VFIO_USER_DEVICE_FEATURE:
+        ret = handle_device_feature(vfu_ctx, msg);
+        break;
     default:
         msg->processed_cmd = false;
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);
@@ -1288,8 +1389,7 @@ static bool
 access_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
                      uint64_t offset)
 {
-    return access_migration_needs_quiesce(vfu_ctx, region_index, offset)
-           || access_is_pci_cap_exp(vfu_ctx, region_index, offset);
+    return access_is_pci_cap_exp(vfu_ctx, region_index, offset);
 }
 
 static bool
@@ -1536,6 +1636,11 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
     }
 
+    if (vfu_ctx->migration != NULL) {
+        handle_device_state(vfu_ctx, vfu_ctx->migration,
+                            VFIO_DEVICE_STATE_RUNNING, false);        
+    }
+
     vfu_ctx->realized = true;
 
     return 0;
@@ -1671,11 +1776,6 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         goto err_out;
     }
 
-    /*
-     * FIXME: Now we always allocate for migration region. Check if its better
-     * to seperate migration region from standard regions in vfu_ctx.reg_info
-     * and move it into vfu_ctx.migration.
-     */
     vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;
     vfu_ctx->reg_info = calloc(vfu_ctx->nr_regions, sizeof(*vfu_ctx->reg_info));
     if (vfu_ctx->reg_info == NULL) {
@@ -1765,38 +1865,6 @@ copyin_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
-static bool
-ranges_intersect(size_t off1, size_t size1, size_t off2, size_t size2)
-{
-    /*
-     * For two ranges to intersect, the start of each range must be before the
-     * end of the other range.
-     * TODO already defined in lib/pci_caps.c, maybe introduce a file for misc
-     * utility functions?
-     */
-    return (off1 < (off2 + size2) && off2 < (off1 + size1));
-}
-
-static bool
-maps_over_migr_regs(struct iovec *iov)
-{
-    return ranges_intersect(0, vfu_get_migr_register_area_size(),
-                            (size_t)iov->iov_base, iov->iov_len);
-}
-
-static bool
-validate_sparse_mmaps_for_migr_reg(vfu_reg_info_t *reg)
-{
-    int i;
-
-    for (i = 0; i < reg->nr_mmap_areas; i++) {
-        if (maps_over_migr_regs(&reg->mmap_areas[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 EXPORT int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
@@ -1842,12 +1910,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
         return ERROR_INT(EINVAL);
     }
 
-    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX &&
-        size < vfu_get_migr_register_area_size()) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid migration region size %zu", size);
-        return ERROR_INT(EINVAL);
-    }
-
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
         if ((size_t)iov_end(iov) > size) {
@@ -1871,15 +1933,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (nr_mmap_areas > 0) {
         ret = copyin_mmap_areas(reg, mmap_areas, nr_mmap_areas);
         if (ret < 0) {
-            goto err;
-        }
-    }
-
-    if (region_idx == VFU_PCI_DEV_MIGR_REGION_IDX) {
-        if (!validate_sparse_mmaps_for_migr_reg(reg)) {
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "migration registers cannot be memory mapped");
-            errno = EINVAL;
             goto err;
         }
     }
@@ -1946,19 +1999,13 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 }
 
 EXPORT int
-vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
-                                     const vfu_migration_callbacks_t *callbacks,
-                                     uint64_t data_offset)
+vfu_setup_device_migration(vfu_ctx_t *vfu_ctx, uint64_t flags,
+                           const vfu_migration_callbacks_t *callbacks)
 {
     int ret = 0;
 
     assert(vfu_ctx != NULL);
     assert(callbacks != NULL);
-
-    if (vfu_ctx->reg_info[VFU_PCI_DEV_MIGR_REGION_IDX].size == 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "no device migration region");
-        return ERROR_INT(EINVAL);
-    }
 
     if (callbacks->version != VFU_MIGR_CALLBACKS_VERS) {
         vfu_log(vfu_ctx, LOG_ERR, "unsupported migration callbacks version %d",
@@ -1966,7 +2013,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
         return ERROR_INT(EINVAL);
     }
 
-    vfu_ctx->migration = init_migration(callbacks, data_offset, &ret);
+    vfu_ctx->migration = init_migration(callbacks, flags, &ret);
     if (vfu_ctx->migration == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to initialize device migration");
         return ERROR_INT(ret);
