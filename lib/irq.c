@@ -63,9 +63,9 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    in_info = msg->in_data;
+    in_info = msg->in.iov_base;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
+    if (msg->in.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -74,14 +74,14 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    msg->out_size = sizeof (*out_info);
-    msg->out_data = calloc(1, sizeof(*out_info));
+    msg->out.iov_len = sizeof (*out_info);
+    msg->out.iov_base = calloc(1, sizeof(*out_info));
 
-    if (msg->out_data == NULL) {
+    if (msg->out.iov_base == NULL) {
         return -1;
     }
 
-    out_info = msg->out_data;
+    out_info = msg->out.iov_base;
     out_info->argsz = sizeof(*out_info);
     out_info->flags = VFIO_IRQ_INFO_EVENTFD;
     out_info->index = in_info->index;
@@ -240,15 +240,15 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 static int
 device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_irq_set *irq_set = msg->in_data;
+    struct vfio_irq_set *irq_set = msg->in.iov_base;
     uint32_t a_type, d_type;
     int line;
 
     assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
-    if (msg->in_size < sizeof(*irq_set) || irq_set->argsz < sizeof(*irq_set)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in_size);
+    if (msg->in.iov_len < sizeof(*irq_set) || irq_set->argsz < sizeof(*irq_set)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -258,7 +258,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     // bools provided must match count
     if (d_type == VFIO_IRQ_SET_DATA_BOOL &&
-        (msg->in_size - sizeof(*irq_set) != sizeof(uint8_t) * irq_set->count)) {
+        (msg->in.iov_len - sizeof(*irq_set) != sizeof(uint8_t) * irq_set->count)) {
         line = __LINE__;
         goto invalid;
     }
@@ -330,7 +330,7 @@ invalid:
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_irq_set *irq_set = msg->in_data;
+    struct vfio_irq_set *irq_set = msg->in.iov_base;
     uint32_t data_type;
     int ret;
 

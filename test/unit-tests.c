@@ -70,8 +70,8 @@ mkmsg(enum vfio_user_command cmd, void *data, size_t size)
 {
     msg.hdr.cmd = cmd;
     msg.hdr.msg_size = size;
-    msg.in_data = data;
-    msg.in_size = size;
+    msg.in.iov_base = data;
+    msg.in.iov_len = size;
 
     if (nr_fds != 0) {
         msg.in_fds = fds;
@@ -243,7 +243,7 @@ test_handle_dma_unmap(void **state UNUSED)
     assert_int_equal(0x2000, vfu_ctx.dma->regions[0].info.iova.iov_len);
     assert_int_equal(0x8000, vfu_ctx.dma->regions[1].info.iova.iov_base);
     assert_int_equal(0x3000, vfu_ctx.dma->regions[1].info.iova.iov_len);
-    free(msg.out_data);
+    free(msg.out.iov_base);
 }
 
 static void

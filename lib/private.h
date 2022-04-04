@@ -71,17 +71,14 @@ typedef struct {
 
     bool processed_cmd;
 
+    /* TODO group in and out into two separate anon structs */
     int *in_fds;
     size_t nr_in_fds;
-
-    void *in_data;
-    size_t in_size;
+    struct iovec in;
 
     int *out_fds;
     size_t nr_out_fds;
-
-    void *out_data;
-    size_t out_size;
+    struct iovec out;
 
     struct iovec *out_iovecs;
     size_t nr_out_iovecs;
