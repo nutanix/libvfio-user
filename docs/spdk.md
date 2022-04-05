@@ -88,7 +88,7 @@ monitor (enter CTRL-A + C to enter the monitor):
     migrate -d tcp:<destination host IP address>:4444
 
 Migration should happen almost instantaneously, there's no message to show that
-migation finished neither in the source nor on the destination hosts. Simply
+migration finished neither in the source nor on the destination hosts. Simply
 hitting ENTER at the destination is enough to tell that migration finished.
 
 Finally, type `q` in the source QEMU monitor to exit source QEMU.
