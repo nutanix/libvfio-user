@@ -520,30 +520,30 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(ENOTCONN);
     }
 
-    assert(msg->in_size <= SERVER_MAX_MSG_SIZE);
+    assert(msg->in.iov.iov_len <= SERVER_MAX_MSG_SIZE);
 
-    msg->in_data = malloc(msg->in_size);
+    msg->in.iov.iov_base = malloc(msg->in.iov.iov_len);
 
-    if (msg->in_data == NULL) {
+    if (msg->in.iov.iov_base == NULL) {
         return -1;
     }
 
-    ret = recv(ts->conn_fd, msg->in_data, msg->in_size, 0);
+    ret = recv(ts->conn_fd, msg->in.iov.iov_base, msg->in.iov.iov_len, 0);
 
     if (ret < 0) {
         ret = errno;
-        free(msg->in_data);
-        msg->in_data = NULL;
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(ret);
     } else if (ret == 0) {
-        free(msg->in_data);
-        msg->in_data = NULL;
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(ENOMSG);
-    } else if (ret != (int)msg->in_size)  {
+    } else if (ret != (int)msg->in.iov.iov_len)  {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%zu, actual=%d",
-                msg->hdr.msg_id, msg->in_size, ret);
-        free(msg->in_data);
-        msg->in_data = NULL;
+                msg->hdr.msg_id, msg->in.iov.iov_len, ret);
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(EINVAL);
     }
 
@@ -596,13 +596,13 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
         bcopy(msg->out_iovecs, iovecs + 1,
               msg->nr_out_iovecs * sizeof(*iovecs));
     } else {
-        iovecs[1].iov_base = msg->out_data;
-        iovecs[1].iov_len = msg->out_size;
+        iovecs[1].iov_base = msg->out.iov.iov_base;
+        iovecs[1].iov_len = msg->out.iov.iov_len;
     }
 
     ret = tran_sock_send_iovec(ts->conn_fd, msg->hdr.msg_id, true, msg->hdr.cmd,
                                iovecs, nr_iovecs,
-                               msg->out_fds, msg->nr_out_fds, err);
+                               msg->out.fds, msg->out.nr_fds, err);
 
     free(iovecs);
 
