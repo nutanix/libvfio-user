@@ -60,10 +60,10 @@
 /*
  * Structure used to hold an in-flight request+reply.
  *
- * Incoming request body and fds are stored in in_*.
+ * Incoming request body and fds are stored in in.*.
  *
- * Outgoing requests are either stored in out_data, or out_iovecs. In the latter
- * case, the iovecs refer to data that should not be freed.
+ * Outgoing requests are either stored in out.iov.iov_base, or out_iovecs. In
+ * the latter case, the iovecs refer to data that should not be freed.
  */
 typedef struct {
     /* in/out */
@@ -71,17 +71,11 @@ typedef struct {
 
     bool processed_cmd;
 
-    int *in_fds;
-    size_t nr_in_fds;
-
-    void *in_data;
-    size_t in_size;
-
-    int *out_fds;
-    size_t nr_out_fds;
-
-    void *out_data;
-    size_t out_size;
+    struct {
+        int *fds;
+        size_t nr_fds;
+        struct iovec iov;
+    } in, out;
 
     struct iovec *out_iovecs;
     size_t nr_out_iovecs;

@@ -298,7 +298,7 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
 static int
 handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_user_region_access *in_ra = msg->in_data;
+    struct vfio_user_region_access *in_ra = msg->in.iov.iov_base;
     struct vfio_user_region_access *out_ra;
     ssize_t ret;
     char *buf;
@@ -306,7 +306,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (!is_valid_region_access(vfu_ctx, msg->in_size, msg->hdr.cmd, in_ra)) {
+    if (!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len, msg->hdr.cmd, in_ra)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -314,16 +314,16 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return 0;
     }
 
-    msg->out_size = sizeof(*in_ra);
+    msg->out.iov.iov_len = sizeof(*in_ra);
     if (msg->hdr.cmd == VFIO_USER_REGION_READ) {
-        msg->out_size += in_ra->count;
+        msg->out.iov.iov_len += in_ra->count;
     }
-    msg->out_data = calloc(1, msg->out_size);
-    if (msg->out_data == NULL) {
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
 
-    out_ra = msg->out_data;
+    out_ra = msg->out.iov.iov_base;
     out_ra->region = in_ra->region;
     out_ra->offset = in_ra->offset;
     out_ra->count = in_ra->count;
@@ -358,20 +358,20 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    in_info = msg->in_data;
+    in_info = msg->in.iov.iov_base;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
+    if (msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
-    msg->out_size = sizeof (*out_info);
-    msg->out_data = calloc(1, sizeof(*out_info));
+    msg->out.iov.iov_len = sizeof (*out_info);
+    msg->out.iov.iov_base = calloc(1, sizeof(*out_info));
 
-    if (msg->out_data == NULL) {
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
 
-    out_info = msg->out_data;
+    out_info = msg->out.iov.iov_base;
     out_info->argsz = sizeof(*out_info);
     out_info->flags = VFIO_DEVICE_FLAGS_PCI | VFIO_DEVICE_FLAGS_RESET;
     out_info->num_regions = vfu_ctx->nr_regions;
@@ -396,9 +396,9 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    in_info = msg->in_data;
+    in_info = msg->in.iov.iov_base;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
+    if (msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -415,14 +415,14 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                                        vfu_reg);
     }
 
-    msg->out_size = MIN(sizeof(*out_info) + caps_size, in_info->argsz);
-    msg->out_data = calloc(1, msg->out_size);
+    msg->out.iov.iov_len = MIN(sizeof(*out_info) + caps_size, in_info->argsz);
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
-    if (msg->out_data == NULL) {
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
 
-    out_info = msg->out_data;
+    out_info = msg->out.iov.iov_base;
 
     /* This might be more than the buffer we actually return. */
     out_info->argsz = sizeof(*out_info) + caps_size;
@@ -449,7 +449,7 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             out_info->flags |= VFIO_REGION_INFO_FLAG_CAPS;
             ret = dev_get_caps(vfu_ctx, vfu_reg,
                                in_info->index == VFU_PCI_DEV_MIGR_REGION_IDX,
-                               out_info, &msg->out_fds, &msg->nr_out_fds);
+                               out_info, &msg->out.fds, &msg->out.nr_fds);
             if (ret < 0) {
                 return ret;
             }
@@ -557,13 +557,13 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
-    assert(msg->out_fds == NULL);
+    assert(msg->out.fds == NULL);
 
-    if (msg->in_size < sizeof(vfio_user_region_io_fds_request_t)) {
+    if (msg->in.iov.iov_len < sizeof(vfio_user_region_io_fds_request_t)) {
         return ERROR_INT(EINVAL);
     }
 
-    req = msg->in_data;
+    req = msg->in.iov.iov_base;
 
     if (req->flags != 0 || req->count != 0) {
         return ERROR_INT(EINVAL);
@@ -597,13 +597,13 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                                 nr_sub_reg);
     subregion_array_size = ((max_sent_sub_regions >= nr_sub_reg) ? nr_sub_reg :
                              0) * sizeof(vfio_user_sub_region_ioeventfd_t);
-    msg->out_size = sizeof(vfio_user_region_io_fds_reply_t)
+    msg->out.iov.iov_len = sizeof(vfio_user_region_io_fds_reply_t)
                            + subregion_array_size;
-    msg->out_data = calloc(1, msg->out_size);
-    if (msg->out_data == NULL) {
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
-    reply = msg->out_data;
+    reply = msg->out.iov.iov_base;
     reply->index = req->index;
     reply->count = nr_sub_reg;
     reply->flags = 0;
@@ -611,10 +611,10 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                           nr_sub_reg *
                           sizeof(vfio_user_sub_region_ioeventfd_t);
 
-    msg->nr_out_fds = 0;
+    msg->out.nr_fds = 0;
     if (req->argsz >= reply->argsz) {
-        msg->out_fds = calloc(sizeof(int), max_sent_sub_regions);
-        if (msg->out_fds == NULL) {
+        msg->out.fds = calloc(sizeof(int), max_sent_sub_regions);
+        if (msg->out.fds == NULL) {
             return -1;
         }
 
@@ -624,7 +624,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             ioefd = &reply->sub_regions[i].ioeventfd;
             ioefd->offset = sub_reg->offset;
             ioefd->size = sub_reg->size;
-            ioefd->fd_index = add_fd_index(msg->out_fds, &msg->nr_out_fds,
+            ioefd->fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds,
                                         sub_reg->fd);
             ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
             ioefd->flags = sub_reg->flags;
@@ -664,9 +664,9 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     assert(msg != NULL);
     assert(dma_map != NULL);
 
-    if (msg->in_size < sizeof(*dma_map) || dma_map->argsz < sizeof(*dma_map)) {
+    if (msg->in.iov.iov_len < sizeof(*dma_map) || dma_map->argsz < sizeof(*dma_map)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad DMA map region size=%zu argsz=%u",
-                msg->in_size, dma_map->argsz);
+                msg->in.iov.iov_len, dma_map->argsz);
         return ERROR_INT(EINVAL);
     }
 
@@ -691,8 +691,8 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(EINVAL);
     }
 
-    if (msg->nr_in_fds > 0) {
-        fd = consume_fd(msg->in_fds, msg->nr_in_fds, 0);
+    if (msg->in.nr_fds > 0) {
+        fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
         if (fd < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
             return -1;
@@ -762,11 +762,11 @@ is_valid_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return false;
     }
 
-    if (msg->in_size < struct_size ||
+    if (msg->in.iov.iov_len < struct_size ||
         dma_unmap->argsz < min_argsz ||
         dma_unmap->argsz > SERVER_MAX_DATA_XFER_SIZE) {
         vfu_log(vfu_ctx, LOG_ERR, "bad DMA unmap region size=%zu argsz=%u",
-                msg->in_size, dma_unmap->argsz);
+                msg->in.iov.iov_len, dma_unmap->argsz);
         errno = EINVAL;
         return false;
     }
@@ -801,11 +801,11 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         out_size += sizeof(*dma_unmap->bitmap) + dma_unmap->bitmap->size;
     }
 
-    msg->out_data = malloc(out_size);
-    if (msg->out_data == NULL) {
+    msg->out.iov.iov_base = malloc(out_size);
+    if (msg->out.iov.iov_base == NULL) {
         return ERROR_INT(ENOMEM);
     }
-    memcpy(msg->out_data, dma_unmap, sizeof(*dma_unmap));
+    memcpy(msg->out.iov.iov_base, dma_unmap, sizeof(*dma_unmap));
 
     if (dma_unmap->flags == VFIO_DMA_UNMAP_FLAG_ALL) {
         dma_controller_remove_all_regions(vfu_ctx->dma,
@@ -814,13 +814,13 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     if (dma_unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-        memcpy(msg->out_data + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
+        memcpy(msg->out.iov.iov_base + sizeof(*dma_unmap), dma_unmap->bitmap, sizeof(*dma_unmap->bitmap));
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)dma_unmap->addr,
                                             dma_unmap->size,
                                             dma_unmap->bitmap->pgsize,
                                             dma_unmap->bitmap->size,
-                                            msg->out_data + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap));
+                                            msg->out.iov.iov_base + sizeof(*dma_unmap) + sizeof(*dma_unmap->bitmap));
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to get dirty page bitmap: %m");
             return -1;
@@ -840,7 +840,7 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
 out:
-    msg->out_size = out_size;
+    msg->out.iov.iov_len = out_size;
 
     return ret;
 }
@@ -882,17 +882,17 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     int ret;
 
 
-    dirty_pages_in = msg->in_data;
+    dirty_pages_in = msg->in.iov.iov_base;
 
-    if (msg->in_size < sizeof(*dirty_pages_in) + sizeof(*range_in) ||
+    if (msg->in.iov.iov_len < sizeof(*dirty_pages_in) + sizeof(*range_in) ||
         dirty_pages_in->argsz > SERVER_MAX_DATA_XFER_SIZE ||
         dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid message size=%zu argsz=%u",
-                msg->in_size, dirty_pages_in->argsz);
+                msg->in.iov.iov_len, dirty_pages_in->argsz);
         return ERROR_INT(EINVAL);
     }
 
-    range_in = msg->in_data + sizeof(*dirty_pages_in);
+    range_in = msg->in.iov.iov_base + sizeof(*dirty_pages_in);
 
     /*
      * range_in is client-controlled, but we only need to protect against
@@ -903,12 +903,12 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     argsz = satadd_u64(sizeof(*dirty_pages_out) + sizeof(*range_out),
                        range_in->bitmap.size);
 
-    msg->out_size = MIN(dirty_pages_in->argsz, argsz);
-    msg->out_data = malloc(msg->out_size);
-    if (msg->out_data == NULL) {
+    msg->out.iov.iov_len = MIN(dirty_pages_in->argsz, argsz);
+    msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
-    dirty_pages_out = msg->out_data;
+    dirty_pages_out = msg->out.iov.iov_base;
     memcpy(dirty_pages_out, dirty_pages_in, sizeof(*dirty_pages_out));
     dirty_pages_out->argsz = argsz;
 
@@ -918,9 +918,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
      * the needed reply size and has already provided the correct bitmap size.
      */
     if (dirty_pages_in->argsz >= argsz) {
-        void *bitmap_out = msg->out_data + sizeof(*dirty_pages_out)
+        void *bitmap_out = msg->out.iov.iov_base + sizeof(*dirty_pages_out)
                            + sizeof(*range_out);
-        range_out = msg->out_data + sizeof(*dirty_pages_out);
+        range_out = msg->out.iov.iov_base + sizeof(*dirty_pages_out);
         memcpy(range_out, range_in, sizeof(*range_out));
         ret = dma_controller_dirty_page_get(vfu_ctx->dma,
                                             (vfu_dma_addr_t)range_in->iova,
@@ -931,9 +931,9 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             ret = errno;
             vfu_log(vfu_ctx, LOG_WARNING,
                     "failed to get dirty bitmap from DMA controller: %m");
-            free(msg->out_data);
-            msg->out_data = NULL;
-            msg->out_size = 0;
+            free(msg->out.iov.iov_base);
+            msg->out.iov.iov_base = NULL;
+            msg->out.iov.iov_len = 0;
             return ERROR_INT(ret);
         }
     } else {
@@ -949,15 +949,15 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 static int
 handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_user_dirty_pages *dirty_pages = msg->in_data;
+    struct vfio_user_dirty_pages *dirty_pages = msg->in.iov.iov_base;
     int ret;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (msg->in_size < sizeof(*dirty_pages) ||
+    if (msg->in.iov.iov_len < sizeof(*dirty_pages) ||
         dirty_pages->argsz < sizeof(*dirty_pages)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in_size);
+        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in.iov.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -1003,18 +1003,18 @@ alloc_msg(struct vfio_user_header *hdr, int *fds, size_t nr_fds)
     }
 
     msg->hdr = *hdr;
-    msg->nr_in_fds = nr_fds;
+    msg->in.nr_fds = nr_fds;
 
     if (nr_fds > 0) {
-        msg->in_fds = calloc(msg->nr_in_fds, sizeof(int));
+        msg->in.fds = calloc(msg->in.nr_fds, sizeof(int));
 
-        if (msg->in_fds == NULL) {
+        if (msg->in.fds == NULL) {
             free(msg);
             return NULL;
         }
 
-        for (i = 0; i < msg->nr_in_fds; i++) {
-            msg->in_fds[i] = fds[i];
+        for (i = 0; i < msg->in.nr_fds; i++) {
+            msg->in.fds[i] = fds[i];
         }
     }
 
@@ -1031,25 +1031,25 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return;
     }
 
-    free(msg->in_data);
+    free(msg->in.iov.iov_base);
 
-    for (i = 0; i < msg->nr_in_fds; i++) {
-        if (msg->in_fds[i] != -1) {
+    for (i = 0; i < msg->in.nr_fds; i++) {
+        if (msg->in.fds[i] != -1) {
             if (msg->processed_cmd) {
                 vfu_log(vfu_ctx, LOG_DEBUG,
                         "closing unexpected fd %d (index %zu) from cmd %u",
-                        msg->in_fds[i], i, msg->hdr.cmd);
+                        msg->in.fds[i], i, msg->hdr.cmd);
             }
-            close(msg->in_fds[i]);
+            close(msg->in.fds[i]);
         }
     }
 
-    free(msg->in_fds);
-    free(msg->out_fds);
+    free(msg->in.fds);
+    free(msg->out.fds);
 
-    assert(msg->out_data == NULL || msg->out_iovecs == NULL);
+    assert(msg->out.iov.iov_base == NULL || msg->out_iovecs == NULL);
 
-    free(msg->out_data);
+    free(msg->out.iov.iov_base);
 
     /*
      * Each iov_base refers to data we don't want to free, but we *do* want to
@@ -1110,13 +1110,13 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     switch (msg->hdr.cmd) {
     case VFIO_USER_DMA_MAP:
         if (vfu_ctx->dma != NULL) {
-            ret = handle_dma_map(vfu_ctx, msg, msg->in_data);
+            ret = handle_dma_map(vfu_ctx, msg, msg->in.iov.iov_base);
         }
         break;
 
     case VFIO_USER_DMA_UNMAP:
         if (vfu_ctx->dma != NULL) {
-            ret = handle_dma_unmap(vfu_ctx, msg, msg->in_data);
+            ret = handle_dma_unmap(vfu_ctx, msg, msg->in.iov.iov_base);
         }
         break;
 
@@ -1310,7 +1310,7 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
         return true;
 
     case VFIO_USER_REGION_WRITE:
-        if (msg->in_size < sizeof(*reg)) {
+        if (msg->in.iov.iov_len < sizeof(*reg)) {
             /*
              * bad request, it will be eventually failed by
              * handle_region_access
@@ -1318,7 +1318,7 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
              */
             return false;
         }
-        reg = msg->in_data;
+        reg = msg->in.iov.iov_base;
         if (access_needs_quiesce(vfu_ctx, reg->region, reg->offset)) {
             return true;
         }
@@ -1357,9 +1357,9 @@ get_request(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
         goto err;
     }
 
-    msg->in_size = msg->hdr.msg_size - sizeof(msg->hdr);
+    msg->in.iov.iov_len = msg->hdr.msg_size - sizeof(msg->hdr);
 
-    if (msg->in_size > 0) {
+    if (msg->in.iov.iov_len > 0) {
         ret = vfu_ctx->tran->recv_body(vfu_ctx, msg);
 
         if (ret < 0) {
