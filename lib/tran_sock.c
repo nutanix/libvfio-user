@@ -567,7 +567,7 @@ tran_sock_recv_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     return tran_sock_recv_alloc(ts->conn_fd, &msg->hdr, false, NULL,
-                                &msg->in_data, &msg->in_size);
+                                &msg->in.iov.iov_base, &msg->in.iov.iov_len);
 }
 
 static int

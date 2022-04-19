@@ -166,23 +166,23 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
         goto out;
     }
 
-    if (msg.nr_in_fds != 0) {
+    if (msg.in.nr_fds != 0) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "msg%#hx: VFIO_USER_VERSION: sent with %zu fds", *msg_idp,
-                msg.nr_in_fds);
+                msg.in.nr_fds);
         ret = EINVAL;
         goto out;
     }
 
-    if (msg.in_size < sizeof(*cversion)) {
+    if (msg.in.iov.iov_len < sizeof(*cversion)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "msg%#hx: VFIO_USER_VERSION: invalid size %lu",
-                *msg_idp, msg.in_size);
+                *msg_idp, msg.in.iov.iov_len);
         ret = EINVAL;
         goto out;
     }
 
-    cversion = msg.in_data;
+    cversion = msg.in.iov.iov_base;
 
     if (cversion->major != LIB_VFIO_USER_MAJOR) {
         vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %u)",
@@ -194,9 +194,9 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
     vfu_ctx->client_max_fds = 1;
     vfu_ctx->client_max_data_xfer_size = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE;
 
-    if (msg.in_size > sizeof(*cversion)) {
+    if (msg.in.iov.iov_len > sizeof(*cversion)) {
         const char *json_str = (const char *)cversion->data;
-        size_t len = msg.in_size - sizeof(*cversion);
+        size_t len = msg.in.iov.iov_len - sizeof(*cversion);
         size_t pgsize = 0;
 
         if (json_str[len - 1] != '\0') {
@@ -251,13 +251,13 @@ out:
 
         (void) vfu_ctx->tran->reply(vfu_ctx, &rmsg, ret);
 
-        for (i = 0; i < msg.nr_in_fds; i++) {
-            if (msg.in_fds[i] != -1) {
-                close(msg.in_fds[i]);
+        for (i = 0; i < msg.in.nr_fds; i++) {
+            if (msg.in.fds[i] != -1) {
+                close(msg.in.fds[i]);
             }
         }
 
-        free(msg.in_data);
+        free(msg.in.iov.iov_base);
 
         *versionp = NULL;
         return ERROR_INT(ret);

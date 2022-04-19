@@ -328,30 +328,30 @@ tran_pipe_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     tp = vfu_ctx->tran_data;
 
-    assert(msg->in_size <= SERVER_MAX_MSG_SIZE);
+    assert(msg->in.iov.iov_len <= SERVER_MAX_MSG_SIZE);
 
-    msg->in_data = malloc(msg->in_size);
+    msg->in.iov.iov_base = malloc(msg->in.iov.iov_len);
 
-    if (msg->in_data == NULL) {
+    if (msg->in.iov.iov_base == NULL) {
         return -1;
     }
 
-    ret = read(tp->in_fd, msg->in_data, msg->in_size);
+    ret = read(tp->in_fd, msg->in.iov.iov_base, msg->in.iov.iov_len);
 
     if (ret < 0) {
         ret = errno;
-        free(msg->in_data);
-        msg->in_data = NULL;
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(ret);
     } else if (ret == 0) {
-        free(msg->in_data);
-        msg->in_data = NULL;
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(ENOMSG);
-    } else if (ret != (int)msg->in_size)  {
+    } else if (ret != (int)msg->in.iov.iov_len)  {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: short read: expected=%zu, actual=%d",
-                msg->hdr.msg_id, msg->in_size, ret);
-        free(msg->in_data);
-        msg->in_data = NULL;
+                msg->hdr.msg_id, msg->in.iov.iov_len, ret);
+        free(msg->in.iov.iov_base);
+        msg->in.iov.iov_base = NULL;
         return ERROR_INT(EINVAL);
     }
 
@@ -375,7 +375,7 @@ tran_pipe_recv_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     return tran_pipe_recv_alloc(tp->in_fd, &msg->hdr, false, NULL,
-                                &msg->in_data, &msg->in_size);
+                                &msg->in.iov.iov_base, &msg->in.iov.iov_len);
 }
 
 static int
@@ -404,8 +404,8 @@ tran_pipe_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
         bcopy(msg->out_iovecs, iovecs + 1,
               msg->nr_out_iovecs * sizeof(*iovecs));
     } else {
-        iovecs[1].iov_base = msg->out_data;
-        iovecs[1].iov_len = msg->out_size;
+        iovecs[1].iov_base = msg->out.iov.iov_base;
+        iovecs[1].iov_len = msg->out.iov.iov_len;
     }
 
     ret = tran_pipe_send_iovec(tp->out_fd, msg->hdr.msg_id, true, msg->hdr.cmd,
