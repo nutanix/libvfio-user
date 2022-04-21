@@ -63,6 +63,10 @@ set(CMAKE_C_FLAGS
 set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -fvisibility=hidden")
 
+if (WITH_TRAN_PIPE EQUAL 1)
+    add_definitions(-DWITH_TRAN_PIPE)
+endif()
+
 # public headers
 add_subdirectory(include)
 

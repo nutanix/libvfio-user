@@ -65,7 +65,7 @@
  * Outgoing requests are either stored in out.iov.iov_base, or out_iovecs. In
  * the latter case, the iovecs refer to data that should not be freed.
  */
-typedef struct {
+typedef struct vfu_msg {
     /* in/out */
     struct vfio_user_header hdr;
 
@@ -80,30 +80,6 @@ typedef struct {
     struct iovec *out_iovecs;
     size_t nr_out_iovecs;
 } vfu_msg_t;
-
-struct transport_ops {
-    int (*init)(vfu_ctx_t *vfu_ctx);
-
-    int (*get_poll_fd)(vfu_ctx_t *vfu_ctx);
-
-    int (*attach)(vfu_ctx_t *vfu_ctx);
-
-    int (*get_request_header)(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
-                              int *fds, size_t *nr_fds);
-
-    int (*recv_body)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
-
-    int (*reply)(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err);
-
-    int (*send_msg)(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
-                    enum vfio_user_command cmd,
-                    void *send_data, size_t send_len,
-                    struct vfio_user_header *hdr,
-                    void *recv_data, size_t recv_len);
-
-    void (*detach)(vfu_ctx_t *vfu_ctx);
-    void (*fini)(vfu_ctx_t *vfu_ctx);
-};
 
 typedef struct {
     int         err_efd;    /* eventfd for irq err */

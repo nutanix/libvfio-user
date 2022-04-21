@@ -30,26 +30,18 @@
  *
  */
 
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <json.h>
-#include <stdio.h>
-#include <string.h>
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <stdio.h>
 
-#include "libvfio-user.h"
-#include "migration.h"
-#include "private.h"
 #include "tran_sock.h"
-
-// FIXME: is this the value we want?
-#define SERVER_MAX_FDS 8
 
 typedef struct {
     int listen_fd;
@@ -143,18 +135,6 @@ tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
     };
     return tran_sock_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
                                 ARRAY_SIZE(iovecs), NULL, 0, 0);
-}
-
-/*
- * Send an empty reply back to the other end with the given errno.
- */
-static int
-tran_sock_send_error(int sock, uint16_t msg_id,
-                     enum vfio_user_command cmd,
-                     int error)
-{
-    return tran_sock_send_iovec(sock, msg_id, true, cmd,
-                                NULL, 0, NULL, 0, error);
 }
 
 static int
@@ -395,8 +375,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts = calloc(1, sizeof(tran_sock_t));
 
     if (ts == NULL) {
-        ret = errno;
-        goto out;
+        return -1;
     }
 
     ts->listen_fd = -1;
@@ -462,277 +441,6 @@ tran_sock_get_poll_fd(vfu_ctx_t *vfu_ctx)
     return ts->listen_fd;
 }
 
-/*
- * Expected JSON is of the form:
- *
- * {
- *     "capabilities": {
- *         "max_msg_fds": 32,
- *         "max_data_xfer_size": 1048576
- *         "migration": {
- *             "pgsize": 4096
- *         }
- *     }
- * }
- *
- * with everything being optional. Note that json_object_get_uint64() is only
- * available in newer library versions, so we don't use it.
- */
-int
-tran_parse_version_json(const char *json_str, int *client_max_fdsp,
-                        size_t *client_max_data_xfer_sizep, size_t *pgsizep)
-{
-    struct json_object *jo_caps = NULL;
-    struct json_object *jo_top = NULL;
-    struct json_object *jo = NULL;
-    int ret = EINVAL;
-
-    if ((jo_top = json_tokener_parse(json_str)) == NULL) {
-        goto out;
-    }
-
-    if (!json_object_object_get_ex(jo_top, "capabilities", &jo_caps)) {
-        ret = 0;
-        goto out;
-    }
-
-    if (json_object_get_type(jo_caps) != json_type_object) {
-        goto out;
-    }
-
-    if (json_object_object_get_ex(jo_caps, "max_msg_fds", &jo)) {
-        if (json_object_get_type(jo) != json_type_int) {
-            goto out;
-        }
-
-        errno = 0;
-        *client_max_fdsp = (int)json_object_get_int64(jo);
-
-        if (errno != 0) {
-            goto out;
-        }
-    }
-
-    if (json_object_object_get_ex(jo_caps, "max_data_xfer_size", &jo)) {
-        if (json_object_get_type(jo) != json_type_int) {
-            goto out;
-        }
-
-        errno = 0;
-        *client_max_data_xfer_sizep = (int)json_object_get_int64(jo);
-
-        if (errno != 0) {
-            goto out;
-        }
-    }
-    if (json_object_object_get_ex(jo_caps, "migration", &jo)) {
-        struct json_object *jo2 = NULL;
-
-        if (json_object_get_type(jo) != json_type_object) {
-            goto out;
-        }
-
-        if (json_object_object_get_ex(jo, "pgsize", &jo2)) {
-            if (json_object_get_type(jo2) != json_type_int) {
-                goto out;
-            }
-
-            errno = 0;
-            *pgsizep = (size_t)json_object_get_int64(jo2);
-
-            if (errno != 0) {
-                goto out;
-            }
-        }
-    }
-
-    ret = 0;
-
-out:
-    /* We just need to put our top-level object. */
-    json_object_put(jo_top);
-    if (ret != 0) {
-        return ERROR_INT(ret);
-    }
-    return 0;
-}
-
-static int
-recv_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t *msg_idp,
-             struct vfio_user_version **versionp)
-{
-    struct vfio_user_version *cversion = NULL;
-    struct vfio_user_header hdr;
-    size_t vlen = 0;
-    int ret;
-
-    *versionp = NULL;
-
-    ret = tran_sock_recv_alloc(sock, &hdr, false, msg_idp,
-                               (void **)&cversion, &vlen);
-
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to receive version: %m");
-        return ret;
-    }
-
-    if (hdr.cmd != VFIO_USER_VERSION) {
-        vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: invalid cmd %hu (expected %u)",
-                *msg_idp, hdr.cmd, VFIO_USER_VERSION);
-        ret = EINVAL;
-        goto out;
-    }
-
-    if (vlen < sizeof(*cversion)) {
-        vfu_log(vfu_ctx, LOG_ERR,
-                "msg%#hx: VFIO_USER_VERSION: invalid size %lu", *msg_idp, vlen);
-        ret = EINVAL;
-        goto out;
-    }
-
-    if (cversion->major != LIB_VFIO_USER_MAJOR) {
-        vfu_log(vfu_ctx, LOG_ERR, "unsupported client major %hu (must be %u)",
-                cversion->major, LIB_VFIO_USER_MAJOR);
-        ret = EINVAL;
-        goto out;
-    }
-
-    vfu_ctx->client_max_fds = 1;
-    vfu_ctx->client_max_data_xfer_size = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE;
-
-    if (vlen > sizeof(*cversion)) {
-        const char *json_str = (const char *)cversion->data;
-        size_t len = vlen - sizeof(*cversion);
-        size_t pgsize = 0;
-
-        if (json_str[len - 1] != '\0') {
-            vfu_log(vfu_ctx, LOG_ERR, "ignoring invalid JSON from client");
-            ret = EINVAL;
-            goto out;
-        }
-
-        ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
-                                      &vfu_ctx->client_max_data_xfer_size,
-                                      &pgsize);
-
-        if (ret < 0) {
-            /* No client-supplied strings in the log for release build. */
-#ifdef DEBUG
-            vfu_log(vfu_ctx, LOG_ERR, "failed to parse client JSON \"%s\"",
-                    json_str);
-#else
-            vfu_log(vfu_ctx, LOG_ERR, "failed to parse client JSON");
-#endif
-            ret = errno;
-            goto out;
-        }
-
-        if (vfu_ctx->migration != NULL && pgsize != 0) {
-            ret = migration_set_pgsize(vfu_ctx->migration, pgsize);
-
-            if (ret != 0) {
-                vfu_log(vfu_ctx, LOG_ERR, "refusing client page size of %zu",
-                        pgsize);
-                ret = errno;
-                goto out;
-            }
-        }
-
-        // FIXME: is the code resilient against ->client_max_fds == 0?
-        if (vfu_ctx->client_max_fds < 0 ||
-            vfu_ctx->client_max_fds > VFIO_USER_CLIENT_MAX_MSG_FDS_LIMIT) {
-            vfu_log(vfu_ctx, LOG_ERR, "refusing client max_msg_fds of %d",
-                    vfu_ctx->client_max_fds);
-            ret = EINVAL;
-            goto out;
-        }
-    }
-
-out:
-    if (ret != 0) {
-        // FIXME: spec, is it OK to just have the header?
-        (void) tran_sock_send_error(sock, *msg_idp, hdr.cmd, ret);
-        free(cversion);
-        *versionp = NULL;
-        return ERROR_INT(ret);
-    }
-
-    *versionp = cversion;
-    return 0;
-}
-
-static int
-send_version(vfu_ctx_t *vfu_ctx, int sock, uint16_t msg_id,
-             struct vfio_user_version *cversion)
-{
-    struct vfio_user_version sversion = { 0 };
-    struct iovec iovecs[3] = { { 0 } };
-    char server_caps[1024];
-    int slen;
-
-    if (vfu_ctx->migration == NULL) {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE);
-    } else {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u,"
-                    "\"migration\":{"
-                        "\"pgsize\":%zu"
-                    "}"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE,
-                  migration_get_pgsize(vfu_ctx->migration));
-    }
-
-    // FIXME: we should save the client minor here, and check that before trying
-    // to send unsupported things.
-    sversion.major =  LIB_VFIO_USER_MAJOR;
-    sversion.minor = MIN(cversion->minor, LIB_VFIO_USER_MINOR);
-
-    /* [0] is for the header. */
-    iovecs[1].iov_base = &sversion;
-    iovecs[1].iov_len = sizeof(sversion);
-    iovecs[2].iov_base = server_caps;
-    /* Include the NUL. */
-    iovecs[2].iov_len = slen + 1;
-
-    return tran_sock_send_iovec(sock, msg_id, true, VFIO_USER_VERSION,
-                                iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
-}
-
-static int
-negotiate(vfu_ctx_t *vfu_ctx, int sock)
-{
-    struct vfio_user_version *client_version = NULL;
-    uint16_t msg_id = 0x0bad;
-    int ret;
-
-    ret = recv_version(vfu_ctx, sock, &msg_id, &client_version);
-
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to recv version: %m");
-        return ret;
-    }
-
-    ret = send_version(vfu_ctx, sock, msg_id, client_version);
-
-    free(client_version);
-
-    if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "failed to send version: %m");
-    }
-
-    return ret;
-}
-
 static int
 tran_sock_attach(vfu_ctx_t *vfu_ctx)
 {
@@ -755,7 +463,7 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
         return -1;
     }
 
-    ret = negotiate(vfu_ctx, ts->conn_fd);
+    ret = tran_negotiate(vfu_ctx);
     if (ret < 0) {
         ret = errno;
         close(ts->conn_fd);
@@ -806,6 +514,11 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     ts = vfu_ctx->tran_data;
 
+    if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
+        return ERROR_INT(ENOTCONN);
+    }
+
     assert(msg->in.iov.iov_len <= SERVER_MAX_MSG_SIZE);
 
     msg->in.iov.iov_base = malloc(msg->in.iov.iov_len);
@@ -834,6 +547,26 @@ tran_sock_recv_body(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     return 0;
+}
+
+static int
+tran_sock_recv_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    tran_sock_t *ts;
+
+    assert(vfu_ctx != NULL);
+    assert(vfu_ctx->tran_data != NULL);
+    assert(msg != NULL);
+
+    ts = vfu_ctx->tran_data;
+
+    if (ts->conn_fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "%s: not connected", __func__);
+        return ERROR_INT(ENOTCONN);
+    }
+
+    return tran_sock_recv_alloc(ts->conn_fd, &msg->hdr, false, NULL,
+                                &msg->in.iov.iov_base, &msg->in.iov.iov_len);
 }
 
 static int
@@ -935,6 +668,7 @@ struct transport_ops tran_sock_ops = {
     .get_request_header = tran_sock_get_request_header,
     .recv_body = tran_sock_recv_body,
     .reply = tran_sock_reply,
+    .recv_msg = tran_sock_recv_msg,
     .send_msg = tran_sock_send_msg,
     .detach = tran_sock_detach,
     .fini = tran_sock_fini

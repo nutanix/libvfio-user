@@ -22,3 +22,38 @@ Debugging Test Errors
 Sometimes debugging Valgrind errors on Python unit tests can be tricky. To
 run specific tests use the pytest `-k` option in `PYTESTCMD` in the Makefile.
 
+AFL++
+-----
+
+You can run [American Fuzzy Lop](https://github.com/AFLplusplus/AFLplusplus)
+against `libvfio-user`. It's easiest to use the Docker container:
+
+```
+cd /path/to/libvfio-user/src
+docker pull aflplusplus/aflplusplus
+docker run -ti -v $(pwd):/src aflplusplus/aflplusplus
+```
+
+Set up and build:
+
+```
+apt update
+apt-get -y install libjson-c-dev libcmocka-dev clang valgrind python3-pytest debianutils flake8 libssl-dev cmake
+
+cd /src
+export AFL_LLVM_LAF_ALL=1
+make CC=afl-clang-fast WITH_TRAN_PIPE=1
+
+mkdir inputs
+# don't yet have a better starting point
+echo "1" >inputs/start
+mkdir outputs
+```
+
+The `VFU_TRAN_PIPE` is a special `libvfio-user` transport that reads from
+`stdin` instead of a socket, we'll use this with the sample server to do our
+fuzzing:
+
+```
+afl-fuzz -i inputs/ -o outputs/ -- ./build/dbg/samples/server pipe
+```

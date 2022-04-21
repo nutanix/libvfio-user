@@ -33,7 +33,7 @@ import errno
 
 
 def test_vfu_create_ctx_bad_trans():
-    ctx = vfu_create_ctx(trans=VFU_TRANS_SOCK + 1)
+    ctx = vfu_create_ctx(trans=VFU_TRANS_MAX)
     assert ctx is None
     assert c.get_errno() == errno.ENOTSUP
 

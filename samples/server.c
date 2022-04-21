@@ -429,6 +429,7 @@ int main(int argc, char *argv[])
         }
     };
     vfu_ctx_t *vfu_ctx;
+    vfu_trans_t trans = VFU_TRANS_SOCK;
     int tmpfd;
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
@@ -459,7 +460,11 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to register signal handler");
     }
 
-    vfu_ctx = vfu_create_ctx(VFU_TRANS_SOCK, argv[optind], 0, &server_data,
+    if (strcmp(argv[optind], "pipe") == 0) {
+        trans = VFU_TRANS_PIPE;
+    }
+
+    vfu_ctx = vfu_create_ctx(trans, argv[optind], 0, &server_data,
                              VFU_DEV_TYPE_PCI);
     if (vfu_ctx == NULL) {
         err(EXIT_FAILURE, "failed to initialize device emulation");
