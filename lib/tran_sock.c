@@ -375,8 +375,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ts = calloc(1, sizeof(tran_sock_t));
 
     if (ts == NULL) {
-        ret = errno;
-        goto out;
+        return -1;
     }
 
     ts->listen_fd = -1;

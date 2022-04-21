@@ -250,14 +250,12 @@ tran_pipe_init(vfu_ctx_t *vfu_ctx)
     tp = calloc(1, sizeof(tran_pipe_t));
 
     if (tp == NULL) {
-        ret = errno;
-        goto out;
+        return -1;
     }
 
     tp->in_fd = -1;
     tp->out_fd = -1;
 
-out:
     if (ret != 0) {
         free(tp);
         return ERROR_INT(ret);
