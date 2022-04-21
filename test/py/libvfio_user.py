@@ -613,6 +613,7 @@ lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
     c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
+lib.dma_sg_size.restype = (c.c_size_t)
 lib.vfu_addr_to_sg.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                c.POINTER(dma_sg_t), c.c_int, c.c_int)
 lib.vfu_map_sg.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.POINTER(iovec_t),
@@ -1143,6 +1144,10 @@ def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
         cbs.data_written = __migr_data_written_cb
 
     return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
+
+
+def dma_sg_size():
+    return lib.dma_sg_size()
 
 
 def vfu_addr_to_sg(ctx, dma_addr, length, max_sg=1,
