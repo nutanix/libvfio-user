@@ -1,7 +1,8 @@
+#!/bin/bash
 #
-# Copyright (c) 2020 Nutanix Inc. All rights reserved.
+# Copyright (c) 2022 Nutanix Inc. All rights reserved.
 #
-# Authors: Thanos Makatos <thanos@nutanix.com>
+# Authors: John Levon <john.levon@nutanix.com>
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -26,36 +27,25 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-if (WITH_ASAN EQUAL 1)
-  unset(valgrind)
-else()
-  set(valgrind_path "/usr/bin/valgrind")
-  set(valgrind_args "--error-exitcode=1 --exit-on-first-error=yes --leak-check=full --quiet")
-  set(valgrind_args "${valgrind_args} --show-leak-kinds=all --track-origins=yes")
-  set(valgrind_args "${valgrind_args} --suppressions=${CMAKE_CURRENT_SOURCE_DIR}/valgrind.supp")
-  separate_arguments(valgrind_args)
-  set(valgrind ${valgrind_path} ${valgrind_args})
-endif()
+#
+# A crappy way to check all "public" symbols are exported.
+#
 
-add_executable(unit-tests unit-tests.c mocks.c
-		../lib/dma.c
-		../lib/irq.c
-		../lib/libvfio-user.c
-		../lib/migration.c
-		../lib/pci.c
-		../lib/pci_caps.c
-		../lib/tran_sock.c)
+set -e
 
-target_link_libraries(unit-tests PUBLIC cmocka dl json-c)
+header="$1/include/libvfio-user.h"
+libdir="$2/lib"
+cc="$3"
 
-target_compile_definitions(unit-tests PUBLIC UNIT_TEST)
+tmpfile=$(mktemp /tmp/libvfio-user.test-linkage.XXXXXX.c)
+cat >$tmpfile <<EOF
+int main() {
 
-enable_testing()
-add_test(NAME unit-tests COMMAND ${valgrind} ${CMAKE_CURRENT_BINARY_DIR}/unit-tests)
-add_test(NAME lspci COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-lspci.sh)
-add_test(NAME client-server COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-client-server.sh)
+$(egrep '^[a-z_0-9]+\(' $header | sed 's+(.*+();+;')
 
-if (NOT WITH_ASAN EQUAL 1)
-add_test(NAME linkage COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test-linkage.sh
-	${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR} ${CMAKE_C_COMPILER})
-endif()
+}
+EOF
+
+$cc -Wno-implicit-function-declaration -o /dev/null $tmpfile $libdir/libvfio-user.so
+
+rm $tmpfile
