@@ -243,7 +243,6 @@ static int
 tran_pipe_init(vfu_ctx_t *vfu_ctx)
 {
     tran_pipe_t *tp = NULL;
-    int ret = 0;
 
     assert(vfu_ctx != NULL);
 
@@ -255,11 +254,6 @@ tran_pipe_init(vfu_ctx_t *vfu_ctx)
 
     tp->in_fd = -1;
     tp->out_fd = -1;
-
-    if (ret != 0) {
-        free(tp);
-        return ERROR_INT(ret);
-    }
 
     vfu_ctx->tran_data = tp;
     return 0;
