@@ -226,6 +226,8 @@ SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
 topdir = os.path.realpath(os.path.dirname(__file__) + "/../..")
 build_type = os.getenv("BUILD_TYPE", default="dbg")
 libname = "%s/build/%s/lib/libvfio-user.so" % (topdir, build_type)
+if not os.path.exists(libname):
+    libname = os.path.join(os.getenv("LIBVFIO_SO_DIR"), "libvfio-user.so")
 lib = c.CDLL(libname, use_errno=True)
 libc = c.CDLL("libc.so.6", use_errno=True)
 
