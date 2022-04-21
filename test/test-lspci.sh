@@ -5,7 +5,11 @@
 # accept any.
 #
 
-../samples/lspci | lspci -vv -F /dev/stdin >lspci.out
+LSPCI=../samples/lspci
+
+test -n "$1" && LSPCI="$1"
+
+$LSPCI | lspci -vv -F /dev/stdin >lspci.out
 
 for i in 1 2 3; do
     if diff lspci.out $(dirname $0)/lspci.expected.out.$i >/dev/null 2>&1; then
