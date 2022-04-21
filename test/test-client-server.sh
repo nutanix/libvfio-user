@@ -2,6 +2,12 @@
 
 set -e
 
+CLIENT=../samples/client
+SERVER=../samples/server
+
+test -n "$1" && CLIENT="$1"
+test -n "$2" && SERVER="$2"
+
 #
 # ASAN and valgrind, understandably, don't get along.
 #
@@ -13,11 +19,11 @@ fi
 
 sock="/tmp/vfio-user.sock"
 rm -f ${sock}*
-${valgrind} ../samples/server -v ${sock} &
+${valgrind} $SERVER -v ${sock} &
 while [ ! -S ${sock} ]; do
 	sleep 0.1
 done
-${valgrind} ../samples/client ${sock} || {
+${valgrind} $CLIENT ${sock} || {
     kill $(jobs -p)
     exit 1
 }
