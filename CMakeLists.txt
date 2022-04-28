@@ -39,6 +39,9 @@ include(GNUInstallDirs)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSON REQUIRED json-c)
 
+# for LSP
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
 # for the benefit of the gcov rules
 set(CMAKE_C_OUTPUT_EXTENSION_REPLACE 1)
 
@@ -59,6 +62,10 @@ set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -Wno-missing-field-initializers -Wmissing-declarations")
 set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -fvisibility=hidden")
+
+if (WITH_TRAN_PIPE EQUAL 1)
+    add_definitions(-DWITH_TRAN_PIPE)
+endif()
 
 # public headers
 add_subdirectory(include)

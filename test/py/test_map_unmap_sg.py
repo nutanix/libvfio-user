@@ -35,6 +35,11 @@ import tempfile
 ctx = None
 
 
+def test_dma_sg_size():
+    size = dma_sg_size()
+    assert size == len(dma_sg_t())
+
+
 def test_map_sg_with_invalid_region():
     global ctx
 

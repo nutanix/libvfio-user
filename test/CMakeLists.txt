@@ -44,6 +44,8 @@ add_executable(unit-tests unit-tests.c mocks.c
 		../lib/migration.c
 		../lib/pci.c
 		../lib/pci_caps.c
+		../lib/tran.c
+		../lib/tran_pipe.c
 		../lib/tran_sock.c)
 
 target_link_libraries(unit-tests PUBLIC cmocka dl json-c)

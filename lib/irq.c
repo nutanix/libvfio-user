@@ -63,9 +63,9 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    in_info = msg->in_data;
+    in_info = msg->in.iov.iov_base;
 
-    if (msg->in_size < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
+    if (msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -74,14 +74,14 @@ handle_device_get_irq_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    msg->out_size = sizeof (*out_info);
-    msg->out_data = calloc(1, sizeof(*out_info));
+    msg->out.iov.iov_len = sizeof (*out_info);
+    msg->out.iov.iov_base = calloc(1, sizeof(*out_info));
 
-    if (msg->out_data == NULL) {
+    if (msg->out.iov.iov_base == NULL) {
         return -1;
     }
 
-    out_info = msg->out_data;
+    out_info = msg->out.iov.iov_base;
     out_info->argsz = sizeof(*out_info);
     out_info->flags = VFIO_IRQ_INFO_EVENTFD;
     out_info->index = in_info->index;
@@ -240,15 +240,15 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
 static int
 device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_irq_set *irq_set = msg->in_data;
+    struct vfio_irq_set *irq_set = msg->in.iov.iov_base;
     uint32_t a_type, d_type;
     int line;
 
     assert(vfu_ctx != NULL);
     assert(irq_set != NULL);
 
-    if (msg->in_size < sizeof(*irq_set) || irq_set->argsz < sizeof(*irq_set)) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in_size);
+    if (msg->in.iov.iov_len < sizeof(*irq_set) || irq_set->argsz < sizeof(*irq_set)) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad size %zu", msg->in.iov.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -258,7 +258,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     // bools provided must match count
     if (d_type == VFIO_IRQ_SET_DATA_BOOL &&
-        (msg->in_size - sizeof(*irq_set) != sizeof(uint8_t) * irq_set->count)) {
+        (msg->in.iov.iov_len - sizeof(*irq_set) != sizeof(uint8_t) * irq_set->count)) {
         line = __LINE__;
         goto invalid;
     }
@@ -308,12 +308,12 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         goto invalid;
     }
     // If fd's are provided, ensure it's only for VFIO_IRQ_SET_DATA_EVENTFD
-    if (msg->nr_in_fds != 0 && d_type != VFIO_IRQ_SET_DATA_EVENTFD) {
+    if (msg->in.nr_fds != 0 && d_type != VFIO_IRQ_SET_DATA_EVENTFD) {
         line = __LINE__;
         goto invalid;
     }
     // If fd's are provided, ensure they match ->count
-    if (msg->nr_in_fds != 0 && msg->nr_in_fds != irq_set->count) {
+    if (msg->in.nr_fds != 0 && msg->in.nr_fds != irq_set->count) {
         line = __LINE__;
         goto invalid;
     }
@@ -323,14 +323,14 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 invalid:
     vfu_log(vfu_ctx, LOG_DEBUG, "invalid SET_IRQS (%d): action=%u data_type=%u "
             "index=%u start=%u count=%u nr_fds=%zu", line, a_type, d_type,
-            irq_set->index, irq_set->start, irq_set->count, msg->nr_in_fds);
+            irq_set->index, irq_set->start, irq_set->count, msg->in.nr_fds);
     return ERROR_INT(EINVAL);
 }
 
 int
 handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct vfio_irq_set *irq_set = msg->in_data;
+    struct vfio_irq_set *irq_set = msg->in.iov.iov_base;
     uint32_t data_type;
     int ret;
 
@@ -355,7 +355,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     data_type = irq_set->flags & VFIO_IRQ_SET_DATA_TYPE_MASK;
 
     if ((data_type == VFIO_IRQ_SET_DATA_NONE && irq_set->count == 0) ||
-        (data_type == VFIO_IRQ_SET_DATA_EVENTFD && msg->nr_in_fds == 0)) {
+        (data_type == VFIO_IRQ_SET_DATA_EVENTFD && msg->in.nr_fds == 0)) {
         irqs_disable(vfu_ctx, irq_set->index, irq_set->start, irq_set->count);
         return 0;
     }
@@ -368,7 +368,7 @@ handle_device_set_irqs(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     case VFIO_IRQ_SET_DATA_NONE:
         return irqs_set_data_none(vfu_ctx, irq_set);
     case VFIO_IRQ_SET_DATA_EVENTFD:
-        return irqs_set_data_eventfd(vfu_ctx, irq_set, msg->in_fds);
+        return irqs_set_data_eventfd(vfu_ctx, irq_set, msg->in.fds);
     case VFIO_IRQ_SET_DATA_BOOL:
         return irqs_set_data_bool(vfu_ctx, irq_set, irq_set + 1);
         break;

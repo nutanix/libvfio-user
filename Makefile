@@ -129,13 +129,13 @@ endif
 pre-push: realclean
 	$(RSTLINT) docs/vfio-user.rst
 	$(FLAKE8) --extend-ignore=F405,F403,E128,E131,E127 $$(find . -name '*.py')
-	make test WITH_ASAN=1
+	make test WITH_ASAN=1 WITH_TRAN_PIPE=1
 	make realclean
-	make test CC=clang BUILD_TYPE=rel
-	make test CC=clang
+	make test CC=clang BUILD_TYPE=rel WITH_TRAN_PIPE=1
+	make test CC=clang WITH_TRAN_PIPE=1
 	make realclean
-	make test CC=gcc BUILD_TYPE=rel
-	make test CC=gcc
+	make test CC=gcc BUILD_TYPE=rel WITH_TRAN_PIPE=1
+	make test CC=gcc WITH_TRAN_PIPE=1
 	make pytest-valgrind
 	make install DESTDIR=tmp.install
 
@@ -168,6 +168,7 @@ endif
 		-D "CMAKE_BUILD_TYPE:STRING=$(CMAKE_BUILD_TYPE)" \
 		-D "CMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)" \
 		-D "WITH_ASAN=$(WITH_ASAN)" \
+		-D "WITH_TRAN_PIPE=$(WITH_TRAN_PIPE)" \
 		$(CURDIR)
 
 tags:
