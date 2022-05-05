@@ -38,7 +38,6 @@
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
-#include <openssl/md5.h>
 #include <sys/mman.h>
 #include <sys/param.h>
 #include <sys/stat.h>
@@ -47,6 +46,7 @@
 #include "common.h"
 #include "libvfio-user.h"
 #include "private.h"
+#include "rte_hash_crc.h"
 #include "tran_sock.h"
 
 struct dma_regions {
@@ -186,18 +186,6 @@ dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
     }
 }
 
-static void
-get_md5sum(unsigned char *buf, int len, unsigned char *md5sum)
-{
-	MD5_CTX ctx;
-
-    MD5_Init(&ctx);
-    MD5_Update(&ctx, buf, len);
-    MD5_Final(md5sum, &ctx);
-
-    return;
-}
-
 /*
  * FIXME this function does DMA write/read using messages. This should be done
  * on a region that is not memory mappable or an area of a region that is not
@@ -208,9 +196,11 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 {
     int count = 4096;
     unsigned char buf[count];
-    unsigned char md5sum1[MD5_DIGEST_LENGTH], md5sum2[MD5_DIGEST_LENGTH];
-    int i, ret;
-    dma_sg_t *sg = alloca(dma_sg_size());
+    uint32_t crc1, crc2;
+    dma_sg_t *sg;
+    int ret;
+
+    sg = alloca(dma_sg_size());
 
     assert(vfu_ctx != NULL);
 
@@ -224,7 +214,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     }
 
     memset(buf, 'A', count);
-    get_md5sum(buf, count, md5sum1);
+    crc1 = rte_hash_crc(buf, count, 0);
     vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p count %d", __func__,
            server_data->regions[0].iova.iov_base, count);
     ret = vfu_dma_write(vfu_ctx, sg, buf);
@@ -239,11 +229,10 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     if (ret < 0) {
         err(EXIT_FAILURE, "vfu_dma_read failed");
     }
-    get_md5sum(buf, count, md5sum2);
-    for(i = 0; i < MD5_DIGEST_LENGTH; i++) {
-        if (md5sum2[i] != md5sum1[i]) {
-            errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
-        }
+    crc2 = rte_hash_crc(buf, count, 0);
+
+    if (crc1 != crc2) {
+        errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
     }
 }
 

@@ -42,11 +42,11 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <pthread.h>
-#include <openssl/md5.h>
 #include <linux/limits.h>
 
 #include "common.h"
 #include "libvfio-user.h"
+#include "rte_hash_crc.h"
 #include "tran_sock.h"
 
 #define CLIENT_MAX_FDS (32)
@@ -801,7 +801,7 @@ struct fake_guest_data {
     int sock;
     size_t bar1_size;
     bool done;
-    unsigned char *md5sum;
+    uint32_t *crcp;
 };
 
 static void *
@@ -810,8 +810,8 @@ fake_guest(void *arg)
     struct fake_guest_data *fake_guest_data = arg;
     int ret;
     char buf[fake_guest_data->bar1_size];
-	MD5_CTX md5_ctx;
     FILE *fp = fopen("/dev/urandom", "r");
+    uint32_t crc = 0;
 
     if (fp == NULL) {
         err(EXIT_FAILURE, "failed to open /dev/urandom");
@@ -828,19 +828,18 @@ fake_guest(void *arg)
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
-        MD5_Init(&md5_ctx);
-        MD5_Update(&md5_ctx, buf, fake_guest_data->bar1_size);
+        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, crc);
         __sync_synchronize();
     } while (!fake_guest_data->done);
 
-    MD5_Final(fake_guest_data->md5sum, &md5_ctx);
+    *fake_guest_data->crcp = crc;
 
     return NULL;
 }
 
 static size_t
 migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
-             unsigned char *md5sum, size_t bar1_size)
+             uint32_t *crcp, size_t bar1_size)
 {
     uint32_t device_state;
     int ret;
@@ -850,7 +849,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         .sock = sock,
         .bar1_size = bar1_size,
         .done = false,
-        .md5sum = md5sum
+        .crcp = crcp
     };
 
     ret = pthread_create(&thread, NULL, fake_guest, &fake_guest_data);
@@ -921,7 +920,7 @@ static int
 migrate_to(char *old_sock_path, int *server_max_fds,
            size_t *server_max_data_xfer_size, size_t *pgsize, size_t nr_iters,
            struct iovec *migr_iters, char *path_to_server,
-           unsigned char *src_md5sum, size_t bar1_size)
+           uint32_t src_crc, size_t bar1_size)
 {
     int ret, sock;
     char *sock_path;
@@ -929,9 +928,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     uint32_t device_state = VFIO_DEVICE_STATE_RESUMING;
     uint64_t data_offset, data_len;
     size_t i;
-	MD5_CTX md5_ctx;
+    uint32_t dst_crc;
     char buf[bar1_size];
-    unsigned char dst_md5sum[MD5_DIGEST_LENGTH];
 
     assert(old_sock_path != NULL);
 
@@ -1031,25 +1029,15 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     }
 
     /* validate contents of BAR1 */
-    MD5_Init(&md5_ctx);
 
     if (access_region(sock, 1, false, 0, buf, bar1_size) != 0) {
         err(EXIT_FAILURE, "failed to read BAR1");
     }
-    MD5_Update(&md5_ctx, buf, bar1_size);
-    MD5_Final(dst_md5sum, &md5_ctx);
 
-    if (strncmp((char*)src_md5sum, (char*)dst_md5sum, MD5_DIGEST_LENGTH) != 0) {
-        int i;
-        fprintf(stderr, "client: md5sum mismatch: ");
-        for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
-            fprintf(stderr, "%02x", src_md5sum[i]);
-        }
-        fprintf(stderr, " != ");
-        for (i = 0; i < MD5_DIGEST_LENGTH; i++) {
-            fprintf(stderr, "%02x", dst_md5sum[i]);
-        }
-        fprintf(stderr, "\n");
+    dst_crc = rte_hash_crc(buf, bar1_size, 0);
+
+    if (dst_crc != src_crc) {
+        fprintf(stderr, "client: CRC mismatch: %u != %u\n", src_crc, dst_crc);
         abort();
     }
 
@@ -1100,7 +1088,7 @@ int main(int argc, char *argv[])
     vfu_pci_hdr_t config_space;
     struct iovec *migr_iters;
     size_t nr_iters;
-    unsigned char md5sum[MD5_DIGEST_LENGTH];
+    uint32_t crc;
     size_t bar1_size = 0x3000; /* FIXME get this value from region info */
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
@@ -1263,7 +1251,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to write to BAR0");
     }
 
-    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, md5sum, bar1_size);
+    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, &crc, bar1_size);
 
     /*
      * Normally the client would now send the device state to the destination
@@ -1277,7 +1265,7 @@ int main(int argc, char *argv[])
 
     sock = migrate_to(argv[optind], &server_max_fds, &server_max_data_xfer_size,
                       &pgsize, nr_iters, migr_iters, path_to_server,
-                      md5sum, bar1_size);
+                      crc, bar1_size);
     free(path_to_server);
     for (i = 0; i < (int)nr_iters; i++) {
         free(migr_iters[i].iov_base);

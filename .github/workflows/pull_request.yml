@@ -23,7 +23,7 @@ jobs:
           # NB: no working flake8
           yum -y install make gcc-4.8.5 epel-release pciutils
           yum -y install clang cmake json-c-devel libcmocka-devel \
-              openssl-devel valgrind python36-pytest which
+              valgrind python36-pytest which
           make pre-push VERBOSE=1
   fedora-35:
     timeout-minutes: 10
@@ -34,6 +34,6 @@ jobs:
       - name: pre-push
         run: |
           dnf -y install --releasever=35 \
-              gcc make clang cmake json-c-devel libcmocka-devel openssl-devel \
-              pciutils diffutils valgrind python3-pytest python3-flake8 which
+              gcc make clang cmake json-c-devel libcmocka-devel pciutils \
+              diffutils valgrind python3-pytest python3-flake8 which
           make pre-push VERBOSE=1
