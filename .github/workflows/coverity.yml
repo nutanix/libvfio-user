@@ -14,8 +14,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
-                                  python3-pytest debianutils
-          make coverity VERBOSE=1
+                                  python3-pytest debianutils meson ninja-build
+          ./.github/workflows/coverity.sh
     env:
       COVERITY_TOKEN: ${{ secrets.COVERITY_TOKEN }}
       COVERITY_EMAIL: ${{ secrets.COVERITY_EMAIL }}
