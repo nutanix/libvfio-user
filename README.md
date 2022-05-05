@@ -58,17 +58,14 @@ Building libvfio-user
 
 Build requirements:
 
- * `cmake` (v2 or above)
+ * `meson` (v0.53.0 or above)
  * `apt install libjson-c-dev libcmocka-dev` *or*
  * `yum install json-c-devel libcmocka-devel`
 
 To build:
 
-    make && make install
-
-By default a debug build is created. To create a release build do:
-
-    make BUILD_TYPE=rel
+    meson build
+    ninja -C build
 
 The kernel headers are necessary because VFIO structs and defines are reused.
 
