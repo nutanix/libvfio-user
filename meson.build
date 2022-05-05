@@ -8,6 +8,8 @@ project(
         'buildtype=debugoptimized',
         'c_std=gnu99',
         'warning_level=2',
+        # clang with dwarf-5 can break valgrind
+        'c_args=-gdwarf-4',
     ],
 )
 

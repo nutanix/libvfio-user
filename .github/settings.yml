@@ -106,6 +106,7 @@ branches:
         contexts:
           - centos-7
           - ubuntu-20
+          - ubuntu-22
           - fedora-35
       # Required. Enforce all configured restrictions for administrators. Set to true to enforce required status checks for repository administrators. Set to null to disable.
       enforce_admins: true
