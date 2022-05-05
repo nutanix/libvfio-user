@@ -126,25 +126,11 @@ test: all pytest
 endif
 	cd $(BUILD_DIR)/test; ctest --verbose
 
-pre-push: realclean
-	$(RSTLINT) docs/vfio-user.rst
-	$(FLAKE8) --extend-ignore=F405,F403,E128,E131,E127 $$(find . -name '*.py')
-	make test WITH_ASAN=1 WITH_TRAN_PIPE=1
-	make realclean
-	make test CC=clang BUILD_TYPE=rel WITH_TRAN_PIPE=1
-	make test CC=clang WITH_TRAN_PIPE=1
-	make realclean
-	make test CC=gcc BUILD_TYPE=rel WITH_TRAN_PIPE=1
-	make test CC=gcc WITH_TRAN_PIPE=1
-	make pytest-valgrind
-	make install DESTDIR=tmp.install
+pre-push:
+	.github/workflows/pull_request.sh
 
-coverity: realclean
-	curl -sS -L -o coverity.tar.gz -d "token=$$COVERITY_TOKEN&project=nutanix%2Flibvfio-user" https://scan.coverity.com/download/cxx/linux64
-	tar xf coverity.tar.gz
-	./cov-analysis-linux64-*/bin/cov-build --dir cov-int make -j4 all
-	tar czf coverity-results.tar.gz cov-int
-	curl --form token=$$COVERITY_TOKEN --form email=$$COVERITY_EMAIL --form file=@coverity-results.tar.gz --form version="$(GIT_SHA)"  https://scan.coverity.com/builds?project=nutanix%2Flibvfio-user
+coverity:
+	.github/workflows/coverity.sh
 
 GCOVS=$(patsubst %.c,%.c.gcov, $(wildcard lib/*.c))
 
