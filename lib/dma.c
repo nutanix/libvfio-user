@@ -31,7 +31,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <stdio.h>
 #include <sys/param.h>
 
 #include <stddef.h>
@@ -281,7 +280,8 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
     if (size < 0) {
         return size;
     }
-    region->dirty_bitmap = calloc(size, sizeof(char));
+
+    region->dirty_bitmap = calloc(size, 1);
     if (region->dirty_bitmap == NULL) {
         return ERROR_INT(errno);
     }
@@ -553,10 +553,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap)
 {
-    int ret;
+    dma_memory_region_t *region;
     ssize_t bitmap_size;
     dma_sg_t sg;
-    dma_memory_region_t *region;
+    size_t i;
+    int ret;
 
     assert(dma != NULL);
     assert(bitmap != NULL);
@@ -599,11 +600,32 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    memcpy(bitmap, region->dirty_bitmap, size);
+    for (i = 0; i < (size_t)bitmap_size; i++) {
+        uint8_t val = region->dirty_bitmap[i];
+        uint8_t *outp = (uint8_t *)&bitmap[i];
+
+        /*
+         * If no bits are dirty, avoid the atomic exchange. This is obviously
+         * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
+         * the next time around.
+         *
+         * Otherwise, atomically exchange the dirty bits with zero: as we use
+         * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
+         * miss a bit being set after, but again, we'll catch that next time
+         * around.
+         */
+        if (val == 0) {
+            *outp = 0;
+        } else {
+            uint8_t zero = 0;
+            __atomic_exchange(&region->dirty_bitmap[i], &zero,
+                              outp, __ATOMIC_SEQ_CST);
+        }
+    }
+
 #ifdef DEBUG
     log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size);
 #endif
-    memset(region->dirty_bitmap, 0, size);
 
     return 0;
 }

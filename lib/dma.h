@@ -58,6 +58,7 @@
  *   effectively a no-op.
  */
 
+#include <stdio.h>
 #ifdef DMA_MAP_PROTECTED
 #undef DMA_MAP_FAST
 #define DMA_MAP_FAST_IMPL 0
@@ -95,7 +96,7 @@ typedef struct {
     vfu_dma_info_t info;
     int fd;                     // File descriptor to mmap
     off_t offset;               // File offset
-    char *dirty_bitmap;         // Dirty page bitmap
+    uint8_t *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
 
 typedef struct dma_controller {
@@ -140,22 +141,64 @@ _dma_addr_sg_split(const dma_controller_t *dma,
                    vfu_dma_addr_t dma_addr, uint64_t len,
                    dma_sg_t *sg, int max_nr_sgs, int prot);
 
-static void
+/* Convert a start address and length to its containing page numbers. */
+static inline void
+range_to_pages(size_t start, size_t len, size_t pgsize,
+               size_t *pgstart, size_t *pgend)
+{
+    *pgstart = start / pgsize;
+    *pgend = ROUND_UP(start + len, pgsize) / pgsize;
+}
+
+/* Given a bit position, return the containing byte. */
+static inline size_t
+bit_to_u8(size_t val)
+{
+    return val / (CHAR_BIT);
+}
+
+/* Return a value modulo the bitsize of a uint8_t. */
+static inline size_t
+bit_to_u8off(size_t val)
+{
+    return val % (CHAR_BIT);
+}
+
+static inline void
 _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
                 dma_sg_t *sg)
 {
-    size_t i, start, end;
+    size_t index;
+    size_t end;
+    size_t pgstart;
+    size_t pgend;
+    size_t i;
 
     assert(dma != NULL);
     assert(region != NULL);
     assert(sg != NULL);
     assert(region->dirty_bitmap != NULL);
 
-    start = sg->offset / dma->dirty_pgsize;
-    end = start + (sg->length / dma->dirty_pgsize) + (sg->length % dma->dirty_pgsize != 0) - 1;
+    range_to_pages(sg->offset, sg->length, dma->dirty_pgsize,
+                   &pgstart, &pgend);
 
-    for (i = start; i <= end; i++) {
-        region->dirty_bitmap[i / CHAR_BIT] |= 1 << (i % CHAR_BIT);
+    index = bit_to_u8(pgstart);
+    end = bit_to_u8(pgend) + !!(bit_to_u8off(pgend));
+
+    for (i = index; i < end; i++) {
+        uint8_t bm = ~0;
+
+        /* Mask off any pages in the first u8 that aren't in the range. */
+        if (i == index && bit_to_u8off(pgstart) != 0) {
+            bm &= ~((1 << bit_to_u8off(pgstart)) - 1);
+        }
+
+        /* Mask off any pages in the last u8 that aren't in the range. */
+        if (i == end - 1 && bit_to_u8off(pgend) != 0) {
+            bm &= ((1 << bit_to_u8off(pgend)) - 1);
+        }
+
+        __atomic_or_fetch(&region->dirty_bitmap[i], bm, __ATOMIC_SEQ_CST);
     }
 }
 
