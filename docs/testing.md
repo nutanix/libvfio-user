@@ -38,7 +38,8 @@ Set up and build:
 
 ```
 apt update
-apt-get -y install libjson-c-dev libcmocka-dev clang valgrind python3-pytest debianutils flake8 libssl-dev cmake
+apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
+                   python3-pytest debianutils flake8 cmake
 
 cd /src
 export AFL_LLVM_LAF_ALL=1
