@@ -73,6 +73,10 @@ tran_pipe_send_iovec(int fd, uint16_t msg_id, bool is_reply,
 
     ret = writev(fd, iovecs, nr_iovecs);
 
+    /* Quieten static analysis. */
+    iovecs[0].iov_base = NULL;
+    iovecs[0].iov_len = 0;
+
     if (ret == -1) {
         /* Treat a failed write due to EPIPE the same as a short write. */
         if (errno == EPIPE) {
