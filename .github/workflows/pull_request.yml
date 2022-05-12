@@ -13,6 +13,18 @@ jobs:
                                   python3-pytest debianutils flake8 meson \
                                   ninja-build
           ./.github/workflows/pull_request.sh
+  ubuntu-22:
+    timeout-minutes: 10
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: pre-push
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
+                                  python3-pytest debianutils flake8 meson \
+                                  ninja-build
+          ./.github/workflows/pull_request.sh
   centos-7:
     timeout-minutes: 10
     runs-on: ubuntu-latest
