@@ -469,7 +469,7 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
                      size_t offset, uint32_t size, uint32_t flags,
                      uint64_t datamatch)
 {
-    vfu_reg_info_t *vfu_reg = &vfu_ctx->reg_info[region_idx];
+    vfu_reg_info_t *vfu_reg;
 
     assert(vfu_ctx != NULL);
     assert(fd >= 0);

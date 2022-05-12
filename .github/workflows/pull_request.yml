@@ -9,9 +9,9 @@ jobs:
       - name: pre-push
         run: |
           sudo apt-get update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
-                                  python3-pytest debianutils flake8 meson \
-                                  ninja-build
+          sudo apt-get -y install libjson-c-dev libcmocka-dev clang \
+            clang-tools valgrind python3-pytest debianutils flake8 meson \
+            ninja-build
           ./.github/workflows/pull_request.sh
   ubuntu-22:
     timeout-minutes: 10
@@ -21,9 +21,9 @@ jobs:
       - name: pre-push
         run: |
           sudo apt-get update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang valgrind \
-                                  python3-pytest debianutils flake8 meson \
-                                  ninja-build
+          sudo apt-get -y install libjson-c-dev libcmocka-dev clang \
+            clang-tools valgrind python3-pytest debianutils flake8 meson \
+            ninja-build
           ./.github/workflows/pull_request.sh
   centos-7:
     timeout-minutes: 10
@@ -35,7 +35,7 @@ jobs:
         run: |
           # NB: no working flake8
           yum -y install make gcc-4.8.5 epel-release pciutils
-          yum -y install clang json-c-devel libcmocka-devel \
+          yum -y install clang clang-analyzer json-c-devel libcmocka-devel \
               valgrind python36-pytest which ninja-build meson
           ./.github/workflows/pull_request.sh
   fedora-35:
@@ -47,6 +47,7 @@ jobs:
       - name: pre-push
         run: |
           dnf -y install --releasever=35 \
-              gcc make clang json-c-devel libcmocka-devel pciutils diffutils \
-              valgrind python3-pytest python3-flake8 which meson ninja-build
+              gcc make clang clang-analyzer json-c-devel libcmocka-devel pciutils \
+              diffutils valgrind python3-pytest python3-flake8 which \
+              meson ninja-build
           ./.github/workflows/pull_request.sh

@@ -314,8 +314,8 @@ static void
 test_dma_addr_to_sg(void **state UNUSED)
 {
     dma_memory_region_t *r, *r1;
+    struct iovec iov[2] = { };
     dma_sg_t sg[2];
-    struct iovec iov[2];
     int ret;
 
     vfu_ctx.dma->nregions = 1;
