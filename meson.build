@@ -49,6 +49,10 @@ common_cflags = [
     '-D_GNU_SOURCE',
 ]
 
+if opt_debug
+    common_cflags += '-Werror'
+endif
+
 if opt_debug_logs.enabled() or (not opt_debug_logs.disabled() and opt_debug)
     common_cflags += ['-DDEBUG']
 endif
