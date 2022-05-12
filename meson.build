@@ -5,7 +5,7 @@ project(
     license: 'BSD-3-Clause',
     meson_version: '>= 0.53.0',
     default_options: [
-        'buildtype=debugoptimized',
+        'buildtype=debug',
         'c_std=gnu99',
         'warning_level=2',
         # clang with dwarf-5 can break valgrind
