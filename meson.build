@@ -5,7 +5,7 @@ project(
     license: 'BSD-3-Clause',
     meson_version: '>= 0.53.0',
     default_options: [
-        'buildtype=debugoptimized',
+        'buildtype=debug',
         'c_std=gnu99',
         'warning_level=2',
         # clang with dwarf-5 can break valgrind
@@ -48,6 +48,10 @@ valgrind = find_program('valgrind', required: false)
 common_cflags = [
     '-D_GNU_SOURCE',
 ]
+
+if opt_debug
+    common_cflags += '-Werror'
+endif
 
 if opt_debug_logs.enabled() or (not opt_debug_logs.disabled() and opt_debug)
     common_cflags += ['-DDEBUG']
