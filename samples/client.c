@@ -78,20 +78,20 @@ vfu_log(UNUSED vfu_ctx_t *vfu_ctx, UNUSED int level,
 static int
 init_sock(const char *path)
 {
-    int ret, sock;
-	struct sockaddr_un addr = {.sun_family = AF_UNIX};
+    struct sockaddr_un addr = {.sun_family = AF_UNIX};
+    int sock;
 
-	/* TODO path should be defined elsewhere */
-	ret = snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+    /* TODO path should be defined elsewhere */
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
 
-	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-		err(EXIT_FAILURE, "failed to open socket %s", path);
-	}
+    if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        err(EXIT_FAILURE, "failed to open socket %s", path);
+    }
 
-	if ((ret = connect(sock, (struct sockaddr*)&addr, sizeof(addr))) == -1) {
-		err(EXIT_FAILURE, "failed to connect server");
-	}
-	return sock;
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+        err(EXIT_FAILURE, "failed to connect server");
+    }
+    return sock;
 }
 
 static void
