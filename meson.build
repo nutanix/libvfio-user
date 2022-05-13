@@ -63,6 +63,7 @@ if get_option('warning_level') == '2'
     common_cflags += cc.get_supported_arguments([
         '-Wno-missing-field-initializers',
         '-Wmissing-declarations',
+        '-Wwrite-strings',
     ])
 endif
 
