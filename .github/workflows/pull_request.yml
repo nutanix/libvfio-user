@@ -41,7 +41,7 @@ jobs:
   fedora-35:
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    container: fedora
+    container: fedora:35
     steps:
       - uses: actions/checkout@v2
       - name: pre-push
