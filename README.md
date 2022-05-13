@@ -109,7 +109,8 @@ Mailing List & Chat
 libvfio-user development is discussed in libvfio-user-devel@nongnu.org.
 Subscribe here: https://lists.gnu.org/mailman/listinfo/libvfio-user-devel.
 
-We are on Slack at [libvfio-user.slack.com](https://libvfio-user.slack.com);
+We are on Slack at [libvfio-user.slack.com](https://libvfio-user.slack.com)
+([invite link](https://join.slack.com/t/libvfio-user/shared_invite/zt-193oqc8jl-a2nKYFZESQMMlsiYHSsAMw));
 or IRC at [#qemu on OFTC](https://oftc.net/).
 
 Contributing
