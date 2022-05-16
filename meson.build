@@ -70,5 +70,8 @@ endif
 subdir('include')
 subdir('lib')
 subdir('samples')
-subdir('test')
 subdir('docs')
+
+if not meson.is_subproject()
+    subdir('test')
+endif
