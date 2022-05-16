@@ -7,6 +7,8 @@ protocol](https://lists.gnu.org/archive/html/qemu-devel/2020-11/msg02458.html)
 over a UNIX socket to a server. This library, `libvfio-user`, provides an API
 for implementing such servers.
 
+![vfio-user example block diagram](docs/libvfio-user.png)
+
 [VFIO](https://www.kernel.org/doc/Documentation/vfio.txt) is a kernel facility
 for providing secure access to PCI devices in userspace (including pass-through
 to a VM). With `vfio-user`, instead of talking to the kernel, all interactions
