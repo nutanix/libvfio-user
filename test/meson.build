@@ -83,14 +83,14 @@ test(
     timeout: 90,
 )
 
-if opt_sanitizers == 'none'
+if opt_sanitizers == 'none' and meson.version().version_compare('>=0.56.0')
     test(
         'test-linkage.sh',
         find_program('test-linkage.sh'),
         suite: 'functional',
         args: [
-            meson.source_root(),
-            meson.build_root(),
+            meson.project_source_root(),
+            meson.project_build_root(),
             ' '.join(cc.cmd_array()),
         ]
     )

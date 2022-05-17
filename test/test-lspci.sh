@@ -7,6 +7,11 @@
 
 LSPCI=../samples/lspci
 
+if ! command -v lspci &> /dev/null
+then
+    exit 77
+fi
+
 test -n "$1" && LSPCI="$1"
 
 $LSPCI | lspci -vv -F /dev/stdin >lspci.out
