@@ -75,7 +75,7 @@ def test_migration_bad_access(mock_trans, mock_quiesce):
     """
     global ctx, sock
 
-    data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
+    data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data)-1, data=data, expect=errno.EINVAL)
 
@@ -91,7 +91,7 @@ def test_migration_trans_sync(mock_trans, mock_quiesce):
 
     global ctx, sock
 
-    data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
+    data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data)
 
@@ -107,7 +107,7 @@ def test_migration_trans_sync_err(mock_trans):
 
     global ctx, sock
 
-    data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
+    data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, expect=errno.EPERM)
 
@@ -126,7 +126,7 @@ def test_migration_trans_async(mock_trans, mock_quiesce):
     global ctx, sock
     mock_quiesce
 
-    data = VFIO_DEVICE_STATE_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
+    data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
                  busy=True)
@@ -151,7 +151,7 @@ def test_migration_trans_async_err(mock_trans, mock_quiesce):
 
     global ctx, sock
 
-    data = VFIO_DEVICE_STATE_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
+    data = VFIO_DEVICE_STATE_V1_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
     write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
                  busy=True)

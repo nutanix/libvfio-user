@@ -868,7 +868,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
      * XXX set device state to pre-copy. This is technically optional but any
      * VMM that cares about performance needs this.
      */
-    device_state = VFIO_DEVICE_STATE_SAVING | VFIO_DEVICE_STATE_RUNNING;
+    device_state = VFIO_DEVICE_STATE_V1_SAVING | VFIO_DEVICE_STATE_V1_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                         offsetof(struct vfio_user_migration_info, device_state),
                         &device_state, sizeof(device_state));
@@ -889,7 +889,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     printf("client: setting device state to stop-and-copy\n");
 
-    device_state = VFIO_DEVICE_STATE_SAVING;
+    device_state = VFIO_DEVICE_STATE_V1_SAVING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                         offsetof(struct vfio_user_migration_info, device_state),
                         &device_state, sizeof(device_state));
@@ -905,7 +905,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     }
 
     /* XXX read device state, migration must have finished now */
-    device_state = VFIO_DEVICE_STATE_STOP;
+    device_state = VFIO_DEVICE_STATE_V1_STOP;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                               offsetof(struct vfio_user_migration_info, device_state),
                               &device_state, sizeof(device_state));
@@ -925,7 +925,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     int ret, sock;
     char *sock_path;
     struct stat sb;
-    uint32_t device_state = VFIO_DEVICE_STATE_RESUMING;
+    uint32_t device_state = VFIO_DEVICE_STATE_V1_RESUMING;
     uint64_t data_offset, data_len;
     size_t i;
     uint32_t dst_crc;
@@ -1020,7 +1020,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     }
 
     /* XXX set device state to running */
-    device_state = VFIO_DEVICE_STATE_RUNNING;
+    device_state = VFIO_DEVICE_STATE_V1_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             offsetof(struct vfio_user_migration_info, device_state),
                             &device_state, sizeof(device_state));

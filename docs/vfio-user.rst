@@ -1598,29 +1598,29 @@ A device may contain a migration region (of type
 subregion is accessed like any other part of a standard vfio-user region
 using ``VFIO_USER_REGION_READ``/``VFIO_USER_REGION_WRITE``.
 
-+---------------+--------+-----------------------------+
-| Name          | Offset | Size                        |
-+===============+========+=============================+
-| device_state  | 0      | 4                           |
-+---------------+--------+-----------------------------+
-|               | +-----+----------------------------+ |
-|               | | Bit | Definition                 | |
-|               | +=====+============================+ |
-|               | | 0   | VFIO_DEVICE_STATE_RUNNING  | |
-|               | +-----+----------------------------+ |
-|               | | 1   | VFIO_DEVICE_STATE_SAVING   | |
-|               | +-----+----------------------------+ |
-|               | | 2   | VFIO_DEVICE_STATE_RESUMING | |
-|               | +-----+----------------------------+ |
-+---------------+--------+-----------------------------+
-| reserved      | 4      | 4                           |
-+---------------+--------+-----------------------------+
-| pending_bytes | 8      | 8                           |
-+---------------+--------+-----------------------------+
-| data_offset   | 16     | 8                           |
-+---------------+--------+-----------------------------+
-| data_size     | 24     | 8                           |
-+---------------+--------+-----------------------------+
++---------------+--------+--------------------------------+
+| Name          | Offset | Size                           |
++===============+========+================================+
+| device_state  | 0      | 4                              |
++---------------+--------+--------------------------------+
+|               | +-----+-------------------------------+ |
+|               | | Bit | Definition                    | |
+|               | +=====+===============================+ |
+|               | | 0   | VFIO_DEVICE_STATE_V1_RUNNING  | |
+|               | +-----+-------------------------------+ |
+|               | | 1   | VFIO_DEVICE_STATE_V1_SAVING   | |
+|               | +-----+-------------------------------+ |
+|               | | 2   | VFIO_DEVICE_STATE_V1_RESUMING | |
+|               | +-----+-------------------------------+ |
++---------------+--------+--------------------------------+
+| reserved      | 4      | 4                              |
++---------------+--------+--------------------------------+
+| pending_bytes | 8      | 8                              |
++---------------+--------+--------------------------------+
+| data_offset   | 16     | 8                              |
++---------------+--------+--------------------------------+
+| data_size     | 24     | 8                              |
++---------------+--------+--------------------------------+
 
 * *device_state* defines the state of the device:
 
@@ -1630,8 +1630,8 @@ using ``VFIO_USER_REGION_READ``/``VFIO_USER_REGION_WRITE``.
   ``VFIO_USER_REGION_WRITE`` operation with the Error field set accordingly and
   must remain at the previous state, or in case of internal error it must
   transition to the error state, defined as
-  ``VFIO_DEVICE_STATE_RESUMING | VFIO_DEVICE_STATE_SAVING``. The client must
-  re-read the device state in order to determine it afresh.
+  ``VFIO_DEVICE_STATE_V1_RESUMING | VFIO_DEVICE_STATE_V1_SAVING``. The client
+  must re-read the device state in order to determine it afresh.
 
   The following device states are defined:
 

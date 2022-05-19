@@ -590,13 +590,13 @@ test_device_is_stopped_and_copying(UNUSED void **state)
         }
         migration.info.device_state = i;
         bool r = device_is_stopped_and_copying(vfu_ctx.migration);
-        if (i == VFIO_DEVICE_STATE_SAVING) {
+        if (i == VFIO_DEVICE_STATE_V1_SAVING) {
             assert_true(r);
         } else {
             assert_false(r);
         }
         r = device_is_stopped(vfu_ctx.migration);
-        if (i == VFIO_DEVICE_STATE_STOP) {
+        if (i == VFIO_DEVICE_STATE_V1_STOP) {
             assert_true(r);
         } else {
             assert_false(r);
