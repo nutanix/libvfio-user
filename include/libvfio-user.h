@@ -671,7 +671,19 @@ typedef struct {
 
 } vfu_migration_callbacks_t;
 
-#ifndef VFIO_DEVICE_STATE_STOP
+/*
+ * The VFIO protocol is evolving w.r.t migration. It is moving away
+ * from a VFIO region based migration. The following keeps our headers
+ * in sync with latest kernel VFIO header.
+ */
+#if defined(VFIO_DEVICE_STATE_V1_STOP)
+
+#define VFIO_DEVICE_STATE_STOP      VFIO_DEVICE_STATE_V1_STOP
+#define VFIO_DEVICE_STATE_RUNNING   VFIO_DEVICE_STATE_V1_RUNNING
+#define VFIO_DEVICE_STATE_SAVING    VFIO_DEVICE_STATE_V1_SAVING
+#define VFIO_DEVICE_STATE_RESUMING  VFIO_DEVICE_STATE_V1_RESUMING
+
+#elif !defined(VFIO_DEVICE_STATE_STOP) /* defined(VFIO_DEVICE_STATE_V1_STOP) */
 
 #define VFIO_DEVICE_STATE_STOP (0)
 #define VFIO_DEVICE_STATE_RUNNING (1 << 0)
@@ -679,7 +691,7 @@ typedef struct {
 #define VFIO_DEVICE_STATE_RESUMING (1 << 2)
 #define VFIO_DEVICE_STATE_MASK ((1 << 3) - 1)
 
-#endif /* VFIO_DEVICE_STATE_STOP */
+#endif /* !defined(VFIO_DEVICE_STATE_STOP) */
 
 /*
  * The currently defined migration registers; if using migration callbacks,
