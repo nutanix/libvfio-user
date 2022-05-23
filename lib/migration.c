@@ -81,7 +81,7 @@ init_migration(const vfu_migration_callbacks_t * callbacks,
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
     /* FIXME this should be done in vfu_ctx_realize */
-    migr->info.device_state = VFIO_DEVICE_STATE_RUNNING;
+    migr->info.device_state = VFIO_DEVICE_STATE_V1_RUNNING;
     migr->data_offset = data_offset;
 
     migr->callbacks = *callbacks;
@@ -111,11 +111,11 @@ vfu_migr_state_t
 MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
 {
     switch (device_state) {
-        case VFIO_DEVICE_STATE_STOP:
+        case VFIO_DEVICE_STATE_V1_STOP:
             return VFU_MIGR_STATE_STOP;
-        case VFIO_DEVICE_STATE_RUNNING:
+        case VFIO_DEVICE_STATE_V1_RUNNING:
             return VFU_MIGR_STATE_RUNNING;
-        case VFIO_DEVICE_STATE_SAVING:
+        case VFIO_DEVICE_STATE_V1_SAVING:
             /*
              * FIXME How should the device operate during the stop-and-copy
              * phase? Should we only allow the migration data to be read from
@@ -123,9 +123,9 @@ MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
              * failed? This might be a good question to send to LKML.
              */
             return VFU_MIGR_STATE_STOP_AND_COPY;
-        case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
+        case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
             return VFU_MIGR_STATE_PRE_COPY;
-        case VFIO_DEVICE_STATE_RESUMING:
+        case VFIO_DEVICE_STATE_V1_RESUMING:
             return VFU_MIGR_STATE_RESUME;
     }
     return -1;
@@ -301,14 +301,14 @@ handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
     assert(offset != NULL);
 
     switch (migr->info.device_state) {
-    case VFIO_DEVICE_STATE_SAVING:
-    case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
+    case VFIO_DEVICE_STATE_V1_SAVING:
+    case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
         ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
         if (ret == 0 && !is_write) {
             *offset = migr->iter.offset + migr->data_offset;
         }
         return ret;
-    case VFIO_DEVICE_STATE_RESUMING:
+    case VFIO_DEVICE_STATE_V1_RESUMING:
         if (is_write) {
             /* TODO writing to read-only registers should be simply ignored */
             vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
@@ -380,14 +380,14 @@ handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
     assert(size != NULL);
 
     switch (migr->info.device_state){
-    case VFIO_DEVICE_STATE_SAVING:
-    case VFIO_DEVICE_STATE_RUNNING | VFIO_DEVICE_STATE_SAVING:
+    case VFIO_DEVICE_STATE_V1_SAVING:
+    case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
         ret = handle_data_size_when_saving(vfu_ctx, migr, is_write);
         if (ret == 0 && !is_write) {
             *size = migr->iter.size;
         }
         return ret;
-    case VFIO_DEVICE_STATE_RESUMING:
+    case VFIO_DEVICE_STATE_V1_RESUMING:
         return handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
     }
     /* TODO improve error message */
@@ -535,13 +535,13 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 bool
 MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {
-    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_SAVING;
+    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_V1_SAVING;
 }
 
 bool
 MOCK_DEFINE(device_is_stopped)(struct migration *migr)
 {
-    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_STOP;
+    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_V1_STOP;
 }
 
 size_t
