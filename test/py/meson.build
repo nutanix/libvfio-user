@@ -37,7 +37,6 @@ python_tests = [
     'test_dma_map.py',
     'test_dma_unmap.py',
     'test_irq_trigger.py',
-    'test_map_unmap_sg.py',
     'test_migration.py',
     'test_negotiate.py',
     'test_pci_caps.py',
@@ -45,6 +44,7 @@ python_tests = [
     'test_quiesce.py',
     'test_request_errors.py',
     'test_setup_region.py',
+    'test_sgl_get_put.py',
     'test_vfu_create_ctx.py',
     'test_vfu_realize_ctx.py',
 ]

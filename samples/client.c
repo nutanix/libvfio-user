@@ -51,7 +51,7 @@
 
 #define CLIENT_MAX_FDS (32)
 
-/* This is low, so we get testing of vfu_dma_read/write() chunking. */
+/* This is low, so we get testing of vfu_sgl_read/write() chunking. */
 #define CLIENT_MAX_DATA_XFER_SIZE (1024)
 
 static char const *irq_to_str[] = {
