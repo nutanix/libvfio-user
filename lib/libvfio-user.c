@@ -1310,8 +1310,15 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
     case VFIO_USER_DEVICE_RESET:
         return true;
 
-    case VFIO_USER_DIRTY_PAGES:
-        return true;
+    case VFIO_USER_DIRTY_PAGES: {
+        struct vfio_user_dirty_pages *dirty_pages = msg->in.iov.iov_base;
+
+        if (msg->in.iov.iov_len < sizeof(*dirty_pages)) {
+            return false;
+        }
+
+        return !(dirty_pages->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP);
+    }
 
     case VFIO_USER_REGION_WRITE:
         if (msg->in.iov.iov_len < sizeof(*reg)) {
