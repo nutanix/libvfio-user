@@ -1748,8 +1748,7 @@ vfu_get_poll_fd(vfu_ctx_t *vfu_ctx)
 EXPORT int
 vfu_setup_log(vfu_ctx_t *vfu_ctx, vfu_log_fn_t *log, int log_level)
 {
-
-    if (log_level != LOG_ERR && log_level != LOG_INFO && log_level != LOG_DEBUG) {
+    if (log_level < LOG_EMERG || log_level > LOG_DEBUG) {
         return ERROR_INT(EINVAL);
     }
 
