@@ -467,12 +467,18 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 EXPORT int
 vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
                      size_t offset, uint32_t size, uint32_t flags,
-                     uint64_t datamatch, int data_fd)
+                     uint64_t datamatch, int shadow_fd)
 {
     vfu_reg_info_t *vfu_reg;
 
     assert(vfu_ctx != NULL);
     assert(fd >= 0);
+
+#ifndef SHADOW_IOEVENTFD
+    if (shadow_fd != -1) {
+        return ERROR_INT(EINVAL);
+    }
+#endif
 
     if (region_idx >= VFU_PCI_DEV_NUM_REGIONS) {
         return ERROR_INT(EINVAL);
@@ -494,7 +500,7 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
     elem->size = size;
     elem->flags = flags;
     elem->datamatch = datamatch;
-    elem->data_fd = data_fd;
+    elem->shadow_fd = shadow_fd;
     LIST_INSERT_HEAD(&vfu_reg->subregions, elem, entry);
 
     return 0;
@@ -581,7 +587,6 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     // At least one flag must be set for a valid region.
     if (!(vfu_reg->flags & VFU_REGION_FLAG_MASK)) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "no flag for region index %d", req->index);
         return ERROR_INT(EINVAL);
     }
 
@@ -629,11 +634,11 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             ioefd->size = sub_reg->size;
             ioefd->fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds,
                                         sub_reg->fd);
-            if (sub_reg->data_fd == -1) {
+            if (sub_reg->shadow_fd == -1) {
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
             } else {
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW;
-                int ret = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->data_fd);
+                int ret = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->shadow_fd);
                 assert(ret == 1);
             }
             ioefd->flags = sub_reg->flags;
@@ -1840,10 +1845,6 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
 
     assert(vfu_ctx != NULL);
 
-    /*
-     * FIXME should we set a flag in the region to indicate that it has I/O
-     * region FDs? This way the client won't have to blindly look for them.
-     */
     if ((flags & ~(VFU_REGION_FLAG_MASK)) ||
         (!(flags & VFU_REGION_FLAG_RW))) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid region flags");
