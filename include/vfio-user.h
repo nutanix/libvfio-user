@@ -168,6 +168,7 @@ typedef struct vfio_user_region_io_fds_request {
 
 #define VFIO_USER_IO_FD_TYPE_IOEVENTFD 0
 #define VFIO_USER_IO_FD_TYPE_IOREGIONFD 1
+#define VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW 2
 
 typedef struct vfio_user_sub_region_ioeventfd {
     uint64_t offset;
