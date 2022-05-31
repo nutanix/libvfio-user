@@ -58,6 +58,22 @@
                              sizeof(struct vfio_user_region_access))
 
 /*
+ * Based on QEMU's atomic primitives.
+ *
+ * vfu_barrier() prevents compiler re-ordering. The other vfu_smp* barriers
+ * guard against out-of-order execution with the same semantics as the smp_*
+ * barriers in the Linux kernel. See the kernel memory_barriers.txt docs for
+ * detailed explanations.
+ *
+ * These are required by the dma code to make marking and clearing the dirty
+ * bitmap threadsafe.
+ */
+#define vfu_barrier() ({ asm volatile("" ::: "memory"); (void)0; })
+#define vfu_smp_mb()  ({ vfu_barrier(); __atomic_thread_fence(__ATOMIC_SEQ_CST); })
+#define vfu_smp_wmb() ({ vfu_barrier(); __atomic_thread_fence(__ATOMIC_RELEASE); })
+#define vfu_smp_rmb() ({ vfu_barrier(); __atomic_thread_fence(__ATOMIC_ACQUIRE); })
+
+/*
  * Structure used to hold an in-flight request+reply.
  *
  * Incoming request body and fds are stored in in.*.
