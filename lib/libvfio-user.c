@@ -1998,10 +1998,13 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
 }
 
 static void
-quiesce_check_allowed(vfu_ctx_t *vfu_ctx)
+quiesce_check_allowed(vfu_ctx_t *vfu_ctx, const char *func)
 {
-    if (!(vfu_ctx->in_cb != CB_NONE || vfu_ctx->quiesce == NULL || !vfu_ctx->quiesced)) {
-        vfu_log(vfu_ctx, LOG_ERR, "illegal function in quiesced state");
+    if (!(vfu_ctx->in_cb != CB_NONE ||
+          vfu_ctx->quiesce == NULL ||
+          !vfu_ctx->quiesced)) {
+        vfu_log(vfu_ctx, LOG_ERR,
+                "illegal function %s() in quiesced state", func);
 #ifdef DEBUG
         abort();
 #endif
@@ -2018,7 +2021,7 @@ vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
         return ERROR_INT(EINVAL);
     }
 
-    quiesce_check_allowed(vfu_ctx);
+    quiesce_check_allowed(vfu_ctx, __func__);
 
     return dma_addr_to_sgl(vfu_ctx->dma, dma_addr, len, sgl, max_nr_sgs, prot);
 }
@@ -2031,7 +2034,7 @@ vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
         return ERROR_INT(EINVAL);
     }
 
-    quiesce_check_allowed(vfu_ctx);
+    quiesce_check_allowed(vfu_ctx, __func__);
 
     return dma_sgl_get(vfu_ctx->dma, sgl, iov, cnt);
 }
@@ -2043,7 +2046,7 @@ vfu_sgl_mark_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt)
         return;
     }
 
-    quiesce_check_allowed(vfu_ctx);
+    quiesce_check_allowed(vfu_ctx, __func__);
 
     return dma_sgl_mark_dirty(vfu_ctx->dma, sgl, cnt);
 }
@@ -2056,7 +2059,7 @@ vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl,
         return;
     }
 
-    quiesce_check_allowed(vfu_ctx);
+    quiesce_check_allowed(vfu_ctx, __func__);
 
     return dma_sgl_put(vfu_ctx->dma, sgl, cnt);
 }
