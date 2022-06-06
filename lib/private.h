@@ -172,6 +172,7 @@ struct vfu_ctx {
     struct migration        *migration;
 
     uint32_t                irq_count[VFU_DEV_NUM_IRQS];
+    vfu_dev_irq_state_cb_t  *irq_state_cbs[VFU_DEV_NUM_IRQS];
     vfu_irqs_t              *irqs;
     bool                    realized;
     vfu_dev_type_t          dev_type;
