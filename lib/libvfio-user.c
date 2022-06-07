@@ -1968,6 +1968,22 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 }
 
 EXPORT int
+vfu_setup_irq_state_callback(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
+                             vfu_dev_irq_state_cb_t *cb)
+{
+    assert(vfu_ctx != NULL);
+
+    if (type >= VFU_DEV_NUM_IRQS) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ type index %u", type);
+        return ERROR_INT(EINVAL);
+    }
+
+    vfu_ctx->irq_state_cbs[type] = cb;
+
+    return 0;
+}
+
+EXPORT int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
                                      const vfu_migration_callbacks_t *callbacks,
                                      uint64_t data_offset)
