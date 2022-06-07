@@ -163,12 +163,12 @@ irqs_set_state(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 
     assert(irq_set->index < VFU_DEV_NUM_IRQS);
     cb = vfu_ctx->irq_state_cbs[irq_set->index];
-    if (!cb) {
+    if (cb == NULL) {
         return;
     }
 
     assert((irq_set->start + irq_set->count) <=
-               vfu_ctx->irq_count[irq_set->index]);
+            vfu_ctx->irq_count[irq_set->index]);
 
     irq_action = irq_set->flags & VFIO_IRQ_SET_ACTION_TYPE_MASK;
 

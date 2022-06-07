@@ -561,7 +561,7 @@ typedef void (vfu_dev_irq_state_cb_t)(vfu_ctx_t *vfu_ctx, uint32_t vector,
 
 /**
  * Set up IRQ state change callback. When libvfio-user is notified of a
- * change to IRQ state, whethere masked or unmasked, it invokes
+ * change to IRQ state, whether masked or unmasked, it invokes
  * this callback.
  *
  * @vfu_ctx: the libvfio-user context
@@ -570,7 +570,6 @@ typedef void (vfu_dev_irq_state_cb_t)(vfu_ctx_t *vfu_ctx, uint32_t vector,
  *
  * @returns 0 on success, -1 on error, sets errno.
  */
-
 int
 vfu_setup_irq_state_callback(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
                              vfu_dev_irq_state_cb_t *cb);
