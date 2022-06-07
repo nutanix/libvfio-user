@@ -158,7 +158,7 @@ static void
 irqs_set_state(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 {
     vfu_dev_irq_state_cb_t *cb = NULL;
-    uint32_t irq_action, i;
+    uint32_t irq_action;
     bool mask = false;
 
     assert(irq_set->index < VFU_DEV_NUM_IRQS);
@@ -177,9 +177,7 @@ irqs_set_state(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
 
     mask = (irq_action & VFIO_IRQ_SET_ACTION_MASK) ? true : false;
 
-    for (i = irq_set->start; i < irq_set->count; i++) {
-        cb(vfu_ctx, i, mask);
-    }
+    cb(vfu_ctx, irq_set->start, irq_set->count, mask);
 }
 
 static int

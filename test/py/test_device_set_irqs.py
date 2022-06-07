@@ -27,7 +27,6 @@
 #  DAMAGE.
 #
 
-from unittest import mock
 from unittest.mock import patch
 
 from libvfio_user import *
@@ -313,6 +312,7 @@ def test_device_set_irqs_enable_trigger_bool():
     assert struct.unpack("Q", os.read(fd1, 8))[0] == 4
     assert struct.unpack("Q", os.read(fd2, 8))[0] == 9
 
+
 @patch('libvfio_user.irq_state')
 def test_irq_state(mock_irq_state):
     assert mock_irq_state.call_count == 0
@@ -325,6 +325,7 @@ def test_irq_state(mock_irq_state):
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload)
 
     assert mock_irq_state.call_count == 1
+
 
 def test_device_set_irqs_cleanup():
     vfu_destroy_ctx(ctx)

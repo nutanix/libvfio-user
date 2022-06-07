@@ -553,11 +553,12 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
  * Function that is called when the guest masks or unmasks an IRQ vector.
  *
  * @vfu_ctx: the libvfio-user context
- * @vector: the IRQ vector
+ * @start: starting IRQ vector
+ * @count: number of vectors
  * @mask: indicates if the IRQ is masked or unmasked
  */
-typedef void (vfu_dev_irq_state_cb_t)(vfu_ctx_t *vfu_ctx, uint32_t vector,
-                                      bool mask);
+typedef void (vfu_dev_irq_state_cb_t)(vfu_ctx_t *vfu_ctx, uint32_t start,
+                                      uint32_t count, bool mask);
 
 /**
  * Set up IRQ state change callback. When libvfio-user is notified of a

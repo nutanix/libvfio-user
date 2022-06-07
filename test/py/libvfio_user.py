@@ -629,6 +629,7 @@ vfu_dev_irq_state_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.c_uint32,
 lib.vfu_setup_irq_state_callback.argtypes = (c.c_void_p, c.c_int,
                                              vfu_dev_irq_state_cb_t)
 
+
 def to_byte(val):
     """Cast an int to a byte value."""
     return val.to_bytes(1, 'little')
@@ -1037,13 +1038,16 @@ def vfu_setup_device_nr_irqs(ctx, irqtype, count):
 def irq_state(ctx, vector, mask):
     pass
 
+
 @vfu_dev_irq_state_cb_t
 def __irq_state(ctx, vector, mask):
     irq_state(ctx, vector, mask)
 
+
 def vfu_setup_irq_state_callback(ctx, irqtype, cb=__irq_state):
     assert ctx is not None
     return lib.vfu_setup_irq_state_callback(ctx, irqtype, cb)
+
 
 def vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_EXPRESS,
                  hdr_type=PCI_HEADER_TYPE_NORMAL):
