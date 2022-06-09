@@ -28,6 +28,7 @@
 #
 
 from unittest.mock import patch
+from unittest.mock import ANY
 
 from libvfio_user import *
 import errno
@@ -323,6 +324,8 @@ def test_irq_state(mock_irq_state):
                            start=0, count=1)
 
     msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload)
+
+    mock_irq_state.assert_called_with(ANY, 0, 1, True)
 
     assert mock_irq_state.call_count == 1
 
