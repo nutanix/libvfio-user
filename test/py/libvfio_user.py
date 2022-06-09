@@ -625,7 +625,7 @@ lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
 lib.vfu_device_quiesced.argtypes = (c.c_void_p, c.c_int)
 
 vfu_dev_irq_state_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.c_uint32,
-                                     c.c_bool, use_errno=True)
+                                     c.c_uint32, c.c_bool, use_errno=True)
 lib.vfu_setup_irq_state_callback.argtypes = (c.c_void_p, c.c_int,
                                              vfu_dev_irq_state_cb_t)
 
@@ -1035,13 +1035,13 @@ def vfu_setup_device_nr_irqs(ctx, irqtype, count):
     return lib.vfu_setup_device_nr_irqs(ctx, irqtype, count)
 
 
-def irq_state(ctx, vector, mask):
+def irq_state(ctx, start, count, mask):
     pass
 
 
 @vfu_dev_irq_state_cb_t
-def __irq_state(ctx, vector, mask):
-    irq_state(ctx, vector, mask)
+def __irq_state(ctx, start, count, mask):
+    irq_state(ctx, start, count, mask)
 
 
 def vfu_setup_irq_state_callback(ctx, irqtype, cb=__irq_state):
