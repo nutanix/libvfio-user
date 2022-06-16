@@ -38,22 +38,15 @@ Memory Mapping the Device
 The device driver can allow parts of the virtual device to be memory mapped by
 the virtual machine (e.g. the PCI BARs). The business logic needs to implement
 the mmap callback and reply to the request passing the memory address whose
-backing pages are then used to satisfy the original mmap call. Currently reading
-and writing of the memory mapped memory by the client goes undetected by
-`libvfio-user`, the business logic needs to poll. In the future we plan to
-implement a mechanism in order to provide notifications to `libvfio-user`
-whenever a page is written to.
-
+backing pages are then used to satisfy the original mmap call; [more details
+here](./docs/memory-mapping.md).
 
 Interrupts
 ----------
 
-Interrupts are implemented by passing the event file descriptor to
-`libvfio-user` and then notifying it about it. `libvfio-user` can then trigger
-interrupts simply by writing to it. This can be much more expensive compared to
-triggering interrupts from the kernel, however this performance penalty is
-perfectly acceptable when prototyping the functional aspect of a device driver.
-
+Interrupts are implemented via eventfd's passed from the client and registered
+with the library. `libvfio-user` consumers can then trigger interrupts by
+writing to the eventfd.
 
 Building libvfio-user
 =====================
@@ -61,22 +54,19 @@ Building libvfio-user
 Build requirements:
 
  * `meson` (v0.53.0 or above)
- * `apt install libjson-c-dev libcmocka-dev` *or*
+ * `apt install libjson-c-dev libcmocka-dev` or
  * `yum install json-c-devel libcmocka-devel`
-
-To build:
-
-    meson build
-    ninja -C build
 
 The kernel headers are necessary because VFIO structs and defines are reused.
 
+To build:
+
+```
+meson build
+ninja -C build
+```
+
 Finally build your program and link with `libvfio-user.so`.
-
-Coverity
-========
-
-`make coverity` automatically uploads a new coverity build.
 
 Supported features
 ==================
@@ -96,15 +86,14 @@ addition, only PCI endpoints are supported (no bridges etc.).
 API
 ===
 
-Currently there is one, single-threaded, library context per device, however the
-application can employ any form of concurrency needed. In the future we plan to
-make libvfio-user multi-thread safe.
+The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h),
+along with some additional [documentation](docs/).
 
 The library (and the protocol) are actively under development, and should not
 yet be considered a stable API or interface.
 
-The API is currently documented via the [libvfio-user header file](./include/libvfio-user.h),
-along with some additional [documentation](docs/).
+The API is not thread safe, but individual `vfu_ctx_t` handles can be
+used separately by each thread: that is, there is no global library state.
 
 Mailing List & Chat
 ===================
@@ -128,11 +117,15 @@ Please make sure to mark any commits with `Signed-off-by` (`git commit -s`),
 which signals agreement with the [Developer Certificate of Origin
 v1.1](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin).
 
+Running `make pre-push` will do the same checks as done in github CI. After
+merging, a Coverity scan is also done.
+
+See [Testing](docs/testing.md) for details on how the library is tested.
+
 Examples
 ========
 
-The [samples directory](./samples/) contains various libvfio-user samples.
-
+The [samples directory](./samples/) contains various libvfio-user examples.
 
 lspci
 -----
@@ -140,19 +133,21 @@ lspci
 [lspci](./samples/lspci.c) implements an example of how to dump the PCI header
 of a libvfio-user device and examine it with lspci(8):
 
-    # lspci -vv -F <(build/dbg/samples/lspci)
-    00:00.0 Non-VGA unclassified device: Device 0000:0000
-            Control: I/O- Mem- BusMaster- SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
-            Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
-            Region 0: I/O ports at <unassigned> [disabled]
-            Region 1: I/O ports at <unassigned> [disabled]
-            Region 2: I/O ports at <unassigned> [disabled]
-            Region 3: I/O ports at <unassigned> [disabled]
-            Region 4: I/O ports at <unassigned> [disabled]
-            Region 5: I/O ports at <unassigned> [disabled]
-            Capabilities: [40] Power Management version 0
-                    Flags: PMEClk- DSI- D1- D2- AuxCurrent=0mA PME(D0-,D1-,D2-,D3hot-,D3cold-)
-                    Status: D0 NoSoftRst+ PME-Enable- DSel=0 DScale=0 PME-
+```
+# lspci -vv -F <(build/dbg/samples/lspci)
+00:00.0 Non-VGA unclassified device: Device 0000:0000
+        Control: I/O- Mem- BusMaster- SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
+        Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
+        Region 0: I/O ports at <unassigned> [disabled]
+        Region 1: I/O ports at <unassigned> [disabled]
+        Region 2: I/O ports at <unassigned> [disabled]
+        Region 3: I/O ports at <unassigned> [disabled]
+        Region 4: I/O ports at <unassigned> [disabled]
+        Region 5: I/O ports at <unassigned> [disabled]
+        Capabilities: [40] Power Management version 0
+                Flags: PMEClk- DSI- D1- D2- AuxCurrent=0mA PME(D0-,D1-,D2-,D3hot-,D3cold-)
+                Status: D0 NoSoftRst+ PME-Enable- DSel=0 DScale=0 PME-
+```
 
 The above sample implements a very simple PCI device that supports the Power
 Management PCI capability. The sample can be trivially modified to change the
@@ -193,11 +188,15 @@ thread (what would normally be QEMU) is driving the migration.
 Start the source server as follows (pick whatever you like for
 `/tmp/vfio-user.sock`):
 
-    rm -f /tmp/vfio-user.sock* ; build/dbg/samples/server -v /tmp/vfio-user.sock
+```
+rm -f /tmp/vfio-user.sock* ; build/dbg/samples/server -v /tmp/vfio-user.sock
+```
 
 And then the client:
 
-    build/dbg/samples/client /tmp/vfio-user.sock
+```
+build/dbg/samples/client /tmp/vfio-user.sock
+```
 
 After a couple of seconds the client will start live migration. The source
 server will exit and the destination server will start, watch the client
@@ -209,64 +208,83 @@ gpio
 A [gpio](./samples/gpio-pci-idio-16.c) server implements a very simple GPIO
 device that can be used with a Linux VM.
 
-First, download and build [this branch of
-qemu](https://github.com/oracle/qemu/pull/1).
-
 Start the `gpio` server process:
 
-    rm /tmp/vfio-user.sock
-    ./build/dbg/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
+```
+rm /tmp/vfio-user.sock
+./build/dbg/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
+```
 
-Create a Linux install image, or use a pre-made one. You'll probably also need
-to build the `gpio-pci-idio-16` kernel module yourself - it's part of the
-standard Linux kernel, but not usually built and shipped on x86. Start your
-guest VM:
+Next, build `qemu` and start a VM, as described below.
 
-    ./x86_64-softmmu/qemu-system-x86_64  -mem-prealloc -m 256 \
-    -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=/dev/hugepages/gpio,share=yes,size=256M \
-    -numa node,memdev=ram-node0 \
-    -kernel ~/vmlinuz -initrd ~/initrd -nographic \
-    -append "console=ttyS0 root=/dev/sda1 single" \
-    -hda ~/bionic-server-cloudimg-amd64-0.raw \
-    -device vfio-user-pci,socket=/tmp/vfio-user.sock
+Log in to your guest VM.  You'll probably need to build the `gpio-pci-idio-16`
+kernel module yourself - it's part of the standard Linux kernel, but not usually
+built and shipped on x86. 
 
-Log in to your guest VM, and you should be able to load the module and observe
-the emulated GPIO device's pins:
+Once built, you should be able to load the module and observe the emulated GPIO
+device's pins:
 
-    insmod gpio-pci-idio-16.ko
-    cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
-    for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
+```
+insmod gpio-pci-idio-16.ko
+cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
+for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
+```
 
-Other devices based on libvfio-user:
+Other usage notes
+=================
 
-* nvmf/vfio-user: a virtual NVMe controller using SPDK, see
-  [docs/spdk.md](docs/spdk.md) for more details.
+qemu
+----
+
+`vfio-user` client support is not yet merged into `qemu`. Instead, download and
+build [this branch of qemu](https://github.com/oracle/qemu/pull/1).
+
+Create a Linux install image, or use a pre-made one.
+
+Then, presuming you have a `libvfio-user` server listening on the UNIX socket
+`/tmp/vfio-user.sock`, you can start your guest VM with something like this:
+
+```
+./x86_64-softmmu/qemu-system-x86_64 -mem-prealloc -m 256 \
+-object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=/dev/hugepages/gpio,share=yes,size=256M \
+-numa node,memdev=ram-node0 \
+-kernel ~/vmlinuz -initrd ~/initrd -nographic \
+-append "console=ttyS0 root=/dev/sda1 single" \
+-hda ~/bionic-server-cloudimg-amd64-0.raw \
+-device vfio-user-pci,socket=/tmp/vfio-user.sock
+```
+
+SPDK
+----
+
+SPDK uses `libvfio-user` to implement a virtual NVMe controller: see
+[docs/spdk.md](docs/spdk.md) for more details.
 
 libvirt
 -------
+
+You can configure `vfio-user` devices in a `libvirt` domain configuration:
 
 1. Add `xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'` to the `domain`
    element.
 
 2. Enable sharing of the guest's RAM:
 
-    <memoryBacking>
-      <source type='file'/>
-      <access mode='shared'/>
-    </memoryBacking>
+```xml
+<memoryBacking>
+  <source type='file'/>
+  <access mode='shared'/>
+</memoryBacking>
+```
 
 3. Pass the vfio-user device:
 
-    <qemu:commandline>
-      <qemu:arg value='-device'/>
-      <qemu:arg value='vfio-user-pci,socket=/var/run/vfio-user.sock,x-enable-migration=on'/>
-    </qemu:commandline>
-
-
-Testing
-=======
-
-See [Testing](docs/testing.md).
+```xml
+<qemu:commandline>
+  <qemu:arg value='-device'/>
+  <qemu:arg value='vfio-user-pci,socket=/var/run/vfio-user.sock,x-enable-migration=on'/>
+</qemu:commandline>
+```
 
 History
 =======
@@ -278,35 +296,3 @@ userspace.  Normally, VFIO mdev devices require a kernel module; `muser`
 implemented a small kernel module that forwarded onto userspace. The old
 kernel-module-based implementation can be found in the [kmod
 branch](https://github.com/nutanix/muser/tree/kmod).
-
-License
-=======
-
-Copyright © 2019-2020  Nutanix Inc. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
- * Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-
- * Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
-
- * Neither the name of Nutanix nor the names of its contributors may be
-   used to endorse or promote products derived from this software without
-   specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-DAMAGE.
-
