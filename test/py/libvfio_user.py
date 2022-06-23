@@ -620,7 +620,7 @@ lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
-                                     c.c_uint64)
+                                     c.c_uint64, c.c_int32)
 
 lib.vfu_device_quiesced.argtypes = (c.c_void_p, c.c_int)
 
@@ -1184,11 +1184,12 @@ def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
 
 
-def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
+def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch,
+                         shadow_fd=-1):
     assert ctx is not None
 
     return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size,
-                                    flags, datamatch)
+                                    flags, datamatch, shadow_fd)
 
 
 def vfu_device_quiesced(ctx, err):
