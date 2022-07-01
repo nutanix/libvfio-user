@@ -36,7 +36,6 @@ import struct
 ctx = None
 sock = None
 fds = []
-IOEVENT_SIZE = 8
 
 
 def test_device_get_region_io_fds_setup():

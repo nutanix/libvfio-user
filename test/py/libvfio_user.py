@@ -635,6 +635,10 @@ def to_byte(val):
     return val.to_bytes(1, 'little')
 
 
+def to_bytes_le(n, length=1):
+    return n.to_bytes(length, 'little')
+
+
 def skip(fmt, buf):
     """Return the data remaining after skipping the given elements."""
     return buf[struct.calcsize(fmt):]
@@ -644,6 +648,8 @@ def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
 
+
+IOEVENT_SIZE = 8
 
 def eventfd(initval=0, flags=0):
     libc.eventfd.argtypes = (c.c_uint, c.c_int)
