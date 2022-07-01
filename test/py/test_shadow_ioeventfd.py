@@ -101,3 +101,5 @@ def test_shadow_ioeventfd():
     assert os.read(efd, IOEVENT_SIZE) == to_bytes_le(0xcafebabe, 8)
     fo.seek(0x8)
     assert fo.read(0x8) == to_bytes_le(0xdeadbeef, 8)
+
+    vfu_destroy_ctx(ctx)

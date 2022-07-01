@@ -562,6 +562,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ioeventfd_t *sub_reg = NULL;
     size_t nr_sub_reg = 0;
     size_t i = 0;
+    size_t nr_shdw_reg = 0;
 
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
@@ -592,6 +593,9 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     LIST_FOREACH(sub_reg, &vfu_reg->subregions, entry) {
         nr_sub_reg++;
+        if (sub_reg->shadow_fd != -1) {
+            nr_shdw_reg++;
+        }
     }
 
     if (req->argsz < sizeof(vfio_user_region_io_fds_reply_t) ||
@@ -621,7 +625,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     msg->out.nr_fds = 0;
     if (req->argsz >= reply->argsz) {
-        msg->out.fds = calloc(sizeof(int), max_sent_sub_regions);
+        msg->out.fds = calloc(sizeof(int), max_sent_sub_regions + nr_shdw_reg);
         if (msg->out.fds == NULL) {
             return -1;
         }
