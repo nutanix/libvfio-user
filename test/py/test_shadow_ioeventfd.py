@@ -32,6 +32,7 @@ import tempfile
 import mmap
 import errno
 
+
 def test_shadow_ioeventfd():
     """Configure a shadow ioeventfd, have the client trigger it, confirm that
     the server receives the notification and can see the value."""
@@ -67,11 +68,19 @@ def test_shadow_ioeventfd():
     newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
-    assert reply.count == 1 # 1 eventfd
-    assert len(newfds) == 2 # 2 FDs: eventfd plus shadow FD
+    assert reply.count == 1  # 1 eventfd
+    ioevent, _ = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
+    assert ioevent.offset == 0x8
+    assert ioevent.size == 0x16
+    assert ioevent.fd_index == 0
+    assert ioevent.type == VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW
+    assert ioevent.flags == 0
+    assert ioevent.datamatch == 0
+
+    assert len(newfds) == 2  # 2 FDs: eventfd plus shadow FD
     cefd = newfds[0]
     csfd = newfds[1]
-    cmem = mmap.mmap(csfd, 0x1000) # FIXME must get length from server response
+    cmem = mmap.mmap(csfd, 0x1000)
 
     # vfio-user app reads the eventfd, there should be nothing there
     try:

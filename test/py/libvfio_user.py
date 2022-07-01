@@ -194,6 +194,7 @@ VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
 
 VFIO_USER_IO_FD_TYPE_IOEVENTFD = 0
 VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
+VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW = 2
 
 
 # enum vfu_dev_irq_type
@@ -650,6 +651,7 @@ def parse_json(json_str):
 
 
 IOEVENT_SIZE = 8
+
 
 def eventfd(initval=0, flags=0):
     libc.eventfd.argtypes = (c.c_uint, c.c_int)
