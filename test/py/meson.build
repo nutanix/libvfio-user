@@ -49,8 +49,7 @@ python_tests = [
     'test_vfu_realize_ctx.py',
 ]
 
-opt_shadow_ioeventfd = get_option('shadow-ioeventfd')
-if opt_shadow_ioeventfd
+if get_option('shadow-ioeventfd')
     python_tests += 'test_shadow_ioeventfd.py'
 endif
 

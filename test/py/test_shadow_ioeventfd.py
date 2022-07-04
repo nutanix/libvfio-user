@@ -91,7 +91,7 @@ def test_shadow_ioeventfd():
     else:
         assert False
 
-    # Client writes to the I/O region. Tthe write to the eventfd would by done
+    # Client writes to the I/O region. The write to the eventfd would be done
     # by KVM and the value would be the same in both cases.
     cmem.seek(0x8)
     cmem.write(c.c_ulonglong(0xdeadbeef))

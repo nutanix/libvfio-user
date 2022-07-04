@@ -1069,9 +1069,9 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
  * @size: size of the ioeventfd
  * @flags: Any flags to set up the ioeventfd
  * @datamatch: sets the datamatch value
- * @shadow_fd: File descriptor than can be mmap'ed, KVM will write there the
+ * @shadow_fd: File descriptor that can be mmap'ed, KVM will write there the
  *  otherwise discarded value when the ioeventfd is written to. If set to -1
- *  then a normal ioeventfd is set up instead of a shadow one. Then vfio-user
+ *  then a normal ioeventfd is set up instead of a shadow one. The vfio-user
  *  client is free to ignore this, even if it supports shadow ioeventfds.
  *  Requires a kernel with shadow ioeventfd support.
  *  Experimental, must be compiled with SHADOW_IOEVENTFD defined, otherwise
