@@ -4,5 +4,5 @@ option('tran-pipe', type: 'boolean', value: false,
        description: 'enable pipe transport for testing')
 option('debug-logs', type: 'feature', value: 'auto',
        description: 'enable extra debugging code (default for debug builds)')
-option('shadow-ioeventfd', type: 'boolean', value : true,
+option('shadow-ioeventfd', type: 'boolean', value : false,
        description: 'enable shadow ioeventfd (experimental)')
