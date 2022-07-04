@@ -13,4 +13,4 @@ via an additional file descriptor when configuring the ioregionfd, which then
 QEMU memory maps and passes this address to KVM. This shadow memory is never
 exposed to the guest. When the guest writes to the trapped memory, KVM writes
 the value to the shadow memory instread of discarding it, and then proceeds
-kicking the evetnfd as normal.
+kicking the eventfd as normal.
