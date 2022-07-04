@@ -14,3 +14,12 @@ QEMU memory maps and passes this address to KVM. This shadow memory is never
 exposed to the guest. When the guest writes to the trapped memory, KVM writes
 the value to the shadow memory instread of discarding it, and then proceeds
 kicking the eventfd as normal.
+
+To use shadow ioeventfd, the kernel and QEMU need to be patched. The QEMU patch
+is designed specifically for SPDK's doorbells (one ioregionfd of 4K in BAR0);
+it should be trivial to extend.
+
+The list of patches:
+* kernel: https://gist.github.com/tmakatos/532afd092a8df2175120d3dbfcd719ef
+* QEMU: https://gist.github.com/tmakatos/57755d2a37a6d53c9ff392e7c34470f6
+* SPDK: https://gist.github.com/tmakatos/f6c10fdaff59c9d629f94bd8e44a53bc
