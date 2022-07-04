@@ -349,10 +349,6 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
                          expect=errno.EINVAL)
 
 
-def to_bytes_le(n, length=1):
-    return n.to_bytes(length, 'little')
-
-
 def test_pci_cap_write_msix():
     setup_pci_dev(realize=True)
     sock = connect_client(ctx)

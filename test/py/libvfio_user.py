@@ -194,6 +194,7 @@ VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
 
 VFIO_USER_IO_FD_TYPE_IOEVENTFD = 0
 VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
+VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW = 2
 
 
 # enum vfu_dev_irq_type
@@ -620,7 +621,7 @@ lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
-                                     c.c_uint64)
+                                     c.c_uint64, c.c_int32)
 
 lib.vfu_device_quiesced.argtypes = (c.c_void_p, c.c_int)
 
@@ -635,6 +636,10 @@ def to_byte(val):
     return val.to_bytes(1, 'little')
 
 
+def to_bytes_le(n, length=1):
+    return n.to_bytes(length, 'little')
+
+
 def skip(fmt, buf):
     """Return the data remaining after skipping the given elements."""
     return buf[struct.calcsize(fmt):]
@@ -643,6 +648,9 @@ def skip(fmt, buf):
 def parse_json(json_str):
     """Parse JSON into an object with attributes (instead of using a dict)."""
     return json.loads(json_str, object_hook=lambda d: SimpleNamespace(**d))
+
+
+IOEVENT_SIZE = 8
 
 
 def eventfd(initval=0, flags=0):
@@ -1184,11 +1192,12 @@ def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
 
 
-def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch):
+def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch,
+                         shadow_fd=-1):
     assert ctx is not None
 
     return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size,
-                                    flags, datamatch)
+                                    flags, datamatch, shadow_fd)
 
 
 def vfu_device_quiesced(ctx, err):

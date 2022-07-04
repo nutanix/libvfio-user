@@ -49,6 +49,10 @@ python_tests = [
     'test_vfu_realize_ctx.py',
 ]
 
+if get_option('shadow-ioeventfd')
+    python_tests += 'test_shadow_ioeventfd.py'
+endif
+
 python_files = python_tests_common + python_tests
 
 if pytest.found() and opt_sanitizers == 'none'

@@ -186,6 +186,7 @@ typedef struct ioeventfd {
     int32_t fd;
     uint32_t flags;
     uint64_t datamatch;
+    int32_t shadow_fd;
     LIST_ENTRY(ioeventfd) entry;
 } ioeventfd_t;
 
