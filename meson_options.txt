@@ -6,3 +6,5 @@ option('debug-logs', type: 'feature', value: 'auto',
        description: 'enable extra debugging code (default for debug builds)')
 option('shadow-ioeventfd', type: 'boolean', value : false,
        description: 'enable shadow ioeventfd (experimental)')
+option('client-server-test', type: 'boolean', value : false,
+       description: 'enable client-server test (flaky)')
