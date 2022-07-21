@@ -69,19 +69,21 @@ test(
     args: [lspci],
 )
 
-csenv = []
-if opt_sanitizers != 'none'
-    csenv += ['WITH_ASAN=1']
-endif
+if get_option('client-server-test')
+    csenv = []
+    if opt_sanitizers != 'none'
+        csenv += ['WITH_ASAN=1']
+    endif
 
-test(
-    'test-client-server',
-    find_program('test-client-server.sh'),
-    env: csenv,
-    suite: 'functional',
-    args: [client, server],
-    timeout: 90,
-)
+    test(
+        'test-client-server',
+        find_program('test-client-server.sh'),
+        env: csenv,
+        suite: 'functional',
+        args: [client, server],
+        timeout: 90,
+    )
+endif
 
 if opt_sanitizers == 'none' and meson.version().version_compare('>=0.56.0')
     test(
