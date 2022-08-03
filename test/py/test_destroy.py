@@ -53,6 +53,7 @@ def test_destroy_ctx(mock_reset, mock_quiesce):
     vfu_destroy_ctx(ctx)
     assert mock_quiesce.call_count == 0
     mock_reset.assert_called_once_with(ctx, VFU_RESET_LOST_CONN)
+    assert not os.path.exists(SOCK_PATH)
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

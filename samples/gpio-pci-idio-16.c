@@ -243,6 +243,9 @@ main(int argc, char *argv[])
 
     ret = vfu_attach_ctx(vfu_ctx);
     if (ret < 0) {
+        int _errno = errno;
+        vfu_destroy_ctx(vfu_ctx);
+        errno = _errno;
         err(EXIT_FAILURE, "failed to attach device");
     }
 

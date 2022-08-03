@@ -1637,7 +1637,6 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
         vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
     }
 
-    free(vfu_ctx->uuid);
     free(vfu_ctx->pci.config_space);
 
     if (vfu_ctx->tran->fini != NULL) {
@@ -1651,6 +1650,7 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     free_regions(vfu_ctx);
     free(vfu_ctx->migration);
     free(vfu_ctx->irqs);
+    free(vfu_ctx->uuid);
     free(vfu_ctx);
 }
 
