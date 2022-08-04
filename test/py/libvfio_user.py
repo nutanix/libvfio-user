@@ -398,13 +398,14 @@ class vfio_user_region_io_fds_request(Structure):
 class vfio_user_sub_region_ioeventfd(Structure):
     _pack_ = 1
     _fields_ = [
-        ("offset", c.c_uint64),
+        ("gpa_offset", c.c_uint64),
         ("size", c.c_uint64),
         ("fd_index", c.c_uint32),
         ("type", c.c_uint32),
         ("flags", c.c_uint32),
-        ("padding", c.c_uint32),
-        ("datamatch", c.c_uint64)
+        ("shadow_mem_fd_index", c.c_uint32),
+        ("datamatch", c.c_uint64),
+        ("shadow_offset", c.c_uint64)
     ]
 
 
@@ -621,7 +622,7 @@ lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
-                                     c.c_uint64, c.c_int32)
+                                     c.c_uint64, c.c_int32, c.c_uint64)
 
 lib.vfu_device_quiesced.argtypes = (c.c_void_p, c.c_int)
 
@@ -1192,12 +1193,12 @@ def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
 
 
-def vfu_create_ioeventfd(ctx, region_idx, fd, offset, size, flags, datamatch,
-                         shadow_fd=-1):
+def vfu_create_ioeventfd(ctx, region_idx, fd, gpa_offset, size, flags,
+                         datamatch, shadow_fd=-1, shadow_offset=0):
     assert ctx is not None
 
-    return lib.vfu_create_ioeventfd(ctx, region_idx, fd, offset, size,
-                                    flags, datamatch, shadow_fd)
+    return lib.vfu_create_ioeventfd(ctx, region_idx, fd, gpa_offset, size,
+                                    flags, datamatch, shadow_fd, shadow_offset)
 
 
 def vfu_device_quiesced(ctx, err):

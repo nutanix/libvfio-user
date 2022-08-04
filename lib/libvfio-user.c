@@ -466,8 +466,8 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
 EXPORT int
 vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
-                     size_t offset, uint32_t size, uint32_t flags,
-                     uint64_t datamatch, int shadow_fd)
+                     size_t gpa_offset, uint32_t size, uint32_t flags,
+                     uint64_t datamatch, int shadow_fd, size_t shadow_offset)
 {
     vfu_reg_info_t *vfu_reg;
 
@@ -486,7 +486,7 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
 
     vfu_reg = &vfu_ctx->reg_info[region_idx];
 
-    if (offset + size > vfu_reg->size) {
+    if (gpa_offset + size > vfu_reg->size) {
         return ERROR_INT(EINVAL);
     }
 
@@ -496,11 +496,12 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
     }
 
     elem->fd = fd;
-    elem->offset = offset;
+    elem->gpa_offset = gpa_offset;
     elem->size = size;
     elem->flags = flags;
     elem->datamatch = datamatch;
     elem->shadow_fd = shadow_fd;
+    elem->shadow_offset = shadow_offset;
     LIST_INSERT_HEAD(&vfu_reg->subregions, elem, entry);
 
     return 0;
@@ -635,7 +636,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         for (i = 0; i < max_sent_sub_regions; i++) {
 
             ioefd = &reply->sub_regions[i].ioeventfd;
-            ioefd->offset = sub_reg->offset;
+            ioefd->gpa_offset = sub_reg->gpa_offset;
             ioefd->size = sub_reg->size;
             ioefd->fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds,
                                         sub_reg->fd);
@@ -643,11 +644,11 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
             } else {
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW;
-                int ret = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->shadow_fd);
-                assert(ret == 1);
+                ioefd->shadow_mem_fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->shadow_fd);
             }
             ioefd->flags = sub_reg->flags;
             ioefd->datamatch = sub_reg->datamatch;
+            ioefd->shadow_offset = sub_reg->shadow_offset;
 
             sub_reg = LIST_NEXT(sub_reg, entry);
         }

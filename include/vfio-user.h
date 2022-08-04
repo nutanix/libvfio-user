@@ -171,12 +171,13 @@ typedef struct vfio_user_region_io_fds_request {
 #define VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW 2
 
 typedef struct vfio_user_sub_region_ioeventfd {
-    uint64_t offset;
+    uint64_t gpa_offset;
     uint64_t size;
     uint32_t fd_index;
     uint32_t type;
     uint32_t flags;
-    uint32_t padding;
+    uint32_t shadow_mem_fd_index;
+    uint64_t shadow_offset;
     uint64_t datamatch;
 } __attribute__((packed)) vfio_user_sub_region_ioeventfd_t;
 

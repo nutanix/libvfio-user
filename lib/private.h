@@ -181,12 +181,13 @@ struct vfu_ctx {
 };
 
 typedef struct ioeventfd {
-    uint64_t offset;
+    uint64_t gpa_offset;
     uint64_t size;
     int32_t fd;
     uint32_t flags;
     uint64_t datamatch;
     int32_t shadow_fd;
+    size_t shadow_offset;
     LIST_ENTRY(ioeventfd) entry;
 } ioeventfd_t;
 
