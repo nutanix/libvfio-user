@@ -1076,11 +1076,12 @@ vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg);
  *  Requires a kernel with shadow ioeventfd support.
  *  Experimental, must be compiled with SHADOW_IOEVENTFD defined, otherwise
  *  must be -1.
+ * @shadow_offset: offset in shadow memory where value is written to.
  */
 int
 vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
-                     size_t offset, uint32_t size, uint32_t flags,
-                     uint64_t datamatch, int shadow_fd);
+                     size_t gpa_offset, uint32_t size, uint32_t flags,
+                     uint64_t datamatch, int shadow_fd, size_t shadow_offset);
 #ifdef __cplusplus
 }
 #endif
