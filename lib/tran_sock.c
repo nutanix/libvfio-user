@@ -414,6 +414,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
     ret = listen(ts->listen_fd, 0);
     if (ret < 0) {
         ret = errno;
+        (void) unlink(vfu_ctx->uuid);
     }
 
 out:
@@ -651,10 +652,13 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
 
     ts = vfu_ctx->tran_data;
 
-    if (ts != NULL && ts->listen_fd != -1) {
-        // FIXME: handle EINTR
-        (void) close(ts->listen_fd);
-        ts->listen_fd = -1;
+    if (ts != NULL) {
+        (void) unlink(vfu_ctx->uuid);
+        if (ts->listen_fd != -1) {
+            // FIXME: handle EINTR
+            (void) close(ts->listen_fd);
+            ts->listen_fd = -1;
+        }
     }
 
     free(vfu_ctx->tran_data);
