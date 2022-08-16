@@ -107,6 +107,7 @@ send_version(int sock)
     slen = snprintf(client_caps, sizeof(client_caps),
         "{"
             "\"capabilities\":{"
+                "\"write_multiple\": true,"
                 "\"max_msg_fds\":%u,"
                 "\"max_data_xfer_size\":%u,"
                 "\"migration\":{"
