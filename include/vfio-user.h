@@ -67,6 +67,7 @@ enum vfio_user_command {
     VFIO_USER_DMA_WRITE                 = 12,
     VFIO_USER_DEVICE_RESET              = 13,
     VFIO_USER_DIRTY_PAGES               = 14,
+    VFIO_USER_REGION_WRITE_MULTI        = 15,
     VFIO_USER_MAX,
 };
 
@@ -225,6 +226,21 @@ struct vfio_user_bitmap_range {
 #define VFIO_REGION_SUBTYPE_MIGRATION (1)
 
 #endif /* VFIO_REGION_TYPE_MIGRATION */
+
+#define VFIO_USER_MULTI_DATA  8
+#define VFIO_USER_MULTI_MAX   200
+
+struct vfio_user_write_multi_data {
+    uint64_t offset;
+    uint32_t region;
+    uint32_t count;
+    char data[VFIO_USER_MULTI_DATA];
+} __attribute__((packed));
+
+struct vfio_user_write_multi {
+    uint64_t wr_cnt;
+    struct vfio_user_write_multi_data wrs[VFIO_USER_MULTI_MAX];
+} __attribute__((packed));
 
 #ifdef __cplusplus
 }
