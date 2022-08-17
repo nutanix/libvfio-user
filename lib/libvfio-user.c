@@ -2031,6 +2031,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
     return 0;
 }
 
+#ifdef DEBUG
 static void
 quiesce_check_allowed(vfu_ctx_t *vfu_ctx, const char *func)
 {
@@ -2039,16 +2040,16 @@ quiesce_check_allowed(vfu_ctx_t *vfu_ctx, const char *func)
           !vfu_ctx->quiesced)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "illegal function %s() in quiesced state", func);
-#ifdef DEBUG
         abort();
-#endif
     }
 }
+#endif
 
 EXPORT int
 vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                 size_t len, dma_sg_t *sgl, size_t max_nr_sgs, int prot)
 {
+#ifdef DEBUG
     assert(vfu_ctx != NULL);
 
     if (unlikely(vfu_ctx->dma == NULL)) {
@@ -2056,19 +2057,22 @@ vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
     }
 
     quiesce_check_allowed(vfu_ctx, __func__);
+#endif
 
     return dma_addr_to_sgl(vfu_ctx->dma, dma_addr, len, sgl, max_nr_sgs, prot);
 }
 
 EXPORT int
 vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
-            int flags)
+            int flags UNUSED)
 {
+#ifdef DEBUG
     if (unlikely(vfu_ctx->dma_unregister == NULL) || flags != 0) {
         return ERROR_INT(EINVAL);
     }
 
     quiesce_check_allowed(vfu_ctx, __func__);
+#endif
 
     return dma_sgl_get(vfu_ctx->dma, sgl, iov, cnt);
 }
@@ -2076,11 +2080,13 @@ vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
 EXPORT void
 vfu_sgl_mark_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt)
 {
+#ifdef DEBUG
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
     }
 
     quiesce_check_allowed(vfu_ctx, __func__);
+#endif
 
     return dma_sgl_mark_dirty(vfu_ctx->dma, sgl, cnt);
 }
@@ -2089,11 +2095,13 @@ EXPORT void
 vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl,
             struct iovec *iov UNUSED, size_t cnt)
 {
+#ifdef DEBUG
     if (unlikely(vfu_ctx->dma_unregister == NULL)) {
         return;
     }
 
     quiesce_check_allowed(vfu_ctx, __func__);
+#endif
 
     return dma_sgl_put(vfu_ctx->dma, sgl, cnt);
 }
