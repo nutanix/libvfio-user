@@ -32,7 +32,7 @@ ninja -C $BUILD/clang-release -v
 meson test -C $BUILD/clang-release --no-suite style --print-errorlogs
 
 # debug build with gcc
-CC=gcc meson setup build/gcc-debug -Dtran-pipe=true
+CC=gcc meson setup build/gcc-debug -Dtran-pipe=true -Ddebug-sgl=true
 ninja -C $BUILD/gcc-debug -v
 meson test -C $BUILD/gcc-debug --no-suite style --print-errorlogs
 

@@ -19,6 +19,7 @@ opt_debug_logs = get_option('debug-logs')
 opt_sanitizers = get_option('b_sanitize')
 opt_debug = get_option('debug')
 opt_shadow_ioeventfd = get_option('shadow-ioeventfd')
+opt_debug_sgl = get_option('debug-sgl')
 
 cc = meson.get_compiler('c')
 
@@ -60,6 +61,10 @@ endif
 
 if opt_shadow_ioeventfd
     common_cflags += ['-DSHADOW_IOEVENTFD']
+endif
+
+if opt_debug_sgl
+    common_cflags += ['-DDEBUG_SGL']
 endif
 
 if get_option('warning_level') == '2'
