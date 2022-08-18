@@ -288,9 +288,13 @@ dma_sgl_get(dma_controller_t *dma, dma_sg_t *sgl, struct iovec *iov, size_t cnt)
             return ERROR_INT(EFAULT);
         }
 
+#ifdef DEBUG_SGL
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
+
+#endif
+
         iov->iov_base = region->info.vaddr + sg->offset;
         iov->iov_len = sg->length;
 
@@ -326,9 +330,12 @@ dma_sgl_mark_dirty(dma_controller_t *dma, dma_sg_t *sgl, size_t cnt)
             }
         }
 
+#ifdef DEBUG_SGL
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "mark dirty %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
+#endif
+
         sg++;
     } while (--cnt > 0);
 }
@@ -358,9 +365,12 @@ dma_sgl_put(dma_controller_t *dma, dma_sg_t *sgl, size_t cnt)
             }
         }
 
+#ifdef DEBUG_SGL
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "unmap %p-%p",
                 sg->dma_addr + sg->offset,
                 sg->dma_addr + sg->offset + sg->length);
+#endif
+
         sg++;
     } while (--cnt > 0);
 }

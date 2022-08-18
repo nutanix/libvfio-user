@@ -8,3 +8,5 @@ option('shadow-ioeventfd', type: 'boolean', value : false,
        description: 'enable shadow ioeventfd (experimental)')
 option('client-server-test', type: 'boolean', value : false,
        description: 'enable client-server test (flaky)')
+option('debug-sgl', type: 'boolean', value : false,
+       description: 'additional debugging for sgl maps')
