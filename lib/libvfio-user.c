@@ -264,10 +264,27 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (cmd == VFIO_USER_REGION_WRITE && size - sizeof(*ra) != ra->count) {
-        vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
-                "expected %lu, got %u", size - sizeof(*ra), ra->count);
-        return false;
+    switch (cmd) {
+    case VFIO_USER_REGION_WRITE:
+        if (size - sizeof(*ra) != ra->count) {
+            vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
+                    "expected %lu, got %u", size - sizeof(*ra), ra->count);
+            return false;
+        }
+
+        break;
+
+    case VFIO_USER_REGION_WRITE_MULTI:
+        if (ra->count > VFIO_USER_MULTI_DATA) {
+            vfu_log(vfu_ctx, LOG_ERR, "region write count too large: "
+                    "expected %lu, got %u", size - sizeof(*ra), ra->count);
+            return false;
+        }
+
+        break;
+
+    default:
+        break;
     }
 
     index = ra->region;
@@ -346,6 +363,61 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     out_ra->count = ret;
+
+    return 0;
+}
+
+static int
+handle_region_write_multi(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_write_multi *wm = msg->in.iov.iov_base;
+    ssize_t ret;
+    char *buf;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    // FIXME: validate properly (?)
+
+    if (msg->in.iov.iov_len < sizeof(*wm)) {
+        return ERROR_INT(EINVAL);
+    }
+
+    if (wm->wr_cnt > VFIO_USER_MULTI_MAX) {
+        return ERROR_INT(EINVAL);
+    }
+
+    for (size_t i = 0; i < wm->wr_cnt; i++) {
+        struct vfio_user_region_access *in_ra;
+
+        /* Re-use the very similar type. */
+        in_ra = (struct vfio_user_region_access *)&wm->wrs[i];
+
+        /*
+         * We already checked total length so can be sure each entry is at least
+         * big enough.
+         */
+        if (!is_valid_region_access(vfu_ctx, sizeof(wm->wrs[i]),
+                                    msg->hdr.cmd, in_ra)) {
+            return ERROR_INT(EINVAL);
+        }
+
+        if (in_ra->count == 0) {
+            continue;
+        }
+
+        buf = (char *)(&in_ra->data);
+
+        ret = region_access(vfu_ctx, in_ra->region, buf, in_ra->count,
+                            in_ra->offset, true);
+        if (ret != in_ra->count) {
+            /* FIXME we should return whatever has been accessed, not an error */
+            if (ret >= 0) {
+                ret = ERROR_INT(EINVAL);
+            }
+            return ret;
+        }
+    }
 
     return 0;
 }
@@ -1164,6 +1236,11 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = handle_region_access(vfu_ctx, msg);
         break;
 
+    case VFIO_USER_REGION_WRITE_MULTI:
+        ret = handle_region_write_multi(vfu_ctx, msg);
+        break;
+
+
     case VFIO_USER_DEVICE_RESET:
         vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
         ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
@@ -1352,6 +1429,10 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
             return true;
         }
         break;
+
+    case VFIO_USER_REGION_WRITE_MULTI:
+        /* FIXME */
+        return false;
     }
 
     return false;
