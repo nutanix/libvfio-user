@@ -1,4 +1,5 @@
 libvfio-user
+signing test
 ============
 
 vfio-user is a framework that allows implementing PCI devices in userspace.
