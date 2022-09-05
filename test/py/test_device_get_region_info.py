@@ -144,8 +144,8 @@ def test_device_get_region_info_larger_argsz():
     info, _ = vfio_region_info.pop_from_buffer(result)
 
     assert info.argsz == argsz
-    assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
-                          VFIO_REGION_INFO_FLAG_WRITE)
+    assert info.flags == (VFIO_USER_REGION_INFO_FLAG_READ |
+                          VFIO_USER_REGION_INFO_FLAG_WRITE)
     assert info.index == VFU_PCI_DEV_BAR1_REGION_IDX
     assert info.cap_offset == 0
     assert info.size == 4096
@@ -166,12 +166,12 @@ def test_device_get_region_info_small_argsz_caps():
     assert info.argsz == 80
 
     '''
-    There are capabilites but we do not expect VFIO_REGION_INFO_FLAG_CAPS
+    There are capabilites but we do not expect VFIO_USER_REGION_INFO_FLAG_CAPS
     to be set because they do not fit in reply as argsz is small
     '''
-    assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
-                          VFIO_REGION_INFO_FLAG_WRITE |
-                          VFIO_REGION_INFO_FLAG_MMAP)
+    assert info.flags == (VFIO_USER_REGION_INFO_FLAG_READ |
+                          VFIO_USER_REGION_INFO_FLAG_WRITE |
+                          VFIO_USER_REGION_INFO_FLAG_MMAP)
     assert info.index == VFU_PCI_DEV_BAR2_REGION_IDX
     assert info.cap_offset == 0
     assert info.size == 0x8000
