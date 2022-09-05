@@ -83,7 +83,7 @@ tran_pipe_send_iovec(int fd, uint16_t msg_id, bool is_reply,
             return ERROR_INT(ECONNRESET);
         }
         return -1;
-    } else if (ret < hdr.msg_size) {
+    } else if (ret < (ssize_t)hdr.msg_size) {
         return ERROR_INT(ECONNRESET);
     }
 

@@ -249,7 +249,7 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     region->info.vaddr = mmap_base + (region->offset - offset);
 
     vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%p, %p) "
-            "vaddr=%p page_size=%#lx mapping=[%p, %p)",
+            "vaddr=%p page_size=%zx mapping=[%p, %p)",
             region->info.iova.iov_base, iov_end(&region->info.iova),
             region->info.vaddr, region->info.page_size,
             region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -300,8 +300,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
     assert(dma != NULL);
 
-    snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#lx prot=%#x",
-             dma_addr, (char *)dma_addr + size, fd, offset, prot);
+    snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#llx prot=%#x",
+             dma_addr, dma_addr + size, fd, (unsigned long long)offset, prot);
 
     if (size > dma->max_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %zu > max %zu",
@@ -317,7 +317,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             region->info.iova.iov_len == size) {
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
-                        "%s; existing=%#lx", rstr, region->offset);
+                        "%s; existing=%#llx", rstr,
+                        (unsigned long long)region->offset);
                 return ERROR_INT(EINVAL);
             }
             if (!fds_are_same_file(region->fd, fd)) {
@@ -573,7 +574,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize != dma->dirty_pgsize) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %ld", pgsize);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
         return ERROR_INT(EINVAL);
     }
 
@@ -588,7 +589,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * receive.
      */
     if (size != (size_t)bitmap_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %ld != %ld", size,
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
                 bitmap_size);
         return ERROR_INT(EINVAL);
     }

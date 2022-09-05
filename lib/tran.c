@@ -176,7 +176,7 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
 
     if (msg.in.iov.iov_len < sizeof(*cversion)) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "msg%#hx: VFIO_USER_VERSION: invalid size %lu",
+                "msg%#hx: VFIO_USER_VERSION: invalid size %zu",
                 *msg_idp, msg.in.iov.iov_len);
         ret = EINVAL;
         goto out;

@@ -483,7 +483,7 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off != 0) {
         if (cap->off < PCI_STD_HEADER_SIZEOF) {
-            vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
+            vfu_log(vfu_ctx, LOG_ERR, "invalid offset %zx for capability "
                     "%u (%s)", cap->off, cap->id, cap->name);
             return ERROR_INT(EINVAL);
         }
@@ -516,7 +516,7 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
-                "%u (%s) of size %zu bytes at offset %#lx", cap->id,
+                "%u (%s) of size %zu bytes at offset %zx", cap->id,
                 cap->name, cap->size, cap->off);
         return ERROR_INT(ENOSPC);
     }
@@ -547,7 +547,7 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off != 0) {
         if (cap->off < PCI_CFG_SPACE_SIZE) {
-            vfu_log(vfu_ctx, LOG_ERR, "invalid offset %#lx for capability "
+            vfu_log(vfu_ctx, LOG_ERR, "invalid offset %zx for capability "
                     "%u (%s)", cap->off, cap->id, cap->name);
             return ERROR_INT(EINVAL);
         }
@@ -581,7 +581,7 @@ ext_cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
 
     if (cap->off + cap->size > pci_config_space_size(vfu_ctx)) {
         vfu_log(vfu_ctx, LOG_ERR, "no config space left for capability "
-                "%u (%s) of size %zu bytes at offset %#lx", cap->id,
+                "%u (%s) of size %zu bytes at offset %zu", cap->id,
                 cap->name, cap->size, cap->off);
         return ERROR_INT(ENOSPC);
     }
@@ -700,7 +700,7 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 
         if (cap.off + cap.size >= pci_config_space_size(vfu_ctx)) {
                 vfu_log(vfu_ctx, LOG_DEBUG,
-                        "PCI capability past end of config space, %#lx >= %#lx",
+                        "PCI capability past end of config space, %zx >= %zx",
                         cap.off + cap.size, pci_config_space_size(vfu_ctx));
             return ERROR_INT(EINVAL);
         }

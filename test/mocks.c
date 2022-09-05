@@ -122,7 +122,7 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
     }
 
     check_expected_ptr(dma);
-    check_expected(dma_addr);
+    check_expected_ptr(dma_addr);
     check_expected(size);
     check_expected(fd);
     check_expected(offset);
