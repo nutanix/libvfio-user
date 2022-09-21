@@ -74,6 +74,11 @@ meson build
 meson test -C build test_quiesce.py
 ```
 
+For even better control , use something like the following:
+```
+LIBVFIO_SO_DIR='/root/src/libvfio-user/build/lib' pytest-3 test/py/test_quiesce.py
+```
+
 AFL++
 -----
 
