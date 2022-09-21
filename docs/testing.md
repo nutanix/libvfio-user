@@ -79,6 +79,8 @@ For even better control , use something like the following:
 LIBVFIO_SO_DIR='/root/src/libvfio-user/build/lib' pytest-3 test/py/test_quiesce.py
 ```
 
+To print libvfio-user's log messages, append the `--capture=tee-sys` option.
+
 AFL++
 -----
 
