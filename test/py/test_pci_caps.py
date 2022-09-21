@@ -161,7 +161,7 @@ def test_add_caps(mock_pci_region_cb):
     # Ideally we should ignore this test via pytest command line but this isn't
     # and individual test, and making it one requires a bit of effort.
     if not is_32bit():
-        ___test_pci_cap_callback(sock)
+        __test_pci_cap_callback(sock)
     __test_pci_cap_write_pmcs(sock)
 
 

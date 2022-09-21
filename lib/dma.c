@@ -305,7 +305,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
     if (size > dma->max_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %llu > max %zu",
-                size, dma->max_size);
+                (unsigned long long)size, dma->max_size);
         return ERROR_INT(ENOSPC);
     }
 
