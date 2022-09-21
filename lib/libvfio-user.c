@@ -482,6 +482,7 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
 
 #ifndef SHADOW_IOEVENTFD
     if (shadow_fd != -1) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "shadow ioeventfd not compiled");
         return ERROR_INT(EINVAL);
     }
 #endif

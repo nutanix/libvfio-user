@@ -45,7 +45,11 @@
  * is to limit the size of the dirty bitmaps: this corresponds to 256MB at a 4K
  * page size.
  */
+#if __x86_64__ || __ppc64__
 #define MAX_DMA_SIZE (8 * ONE_TB)
+#else
+#define MAX_DMA_SIZE UINT32_MAX /* FIXME check for __i386__ etc? */
+#endif
 #define MAX_DMA_REGIONS 16
 
 #define SERVER_MAX_DATA_XFER_SIZE (VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE)

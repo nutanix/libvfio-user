@@ -43,6 +43,7 @@ import struct
 import syslog
 import copy
 import tempfile
+import sys
 
 UINT64_MAX = 18446744073709551615
 
@@ -140,8 +141,13 @@ VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE = (1024 * 1024)
 SERVER_MAX_DATA_XFER_SIZE = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE
 SERVER_MAX_MSG_SIZE = SERVER_MAX_DATA_XFER_SIZE + 16 + 16
 
+def is_32bit():
+    return (1 << 31) - 1 == sys.maxsize
+
+
 MAX_DMA_REGIONS = 16
-MAX_DMA_SIZE = (8 * ONE_TB)
+# FIXME get from libvfio-user.h
+MAX_DMA_SIZE = sys.maxsize << 1 if is_32bit() else (8 * ONE_TB)
 
 # enum vfio_user_command
 VFIO_USER_VERSION = 1
@@ -584,7 +590,7 @@ vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
                                      c.c_ulong, c.c_long, c.c_bool)
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
-                                 c.c_uint32, c.c_int, c.c_ulong)
+                                 c.c_uint32, c.c_int, c.c_uint64)
 vfu_reset_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
 lib.vfu_setup_device_reset_cb.argtypes = (c.c_void_p, vfu_reset_cb_t)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
@@ -777,7 +783,7 @@ def get_pci_ext_cfg_space(ctx):
 
 def read_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = get_pci_ext_cfg_space(ctx) if extended else get_pci_cfg_space(ctx)
-
+    print(space)
     for i in range(count):
         buf[i] = space[offset+i]
     return count
@@ -790,7 +796,8 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
 
     space = c.cast(lib.vfu_pci_get_config_space(ctx), c.POINTER(c.c_char))
 
-    for i in range(count):
+    for i in range(max_offset):
+        # FIXME this assignment doesn't update the actual config space, it works fine on x86_64
         space[offset+i] = buf[i]
     return count
 

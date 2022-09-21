@@ -290,7 +290,7 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 
 int
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
-                                       vfu_dma_addr_t dma_addr, size_t size,
+                                       vfu_dma_addr_t dma_addr, uint64_t size,
                                        int fd, off_t offset, uint32_t prot)
 {
     dma_memory_region_t *region;
@@ -304,7 +304,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
              dma_addr, dma_addr + size, fd, (unsigned long long)offset, prot);
 
     if (size > dma->max_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %zu > max %zu",
+        vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %llu > max %zu",
                 size, dma->max_size);
         return ERROR_INT(ENOSPC);
     }

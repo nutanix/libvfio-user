@@ -520,7 +520,7 @@ cap_place(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, void *data)
                 cap->name, cap->size, cap->off);
         return ERROR_INT(ENOSPC);
     }
-
+ 
     memcpy(cap_data(vfu_ctx, cap), data, cap->size);
     /* Make sure the previous cap's PCI_CAP_LIST_NEXT points to us. */
     *prevp = cap->off;
