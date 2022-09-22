@@ -571,7 +571,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     ret = dma_addr_to_sgl(dma, addr, len, &sg, 1, PROT_NONE);
     if (unlikely(ret != 1)) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to translate %#llx-%#llx: %m",
-                (unsigned long long)addr, (unsigned long long)addr + len - 1);
+                (unsigned long long)(uintptr_t)addr,
+		(unsigned long long)(uintptr_t)addr + len - 1);
         return ret;
     }
 
