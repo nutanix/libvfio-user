@@ -789,7 +789,6 @@ def get_pci_ext_cfg_space(ctx):
 
 def read_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = get_pci_ext_cfg_space(ctx) if extended else get_pci_cfg_space(ctx)
-    print(space)
     for i in range(count):
         buf[i] = space[offset+i]
     return count
