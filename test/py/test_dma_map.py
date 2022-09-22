@@ -60,7 +60,7 @@ def test_dma_region_too_big():
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=MAX_DMA_SIZE + 4096)
+        offset=0, addr=0x10 << PAGE_SHIFT, size=MAX_DMA_SIZE + PAGE_SIZE)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
 
@@ -72,7 +72,7 @@ def test_dma_region_too_many():
         payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
             flags=(VFIO_USER_F_DMA_REGION_READ |
                    VFIO_USER_F_DMA_REGION_WRITE),
-            offset=0, addr=0x1000 * i, size=4096)
+            offset=0, addr=PAGE_SIZE * i, size=PAGE_SIZE)
 
         if i == MAX_DMA_REGIONS + 1:
             expect = errno.EINVAL
@@ -95,7 +95,7 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=0x1000)
+        offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
         busy=True)
@@ -106,8 +106,8 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     assert ret == 0
 
     # check that DMA register callback got called
-    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10000, iov_len=0x1000),
-        None, iovec_t(None, 0), 0x1000, mmap.PROT_READ | mmap.PROT_WRITE)
+    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10 << PAGE_SHIFT, iov_len=PAGE_SIZE),
+        None, iovec_t(None, 0), PAGE_SIZE, mmap.PROT_READ | mmap.PROT_WRITE)
     mock_dma_register.assert_called_once_with(ctx, dma_info)
 
     get_reply(sock)
@@ -119,11 +119,11 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     mock_dma_register.assert_called_once()
 
     # check that the DMA region has been added
-    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10 << PAGE_SHIFT, PAGE_SIZE)
     assert len(sgs) == 1
     sg = sgs[0]
-    assert sg.dma_addr == 0x10000 and sg.region == 0 and sg.length == 0x1000 \
-        and sg.offset == 0 and sg.writeable
+    assert sg.dma_addr == 0x10 << PAGE_SHIFT and sg.region == 0 \
+        and sg.length == PAGE_SIZE and sg.offset == 0 and sg.writeable
 
 
 # FIXME better move this test and the following to test_request_errors
@@ -153,7 +153,7 @@ def test_dma_map_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
         argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=0x1000)
+        offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
 
@@ -192,7 +192,7 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
         argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=0x1000)
+        offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
         busy=True)
@@ -209,8 +209,8 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
 
-    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10000, iov_len=0x1000),
-        None, iovec_t(None, 0), 0x1000, mmap.PROT_READ | mmap.PROT_WRITE)
+    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10 << PAGE_SHIFT, iov_len=PAGE_SIZE),
+        None, iovec_t(None, 0), PAGE_SIZE, mmap.PROT_READ | mmap.PROT_WRITE)
     mock_dma_register.assert_called_once_with(ctx, dma_info)
 
     # device reset callback should be called (by do_reply)
@@ -224,7 +224,7 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     mock_reset.assert_called_once()
 
     # check that the DMA region was NOT added
-    count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
+    count, sgs = vfu_addr_to_sgl(ctx, 0x10 << PAGE_SHIFT, PAGE_SIZE)
     assert count == -1
     assert c.get_errno() == errno.ENOENT
 

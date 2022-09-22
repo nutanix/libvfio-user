@@ -1904,6 +1904,10 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     for (i = 0; i < nr_mmap_areas; i++) {
         struct iovec *iov = &mmap_areas[i];
         if ((size_t)iov_end(iov) > size) {
+            vfu_log(vfu_ctx, LOG_ERR, "mmap area #%zu %#llx-%#llx exceeds region size of %#llx\n",
+                    i, (unsigned long long)iov->iov_base,
+		    (unsigned long long)(iov->iov_base) + iov->iov_len - 1,
+		    (unsigned long long)size);
             return ERROR_INT(EINVAL);
         }
     }

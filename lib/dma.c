@@ -569,7 +569,13 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * IOVAs.
      */
     ret = dma_addr_to_sgl(dma, addr, len, &sg, 1, PROT_NONE);
-    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
+    if (unlikely(ret != 1)) {
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to translate %#llx-%#llx: %m",
+                (unsigned long long)addr, (unsigned long long)addr + len - 1);
+        return ret;
+    }
+
+    if (unlikely(sg.dma_addr != addr || sg.length != len)) {
         return ERROR_INT(ENOTSUP);
     }
 

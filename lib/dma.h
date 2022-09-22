@@ -209,6 +209,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
     const dma_memory_region_t *const region = &dma->regions[region_index];
 
     if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "read-only region");
         return ERROR_INT(EACCES);
     }
 

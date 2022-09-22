@@ -44,6 +44,11 @@ import syslog
 import copy
 import tempfile
 import sys
+from resource import getpagesize
+from math import log2
+
+PAGE_SIZE = getpagesize()
+PAGE_SHIFT = int(log2(PAGE_SIZE))
 
 UINT64_MAX = 18446744073709551615
 
@@ -912,11 +917,13 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
         assert ret == 0
 
     f = tempfile.TemporaryFile()
-    f.truncate(0x2000)
+    migr_region_size = 2 << PAGE_SHIFT
+    f.truncate(migr_region_size)
 
-    mmap_areas = [(0x1000, 0x1000)]
+    mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
+                           size=migr_region_size,
                            flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
                            fd=f.fileno())
     assert ret == 0
@@ -1161,7 +1168,7 @@ def __migr_data_written_cb(ctx, count):
     return migr_data_written_cb(ctx, count)
 
 
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
+def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=PAGE_SIZE):
     assert ctx is not None
 
     if not cbs:
