@@ -311,7 +311,11 @@ get_device_region_info(int sock, uint32_t index)
     size_t nr_fds = ARRAY_SIZE(fds);
 
 
-    region_info = alloca(size);
+    region_info = malloc(size);
+    if (region_info == NULL) {
+        err(EXIT_FAILURE, "%m\n");
+    }
+
     memset(region_info, 0, size);
     region_info->argsz = size;
     region_info->index = index;
@@ -319,7 +323,10 @@ get_device_region_info(int sock, uint32_t index)
     do_get_device_region_info(sock, region_info, NULL, 0);
     if (region_info->argsz > size) {
         size = region_info->argsz;
-        region_info = alloca(size);
+        region_info = malloc(size);
+        if (region_info == NULL) {
+            err(EXIT_FAILURE, "%m\n");
+        }
         memset(region_info, 0, size);
         region_info->argsz = size;
         region_info->index = index;
@@ -346,7 +353,9 @@ get_device_region_info(int sock, uint32_t index)
                 mmap_sparse_areas(fds, region_info, sparse);
             }
         }
+
     }
+    free(region_info);
 }
 
 static void
@@ -1170,8 +1179,11 @@ int main(int argc, char *argv[])
 
     unlink(template);
 
-    dma_regions = alloca(sizeof(*dma_regions) * nr_dma_regions);
-    dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
+    dma_regions = calloc(nr_dma_regions, sizeof(*dma_regions));
+    dma_region_fds = calloc(nr_dma_regions, sizeof(*dma_region_fds));
+    if (dma_regions == NULL || dma_region_fds == NULL) {
+        err(EXIT_FAILURE, "%m\n");
+    }
 
     for (i = 0; i < nr_dma_regions; i++) {
         dma_regions[i].argsz = sizeof(struct vfio_user_dma_map);
@@ -1317,6 +1329,9 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap all DMA regions");
     }
+
+    free(dma_regions);
+    free(dma_region_fds);
 
     return 0;
 }
