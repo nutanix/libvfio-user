@@ -261,7 +261,7 @@ def test_pci_ext_cap_callback():
 
     # FIXME assignment to PCI config space from callback is ignored
     if is_32bit():
-        return 
+        return
     sock = connect_client(ctx)
 
     # start of vendor payload
@@ -304,7 +304,7 @@ def test_pci_ext_cap_write_vendor():
 
     # FIXME assignment to PCI config space from callback is ignored
     if is_32bit():
-        return 
+        return
 
     sock = connect_client(ctx)
 

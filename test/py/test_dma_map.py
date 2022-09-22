@@ -106,8 +106,9 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     assert ret == 0
 
     # check that DMA register callback got called
-    dma_info = vfu_dma_info_t(iovec_t(iov_base=0x10 << PAGE_SHIFT, iov_len=PAGE_SIZE),
-        None, iovec_t(None, 0), PAGE_SIZE, mmap.PROT_READ | mmap.PROT_WRITE)
+    iov = iovec_t(iov_base=0x10 << PAGE_SHIFT, iov_len=PAGE_SIZE)
+    dma_info = vfu_dma_info_t(iov, None, iovec_t(None, 0), PAGE_SIZE,
+                              mmap.PROT_READ | mmap.PROT_WRITE)
     mock_dma_register.assert_called_once_with(ctx, dma_info)
 
     get_reply(sock)

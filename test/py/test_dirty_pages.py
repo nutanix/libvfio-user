@@ -74,9 +74,9 @@ def test_dirty_pages_setup():
 
     mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=2 << PAGE_SHIFT,
-                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
-                           fd=f.fileno())
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
+                           size=2 << PAGE_SHIFT, flags=VFU_REGION_FLAG_RW,
+                           mmap_areas=mmap_areas, fd=f.fileno())
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -299,7 +299,8 @@ def get_dirty_page_bitmap():
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
     bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
-    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT, bitmap=bitmap)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -332,29 +333,32 @@ def write_to_page(ctx, page, nr_pages, get_bitmap=True):
 
 
 def test_dirty_pages_get_modified():
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT, length=PAGE_SIZE)
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec1 = iovec_t()
     ret = vfu_sgl_get(ctx, sg1, iovec1)
     assert ret == 0
 
     # read only
-    ret, sg2 = vfu_addr_to_sgl(ctx, dma_addr=0x11 << PAGE_SHIFT, length=PAGE_SIZE,
-                               prot=mmap.PROT_READ)
+    ret, sg2 = vfu_addr_to_sgl(ctx, dma_addr=0x11 << PAGE_SHIFT,
+                               length=PAGE_SIZE, prot=mmap.PROT_READ)
     assert ret == 1
     iovec2 = iovec_t()
     ret = vfu_sgl_get(ctx, sg2, iovec2)
     assert ret == 0
 
     # simple single bitmap entry map
-    ret, sg3 = vfu_addr_to_sgl(ctx, dma_addr=0x12 << PAGE_SHIFT, length=PAGE_SIZE)
+    ret, sg3 = vfu_addr_to_sgl(ctx, dma_addr=0x12 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec3 = iovec_t()
     ret = vfu_sgl_get(ctx, sg3, iovec3)
     assert ret == 0
 
     # write that spans bytes in bitmap
-    ret, sg4 = vfu_addr_to_sgl(ctx, dma_addr=0x16 << PAGE_SHIFT, length=0x4 << PAGE_SHIFT)
+    ret, sg4 = vfu_addr_to_sgl(ctx, dma_addr=0x16 << PAGE_SHIFT,
+                               length=0x4 << PAGE_SHIFT)
     assert ret == 1
     iovec4 = iovec_t()
     ret = vfu_sgl_get(ctx, sg4, iovec4)
@@ -456,7 +460,8 @@ def test_dirty_pages_bitmap_with_quiesce():
 
     quiesce_errno = errno.EBUSY
 
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT, length=PAGE_SIZE)
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec1 = iovec_t()
     ret = vfu_sgl_get(ctx, sg1, iovec1)

@@ -181,7 +181,8 @@ def test_dma_unmap_async(mock_quiesce):
 
 def test_dma_unmap_all():
 
-    setup_dma_regions((PAGE_SIZE * i, PAGE_SIZE) for i in range(MAX_DMA_REGIONS))
+    dma_regions = (PAGE_SIZE * i, PAGE_SIZE) for i in range(MAX_DMA_REGIONS)
+    setup_dma_regions(dma_region)
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0, size=0)
     msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)

@@ -146,6 +146,7 @@ VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE = (1024 * 1024)
 SERVER_MAX_DATA_XFER_SIZE = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE
 SERVER_MAX_MSG_SIZE = SERVER_MAX_DATA_XFER_SIZE + 16 + 16
 
+
 def is_32bit():
     return (1 << 31) - 1 == sys.maxsize
 
@@ -802,7 +803,8 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = c.cast(lib.vfu_pci_get_config_space(ctx), c.POINTER(c.c_char))
 
     for i in range(count):
-        # FIXME this assignment doesn't update the actual config space, it works fine on x86_64
+        # FIXME this assignment doesn't update the actual config space, it
+        # works fine on x86_64
         space[offset+i] = buf[i]
     return count
 
