@@ -170,6 +170,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     return 0;
 }
 
+#ifdef DEBUG
 static void
 debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                     size_t count, uint64_t offset, bool is_write)
@@ -198,6 +199,7 @@ debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                 count);
     }
 }
+#endif
 
 static ssize_t
 region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
@@ -239,10 +241,11 @@ out:
     if (ret != (ssize_t)count) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#llx:%zu) failed: %m",
                 region, verb, (ull_t)offset, count);
-    } else {
+#ifdef DEBUG
+    else {
         debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
-
+#endif
     return ret;
 }
 
