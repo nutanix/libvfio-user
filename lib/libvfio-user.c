@@ -230,7 +230,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
     }
 
 out:
-    if (ret != (ssize_t)count) {
+    if (unlikely(ret != (ssize_t)count)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#llx:%zu) failed: %m",
                 region, verb, (ull_t)offset, count);
     } else {
@@ -249,18 +249,19 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     assert(vfu_ctx != NULL);
     assert(ra != NULL);
 
-    if (size < sizeof(*ra)) {
+    if (unlikely(size < sizeof(*ra))) {
         vfu_log(vfu_ctx, LOG_ERR, "message size too small (%zu)", size);
         return false;
     }
 
-    if (ra->count > SERVER_MAX_DATA_XFER_SIZE) {
+    if (unlikely(ra->count > SERVER_MAX_DATA_XFER_SIZE)) {
         vfu_log(vfu_ctx, LOG_ERR, "region access count too large (%u)",
                 ra->count);
         return false;
     }
 
-    if (cmd == VFIO_USER_REGION_WRITE && size - sizeof(*ra) != ra->count) {
+    if (unlikely(cmd == VFIO_USER_REGION_WRITE
+                 && size - sizeof(*ra) != ra->count)) {
         vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
                 "expected %zu, got %u", size - sizeof(*ra), ra->count);
         return false;
@@ -268,12 +269,13 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
 
     index = ra->region;
 
-    if (index >= vfu_ctx->nr_regions) {
+    if (unlikely(index >= vfu_ctx->nr_regions)) {
         vfu_log(vfu_ctx, LOG_ERR, "bad region index %zu", index);
         return false;
     }
 
-    if (satadd_u64(ra->offset, ra->count) > vfu_ctx->reg_info[index].size) {
+    if (unlikely(satadd_u64(ra->offset, ra->count)
+                 > vfu_ctx->reg_info[index].size)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "out of bounds region access %#llx-%#llx (size %u)",
                 (ull_t)ra->offset,
@@ -283,8 +285,8 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (device_is_stopped_and_copying(vfu_ctx->migration) &&
-        index != VFU_PCI_DEV_MIGR_REGION_IDX) {
+    if (unlikely(device_is_stopped_and_copying(vfu_ctx->migration) &&
+        index != VFU_PCI_DEV_MIGR_REGION_IDX)) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "cannot access region %zu while device in stop-and-copy state",
                 index);
@@ -305,11 +307,11 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len, msg->hdr.cmd, in_ra)) {
+    if (unlikely(!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len, msg->hdr.cmd, in_ra))) {
         return ERROR_INT(EINVAL);
     }
 
-    if (in_ra->count == 0) {
+    if (unlikely(in_ra->count == 0)) {
         return 0;
     }
 
@@ -318,7 +320,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         msg->out.iov.iov_len += in_ra->count;
     }
     msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
-    if (msg->out.iov.iov_base == NULL) {
+    if (unlikely(msg->out.iov.iov_base == NULL)) {
         return -1;
     }
 
@@ -337,7 +339,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                         in_ra->offset, msg->hdr.cmd == VFIO_USER_REGION_WRITE);
     if (ret != (ssize_t)in_ra->count) {
         /* FIXME we should return whatever has been accessed, not an error */
-        if (ret >= 0) {
+        if (unlikely(ret >= 0)) {
             ret = ERROR_INT(EINVAL);
         }
         return ret;
@@ -359,7 +361,7 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in.iov.iov_base;
 
-    if (msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info)) {
+    if (unlikely(msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info))) {
         return ERROR_INT(EINVAL);
     }
 
