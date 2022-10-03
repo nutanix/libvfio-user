@@ -92,3 +92,21 @@ lspci = executable(
     include_directories: lib_include_dir,
     install: false,
 )
+
+
+shadow_ioeventfd_server_sources = [
+    'shadow_ioeventfd_server.c',
+]
+
+shadow_ioeventfd_server_deps = [
+    libvfio_user_dep,
+]
+
+shadow_ioeventfd_server = executable(
+    'shadow_ioeventfd_server',
+    shadow_ioeventfd_server_sources,
+    c_args: common_cflags,
+    dependencies: shadow_ioeventfd_server_deps,
+    include_directories: lib_include_dir,
+    install: false,
+)
