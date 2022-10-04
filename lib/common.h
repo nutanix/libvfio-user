@@ -58,6 +58,8 @@
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
 
+typedef unsigned long long ull_t;
+
 /* Saturating uint64_t addition. */
 static inline uint64_t
 satadd_u64(uint64_t a, uint64_t b)

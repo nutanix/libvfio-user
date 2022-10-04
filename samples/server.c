@@ -93,8 +93,9 @@ bar0_access(vfu_ctx_t *vfu_ctx, char * const buf, size_t count, loff_t offset,
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     if (count != sizeof(time_t) || offset != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad BAR0 access %#lx-%#lx",
-                offset, offset + count - 1);
+        vfu_log(vfu_ctx, LOG_ERR, "bad BAR0 access %#llx-%#llx",
+                (unsigned long long)offset,
+                (unsigned long long)offset + count - 1);
         errno = EINVAL;
         return -1;
     }
@@ -123,8 +124,9 @@ bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
     struct server_data *server_data = vfu_get_private(vfu_ctx);
 
     if (offset + count > server_data->bar1_size) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad BAR1 access %#lx-%#lx",
-                offset, offset + count - 1);
+        vfu_log(vfu_ctx, LOG_ERR, "bad BAR1 access %#llx-%#llx",
+                (unsigned long long)offset,
+                (unsigned long long)offset + count - 1);
         errno = EINVAL;
         return -1;
     }
@@ -353,8 +355,9 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
     assert(data != NULL);
 
     if (offset != 0 || size < server_data->bar1_size) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#lx-%#lx",
-                offset, offset + size - 1);
+        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
+                (unsigned long long)offset,
+                (unsigned long long)offset + size - 1);
         errno = EINVAL;
         return -1;
     }

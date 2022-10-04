@@ -35,6 +35,8 @@ ctx = None
 sock = None
 
 argsz = len(vfio_region_info())
+migr_region_size = 2 << PAGE_SHIFT
+migr_mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
 
 def test_device_get_region_info_setup():
@@ -77,13 +79,11 @@ def test_device_get_region_info_setup():
     assert ret == 0
 
     f = tempfile.TemporaryFile()
-    f.truncate(0x2000)
+    f.truncate(migr_region_size)
 
-    mmap_areas = [(0x1000, 0x1000)]
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
-                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
-                           fd=f.fileno())
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
+                           size=migr_region_size, flags=VFU_REGION_FLAG_RW,
+                           mmap_areas=migr_mmap_areas, fd=f.fileno())
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -235,10 +235,10 @@ def test_device_get_region_info_migr():
     assert cap.id == VFIO_REGION_INFO_CAP_SPARSE_MMAP
     assert cap.version == 1
     assert cap.next == 0
-    assert cap.nr_areas == 1
+    assert cap.nr_areas == len(migr_mmap_areas) == 1
 
-    assert area.offset == 0x1000
-    assert area.size == 0x1000
+    assert area.offset == migr_mmap_areas[0][0]
+    assert area.size == migr_mmap_areas[0][1]
 
     # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)

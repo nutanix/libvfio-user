@@ -43,6 +43,12 @@ import struct
 import syslog
 import copy
 import tempfile
+import sys
+from resource import getpagesize
+from math import log2
+
+PAGE_SIZE = getpagesize()
+PAGE_SHIFT = int(log2(PAGE_SIZE))
 
 UINT64_MAX = 18446744073709551615
 
@@ -140,8 +146,14 @@ VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE = (1024 * 1024)
 SERVER_MAX_DATA_XFER_SIZE = VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE
 SERVER_MAX_MSG_SIZE = SERVER_MAX_DATA_XFER_SIZE + 16 + 16
 
+
+def is_32bit():
+    return (1 << 31) - 1 == sys.maxsize
+
+
 MAX_DMA_REGIONS = 16
-MAX_DMA_SIZE = (8 * ONE_TB)
+# FIXME get from libvfio-user.h
+MAX_DMA_SIZE = sys.maxsize << 1 if is_32bit() else (8 * ONE_TB)
 
 # enum vfio_user_command
 VFIO_USER_VERSION = 1
@@ -585,7 +597,7 @@ vfu_region_access_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.POINTER(c.c_char),
                                      c.c_ulong, c.c_long, c.c_bool)
 lib.vfu_setup_region.argtypes = (c.c_void_p, c.c_int, c.c_ulong,
                                  vfu_region_access_cb_t, c.c_int, c.c_void_p,
-                                 c.c_uint32, c.c_int, c.c_ulong)
+                                 c.c_uint32, c.c_int, c.c_uint64)
 vfu_reset_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int)
 lib.vfu_setup_device_reset_cb.argtypes = (c.c_void_p, vfu_reset_cb_t)
 lib.vfu_pci_get_config_space.argtypes = (c.c_void_p,)
@@ -778,7 +790,6 @@ def get_pci_ext_cfg_space(ctx):
 
 def read_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = get_pci_ext_cfg_space(ctx) if extended else get_pci_cfg_space(ctx)
-
     for i in range(count):
         buf[i] = space[offset+i]
     return count
@@ -792,6 +803,8 @@ def write_pci_cfg_space(ctx, buf, count, offset, extended=False):
     space = c.cast(lib.vfu_pci_get_config_space(ctx), c.POINTER(c.c_char))
 
     for i in range(count):
+        # FIXME this assignment doesn't update the actual config space, it
+        # works fine on x86_64
         space[offset+i] = buf[i]
     return count
 
@@ -906,11 +919,13 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
         assert ret == 0
 
     f = tempfile.TemporaryFile()
-    f.truncate(0x2000)
+    migr_region_size = 2 << PAGE_SHIFT
+    f.truncate(migr_region_size)
 
-    mmap_areas = [(0x1000, 0x1000)]
+    mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
+                           size=migr_region_size,
                            flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
                            fd=f.fileno())
     assert ret == 0
@@ -1155,7 +1170,7 @@ def __migr_data_written_cb(ctx, count):
     return migr_data_written_cb(ctx, count)
 
 
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=0x4000):
+def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=PAGE_SIZE):
     assert ctx is not None
 
     if not cbs:

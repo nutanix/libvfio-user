@@ -249,7 +249,7 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     region->info.vaddr = mmap_base + (region->offset - offset);
 
     vfu_log(dma->vfu_ctx, LOG_DEBUG, "mapped DMA region iova=[%p, %p) "
-            "vaddr=%p page_size=%#lx mapping=[%p, %p)",
+            "vaddr=%p page_size=%zx mapping=[%p, %p)",
             region->info.iova.iov_base, iov_end(&region->info.iova),
             region->info.vaddr, region->info.page_size,
             region->info.mapping.iov_base, iov_end(&region->info.mapping));
@@ -290,7 +290,7 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 
 int
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
-                                       vfu_dma_addr_t dma_addr, size_t size,
+                                       vfu_dma_addr_t dma_addr, uint64_t size,
                                        int fd, off_t offset, uint32_t prot)
 {
     dma_memory_region_t *region;
@@ -300,12 +300,12 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
     assert(dma != NULL);
 
-    snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#lx prot=%#x",
-             dma_addr, (char *)dma_addr + size, fd, offset, prot);
+    snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#llx prot=%#x",
+             dma_addr, dma_addr + size, fd, (ull_t)offset, prot);
 
     if (size > dma->max_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %zu > max %zu",
-                size, dma->max_size);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %llu > max %zu",
+                (unsigned long long)size, dma->max_size);
         return ERROR_INT(ENOSPC);
     }
 
@@ -317,7 +317,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             region->info.iova.iov_len == size) {
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
-                        "%s; existing=%#lx", rstr, region->offset);
+                        "%s; existing=%#llx", rstr,
+                        (ull_t)region->offset);
                 return ERROR_INT(EINVAL);
             }
             if (!fds_are_same_file(region->fd, fd)) {
@@ -568,12 +569,19 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * IOVAs.
      */
     ret = dma_addr_to_sgl(dma, addr, len, &sg, 1, PROT_NONE);
-    if (ret != 1 || sg.dma_addr != addr || sg.length != len) {
+    if (unlikely(ret != 1)) {
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to translate %#llx-%#llx: %m",
+                (unsigned long long)(uintptr_t)addr,
+		(unsigned long long)(uintptr_t)addr + len - 1);
+        return ret;
+    }
+
+    if (unlikely(sg.dma_addr != addr || sg.length != len)) {
         return ERROR_INT(ENOTSUP);
     }
 
     if (pgsize != dma->dirty_pgsize) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %ld", pgsize);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
         return ERROR_INT(EINVAL);
     }
 
@@ -588,7 +596,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * receive.
      */
     if (size != (size_t)bitmap_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %ld != %ld", size,
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
                 bitmap_size);
         return ERROR_INT(EINVAL);
     }
