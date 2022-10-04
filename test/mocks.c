@@ -113,7 +113,7 @@ unpatch_all(void)
 
 int
 dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
-                          size_t size, int fd, off_t offset,
+                          uint64_t size, int fd, off_t offset,
                           uint32_t prot)
 {
     if (!is_patched("dma_controller_add_region")) {
@@ -122,7 +122,7 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
     }
 
     check_expected_ptr(dma);
-    check_expected(dma_addr);
+    check_expected_ptr(dma_addr);
     check_expected(size);
     check_expected(fd);
     check_expected(offset);

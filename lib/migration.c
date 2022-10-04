@@ -413,7 +413,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     case offsetof(struct vfio_user_migration_info, device_state):
         if (count != sizeof(migr->info.device_state)) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "bad device_state access size %ld", count);
+                    "bad device_state access size %zu", count);
             return ERROR_INT(EINVAL);
         }
         device_state = (uint32_t *)buf;
@@ -443,7 +443,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     case offsetof(struct vfio_user_migration_info, pending_bytes):
         if (count != sizeof(migr->info.pending_bytes)) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "bad pending_bytes access size %ld", count);
+                    "bad pending_bytes access size %zu", count);
             return ERROR_INT(EINVAL);
         }
         ret = handle_pending_bytes(vfu_ctx, migr, (uint64_t *)buf, is_write);
@@ -451,7 +451,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     case offsetof(struct vfio_user_migration_info, data_offset):
         if (count != sizeof(migr->info.data_offset)) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "bad data_offset access size %ld", count);
+                    "bad data_offset access size %zu", count);
             return ERROR_INT(EINVAL);
         }
         ret = handle_data_offset(vfu_ctx, migr, (uint64_t *)buf, is_write);
@@ -459,14 +459,15 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     case offsetof(struct vfio_user_migration_info, data_size):
         if (count != sizeof(migr->info.data_size)) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "bad data_size access size %ld", count);
+                    "bad data_size access size %zu", count);
             return ERROR_INT(EINVAL);
         }
         ret = handle_data_size(vfu_ctx, migr, (uint64_t *)buf, is_write);
         break;
     default:
-        vfu_log(vfu_ctx, LOG_ERR, "bad migration region register offset %#lx",
-               pos);
+        vfu_log(vfu_ctx, LOG_ERR,
+                "bad migration region register offset %#llx",
+                (ull_t)pos);
         return ERROR_INT(EINVAL);
     }
     return ret;
@@ -502,8 +503,9 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
              * any access to the data region properly.
              */
             vfu_log(vfu_ctx, LOG_WARNING,
-                    "bad access to dead space %#lx-%#lx in migration region",
-                    pos, pos + count - 1);
+                    "bad access to dead space %#llx - %#llx in migration region",
+                    (ull_t)pos,
+                    (ull_t)(pos + count - 1));
             return ERROR_INT(EINVAL);
         }
 

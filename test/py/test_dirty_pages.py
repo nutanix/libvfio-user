@@ -70,13 +70,13 @@ def test_dirty_pages_setup():
     assert ret == 0
 
     f = tempfile.TemporaryFile()
-    f.truncate(0x2000)
+    f.truncate(2 << PAGE_SHIFT)
 
-    mmap_areas = [(0x1000, 0x1000)]
+    mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
-                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
-                           fd=f.fileno())
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
+                           size=2 << PAGE_SHIFT, flags=VFU_REGION_FLAG_RW,
+                           mmap_areas=mmap_areas, fd=f.fileno())
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -85,17 +85,17 @@ def test_dirty_pages_setup():
     sock = connect_client(ctx)
 
     f = tempfile.TemporaryFile()
-    f.truncate(0x10000)
+    f.truncate(0x10 << PAGE_SHIFT)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x10000, size=0x20000)
+        offset=0, addr=0x10 << PAGE_SHIFT, size=0x20 << PAGE_SHIFT)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x40000, size=0x10000)
+        offset=0, addr=0x40 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
@@ -123,13 +123,16 @@ def test_dirty_pages_start_no_migration():
         expect=errno.ENOTSUP)
 
 
+def test_setup_migr_region():
+    ret = vfu_setup_device_migration_callbacks(ctx, offset=PAGE_SIZE)
+    assert ret == 0
+
+
 def test_dirty_pages_start_bad_flags():
     #
     # This is a little cheeky, after vfu_realize_ctx(), but it works at the
     # moment.
     #
-    vfu_setup_device_migration_callbacks(ctx, offset=0x1000)
-
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=(VFIO_IOMMU_DIRTY_PAGES_FLAG_START |
                VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP))
@@ -173,8 +176,9 @@ def test_dirty_pages_get_sub_range():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
-    br = vfio_user_bitmap_range(iova=0x11000, size=0x1000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
+    br = vfio_user_bitmap_range(iova=0x11 << PAGE_SHIFT, size=PAGE_SIZE,
+                                bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -186,8 +190,9 @@ def test_dirty_pages_get_bad_page_size():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x2000, size=8)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=2 << PAGE_SHIFT, size=8)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -199,8 +204,9 @@ def test_dirty_pages_get_bad_bitmap_size():
     argsz = len(vfio_user_dirty_pages()) + len(vfio_user_bitmap_range()) + 8
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=1)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=1)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -211,9 +217,10 @@ def test_dirty_pages_get_bad_bitmap_size():
 def test_dirty_pages_get_bad_argsz():
     dirty_pages = vfio_user_dirty_pages(argsz=SERVER_MAX_DATA_XFER_SIZE + 8,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000,
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE,
                               size=SERVER_MAX_DATA_XFER_SIZE + 8)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -224,8 +231,9 @@ def test_dirty_pages_get_bad_argsz():
 def test_dirty_pages_get_short_reply():
     dirty_pages = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -246,8 +254,9 @@ def test_get_dirty_page_bitmap_unmapped():
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
-    br = vfio_user_bitmap_range(iova=0x40000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
+    br = vfio_user_bitmap_range(iova=0x40 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -260,8 +269,9 @@ def test_dirty_pages_get_unmodified():
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -276,10 +286,10 @@ def test_dirty_pages_get_unmodified():
 
     br, result = vfio_user_bitmap_range.pop_from_buffer(result)
 
-    assert br.iova == 0x10000
-    assert br.size == 0x10000
+    assert br.iova == 0x10 << PAGE_SHIFT
+    assert br.size == 0x10 << PAGE_SHIFT
 
-    assert br.bitmap.pgsize == 0x1000
+    assert br.bitmap.pgsize == PAGE_SIZE
     assert br.bitmap.size == 8
 
 
@@ -288,8 +298,9 @@ def get_dirty_page_bitmap():
 
     dirty_pages = vfio_user_dirty_pages(argsz=argsz,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
-    bitmap = vfio_user_bitmap(pgsize=0x1000, size=8)
-    br = vfio_user_bitmap_range(iova=0x10000, size=0x10000, bitmap=bitmap)
+    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
+    br = vfio_user_bitmap_range(iova=0x10 << PAGE_SHIFT,
+                                size=0x10 << PAGE_SHIFT, bitmap=bitmap)
 
     payload = bytes(dirty_pages) + bytes(br)
 
@@ -307,9 +318,10 @@ sg3 = None
 iovec3 = None
 
 
-def write_to_addr(ctx, addr, size, get_bitmap=True):
+def write_to_page(ctx, page, nr_pages, get_bitmap=True):
     """Simulate a write to the given address and size."""
-    ret, sg = vfu_addr_to_sgl(ctx, dma_addr=addr, length=size)
+    ret, sg = vfu_addr_to_sgl(ctx, dma_addr=page << PAGE_SHIFT,
+                              length=nr_pages << PAGE_SHIFT)
     assert ret == 1
     iovec = iovec_t()
     ret = vfu_sgl_get(ctx, sg, iovec)
@@ -321,29 +333,32 @@ def write_to_addr(ctx, addr, size, get_bitmap=True):
 
 
 def test_dirty_pages_get_modified():
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10000, length=0x1000)
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec1 = iovec_t()
     ret = vfu_sgl_get(ctx, sg1, iovec1)
     assert ret == 0
 
     # read only
-    ret, sg2 = vfu_addr_to_sgl(ctx, dma_addr=0x11000, length=0x1000,
-                               prot=mmap.PROT_READ)
+    ret, sg2 = vfu_addr_to_sgl(ctx, dma_addr=0x11 << PAGE_SHIFT,
+                               length=PAGE_SIZE, prot=mmap.PROT_READ)
     assert ret == 1
     iovec2 = iovec_t()
     ret = vfu_sgl_get(ctx, sg2, iovec2)
     assert ret == 0
 
     # simple single bitmap entry map
-    ret, sg3 = vfu_addr_to_sgl(ctx, dma_addr=0x12000, length=0x1000)
+    ret, sg3 = vfu_addr_to_sgl(ctx, dma_addr=0x12 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec3 = iovec_t()
     ret = vfu_sgl_get(ctx, sg3, iovec3)
     assert ret == 0
 
     # write that spans bytes in bitmap
-    ret, sg4 = vfu_addr_to_sgl(ctx, dma_addr=0x16000, length=0x4000)
+    ret, sg4 = vfu_addr_to_sgl(ctx, dma_addr=0x16 << PAGE_SHIFT,
+                               length=0x4 << PAGE_SHIFT)
     assert ret == 1
     iovec4 = iovec_t()
     ret = vfu_sgl_get(ctx, sg4, iovec4)
@@ -374,40 +389,40 @@ def test_dirty_pages_get_modified():
     #
 
     # very first bit
-    bitmap = write_to_addr(ctx, 0x10000, 0x1000)
+    bitmap = write_to_page(ctx, 0x10, 1)
     assert bitmap == 0b0000000000000001
 
     # top bit of first byte
-    bitmap = write_to_addr(ctx, 0x17000, 0x1000)
+    bitmap = write_to_page(ctx, 0x17, 1)
     assert bitmap == 0b0000000010000000
 
     # all bits except top one of first byte
-    bitmap = write_to_addr(ctx, 0x10000, 0x7000)
+    bitmap = write_to_page(ctx, 0x10, 7)
     assert bitmap == 0b0000000001111111
 
     # all bits of first byte
-    bitmap = write_to_addr(ctx, 0x10000, 0x8000)
+    bitmap = write_to_page(ctx, 0x10, 8)
     assert bitmap == 0b0000000011111111
 
     # all bits of first byte plus bottom bit of next
-    bitmap = write_to_addr(ctx, 0x10000, 0x9000)
+    bitmap = write_to_page(ctx, 0x10, 9)
     assert bitmap == 0b0000000111111111
 
     # straddle top/bottom bit
-    bitmap = write_to_addr(ctx, 0x17000, 0x2000)
+    bitmap = write_to_page(ctx, 0x17, 2)
     assert bitmap == 0b0000000110000000
 
     # top bit of second byte
-    bitmap = write_to_addr(ctx, 0x1f000, 0x1000)
+    bitmap = write_to_page(ctx, 0x1f, 1)
     assert bitmap == 0b1000000000000000
 
     # top bit of third byte
-    bitmap = write_to_addr(ctx, 0x27000, 0x1000)
+    bitmap = write_to_page(ctx, 0x27, 1)
     assert bitmap == 0b100000000000000000000000
 
     # bits in third and first byte
-    write_to_addr(ctx, 0x26000, 0x1000, get_bitmap=False)
-    write_to_addr(ctx, 0x12000, 0x2000, get_bitmap=False)
+    write_to_page(ctx, 0x26, 1, get_bitmap=False)
+    write_to_page(ctx, 0x12, 2, get_bitmap=False)
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b010000000000000000001100
 
@@ -445,7 +460,8 @@ def test_dirty_pages_bitmap_with_quiesce():
 
     quiesce_errno = errno.EBUSY
 
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10000, length=0x1000)
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
     assert ret == 1
     iovec1 = iovec_t()
     ret = vfu_sgl_get(ctx, sg1, iovec1)

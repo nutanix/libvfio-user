@@ -110,7 +110,7 @@ send_version(int sock)
                 "\"max_msg_fds\":%u,"
                 "\"max_data_xfer_size\":%u,"
                 "\"migration\":{"
-                    "\"pgsize\":%zu"
+                    "\"pgsize\":%ld"
                 "}"
             "}"
          "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE, sysconf(_SC_PAGESIZE));
@@ -155,7 +155,7 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
     }
 
     if (vlen < sizeof(*sversion)) {
-        errx(EXIT_FAILURE, "VFIO_USER_VERSION: invalid size %lu", vlen);
+        errx(EXIT_FAILURE, "VFIO_USER_VERSION: invalid size %zu", vlen);
     }
 
     if (sversion->major != LIB_VFIO_USER_MAJOR) {
@@ -229,8 +229,9 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
                        (*sparse)->nr_areas);
                 for (i = 0; i < (*sparse)->nr_areas; i++) {
                     printf("client: %s: area %d offset %#llx size %llu\n",
-                           __func__, i, (*sparse)->areas[i].offset,
-                           (*sparse)->areas[i].size);
+                           __func__, i,
+			               (ull_t)(*sparse)->areas[i].offset,
+                           (ull_t)(*sparse)->areas[i].size);
                 }
                 break;
             case VFIO_REGION_INFO_CAP_TYPE:
@@ -290,9 +291,9 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
                     sparse->areas[i].offset);
         if (addr == MAP_FAILED) {
             err(EXIT_FAILURE,
-                "failed to mmap sparse region #%lu in %s (%#llx-%#llx)",
-                i, buf, sparse->areas[i].offset,
-                sparse->areas[i].offset + sparse->areas[i].size - 1);
+                "failed to mmap sparse region %zu in %s (%#llx-%#llx)",
+                i, buf, (ull_t)sparse->areas[i].offset,
+                (ull_t)sparse->areas[i].offset + sparse->areas[i].size - 1);
         }
 
         ret = munmap(addr, sparse->areas[i].size);
@@ -310,7 +311,11 @@ get_device_region_info(int sock, uint32_t index)
     size_t nr_fds = ARRAY_SIZE(fds);
 
 
-    region_info = alloca(size);
+    region_info = malloc(size);
+    if (region_info == NULL) {
+        err(EXIT_FAILURE, "%m\n");
+    }
+
     memset(region_info, 0, size);
     region_info->argsz = size;
     region_info->index = index;
@@ -318,7 +323,10 @@ get_device_region_info(int sock, uint32_t index)
     do_get_device_region_info(sock, region_info, NULL, 0);
     if (region_info->argsz > size) {
         size = region_info->argsz;
-        region_info = alloca(size);
+        region_info = malloc(size);
+        if (region_info == NULL) {
+            err(EXIT_FAILURE, "%m\n");
+        }
         memset(region_info, 0, size);
         region_info->argsz = size;
         region_info->index = index;
@@ -329,9 +337,11 @@ get_device_region_info(int sock, uint32_t index)
     }
 
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
-    printf("client: %s: region_info[%d] offset %#llx flags %#x size %llu "
-           "cap_sz %lu #FDs %lu\n", __func__, index, region_info->offset,
-           region_info->flags, region_info->size, cap_sz, nr_fds);
+    printf("client: %s: region_info[%d] offset %#llx flags %#x "
+           "size %llu cap_sz %zu #FDs %zu\n", __func__, index,
+           (ull_t)region_info->offset, region_info->flags,
+           (ull_t)region_info->size, cap_sz,
+           nr_fds);
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
         if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
@@ -343,7 +353,9 @@ get_device_region_info(int sock, uint32_t index)
                 mmap_sparse_areas(fds, region_info, sparse);
             }
         }
+
     }
+    free(region_info);
 }
 
 static void
@@ -487,14 +499,15 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
                               recv_data, recv_data_len, NULL, 0);
     pthread_mutex_unlock(&mutex);
     if (ret != 0) {
-        warn("failed to %s region %d %#lx-%#lx",
-             is_write ? "write to" : "read from", region, offset,
-             offset + data_len - 1);
+        warn("failed to %s region %d %#llx-%#llx",
+             is_write ? "write to" : "read from", region,
+             (ull_t)offset,
+             (ull_t)(offset + data_len - 1));
         free(recv_data);
         return ret;
     }
     if (recv_data->count != data_len) {
-        warnx("bad %s data count, expected=%lu, actual=%d",
+        warnx("bad %s data count, expected=%zu, actual=%d",
              is_write ? "write" : "read", data_len,
              recv_data->count);
         free(recv_data);
@@ -585,8 +598,9 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
         c = pwrite(dma_region_fds[i], data, dma_access.count, offset);
 
         if (c != (ssize_t)dma_access.count) {
-            err(EXIT_FAILURE, "failed to write to fd=%d at [%#lx-%#lx)",
-                    dma_region_fds[i], offset, offset + dma_access.count);
+            err(EXIT_FAILURE, "failed to write to fd=%d at [%#llx-%#llx)",
+                    dma_region_fds[i], (ull_t)offset,
+                    (ull_t)(offset + dma_access.count));
         }
         break;
     }
@@ -640,8 +654,9 @@ handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
         c = pread(dma_region_fds[i], data, dma_access.count, offset);
 
         if (c != (ssize_t)dma_access.count) {
-            err(EXIT_FAILURE, "failed to read from fd=%d at [%#lx-%#lx)",
-                    dma_region_fds[i], offset, offset + dma_access.count);
+            err(EXIT_FAILURE, "failed to read from fd=%d at [%#llx-%#llx)",
+                    dma_region_fds[i], (ull_t)offset,
+                    (ull_t)offset + dma_access.count);
         }
         break;
     }
@@ -706,8 +721,9 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
         err(EXIT_FAILURE, "failed to get dirty page bitmap");
     }
 
-    printf("client: %s: %#lx-%#lx\t%#x\n", __func__, range->iova,
-           range->iova + range->size - 1, bitmap[0]);
+    printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
+           (ull_t)range->iova,
+           (ull_t)(range->iova + range->size - 1), bitmap[0]);
 
     free(data);
 }
@@ -900,7 +916,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     _nr_iters += do_migrate(sock, 1, (*migr_iters) + _nr_iters);
     if (_nr_iters != 2) {
         errx(EXIT_FAILURE,
-             "expected 2 iterations instead of %ld while in stop-and-copy state",
+             "expected 2 iterations instead of %zu while in stop-and-copy state",
              _nr_iters);
     }
 
@@ -1000,8 +1016,9 @@ migrate_to(char *old_sock_path, int *server_max_fds,
          * TODO write half of migration data via regular write and other half via
          * memopy map.
          */
-        printf("client: writing migration device data %#lx-%#lx\n",
-               data_offset, data_offset + migr_iters[i].iov_len - 1);
+        printf("client: writing migration device data %#llx-%#llx\n",
+               (ull_t)data_offset,
+               (ull_t)(data_offset + migr_iters[i].iov_len - 1));
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             data_offset, migr_iters[i].iov_base,
                             migr_iters[i].iov_len);
@@ -1162,8 +1179,11 @@ int main(int argc, char *argv[])
 
     unlink(template);
 
-    dma_regions = alloca(sizeof(*dma_regions) * nr_dma_regions);
-    dma_region_fds = alloca(sizeof(*dma_region_fds) * nr_dma_regions);
+    dma_regions = calloc(nr_dma_regions, sizeof(*dma_regions));
+    dma_region_fds = calloc(nr_dma_regions, sizeof(*dma_region_fds));
+    if (dma_regions == NULL || dma_region_fds == NULL) {
+        err(EXIT_FAILURE, "%m\n");
+    }
 
     for (i = 0; i < nr_dma_regions; i++) {
         dma_regions[i].argsz = sizeof(struct vfio_user_dma_map);
@@ -1309,6 +1329,9 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap all DMA regions");
     }
+
+    free(dma_regions);
+    free(dma_region_fds);
 
     return 0;
 }
