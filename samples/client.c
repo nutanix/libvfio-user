@@ -230,7 +230,7 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
                 for (i = 0; i < (*sparse)->nr_areas; i++) {
                     printf("client: %s: area %d offset %#llx size %llu\n",
                            __func__, i,
-			   (__u64)(*sparse)->areas[i].offset,
+			               (ull_t)(*sparse)->areas[i].offset,
                            (ull_t)(*sparse)->areas[i].size);
                 }
                 break;
