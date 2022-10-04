@@ -230,8 +230,8 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
                 for (i = 0; i < (*sparse)->nr_areas; i++) {
                     printf("client: %s: area %d offset %#llx size %llu\n",
                            __func__, i,
-			   (unsigned long long)(*sparse)->areas[i].offset,
-                           (unsigned long long)(*sparse)->areas[i].size);
+			   (__u64)(*sparse)->areas[i].offset,
+                           (ull_t)(*sparse)->areas[i].size);
                 }
                 break;
             case VFIO_REGION_INFO_CAP_TYPE:
@@ -292,8 +292,8 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
         if (addr == MAP_FAILED) {
             err(EXIT_FAILURE,
                 "failed to mmap sparse region %zu in %s (%#llx-%#llx)",
-                i, buf, (unsigned long long)sparse->areas[i].offset,
-                (unsigned long long)sparse->areas[i].offset + sparse->areas[i].size - 1);
+                i, buf, (ull_t)sparse->areas[i].offset,
+                (ull_t)sparse->areas[i].offset + sparse->areas[i].size - 1);
         }
 
         ret = munmap(addr, sparse->areas[i].size);
@@ -339,8 +339,8 @@ get_device_region_info(int sock, uint32_t index)
     cap_sz = region_info->argsz - sizeof(struct vfio_region_info);
     printf("client: %s: region_info[%d] offset %#llx flags %#x "
            "size %llu cap_sz %zu #FDs %zu\n", __func__, index,
-           (unsigned long long)region_info->offset, region_info->flags,
-           (unsigned long long)region_info->size, cap_sz,
+           (ull_t)region_info->offset, region_info->flags,
+           (ull_t)region_info->size, cap_sz,
            nr_fds);
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
@@ -501,8 +501,8 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     if (ret != 0) {
         warn("failed to %s region %d %#llx-%#llx",
              is_write ? "write to" : "read from", region,
-             (unsigned long long)offset,
-             (unsigned long long)(offset + data_len - 1));
+             (ull_t)offset,
+             (ull_t)(offset + data_len - 1));
         free(recv_data);
         return ret;
     }
@@ -599,8 +599,8 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
 
         if (c != (ssize_t)dma_access.count) {
             err(EXIT_FAILURE, "failed to write to fd=%d at [%#llx-%#llx)",
-                    dma_region_fds[i], (unsigned long long)offset,
-                    (unsigned long long)(offset + dma_access.count));
+                    dma_region_fds[i], (ull_t)offset,
+                    (ull_t)(offset + dma_access.count));
         }
         break;
     }
@@ -655,8 +655,8 @@ handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
 
         if (c != (ssize_t)dma_access.count) {
             err(EXIT_FAILURE, "failed to read from fd=%d at [%#llx-%#llx)",
-                    dma_region_fds[i], (unsigned long long)offset,
-                    (unsigned long long)offset + dma_access.count);
+                    dma_region_fds[i], (ull_t)offset,
+                    (ull_t)offset + dma_access.count);
         }
         break;
     }
@@ -722,8 +722,8 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     }
 
     printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
-           (unsigned long long)range->iova,
-           (unsigned long long)(range->iova + range->size - 1), bitmap[0]);
+           (ull_t)range->iova,
+           (ull_t)(range->iova + range->size - 1), bitmap[0]);
 
     free(data);
 }
@@ -1017,8 +1017,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
          * memopy map.
          */
         printf("client: writing migration device data %#llx-%#llx\n",
-               (unsigned long long)data_offset,
-               (unsigned long long)(data_offset + migr_iters[i].iov_len - 1));
+               (ull_t)data_offset,
+               (ull_t)(data_offset + migr_iters[i].iov_len - 1));
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             data_offset, migr_iters[i].iov_base,
                             migr_iters[i].iov_len);

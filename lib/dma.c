@@ -301,7 +301,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     assert(dma != NULL);
 
     snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#llx prot=%#x",
-             dma_addr, dma_addr + size, fd, (unsigned long long)offset, prot);
+             dma_addr, dma_addr + size, fd, (ull_t)offset, prot);
 
     if (size > dma->max_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %llu > max %zu",
@@ -318,7 +318,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             if (offset != region->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
                         "%s; existing=%#llx", rstr,
-                        (unsigned long long)region->offset);
+                        (ull_t)region->offset);
                 return ERROR_INT(EINVAL);
             }
             if (!fds_are_same_file(region->fd, fd)) {

@@ -184,17 +184,17 @@ debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
     case 1: val = *((uint8_t *)buf); break;
     default:
             vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s %zu bytes at %#llx",
-                    region, verb, count, (unsigned long long)offset);
+                    region, verb, count, (ull_t)offset);
             return;
     }
 
     if (is_write) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: wrote %#llx to (%#llx:%zu)",
-                region, (unsigned long long)val, (unsigned long long)offset,
+                region, (ull_t)val, (ull_t)offset,
                 count);
     } else {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: read %#llx from (%#llx:%zu)",
-                region, (unsigned long long)val, (unsigned long long)offset,
+                region, (ull_t)val, (ull_t)offset,
                 count);
     }
 }
@@ -238,7 +238,7 @@ region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
 out:
     if (ret != (ssize_t)count) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#llx:%zu) failed: %m",
-                region, verb, (unsigned long long)offset, count);
+                region, verb, (ull_t)offset, count);
     } else {
         debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
@@ -282,8 +282,8 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     if (satadd_u64(ra->offset, ra->count) > vfu_ctx->reg_info[index].size) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "out of bounds region access %#llx-%#llx (size %u)",
-                (unsigned long long)ra->offset,
-                (unsigned long long)(ra->offset + ra->count),
+                (ull_t)ra->offset,
+                (ull_t)(ra->offset + ra->count),
                 vfu_ctx->reg_info[index].size);
 
         return false;
@@ -463,8 +463,8 @@ handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     vfu_log(vfu_ctx, LOG_DEBUG, "region_info[%d] offset %#llx flags %#x "
             "size %llu argsz %u", out_info->index,
-            (unsigned long long)out_info->offset,
-            out_info->flags, (unsigned long long)out_info->size,
+            (ull_t)out_info->offset,
+            out_info->flags, (ull_t)out_info->size,
             out_info->argsz);
 
     return 0;
@@ -697,9 +697,9 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     snprintf(rstr, sizeof(rstr), "[%#llx, %#llx) offset=%#llx flags=%#x",
-             (unsigned long long)dma_map->addr,
-             (unsigned long long)(dma_map->addr + dma_map->size),
-             (unsigned long long)dma_map->offset,
+             (ull_t)dma_map->addr,
+             (ull_t)(dma_map->addr + dma_map->size),
+             (ull_t)dma_map->offset,
              dma_map->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
@@ -776,8 +776,8 @@ is_valid_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     case VFIO_DMA_UNMAP_FLAG_ALL:
         if (dma_unmap->addr || dma_unmap->size) {
             vfu_log(vfu_ctx, LOG_ERR, "bad addr=%#llx or size=%#llx, expected "
-                    "both to be zero", (unsigned long long)dma_unmap->addr,
-                    (unsigned long long)dma_unmap->size);
+                    "both to be zero", (ull_t)dma_unmap->addr,
+                    (ull_t)dma_unmap->size);
             errno = EINVAL;
             return false;
         }
@@ -821,8 +821,8 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     }
 
     snprintf(rstr, sizeof(rstr), "[%#llx, %#llx) flags=%#x",
-             (unsigned long long)dma_unmap->addr,
-             (unsigned long long)(dma_unmap->addr + dma_unmap->size),
+             (ull_t)dma_unmap->addr,
+             (ull_t)(dma_unmap->addr + dma_unmap->size),
              dma_unmap->flags);
 
     vfu_log(vfu_ctx, LOG_DEBUG, "removing DMA region %s", rstr);
@@ -971,7 +971,7 @@ handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     } else {
         vfu_log(vfu_ctx, LOG_ERR,
                 "dirty pages: get [%#llx, %#llx): buffer too small (%u < %zu)",
-                (unsigned long long)range_in->iova, (unsigned long long)range_in->iova + range_in->size,
+                (ull_t)range_in->iova, (ull_t)range_in->iova + range_in->size,
                 dirty_pages_in->argsz, argsz);
     }
 
@@ -2199,10 +2199,10 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
             /* TODO shouldn't we use %#llx for both and also use the range format? */
             vfu_log(vfu_ctx, LOG_ERR, "bad reply to DMA transfer: "
                     "request:%#llx,%llu reply:%#llx,%llu",
-                    (unsigned long long)dma_req->addr,
-                    (unsigned long long)dma_req->count,
-                    (unsigned long long)dma_reply->addr,
-                    (unsigned long long)dma_reply->count);
+                    (ull_t)dma_req->addr,
+                    (ull_t)dma_req->count,
+                    (ull_t)dma_reply->addr,
+                    (ull_t)dma_reply->count);
             free(rbuf);
             return ERROR_INT(EINVAL);
         }

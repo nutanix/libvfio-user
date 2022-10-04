@@ -467,7 +467,7 @@ MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
     default:
         vfu_log(vfu_ctx, LOG_ERR,
                 "bad migration region register offset %#llx",
-                (unsigned long long)pos);
+                (ull_t)pos);
         return ERROR_INT(EINVAL);
     }
     return ret;
@@ -504,8 +504,8 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
              */
             vfu_log(vfu_ctx, LOG_WARNING,
                     "bad access to dead space %#llx - %#llx in migration region",
-                    (unsigned long long)pos,
-                    (unsigned long long)(pos + count - 1));
+                    (ull_t)pos,
+                    (ull_t)(pos + count - 1));
             return ERROR_INT(EINVAL);
         }
 
