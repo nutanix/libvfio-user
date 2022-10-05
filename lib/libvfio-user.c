@@ -164,6 +164,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
     return 0;
 }
 
+#ifdef DEBUG
 static void
 debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                     size_t count, uint64_t offset, bool is_write)
@@ -192,6 +193,14 @@ debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                 count);
     }
 }
+#else
+static void
+debug_region_access(vfu_ctx_t *vfu_ctx UNUSED, size_t region UNUSED,
+                    char *buf UNUSED, size_t count UNUSED,
+                    uint64_t offset UNUSED, bool is_write UNUSED)
+{
+}
+#endif
 
 static ssize_t
 region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
@@ -236,7 +245,6 @@ out:
     } else {
         debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
-
     return ret;
 }
 
