@@ -199,6 +199,13 @@ debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                 count);
     }
 }
+#else
+static void
+debug_region_access(vfu_ctx_t *vfu_ctx UNUSED, size_t region UNUSED,
+                    char *buf UNUSED, size_t count UNUSED,
+                    uint64_t offset UNUSED, bool is_write UNUSED)
+{
+}
 #endif
 
 static ssize_t
@@ -241,12 +248,9 @@ out:
     if (unlikely(ret != (ssize_t)count)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#llx:%zu) failed: %m",
                 region, verb, (ull_t)offset, count);
-    }
-#ifdef DEBUG
-    else {
+    } else {
         debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
-#endif
     return ret;
 }
 
@@ -270,8 +274,8 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (unlikely(cmd == VFIO_USER_REGION_WRITE
-        && size - sizeof(*ra) != ra->count)) {
+    if (unlikely(cmd == VFIO_USER_REGION_WRITE &&
+                 size - sizeof(*ra) != ra->count)) {
         vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
                 "expected %zu, got %u", size - sizeof(*ra), ra->count);
         return false;
@@ -317,7 +321,8 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (unlikely(!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len, msg->hdr.cmd, in_ra))) {
+    if (unlikely(!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len,
+                                         msg->hdr.cmd, in_ra))) {
         return ERROR_INT(EINVAL);
     }
 
