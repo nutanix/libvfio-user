@@ -268,8 +268,8 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
         return false;
     }
 
-    if (unlikely(cmd == VFIO_USER_REGION_WRITE &&
-                 size - sizeof(*ra) != ra->count)) {
+    if (unlikely(cmd == VFIO_USER_REGION_WRITE
+                 && size - sizeof(*ra) != ra->count)) {
         vfu_log(vfu_ctx, LOG_ERR, "region write count too small: "
                 "expected %zu, got %u", size - sizeof(*ra), ra->count);
         return false;
@@ -315,8 +315,7 @@ handle_region_access(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (unlikely(!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len,
-                                         msg->hdr.cmd, in_ra))) {
+    if (unlikely(!is_valid_region_access(vfu_ctx, msg->in.iov.iov_len, msg->hdr.cmd, in_ra))) {
         return ERROR_INT(EINVAL);
     }
 
@@ -370,7 +369,8 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in.iov.iov_base;
 
-    if (unlikely(msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info))) {
+    if (unlikely(msg->in.iov.iov_len < sizeof(*in_info) ||
+                 in_info->argsz < sizeof(*out_info))) {
         return ERROR_INT(EINVAL);
     }
 
