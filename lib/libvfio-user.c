@@ -369,7 +369,8 @@ handle_device_get_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     in_info = msg->in.iov.iov_base;
 
-    if (unlikely(msg->in.iov.iov_len < sizeof(*in_info) || in_info->argsz < sizeof(*out_info))) {
+    if (unlikely(msg->in.iov.iov_len < sizeof(*in_info) ||
+                 in_info->argsz < sizeof(*out_info))) {
         return ERROR_INT(EINVAL);
     }
 
