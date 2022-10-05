@@ -180,7 +180,7 @@ def test_device_get_region_info_caps():
                           size=0, offset=0)
     payload = bytes(payload) + b'\0' * (80 - 32)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+    fds, result = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
 
     info, result = vfio_region_info.pop_from_buffer(result)
     cap, result = vfio_region_info_cap_sparse_mmap.pop_from_buffer(result)
@@ -202,7 +202,7 @@ def test_device_get_region_info_caps():
     assert area2.offset == 0x4000
     assert area2.size == 0x2000
 
-    # skip reading the SCM_RIGHTS
+    assert(len(fds) == 1)
     disconnect_client(ctx, sock)
 
 
