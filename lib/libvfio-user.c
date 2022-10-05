@@ -140,6 +140,13 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
         }
 
+        if (nr_mmap_areas > vfu_ctx->client_max_fds) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: region has nr_mmap_areas=%d, "
+                    "but client only supports %d fds", __func__,
+                    nr_mmap_areas, vfu_ctx->client_max_fds);
+            return ERROR_INT(ENOSPC);
+        }
+
         *fds = malloc(nr_mmap_areas * sizeof(int));
         if (*fds == NULL) {
             return ERROR_INT(ENOMEM);
@@ -147,9 +154,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
         sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
         sparse->header.version = 1;
         sparse->header.next = 0;
-        sparse->nr_areas = nr_mmap_areas;
-        *nr_fds = 1;
-        (*fds)[0] = vfu_reg->fd;
+        sparse->nr_areas = *nr_fds = nr_mmap_areas;
 
         for (i = 0; i < nr_mmap_areas; i++) {
             struct iovec *iov = &vfu_reg->mmap_areas[i];
@@ -157,6 +162,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg, bool is_migr_reg,
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: area %d [%p, %p)", __func__,
                     i, iov->iov_base, iov_end(iov));
 
+            (*fds)[i] = vfu_reg->fd;
             sparse->areas[i].offset = (uintptr_t)iov->iov_base;
             sparse->areas[i].size = iov->iov_len;
         }
