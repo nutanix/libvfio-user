@@ -120,17 +120,6 @@ def test_device_get_region_info_bad_index():
         expect=errno.EINVAL)
 
 
-# python tests use max client fds of 8, but this region has 9 mmap areas.
-def test_device_get_region_info_caps_too_few_fds():
-    payload = vfio_region_info(argsz=192, flags=0,
-                          index=VFU_PCI_DEV_BAR3_REGION_IDX, cap_offset=0,
-                          size=0, offset=0)
-    payload = bytes(payload) + b'\0' * (192 - 32)
-
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload,
-        expect=errno.ENOSPC)
-
-
 def test_device_get_region_info_larger_argsz():
 
     payload = vfio_region_info(argsz=argsz + 8, flags=0,
@@ -191,7 +180,7 @@ def test_device_get_region_info_caps():
                           size=0, offset=0)
     payload = bytes(payload) + b'\0' * (80 - 32)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+    fds, result = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
 
     info, result = vfio_region_info.pop_from_buffer(result)
     cap, result = vfio_region_info_cap_sparse_mmap.pop_from_buffer(result)
@@ -213,7 +202,7 @@ def test_device_get_region_info_caps():
     assert area2.offset == 0x4000
     assert area2.size == 0x2000
 
-    # skip reading the SCM_RIGHTS
+    assert(len(fds) == 1)
     disconnect_client(ctx, sock)
 
 
