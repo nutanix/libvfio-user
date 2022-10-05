@@ -199,6 +199,13 @@ debug_region_access(vfu_ctx_t *vfu_ctx, size_t region, char *buf,
                 count);
     }
 }
+#else
+static void
+debug_region_access(vfu_ctx_t *vfu_ctx UNUSED, size_t region UNUSED,
+                    char *buf UNUSED, size_t count UNUSED,
+                    uint64_t offset UNUSED, bool is_write UNUSED)
+{
+}
 #endif
 
 static ssize_t
@@ -241,11 +248,9 @@ out:
     if (ret != (ssize_t)count) {
         vfu_log(vfu_ctx, LOG_DEBUG, "region%zu: %s (%#llx:%zu) failed: %m",
                 region, verb, (ull_t)offset, count);
-#ifdef DEBUG
-    else {
+    } else {
         debug_region_access(vfu_ctx, region, buf, count, offset, is_write);
     }
-#endif
     return ret;
 }
 
