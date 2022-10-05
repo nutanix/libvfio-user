@@ -66,7 +66,6 @@ int main(int argc, char *argv[])
 	assert(ret == 0);
 	int device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, argv[2]);
 	assert(device >= 0);
-	assert(device != -1);
 	struct vfio_region_info region_info = {
 		.argsz = sizeof(region_info),
 		.index = 0

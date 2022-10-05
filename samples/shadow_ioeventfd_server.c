@@ -29,8 +29,8 @@
 
 /*
  * shadow_ioeventfd_server.c: an example of how to use a shadow ioeventfd.
- * There is no Linux kernel driver, use samples/shadow_ioevetnfd_client.c in
- * the guest instead.
+ * There is no Linux kernel driver, use samples/shadow_ioeventfd_speed_test.c
+ * in the guest instead.
  */
 
 #include <stdio.h>
@@ -44,24 +44,21 @@
 #include <sys/syscall.h>
 
 #include "libvfio-user.h"
+#include "common.h"
 
 static void
-_log(vfu_ctx_t *vfu_ctx __attribute__((unused)),
-     int level __attribute__((unused)), char const *msg)
+_log(vfu_ctx_t *vfu_ctx UNUSED, int level UNUSED, char const *msg)
 {
     fprintf(stderr, "%s\n", msg);
 }
 
 static ssize_t
-bar0_cb(vfu_ctx_t *vfu_ctx __attribute__((unused)),
-        char * const buf __attribute__((unused)),
-        size_t count __attribute__((unused)),
-        loff_t offset __attribute__((unused)),
-        const bool is_write __attribute__((unused)))
+bar0_cb(vfu_ctx_t *vfu_ctx UNUSED, char * const buf UNUSED,
+        size_t count UNUSED, loff_t offset UNUSED,
+        const bool is_write UNUSED)
 {
     return count;
 }
-
 
 int
 main(int argc, char *argv[])
@@ -71,7 +68,7 @@ main(int argc, char *argv[])
     struct pollfd fds[2]; /* one for vfu_ctx, one for shadow_ioeventfd */
     int fd, bar0_fd;
 
-    if (argc != 2 ) {
+    if (argc != 2) {
         errx(EXIT_FAILURE, "missing vfio-user socket path");
     }
 
