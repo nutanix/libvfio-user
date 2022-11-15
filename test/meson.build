@@ -98,4 +98,15 @@ if opt_sanitizers == 'none' and meson.version().version_compare('>=0.56.0')
     )
 endif
 
+if misspell_fixer.found()
+    test(
+        'misspell_fixer',
+        misspell_fixer,
+        suite: 'style',
+        args: [
+            '-sv',
+            meson.source_root(),
+        ])
+endif
+
 subdir('py')

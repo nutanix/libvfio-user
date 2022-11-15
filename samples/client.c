@@ -1129,7 +1129,7 @@ int main(int argc, char *argv[])
     /*
      * VFIO_USER_VERSION
      *
-     * Do intial negotiation with the server, and discover parameters.
+     * Do initial negotiation with the server, and discover parameters.
      */
     negotiate(sock, &server_max_fds, &server_max_data_xfer_size, &pgsize);
 
