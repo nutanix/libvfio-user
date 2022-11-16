@@ -1732,7 +1732,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
 
     /*
      * FIXME: Now we always allocate for migration region. Check if its better
-     * to seperate migration region from standard regions in vfu_ctx.reg_info
+     * to separate migration region from standard regions in vfu_ctx.reg_info
      * and move it into vfu_ctx.migration.
      */
     vfu_ctx->nr_regions = VFU_PCI_DEV_NUM_REGIONS;

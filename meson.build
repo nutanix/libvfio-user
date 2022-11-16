@@ -44,6 +44,7 @@ cmocka_dep = dependency('cmocka', version: '>=' + cmocka_version)
 
 pytest = find_program('pytest-3', required: false)
 flake8 = find_program('flake8', required: false)
+misspell_fixer = find_program('misspell-fixer', required: false)
 rstlint = find_program('restructuredtext-lint', required: false)
 valgrind = find_program('valgrind', required: false)
 
