@@ -582,12 +582,14 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg->out.fds == NULL);
 
     if (msg->in.iov.iov_len < sizeof(vfio_user_region_io_fds_request_t)) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "input message too small");
         return ERROR_INT(EINVAL);
     }
 
     req = msg->in.iov.iov_base;
 
     if (req->flags != 0 || req->count != 0) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad flags or bad count");
         return ERROR_INT(EINVAL);
     }
 
@@ -601,6 +603,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     // At least one flag must be set for a valid region.
     if (!(vfu_reg->flags & VFU_REGION_FLAG_MASK)) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad region flags");
         return ERROR_INT(EINVAL);
     }
 
@@ -613,6 +616,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (req->argsz < sizeof(vfio_user_region_io_fds_reply_t) ||
         req->argsz > SERVER_MAX_DATA_XFER_SIZE) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "bad argsz");
         return ERROR_INT(EINVAL);
     }
 
