@@ -225,7 +225,7 @@ def test_device_get_region_io_fds_full():
         [out] = struct.unpack("@Q", out)
         assert out == 1
         assert ioevents[i].size == IOEVENT_SIZE
-        assert ioevents[i].offset == 40 - (IOEVENT_SIZE * i)
+        assert ioevents[i].gpa_offset == 40 - (IOEVENT_SIZE * i)
         assert ioevents[i].type == VFIO_USER_IO_FD_TYPE_IOEVENTFD
 
     for i in newfds:
@@ -284,11 +284,11 @@ def test_device_get_region_io_fds_fds_read_write_dupe_fd():
         [out] = struct.unpack("@Q", out)
         assert out == 1
         assert ioevents[i].size == IOEVENT_SIZE
-        assert ioevents[i].offset == 56 - (IOEVENT_SIZE * i)
+        assert ioevents[i].gpa_offset == 56 - (IOEVENT_SIZE * i)
         assert ioevents[i].type == VFIO_USER_IO_FD_TYPE_IOEVENTFD
 
     assert ioevents[0].fd_index == ioevents[1].fd_index
-    assert ioevents[0].offset != ioevents[1].offset
+    assert ioevents[0].gpa_offset != ioevents[1].gpa_offset
 
     os.write(newfds[ioevents[0].fd_index], c.c_ulonglong(1))
 
