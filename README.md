@@ -171,7 +171,7 @@ Since this is a completely made up device, there's no kernel driver (yet).
 [Client](./samples/client.c) implements a client that knows how to drive this
 particular device (that would normally be QEMU + guest VM + kernel driver).
 
-The client excercises all commands in the vfio-user protocol, and then proceeds
+The client exercises all commands in the vfio-user protocol, and then proceeds
 to perform live migration. The client spawns the destination server (this would
 be normally done by libvirt) and then migrates the device state, before
 switching entirely to the destination server. We re-use the source client

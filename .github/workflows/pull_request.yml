@@ -51,3 +51,10 @@ jobs:
               diffutils valgrind python3-pytest python3-flake8 which \
               meson ninja-build
           ./.github/workflows/pull_request.sh
+  spelling:
+    runs-on: ubuntu-latest
+    container: vlajos/misspell-fixer
+    steps:
+      - uses: actions/checkout@v2
+      - name: run misspell-fixer
+        run: /misspell-fixer/misspell-fixer -sv .

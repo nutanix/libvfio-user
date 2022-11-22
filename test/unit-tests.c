@@ -161,8 +161,8 @@ static int
 check_dma_info(const LargestIntegralType value,
                const LargestIntegralType cvalue)
 {
-    vfu_dma_info_t *info = (vfu_dma_info_t *)value;
-    vfu_dma_info_t *cinfo = (vfu_dma_info_t *)cvalue;
+    vfu_dma_info_t *info = (vfu_dma_info_t *)(long)value;
+    vfu_dma_info_t *cinfo = (vfu_dma_info_t *)(long)cvalue;
 
     return info->iova.iov_base == cinfo->iova.iov_base &&
         info->iova.iov_len == cinfo->iova.iov_len &&
@@ -188,7 +188,7 @@ test_dma_map_return_value(void **state UNUSED)
     };
 
     patch("dma_controller_add_region");
-    expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
+    expect_value(dma_controller_add_region, dma, (uintptr_t)vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, dma_map.addr);
     expect_value(dma_controller_add_region, size, dma_map.size);
     expect_value(dma_controller_add_region, fd, -1);
@@ -264,7 +264,7 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     assert_int_equal(0, r->info.mapping.iov_len);
     assert_ptr_equal(dma_addr, r->info.iova.iov_base);
     assert_int_equal(size, r->info.iova.iov_len);
-    assert_int_equal(0x1000, r->info.page_size);
+    assert_int_equal(sysconf(_SC_PAGE_SIZE), r->info.page_size);
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
     assert_int_equal(PROT_NONE, r->info.prot);
@@ -330,7 +330,7 @@ test_dma_addr_to_sgl(void **state UNUSED)
     assert_int_equal(1, ret);
     assert_int_equal(r->info.iova.iov_base, sg[0].dma_addr);
     assert_int_equal(0, sg[0].region);
-    assert_int_equal(0x2000 - (unsigned long long)r->info.iova.iov_base,
+    assert_int_equal(0x2000 - (long)r->info.iova.iov_base,
                      sg[0].offset);
     assert_int_equal(0x400, sg[0].length);
     assert_true(vfu_sg_is_mappable(&vfu_ctx, &sg[0]));

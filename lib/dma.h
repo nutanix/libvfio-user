@@ -125,7 +125,7 @@ dma_controller_destroy(dma_controller_t *dma);
  * - On failure, -1 with errno set.
  */
 MOCK_DECLARE(int, dma_controller_add_region, dma_controller_t *dma,
-             vfu_dma_addr_t dma_addr, size_t size, int fd, off_t offset,
+             vfu_dma_addr_t dma_addr, uint64_t size, int fd, off_t offset,
              uint32_t prot);
 
 MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
@@ -209,6 +209,7 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
     const dma_memory_region_t *const region = &dma->regions[region_index];
 
     if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "read-only region");
         return ERROR_INT(EACCES);
     }
 
