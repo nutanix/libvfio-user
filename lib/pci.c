@@ -498,6 +498,7 @@ vfu_pci_init(vfu_ctx_t *vfu_ctx, vfu_pci_type_t pci_type,
     vfu_ctx->pci.type = pci_type;
     vfu_ctx->pci.config_space = cfg_space;
     vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].size = size;
+    vfu_ctx->reg_info[VFU_PCI_DEV_CFG_REGION_IDX].flags = VFU_REGION_FLAG_RW;
 
     return 0;
 }
