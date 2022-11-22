@@ -247,4 +247,77 @@ def test_device_get_region_info_migr():
 def test_device_get_region_info_cleanup():
     vfu_destroy_ctx(ctx)
 
+
+def test_device_get_pci_config_space_info_implicit_pci_init():
+    """Checks that the PCI config space is implicitly configured if
+    vfu_pci_init() is called."""
+
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    vfu_pci_init(ctx)
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
+                          index=VFU_PCI_DEV_CFG_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
+
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+
+    assert(len(result) == argsz)
+
+    info, _ = vfio_region_info.pop_from_buffer(result)
+
+    assert info.argsz == argsz
+    assert info.flags == (VFIO_REGION_INFO_FLAG_READ |
+                          VFIO_REGION_INFO_FLAG_WRITE)
+    assert info.index == VFU_PCI_DEV_CFG_REGION_IDX
+    assert info.cap_offset == 0
+    # libvfio-user.py default to PCI Express in vfu_pci_init()
+    assert info.size == PCI_CFG_SPACE_EXP_SIZE
+    assert info.offset == 0
+
+    disconnect_client(ctx, sock)
+
+    vfu_destroy_ctx(ctx)
+
+
+def test_device_get_pci_config_space_info_implicit_no_pci_init():
+    """Checks that the PCI config space is implicitly configured even if
+    vfu_pci_init() is not called."""
+
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
+                          index=VFU_PCI_DEV_CFG_REGION_IDX, cap_offset=0,
+                          size=0, offset=0)
+
+    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+
+    assert(len(result) == argsz)
+
+    info, _ = vfio_region_info.pop_from_buffer(result)
+
+    assert info.argsz == argsz
+    assert info.flags == VFU_REGION_FLAG_RW
+    assert info.index == VFU_PCI_DEV_CFG_REGION_IDX
+    assert info.cap_offset == 0
+    assert info.size == PCI_CFG_SPACE_SIZE
+    assert info.offset == 0
+
+    disconnect_client(ctx, sock)
+
+    vfu_destroy_ctx(ctx)
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
