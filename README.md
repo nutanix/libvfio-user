@@ -230,6 +230,14 @@ cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
 for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
 ```
 
+shadow_ioeventfd_server
+-----------------------
+
+shadow_ioeventfd_server.c and shadow_ioeventfd_speed_test.c are used to
+demonstrate the benefits of shadow ioeventfd, see
+[ioregionfd](./docs/ioregionfd.md) for more information.
+
+
 Other usage notes
 =================
 
