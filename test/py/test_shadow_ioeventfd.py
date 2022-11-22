@@ -54,7 +54,7 @@ def test_shadow_ioeventfd():
 
     efd = eventfd(flags=EFD_NONBLOCK)
     ret = vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, efd, 0x8,
-                               0x16, 0, 0, shadow_fd=fo.fileno(), 0x10)
+                               0x16, 0, 0, fo.fileno(), 0x10)
     assert ret == 0
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
@@ -76,7 +76,7 @@ def test_shadow_ioeventfd():
     assert ioevent.type == VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW
     assert ioevent.flags == 0
     assert ioevent.datamatch == 0
-    assert ioevent.shadow_offset = 0x10
+    assert ioevent.shadow_offset == 0x10
 
     assert len(newfds) == 2  # 2 FDs: eventfd plus shadow FD
     cefd = newfds[0]

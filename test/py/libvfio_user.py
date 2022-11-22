@@ -416,8 +416,8 @@ class vfio_user_sub_region_ioeventfd(Structure):
         ("type", c.c_uint32),
         ("flags", c.c_uint32),
         ("shadow_mem_fd_index", c.c_uint32),
+        ("shadow_offset", c.c_uint64),
         ("datamatch", c.c_uint64),
-        ("shadow_offset", c.c_uint64)
     ]
 
 
