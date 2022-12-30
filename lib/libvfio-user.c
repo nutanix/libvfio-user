@@ -483,7 +483,6 @@ vfu_create_ioeventfd(vfu_ctx_t *vfu_ctx, uint32_t region_idx, int fd,
     vfu_reg_info_t *vfu_reg;
 
     assert(vfu_ctx != NULL);
-    assert(fd >= 0);
 
 #ifndef SHADOW_IOEVENTFD
     if (shadow_fd != -1) {
@@ -550,6 +549,10 @@ add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
 
     assert(out_fds != NULL);
     assert(nr_out_fds != NULL);
+
+    if (fd_search < 0) {
+        return -1;
+    }
 
     for (i = 0; i < *nr_out_fds; i++) {
         if (out_fds[i] == fd_search) {
