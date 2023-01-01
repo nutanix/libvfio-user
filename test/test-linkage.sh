@@ -41,7 +41,7 @@ tmpfile=$(mktemp /tmp/libvfio-user.test-linkage.XXXXXX.c)
 cat >$tmpfile <<EOF
 int main() {
 
-$(egrep '^[a-z_0-9]+\(' $header | sed 's+(.*+();+;')
+$(grep -E '^[a-z_0-9]+\(' $header | sed 's+(.*+();+;')
 
 }
 EOF
