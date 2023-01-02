@@ -247,4 +247,26 @@ def test_allowed_funcs_in_quiesced_reset_busy(mock_quiesce, mock_reset):
     mock_reset.assert_called_once_with(ctx, VFU_RESET_DEVICE)
 
 
+@patch('libvfio_user.reset_cb', side_effect=_side_effect)
+@patch('libvfio_user.quiesce_cb')
+def test_flr(mock_quiesce, mock_reset):
+    """Test that an FLR reset callback is still able to call functions not
+    allowed in quiescent state."""
+
+    global ctx, sock
+
+    _map_dma_region(ctx, sock)
+
+    setup_flrc(ctx)
+
+    # iflr
+    offset = PCI_STD_HEADER_SIZEOF + 8
+    data = b'\x00\x80'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                 count=len(data), data=data)
+
+    mock_quiesce.assert_called_with(ctx)
+    mock_reset.assert_called_once_with(ctx, VFU_RESET_PCI_FLR)
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
