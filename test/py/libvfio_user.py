@@ -869,6 +869,16 @@ def __dma_unregister(ctx, info):
     dma_unregister(ctx, copy.copy(info.contents))
 
 
+def setup_flrc(ctx):
+    # flrc
+    cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
+                      b'\x10', *[b'\0' for _ in range(52)])
+    # FIXME adding capability after we've realized the device only works
+    # because of bug #618.
+    pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=cap)
+    assert pos == PCI_STD_HEADER_SIZEOF
+
+
 def quiesce_cb(ctx):
     return 0
 

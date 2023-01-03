@@ -887,30 +887,37 @@ out:
     return ret;
 }
 
-static int
-do_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+int
+call_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
 
-    if (vfu_ctx->reset != NULL) {
-        vfu_ctx->in_cb = CB_RESET;
-        ret = vfu_ctx->reset(vfu_ctx, reason);
-        vfu_ctx->in_cb = CB_NONE;
-        if (ret < 0) {
-            return ret;
-        }
+    if (vfu_ctx->reset == NULL) {
+        return 0;
     }
+
+    vfu_ctx->in_cb = CB_RESET;
+    ret = vfu_ctx->reset(vfu_ctx, reason);
+    vfu_ctx->in_cb = CB_NONE;
+
+    return ret;
+}
+
+static int
+device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
+{
+    int ret;
+
+    ret = call_reset_cb(vfu_ctx, reason);
+    if (ret < 0) {
+        return ret;
+    }
+
     if (vfu_ctx->migration != NULL) {
         return handle_device_state(vfu_ctx, vfu_ctx->migration,
                                    VFIO_DEVICE_STATE_V1_RUNNING, false);
     }
     return 0;
-}
-
-int
-handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
-{
-    return do_device_reset(vfu_ctx, reason);
 }
 
 static int
@@ -1189,7 +1196,7 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     case VFIO_USER_DEVICE_RESET:
         vfu_log(vfu_ctx, LOG_INFO, "device reset by client");
-        ret = handle_device_reset(vfu_ctx, VFU_RESET_DEVICE);
+        ret = device_reset(vfu_ctx, VFU_RESET_DEVICE);
         break;
 
     case VFIO_USER_DIRTY_PAGES:
@@ -1495,6 +1502,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
              * be called at all.
              */
             if (vfu_ctx->quiesced) {
+		    // FIXME?
                 vfu_log(vfu_ctx, LOG_DEBUG, "device unquiesced");
                 vfu_ctx->quiesced = false;
             }
@@ -1614,7 +1622,7 @@ vfu_reset_ctx_quiesced(vfu_ctx_t *vfu_ctx)
     }
 
     /* FIXME what happens if the device reset callback fails? */
-    do_device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
+    device_reset(vfu_ctx, VFU_RESET_LOST_CONN);
 
     if (vfu_ctx->irqs != NULL) {
         irqs_reset(vfu_ctx);
