@@ -221,10 +221,10 @@ handle_dma_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                  struct vfio_user_dma_unmap *dma_unmap);
 
 int
-handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+call_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
 
 int
-handle_device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
+handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 MOCK_DECLARE(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
 
