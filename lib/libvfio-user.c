@@ -541,6 +541,15 @@ free_regions(vfu_ctx_t *vfu_ctx)
  * This function is used to add fd's to the fd return array and gives you back
  * the index of the fd that has been added. If the fd is already present it will
  * return the index to that duplicate fd to reduce the number of fd's sent.
+ * The fd must be a valid fd or -1, any other negative value is not permitted.
+ *
+ * out_fds: an array where the fd is stored
+ * nr_our_fds: pointer to memory that contains the size of the array
+ * fd_search: the fd to add
+ *
+ * returns: the array index where the fd is added to, can be the index of an
+ *  existing fd if this is a duplicate fd. If the fd is -1 then the function
+ *  returns -1.
  */
 static int
 add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
@@ -550,7 +559,8 @@ add_fd_index(int *out_fds, size_t *nr_out_fds, int fd_search)
     assert(out_fds != NULL);
     assert(nr_out_fds != NULL);
 
-    if (fd_search < 0) {
+    assert(fd_search >= -1);
+    if (fd_search == -1) {
         return -1;
     }
 
