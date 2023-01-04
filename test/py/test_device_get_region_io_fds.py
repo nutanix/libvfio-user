@@ -324,4 +324,94 @@ def test_device_get_region_info_cleanup():
         os.close(i)
     vfu_destroy_ctx(ctx)
 
+
+def test_device_get_region_io_fds_invalid_fd():
+    """Tests that an ioregionfd where fd is -1 is a legitimate ioregionfd."""
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=0x1000,
+                           flags=(VFU_REGION_FLAG_RW))
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    fds = []
+
+    # use valid fd
+    fd = eventfd(0, 0)
+    fds.append(fd)
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, fd,
+                                0 * IOEVENT_SIZE, IOEVENT_SIZE, 0, 0) != -1
+
+    # use -1 fd
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, -1,
+                                1 * IOEVENT_SIZE, IOEVENT_SIZE, 0, 0) != -1
+
+    # use another valid fd
+    fd = eventfd(0, 0)
+    fds.append(fd)
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, fd,
+                                2 * IOEVENT_SIZE, IOEVENT_SIZE, 0, 0) != -1
+
+    # use -1 fd
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, -1,
+                                3 * IOEVENT_SIZE, IOEVENT_SIZE, 0, 0) != -1
+
+    # use duplicate valid fd
+    assert vfu_create_ioeventfd(ctx, VFU_PCI_DEV_BAR0_REGION_IDX, fds[1],
+                                4 * IOEVENT_SIZE, IOEVENT_SIZE, 0, 0) != -1
+
+    payload = vfio_user_region_io_fds_request(
+                argsz=len(vfio_user_region_io_fds_reply()) +
+                len(vfio_user_sub_region_ioeventfd()) * 5, flags=0,
+                index=VFU_PCI_DEV_BAR0_REGION_IDX, count=0)
+
+    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          payload, expect=0)
+
+    # two unique fds
+    assert len(newfds) == 2
+    reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
+
+    # five ioregionfds
+    assert reply.count == 5
+    ioevents = []
+    for i in range(0, reply.count):
+        ioevent, ret = vfio_user_sub_region_ioeventfd.pop_from_buffer(ret)
+        ioevents.append(ioevent)
+
+    # TODO this assumes that ioregionfds are returned in the reverse order
+    # they're created. It should be straightforward to compare based on IOVA.
+    assert ioevents[0].fd_index == 0
+    assert ioevents[0].gpa_offset == 4 * IOEVENT_SIZE
+    assert ioevents[0].size == IOEVENT_SIZE
+    assert fds_are_same(newfds[0], fds[0])
+
+    assert ioevents[1].fd_index == UINT32_MAX
+    assert ioevents[1].gpa_offset == 3 * IOEVENT_SIZE
+    assert ioevents[1].size == IOEVENT_SIZE
+
+    assert ioevents[2].fd_index == 0
+    assert ioevents[2].gpa_offset == 2 * IOEVENT_SIZE
+    assert ioevents[2].size == IOEVENT_SIZE
+    assert fds_are_same(newfds[0], fds[0])
+
+    assert ioevents[3].fd_index == UINT32_MAX
+    assert ioevents[3].gpa_offset == 1 * IOEVENT_SIZE
+    assert ioevents[3].size == IOEVENT_SIZE
+
+    assert ioevents[4].fd_index == 1
+    assert ioevents[4].gpa_offset == 0 * IOEVENT_SIZE
+    assert ioevents[4].size == IOEVENT_SIZE
+    assert fds_are_same(newfds[1], fds[1])
+
+    # cleanup
+    for fd in fds:
+        os.close(fd)
+    vfu_destroy_ctx(ctx)
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
