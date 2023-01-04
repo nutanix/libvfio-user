@@ -544,7 +544,7 @@ free_regions(vfu_ctx_t *vfu_ctx)
  * The fd must be a valid fd or -1, any other negative value is not permitted.
  *
  * out_fds: an array where the fd is stored
- * nr_our_fds: pointer to memory that contains the size of the array
+ * nr_out_fds: pointer to memory that contains the size of the array
  * fd_search: the fd to add
  *
  * returns: the array index where the fd is added to, can be the index of an
