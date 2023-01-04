@@ -1238,8 +1238,10 @@ def fail_with_errno(err):
     return side_effect
 
 
-def fds_are_same(fd1: int, fd2: int)-> bool:
+def fds_are_same(fd1: int, fd2: int) -> bool:
     s1 = os.stat(fd1)
     s2 = os.stat(fd2)
     return s1.st_dev == s2.st_dev and s1.st_ino == s2.st_ino
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
