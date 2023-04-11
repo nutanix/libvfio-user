@@ -189,7 +189,17 @@ irqs_set_data_none(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
     eventfd_t val;
 
     for (i = irq_set->start; i < (irq_set->start + irq_set->count); i++) {
-        efd = vfu_ctx->irqs->efds[i];
+        switch (irq_set->index) {
+        case VFIO_PCI_ERR_IRQ_INDEX:
+            efd = vfu_ctx->irqs->err_efd;
+            break;
+        case VFIO_PCI_REQ_IRQ_INDEX:
+            efd = vfu_ctx->irqs->req_efd;
+            break;
+        default:
+            efd = vfu_ctx->irqs->efds[i];
+            break;
+        }
         if (efd >= 0) {
             val = 1;
             ret = eventfd_write(efd, val);
@@ -217,7 +227,17 @@ irqs_set_data_bool(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set, void *data)
 
     for (i = irq_set->start, d8 = data; i < (irq_set->start + irq_set->count);
          i++, d8++) {
-        efd = vfu_ctx->irqs->efds[i];
+        switch (irq_set->index) {
+        case VFIO_PCI_ERR_IRQ_INDEX:
+            efd = vfu_ctx->irqs->err_efd;
+            break;
+        case VFIO_PCI_REQ_IRQ_INDEX:
+            efd = vfu_ctx->irqs->req_efd;
+            break;
+        default:
+            efd = vfu_ctx->irqs->efds[i];
+            break;
+        }
         if (efd >= 0 && *d8 == 1) {
             val = 1;
             ret = eventfd_write(efd, val);
@@ -236,28 +256,46 @@ static int
 irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
                       int *data)
 {
-    int efd;
+    int *efd;
     uint32_t i;
     size_t j;
 
     assert(data != NULL);
     for (i = irq_set->start, j = 0; i < (irq_set->start + irq_set->count);
          i++, j++) {
-        efd = vfu_ctx->irqs->efds[i];
-        if (efd >= 0) {
-            if (close(efd) == -1) {
-                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m", efd);
-            }
-
-            vfu_ctx->irqs->efds[i] = -1;
+        switch (irq_set->index) {
+        case VFIO_PCI_ERR_IRQ_INDEX:
+            efd = &vfu_ctx->irqs->err_efd;
+            break;
+        case VFIO_PCI_REQ_IRQ_INDEX:
+            efd = &vfu_ctx->irqs->req_efd;
+            break;
+        default:
+            efd = &vfu_ctx->irqs->efds[i];
+            break;
+        }
+        if (*efd >= 0) {
+            if (close(*efd) == -1)
+                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m", *efd);
+            *efd = -1;
         }
         assert(data[j] >= 0);
         /*
          * We've already checked in handle_device_set_irqs that
          * nr_fds == irq_set->count.
          */
-        vfu_ctx->irqs->efds[i] = consume_fd(data, irq_set->count, j);
-        vfu_log(vfu_ctx, LOG_DEBUG, "event fd[%d]=%d", i, vfu_ctx->irqs->efds[i]);
+        *efd = consume_fd(data, irq_set->count, j);
+        switch (irq_set->index) {
+        case VFIO_PCI_ERR_IRQ_INDEX:
+            vfu_log(vfu_ctx, LOG_DEBUG, "err fd=%d", *efd);
+            break;
+        case VFIO_PCI_REQ_IRQ_INDEX:
+            vfu_log(vfu_ctx, LOG_DEBUG, "req fd=%d", *efd);
+            break;
+        default:
+            vfu_log(vfu_ctx, LOG_DEBUG, "event fd[%d]=%d", i, *efd);
+            break;
+        }
     }
 
     return 0;
@@ -319,6 +357,13 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
          (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&
         (a_type != VFIO_IRQ_SET_ACTION_TRIGGER)) {
+        line = __LINE__;
+        goto invalid;
+    }
+    //count must be 0 or 1 for ERR/REQ
+    if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
+         (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&
+        (irq_set->count > 1)) {
         line = __LINE__;
         goto invalid;
     }
