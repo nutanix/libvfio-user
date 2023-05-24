@@ -601,6 +601,7 @@ test_device_is_stopped_and_copying(UNUSED void **state)
             assert_false(r);
         }
     }
+    vfu_ctx.migration = NULL;
 }
 
 static void
