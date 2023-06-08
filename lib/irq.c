@@ -180,7 +180,7 @@ irqs_set_state(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set)
     cb(vfu_ctx, irq_set->start, irq_set->count, mask);
 }
 
-static inline int*
+static int *
 irqs_get_efd(vfu_ctx_t *vfu_ctx, int index, int fd_idx)
 {
     switch (index) {
@@ -344,7 +344,7 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         line = __LINE__;
         goto invalid;
     }
-    //count must be 0 or 1 for ERR/REQ
+    // count must be 0 or 1 for ERR/REQ
     if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
          (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&
         (irq_set->count > 1)) {
