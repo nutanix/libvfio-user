@@ -128,7 +128,7 @@ def test_device_get_region_info_larger_argsz():
 
     result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
 
-    assert(len(result) == argsz)
+    assert len(result) == argsz
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 
@@ -202,7 +202,7 @@ def test_device_get_region_info_caps():
     assert area2.offset == 0x4000
     assert area2.size == 0x2000
 
-    assert(len(fds) == 1)
+    assert len(fds) == 1
     disconnect_client(ctx, sock)
 
 
@@ -268,7 +268,7 @@ def test_device_get_pci_config_space_info_implicit_pci_init():
 
     result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
 
-    assert(len(result) == argsz)
+    assert len(result) == argsz
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 
@@ -304,7 +304,7 @@ def test_device_get_pci_config_space_info_implicit_no_pci_init():
 
     result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
 
-    assert(len(result) == argsz)
+    assert len(result) == argsz
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 
