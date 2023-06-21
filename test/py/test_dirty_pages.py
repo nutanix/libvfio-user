@@ -309,7 +309,7 @@ def get_dirty_page_bitmap():
     _, result = vfio_user_dirty_pages.pop_from_buffer(result)
     _, result = vfio_user_bitmap_range.pop_from_buffer(result)
 
-    assert(len(result) == 8)
+    assert len(result) == 8
 
     return struct.unpack("Q", result)[0]
 
