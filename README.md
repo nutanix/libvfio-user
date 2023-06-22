@@ -134,7 +134,7 @@ lspci
 of a libvfio-user device and examine it with lspci(8):
 
 ```
-# lspci -vv -F <(build/dbg/samples/lspci)
+# lspci -vv -F <(build/samples/lspci)
 00:00.0 Non-VGA unclassified device: Device 0000:0000
         Control: I/O- Mem- BusMaster- SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
         Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
@@ -189,13 +189,13 @@ Start the source server as follows (pick whatever you like for
 `/tmp/vfio-user.sock`):
 
 ```
-rm -f /tmp/vfio-user.sock* ; build/dbg/samples/server -v /tmp/vfio-user.sock
+rm -f /tmp/vfio-user.sock* ; build/samples/server -v /tmp/vfio-user.sock
 ```
 
 And then the client:
 
 ```
-build/dbg/samples/client /tmp/vfio-user.sock
+build/samples/client /tmp/vfio-user.sock
 ```
 
 After a couple of seconds the client will start live migration. The source
@@ -212,7 +212,7 @@ Start the `gpio` server process:
 
 ```
 rm /tmp/vfio-user.sock
-./build/dbg/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
+./build/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
 ```
 
 Next, build `qemu` and start a VM, as described below.
@@ -245,7 +245,7 @@ qemu
 ----
 
 `vfio-user` client support is not yet merged into `qemu`. Instead, download and
-build [this branch of qemu](https://github.com/oracle/qemu/pull/1).
+build [this branch of qemu](https://github.com/oracle/qemu/tree/vfio-user-6.2).
 
 Create a Linux install image, or use a pre-made one.
 
