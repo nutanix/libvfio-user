@@ -583,21 +583,8 @@ typedef enum {
     VFU_MIGR_STATE_RESUME
 } vfu_migr_state_t;
 
-#define VFU_MIGR_CALLBACKS_VERS 1
+#define VFU_MIGR_CALLBACKS_VERS 2
 
-/*
- * Callbacks during the pre-copy and stop-and-copy phases.
- *
- * The client executes the following steps to copy migration data:
- *
- * 1. get_pending_bytes: device must return amount of migration data
- * 2. prepare_data: device must prepare migration data
- * 3. read_data: device must provide migration data
- *
- * The client repeats the above steps until there is no more migration data to
- * return (the device must return 0 from get_pending_bytes to indicate that
- * there are no more migration data to be consumed in this iteration).
- */
 typedef struct {
 
     /*
@@ -615,82 +602,12 @@ typedef struct {
      * FIXME maybe we should create a single callback and pass the state?
      */
     int (*transition)(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state);
-
-    /* Callbacks for saving device state */
-
-    /*
-     * Function that is called to retrieve the amount of pending migration
-     * data. If migration data were previously made available (function
-     * prepare_data has been called) then calling this function signifies that
-     * they have been read (e.g. migration data can be discarded). If the
-     * function returns 0 then migration has finished and this function won't
-     * be called again.
-     *
-     * The amount of pending migration data returned by the device does not
-     * necessarily have to monotonically decrease over time and does not need
-     * to match the amount of migration data returned via the @size argument in
-     * prepare_data. It can completely fluctuate according to the needs of the
-     * device. These semantics are derived from the pending_bytes register in
-     * VFIO. Therefore the value returned by get_pending_bytes must be
-     * primarily regarded as boolean, either 0 or non-zero, as far as migration
-     * completion is concerned. More advanced vfio-user clients can make
-     * assumptions on how migration is progressing on devices that guarantee
-     * that the amount of pending migration data decreases over time.
-     */
-    uint64_t (*get_pending_bytes)(vfu_ctx_t *vfu_ctx);
-
-    /*
-     * Function that is called to instruct the device to prepare migration data
-     * to be read when in pre-copy or stop-and-copy state, and to prepare for
-     * receiving migration data when in resuming state.
-     *
-     * When in pre-copy and stop-and-copy state, the function must return only
-     * after migration data are available at the specified offset. This
-     * callback is called once per iteration. The amount of data available
-     * pointed to by @size can be different that the amount of data returned by
-     * get_pending_bytes in the beginning of the iteration.
-     *
-     * In VFIO, the data_offset and data_size registers can be read multiple
-     * times during an iteration and are invariant, libvfio-user simplifies
-     * this by caching the values and returning them when read, guaranteeing
-     * that prepare_data() is called only once per migration iteration.
-     *
-     * When in resuming state, @offset must be set to where migration data must
-     * written. @size points to NULL.
-     *
-     * The callback should return -1 on error, setting errno.
-     */
-    int (*prepare_data)(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size);
-
-    /*
-     * Function that is called to read migration data. offset and size can be
-     * any subrange on the offset and size previously returned by prepare_data.
-     * The function must return the amount of data read or -1 on error, setting
-     * errno.
-     *
-     * This function can be called even if the migration data can be memory
-     * mapped.
-     */
+    
     ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
                          uint64_t count, uint64_t offset);
 
-    /* Callbacks for restoring device state */
-
-    /*
-     * Fuction that is called for writing previously stored device state. The
-     * function must return the amount of data written or -1 on error, setting
-     * errno.
-     */
     ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count,
                           uint64_t offset);
-
-    /*
-     * Function that is called when client has written some previously stored
-     * device state.
-     *
-     * The callback should return -1 on error, setting errno.
-     */
-    int (*data_written)(vfu_ctx_t *vfu_ctx, uint64_t count);
 
 } vfu_migration_callbacks_t;
 
@@ -722,45 +639,11 @@ _Static_assert(VFIO_DEVICE_STATE_STOP == 0,
 
 #endif /* VFIO_REGION_TYPE_MIGRATION_DEPRECATED */
 
-/*
- * The currently defined migration registers; if using migration callbacks,
- * these are handled internally by the library.
- *
- * This is analogous to struct vfio_device_migration_info.
- */
-struct vfio_user_migration_info {
-    /* VFIO_DEVICE_STATE_* */
-    uint32_t device_state;
-    uint32_t reserved;
-    uint64_t pending_bytes;
-    uint64_t data_offset;
-    uint64_t data_size;
-};
-
-/*
- * Returns the size of the area needed to hold the migration registers at the
- * beginning of the migration region; guaranteed to be page aligned.
- */
-size_t
-vfu_get_migr_register_area_size(void);
-
-/**
- * vfu_setup_device_migration provides an abstraction over the migration
- * protocol: the user specifies a set of callbacks which are called in response
- * to client accesses of the migration region; the migration region read/write
- * callbacks are not called after this function call. Offsets in callbacks are
- * relative to @data_offset.
- *
- * @vfu_ctx: the libvfio-user context
- * @callbacks: migration callbacks
- * @data_offset: offset in the migration region where data begins.
- *
- * @returns 0 on success, -1 on error, sets errno.
- */
 int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
-                                     const vfu_migration_callbacks_t *callbacks,
-                                     uint64_t data_offset);
+                                     uint64_t flags,
+                                     const vfu_migration_callbacks_t
+                                     *callbacks);
 
 /**
  * Triggers an interrupt.
@@ -903,7 +786,6 @@ enum {
     VFU_PCI_DEV_ROM_REGION_IDX,
     VFU_PCI_DEV_CFG_REGION_IDX,
     VFU_PCI_DEV_VGA_REGION_IDX,
-    VFU_PCI_DEV_MIGR_REGION_IDX,
     VFU_PCI_DEV_NUM_REGIONS,
 };
 

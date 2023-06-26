@@ -222,13 +222,6 @@ struct vfio_user_bitmap_range {
     struct vfio_user_bitmap bitmap;
 } __attribute__((packed));
 
-#ifndef VFIO_REGION_TYPE_MIGRATION
-
-#define VFIO_REGION_TYPE_MIGRATION (3)
-#define VFIO_REGION_SUBTYPE_MIGRATION (1)
-
-#endif /* VFIO_REGION_TYPE_MIGRATION */
-
 /* Analogous to vfio_device_feature */
 struct vfio_user_device_feature {
 	uint32_t	argsz;
