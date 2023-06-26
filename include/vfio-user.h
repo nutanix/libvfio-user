@@ -67,6 +67,7 @@ enum vfio_user_command {
     VFIO_USER_DMA_WRITE                 = 12,
     VFIO_USER_DEVICE_RESET              = 13,
     VFIO_USER_DIRTY_PAGES               = 14,
+    VFIO_USER_DEVICE_FEATURE            = 15,
     VFIO_USER_MAX,
 };
 
@@ -227,6 +228,44 @@ struct vfio_user_bitmap_range {
 #define VFIO_REGION_SUBTYPE_MIGRATION (1)
 
 #endif /* VFIO_REGION_TYPE_MIGRATION */
+
+/* Analogous to vfio_device_feature */
+struct vfio_user_device_feature {
+	uint32_t	argsz;
+	uint32_t	flags;
+#define VFIO_DEVICE_FEATURE_MASK	(0xffff)  /* 16-bit feature index */
+#define VFIO_DEVICE_FEATURE_GET		(1 << 16) /* Get feature into data[] */
+#define VFIO_DEVICE_FEATURE_SET		(1 << 17) /* Set feature from data[] */
+#define VFIO_DEVICE_FEATURE_PROBE	(1 << 18) /* Probe feature support */
+	uint8_t  	data[];
+} __attribute__((packed));
+
+/* Analogous to vfio_device_feature_migration */
+struct vfio_user_device_feature_migration {
+    uint64_t flags;
+#define VFIO_MIGRATION_STOP_COPY    (1 << 0)
+#define VFIO_MIGRATION_P2P          (1 << 1)
+#define VFIO_MIGRATION_PRE_COPY     (1 << 2)
+} __attribute__((packed));
+#define VFIO_DEVICE_FEATURE_MIGRATION 1
+
+/* Analogous to vfio_device_feature_mig_state */
+struct vfio_user_device_feature_mig_state {
+    uint32_t    device_state;
+    uint32_t    data_fd;
+} __attribute__((packed));
+#define VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE 2
+
+enum vfio_device_mig_state {
+	VFIO_DEVICE_STATE_ERROR = 0,
+	VFIO_DEVICE_STATE_STOP = 1,
+	VFIO_DEVICE_STATE_RUNNING = 2,
+	VFIO_DEVICE_STATE_STOP_COPY = 3,
+	VFIO_DEVICE_STATE_RESUMING = 4,
+	VFIO_DEVICE_STATE_RUNNING_P2P = 5,
+	VFIO_DEVICE_STATE_PRE_COPY = 6,
+	VFIO_DEVICE_STATE_PRE_COPY_P2P = 7,
+};
 
 #ifdef __cplusplus
 }

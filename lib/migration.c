@@ -535,6 +535,60 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
 }
 
 bool
+migration_feature_supported(uint32_t flags) {
+    switch (flags & VFIO_DEVICE_FEATURE_MASK) {
+        case VFIO_DEVICE_FEATURE_MIGRATION:
+            return !(flags & VFIO_DEVICE_FEATURE_SET); // not supported for set
+        case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
+            return true;
+        default:
+            return false;
+    };
+}
+
+ssize_t
+migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf)
+{
+    struct vfio_user_device_feature_migration *res;
+    struct vfio_user_device_feature_mig_state *state;
+
+    switch (flags & VFIO_DEVICE_FEATURE_MASK) {
+        case VFIO_DEVICE_FEATURE_MIGRATION:
+            res = buf;
+            // FIXME are these always supported? Can we consider to be
+            //   "supported" if said support is just an empty callback?
+            res->flags = VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY;
+
+            return 0;
+
+        case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
+            state = buf;
+            state->device_state = vfu_ctx->migration->info.device_state;
+
+            return 0;
+
+        default:
+            return -EINVAL;
+
+    };
+}
+
+ssize_t
+migration_feature_set(UNUSED vfu_ctx_t *vfu_ctx, uint32_t flags,
+                      UNUSED void *buf)
+{
+    if (flags & VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE) {
+        // struct vfio_user_device_feature_mig_state *res = buf;
+
+        // TODO migrate to res->device_state state if allowed to
+
+        return 0;
+    }
+
+    return -EINVAL;
+}
+
+bool
 MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {
     return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_V1_SAVING;

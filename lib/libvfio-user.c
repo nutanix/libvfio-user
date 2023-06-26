@@ -1052,6 +1052,45 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     return ret;
 }
 
+static int
+handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_device_feature *req = msg->in.iov.iov_base;
+
+    if (vfu_ctx->migration == NULL) {
+        return -EINVAL;
+    }
+
+    if (!migration_feature_supported(req->flags)) {
+        // FIXME what error code to return? we really want "not supported"
+        //   instead of "not permitted"?
+        return -EINVAL;
+    }
+
+    ssize_t ret;
+
+    if (req->flags & VFIO_DEVICE_FEATURE_PROBE) {
+        msg->out.iov.iov_base = msg->in.iov.iov_base;
+        msg->out.iov.iov_len = msg->in.iov.iov_len;
+
+        ret = 0;
+    } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
+        msg->out.iov.iov_base = calloc(8, 1);
+        msg->out.iov.iov_len = 8;
+
+        ret = migration_feature_get(vfu_ctx, req->flags,
+                                    msg->out.iov.iov_base);
+    } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
+        msg->out.iov.iov_base = msg->in.iov.iov_base;
+        msg->out.iov.iov_len = msg->in.iov.iov_len;
+
+        ret = migration_feature_set(vfu_ctx, req->flags,
+                                    msg->out.iov.iov_base);
+    }
+
+    return ret;
+}
+
 static vfu_msg_t *
 alloc_msg(struct vfio_user_header *hdr, int *fds, size_t nr_fds)
 {
@@ -1219,6 +1258,10 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         } else {
             ret = 0;
         }
+        break;
+
+    case VFIO_USER_DEVICE_FEATURE:
+        ret = handle_device_feature(vfu_ctx, msg);
         break;
 
     default:

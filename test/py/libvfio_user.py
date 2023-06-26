@@ -124,6 +124,16 @@ VFIO_DEVICE_STATE_V1_SAVING = (1 << 1)
 VFIO_DEVICE_STATE_V1_RESUMING = (1 << 2)
 VFIO_DEVICE_STATE_MASK = ((1 << 3) - 1)
 
+VFIO_DEVICE_FEATURE_MIGRATION = (1)
+VFIO_DEVICE_FEATURE_MASK = (0xffff)
+VFIO_DEVICE_FEATURE_GET = (1 << 16)
+VFIO_DEVICE_FEATURE_SET = (1 << 17)
+VFIO_DEVICE_FEATURE_PROBE = (1 << 18)
+
+VFIO_MIGRATION_STOP_COPY = (1 << 0)
+VFIO_MIGRATION_P2P = (1 << 1)
+VFIO_MIGRATION_PRE_COPY = (1 << 2)
+
 
 # libvfio-user defines
 
@@ -171,7 +181,8 @@ VFIO_USER_DMA_READ = 11
 VFIO_USER_DMA_WRITE = 12
 VFIO_USER_DEVICE_RESET = 13
 VFIO_USER_DIRTY_PAGES = 14
-VFIO_USER_MAX = 15
+VFIO_USER_DEVICE_FEATURE = 15
+VFIO_USER_MAX = 16
 
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
@@ -568,6 +579,13 @@ class dma_sg_t(Structure):
         return "DMA addr=%s, region index=%s, length=%s, offset=%s, RW=%s" % \
             (hex(self.dma_addr), self.region, hex(self.length),
                 hex(self.offset), self.writeable)
+
+class vfio_user_device_feature(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32)
+    ]
 
 
 class vfio_user_migration_info(Structure):

@@ -53,6 +53,15 @@ migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
                         loff_t pos, bool is_write);
 
 bool
+migration_feature_supported(uint32_t flags);
+
+ssize_t
+migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
+
+ssize_t
+migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
+
+bool
 migration_available(vfu_ctx_t *vfu_ctx);
 
 MOCK_DECLARE(bool, device_is_stopped, struct migration *migr);
