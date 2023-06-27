@@ -218,6 +218,61 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf)
     return -EINVAL;
 }
 
+ssize_t
+handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct migration *migr = vfu_ctx->migration;
+    struct vfio_user_mig_data_without_data *req = msg->in.iov.iov_base;
+
+    if (vfu_ctx->migration == NULL) {
+        return -EINVAL;
+    }
+
+    if (migr->state != VFIO_DEVICE_STATE_PRE_COPY
+        && migr->state != VFIO_DEVICE_STATE_STOP_COPY) {
+        return -EINVAL;
+    }
+
+    msg->out.iov.iov_len = sizeof(req) + req->size;
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+    struct vfio_user_mig_data_with_data *res = msg->out.iov.iov_base;
+
+    ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
+
+    res->size = ret;
+    res->argsz = ret + sizeof(req);
+
+    if (ret < 0) {
+        return -1;
+    }
+
+    return ret;
+}
+
+ssize_t
+handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct migration *migr = vfu_ctx->migration;
+    struct vfio_user_mig_data_with_data *req = msg->in.iov.iov_base;
+
+    if (vfu_ctx->migration == NULL) {
+        return -EINVAL;
+    }
+
+    if (migr->state != VFIO_DEVICE_STATE_RESUMING) {
+        return -EINVAL;
+    }
+
+    ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
+
+    if (ret < 0) {
+        return -1;
+    }
+
+    return ret;
+}
+
 bool
 MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {

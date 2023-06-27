@@ -68,6 +68,8 @@ enum vfio_user_command {
     VFIO_USER_DEVICE_RESET              = 13,
     VFIO_USER_DIRTY_PAGES               = 14,
     VFIO_USER_DEVICE_FEATURE            = 15,
+    VFIO_USER_MIG_DATA_READ             = 16,
+    VFIO_USER_MIG_DATA_WRITE            = 17,
     VFIO_USER_MAX,
 };
 
@@ -259,6 +261,21 @@ enum vfio_device_mig_state {
 	VFIO_DEVICE_STATE_PRE_COPY = 6,
 	VFIO_DEVICE_STATE_PRE_COPY_P2P = 7,
 };
+
+// FIXME awful names below
+
+// used for read request and write response
+struct vfio_user_mig_data_without_data {
+    uint32_t    argsz;
+    uint32_t    size;
+} __attribute__((packed));
+
+// used for write request and read response
+struct vfio_user_mig_data_with_data {
+    uint32_t    argsz;
+    uint32_t    size;
+    uint8_t     data[];
+} __attribute__((packed));
 
 #ifdef __cplusplus
 }

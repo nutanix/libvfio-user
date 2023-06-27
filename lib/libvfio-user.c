@@ -1238,6 +1238,13 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = handle_device_feature(vfu_ctx, msg);
         break;
 
+    case VFIO_USER_MIG_DATA_READ:
+        ret = handle_mig_data_read(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_MIG_DATA_WRITE:
+        ret = handle_mig_data_write(vfu_ctx, msg);
+
     default:
         msg->processed_cmd = false;
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);

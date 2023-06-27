@@ -603,11 +603,9 @@ typedef struct {
      */
     int (*transition)(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state);
     
-    ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf,
-                         uint64_t count, uint64_t offset);
+    ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
-    ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count,
-                          uint64_t offset);
+    ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
 } vfu_migration_callbacks_t;
 

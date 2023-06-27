@@ -57,6 +57,12 @@ migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
 ssize_t
 migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
 
+ssize_t
+handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+
+ssize_t
+handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+
 bool
 migration_available(vfu_ctx_t *vfu_ctx);
 
