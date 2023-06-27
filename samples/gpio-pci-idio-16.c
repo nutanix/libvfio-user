@@ -77,49 +77,23 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     return 0;
 }
 
-static uint64_t
-migration_get_pending_bytes(UNUSED vfu_ctx_t *vfu_ctx)
-{
-    if (dirty) {
-        return sizeof(pin);
-    }
-    return 0;
-}
-
-static int
-migration_prepare_data(UNUSED vfu_ctx_t *vfu_ctx,
-                       uint64_t *offset, uint64_t *size)
-{
-    *offset = 0;
-    if (size != NULL) { /* null means resuming */
-        *size = sizeof(pin);
-    }
-    return 0;
-}
-
 static ssize_t
-migration_read_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf,
-                    uint64_t size, uint64_t offset)
+migration_read_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
-    assert(offset == 0);
     assert(size == sizeof(pin));
-    memcpy(buf, &pin, sizeof(pin));
-    dirty = false;
-    return 0;
-}
 
-static int
-migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, uint64_t count)
-{
-    assert(count == sizeof(pin));
-    return 0;
+    if (dirty) {
+        memcpy(buf, &pin, sizeof(pin));
+        dirty = false;
+        return sizeof(pin);
+    } else {
+        return 0;
+    }
 }
 
 static ssize_t
-migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf,
-                     uint64_t size, uint64_t offset)
+migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
-    assert(offset == 0);
     assert(size == sizeof(pin));
     memcpy(&pin, buf, sizeof(pin));
     return 0;
@@ -145,16 +119,10 @@ main(int argc, char *argv[])
     int opt;
     struct sigaction act = { .sa_handler = _sa_handler };
     vfu_ctx_t *vfu_ctx;
-    size_t migr_regs_size = vfu_get_migr_register_area_size();
-    size_t migr_data_size = sysconf(_SC_PAGE_SIZE);
-    size_t migr_size = migr_regs_size + migr_data_size;
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
-        .get_pending_bytes = &migration_get_pending_bytes,
-        .prepare_data = &migration_prepare_data,
         .read_data = &migration_read_data,
-        .data_written = &migration_data_written,
         .write_data = &migration_write_data
     };
 
@@ -214,13 +182,7 @@ main(int argc, char *argv[])
     }
 
     if (enable_migr) {
-        ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                               NULL, VFU_REGION_FLAG_RW, NULL, 0, -1, 0);
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to setup migration region");
-        }
-        ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
-                                                   migr_regs_size);
+        ret = vfu_setup_device_migration_callbacks(vfu_ctx, 0, &migr_callbacks);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to setup device migration");
         }

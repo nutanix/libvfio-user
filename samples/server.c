@@ -285,36 +285,10 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     return 0;
 }
 
-static uint64_t
-migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
-{
-    struct server_data *server_data = vfu_get_private(vfu_ctx);
-    return server_data->migration.pending_bytes;
-}
-
-static int
-migration_prepare_data(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size)
-{
-    struct server_data *server_data = vfu_get_private(vfu_ctx);
-
-    *offset = 0;
-    if (size != NULL) {
-       *size = server_data->migration.pending_bytes;
-    }
-    return 0;
-}
-
 static ssize_t
-migration_read_data(vfu_ctx_t *vfu_ctx, void *buf,
-                    uint64_t size, uint64_t offset)
+migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
-
-    if (server_data->migration.state != VFU_MIGR_STATE_PRE_COPY &&
-        server_data->migration.state != VFU_MIGR_STATE_STOP_AND_COPY)
-    {
-        return size;
-    }
 
     /*
      * For ease of implementation we expect the client to read all migration
@@ -328,7 +302,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf,
      * more complex state tracking which exceeds the scope of this sample.
      */
 
-    if (offset != 0 || size != server_data->migration.pending_bytes) {
+    if (size != server_data->migration.pending_bytes) {
         errno = EINVAL;
         return -1;
     }
@@ -344,8 +318,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf,
 }
 
 static ssize_t
-migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
-                     uint64_t size, uint64_t offset)
+migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
     char *buf = data;
@@ -354,10 +327,10 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
     assert(server_data != NULL);
     assert(data != NULL);
 
-    if (offset != 0 || size < server_data->bar1_size) {
+    if (size < server_data->bar1_size) {
         vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
-                (unsigned long long)offset,
-                (unsigned long long)offset + size - 1);
+                (unsigned long long)0,
+                (unsigned long long)size - 1);
         errno = EINVAL;
         return -1;
     }
@@ -379,33 +352,6 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
     return 0;
 }
 
-
-static int
-migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED uint64_t count)
-{
-    /*
-     * We apply migration state directly in the migration_write_data callback,
-     * so we don't need to do anything here. We would have to apply migration
-     * state in this callback if the migration region was memory mappable, in
-     * which case we wouldn't know when the client wrote migration data.
-     */
-
-    return 0;
-}
-
-static size_t
-nr_pages(size_t size)
-{
-    return (size / sysconf(_SC_PAGE_SIZE) +
-            (size % sysconf(_SC_PAGE_SIZE) > 1));
-}
-
-static size_t
-page_align(size_t size)
-{
-    return  nr_pages(size) * sysconf(_SC_PAGE_SIZE);
-}
-
 int main(int argc, char *argv[])
 {
     char template[] = "/tmp/libvfio-user.XXXXXX";
@@ -414,7 +360,6 @@ int main(int argc, char *argv[])
     int opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     const size_t bar1_size = 0x3000;
-    size_t migr_regs_size, migr_data_size, migr_size;
     struct server_data server_data = {
         .migration = {
             .state = VFU_MIGR_STATE_RUNNING
@@ -426,10 +371,7 @@ int main(int argc, char *argv[])
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
-        .get_pending_bytes = &migration_get_pending_bytes,
-        .prepare_data = &migration_prepare_data,
         .read_data = &migration_read_data,
-        .data_written = &migration_data_written,
         .write_data = &migration_write_data
     };
 
@@ -488,9 +430,6 @@ int main(int argc, char *argv[])
      * are mappable. The client can still mmap the 2nd page, we can't prohibit
      * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
-     *
-     * We choose to use a single file which contains both BAR1 and the migration
-     * registers. They could also be completely different files.
      */
     if ((tmpfd = mkstemp(template)) == -1) {
         err(EXIT_FAILURE, "failed to create backing file");
@@ -500,16 +439,7 @@ int main(int argc, char *argv[])
 
     server_data.bar1_size = bar1_size;
 
-    /*
-     * The migration registers aren't memory mappable, so in order to make the
-     * rest of the migration region memory mappable we must effectively reserve
-     * an entire page.
-     */
-    migr_regs_size = vfu_get_migr_register_area_size();
-    migr_data_size = page_align(bar1_size + sizeof(time_t));
-    migr_size = migr_regs_size + migr_data_size;
-
-    if (ftruncate(tmpfd, server_data.bar1_size + migr_size) == -1) {
+    if (ftruncate(tmpfd, server_data.bar1_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate backing file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
@@ -529,29 +459,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    /* setup migration */
-
-    struct iovec migr_mmap_areas[] = {
-        [0] = {
-            .iov_base  = (void *)migr_regs_size,
-            .iov_len = migr_data_size
-        },
-    };
-
-    /*
-     * The migration region comes after bar1 in the backing file, so offset is
-     * server_data.bar1_size.
-     */
-    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
-                           ARRAY_SIZE(migr_mmap_areas), tmpfd,
-                           server_data.bar1_size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup migration region");
-    }
-
-    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
-                                               migr_regs_size);
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, 0, &migr_callbacks);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
     }
