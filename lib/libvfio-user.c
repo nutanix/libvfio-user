@@ -2198,7 +2198,7 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
     while (remaining > 0) {
         int ret;
 
-        dma_req->addr = (uintptr_t)sg->dma_addr + count;
+        dma_req->addr = (uintptr_t)sg->dma_addr + sg->offset + count;
         dma_req->count = MIN(remaining, vfu_ctx->client_max_data_xfer_size);
 
         if (cmd == VFIO_USER_DMA_WRITE) {
