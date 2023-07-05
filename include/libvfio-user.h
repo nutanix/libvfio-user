@@ -86,7 +86,11 @@ dma_sg_size(void);
  * reads or writes of the socket connection will not need to block, since both
  * APIS are synchronous.
  */
-#define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
+#define LIBVFIO_USER_FLAG_ATTACH_NB  (1)
+
+// Should the server start in the migration "RESUMING" state? Given to
+//   init_migration
+#define LIBVFIO_USER_MIG_FLAG_START_RESUMING (1 << 0)
 
 typedef enum {
     VFU_TRANS_SOCK,

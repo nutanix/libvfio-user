@@ -79,6 +79,9 @@ migration_set_pgsize(struct migration *migr, size_t pgsize);
 uint64_t
 migration_get_flags(struct migration *migr);
 
+MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
+             enum vfio_device_mig_state state);
+
 MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
              uint32_t to);
 

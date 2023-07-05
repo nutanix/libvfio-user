@@ -62,6 +62,8 @@ static char const *irq_to_str[] = {
     [VFU_DEV_REQ_IRQ] = "REQ"
 };
 
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void
 vfu_log(UNUSED vfu_ctx_t *vfu_ctx, UNUSED int level,
         const char *fmt, ...)
@@ -458,7 +460,6 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
             .iov_len = data_len
         }
     };
-    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     struct vfio_user_region_access *recv_data;
     size_t nr_send_iovecs, recv_data_len;
     int op, ret;
@@ -535,14 +536,22 @@ set_migration_state(int sock, uint32_t state)
             .iov_len = sizeof(change_state)
         }
     };
+    void* response = malloc(sizeof(req) + sizeof(change_state));
     
+    pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_DEVICE_FEATURE,
                                   send_iovecs, 3, NULL, 0, NULL,
-                                  &req, sizeof(req), NULL, 0);
+                                  response, sizeof(req) + sizeof(change_state),
+                                  NULL, 0);
+    pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
         return -1;
     }
+
+    assert(memcmp(&req, response, sizeof(req)) == 0);
+    assert(memcmp(&change_state, response + sizeof(req),
+                  sizeof(change_state)) == 0);
 
     return ret;
 }
@@ -552,7 +561,7 @@ read_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x6904;
     struct vfio_user_mig_data_without_data req = {
-        .argsz = 8,
+        .argsz = 12,
         .size = len
     };
     struct iovec send_iovecs[2] = {
@@ -563,9 +572,11 @@ read_migr_data(int sock, void *buf, size_t len)
     };
     struct vfio_user_mig_data_with_data *res = calloc(1, sizeof(req) + len);
 
+    pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
                                   send_iovecs, 2, NULL, 0, NULL,
                                   res, sizeof(req) + len, NULL, 0);
+    pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
         free(res);
@@ -573,6 +584,8 @@ read_migr_data(int sock, void *buf, size_t len)
     }
 
     memcpy(buf, res->data, res->size);
+
+    free(res);
 
     return res->size;
 }
@@ -582,7 +595,7 @@ write_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x2023;
     struct vfio_user_mig_data_with_data req = {
-        .argsz = 8 + len,
+        .argsz = 12 + len,
         .size = len
     };
     struct iovec send_iovecs[3] = {
@@ -596,9 +609,11 @@ write_migr_data(int sock, void *buf, size_t len)
         }
     };
 
+    pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_WRITE,
                                   send_iovecs, 3, NULL, 0, NULL,
                                   &req, sizeof(req), NULL, 0);
+    pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
         return -1;
@@ -816,32 +831,17 @@ usage(char *argv0)
             basename(argv0));
 }
 
-/*
- * Normally each time the source client (QEMU) would read migration data from
- * the device it would send them to the destination client. However, since in
- * our sample both the source and the destination client are the same process,
- * we simply accumulate the migration data of each iteration and apply it to
- * the destination server at the end.
- *
- * Performs as many migration loops as @nr_iters or until the device has no
- * more migration data (pending_bytes is zero), which ever comes first. The
- * result of each migration iteration is stored in @migr_iter.  @migr_iter must
- * be at least @nr_iters.
- *
- * @returns the number of iterations performed
- */
 static size_t
-do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
+do_migrate(int sock, size_t max_iters, size_t max_iter_size,
+           struct iovec *migr_iter)
 {
     int ret;
+    size_t i;
     bool is_more = true;
-    size_t i = 0;
 
-    assert(nr_iters > 0);
+    for (i = 0; i < max_iters && is_more; i++) {
 
-    for (i = 0; i < nr_iters && is_more; i++) {
-
-        migr_iter[i].iov_len = 1024;
+        migr_iter[i].iov_len = max_iter_size;
         migr_iter[i].iov_base = malloc(migr_iter[i].iov_len);
 
         if (migr_iter[i].iov_base == NULL) {
@@ -898,7 +898,7 @@ fake_guest(void *arg)
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
-        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, crc);
+        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, 0);
         __sync_synchronize();
     } while (!fake_guest_data->done);
 
@@ -913,7 +913,6 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 {
     uint32_t device_state;
     int ret;
-    size_t _nr_iters;
     pthread_t thread;
     struct fake_guest_data fake_guest_data = {
         .sock = sock,
@@ -922,13 +921,15 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         .crcp = crcp
     };
 
+    size_t max_iter_size = 4096;
+
     ret = pthread_create(&thread, NULL, fake_guest, &fake_guest_data);
     if (ret != 0) {
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    *nr_iters = 2;
+    *nr_iters = 8;
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -944,8 +945,11 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    _nr_iters = do_migrate(sock, 1, *migr_iters);
-    assert(_nr_iters == 1);
+    ret = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to do migration in pre-copy state");
+    }
+
     printf("client: stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
@@ -963,11 +967,9 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    _nr_iters += do_migrate(sock, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 2) {
-        errx(EXIT_FAILURE,
-             "expected 2 iterations instead of %zu while in stop-and-copy state",
-             _nr_iters);
+    size_t iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to do migration in stop-and-copy state");
     }
 
     /* XXX read device state, migration must have finished now */
@@ -977,7 +979,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    return _nr_iters;
+    return iters;
 }
 
 static int
@@ -1007,9 +1009,10 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (ret == -1) {
         err(EXIT_FAILURE, "failed to fork");
     }
-    if (ret > 0) { /* child (destination server) */
+    if (ret == 0) { /* child (destination server) */
         char *_argv[] = {
             path_to_server,
+            (char *)"-r", // start in VFIO_DEVICE_STATE_RESUMING
             (char *)"-v",
             sock_path,
             NULL
@@ -1039,12 +1042,6 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 
-    /* XXX set device state to resuming */
-    ret = set_migration_state(sock, device_state);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to set device state to resuming");
-    }
-
     for (i = 0; i < nr_iters; i++) {
 
         /* XXX write migration data */
@@ -1057,11 +1054,11 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         }
     }
 
-    /* XXX set device state to running */
-    device_state = VFIO_DEVICE_STATE_RUNNING;
+    /* XXX set device state to stop to finish the transfer */
+    device_state = VFIO_DEVICE_STATE_STOP;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
-        err(EXIT_FAILURE, "failed to set device state to running");
+        err(EXIT_FAILURE, "failed to set device state to stop");
     }
 
     /* validate contents of BAR1 */
@@ -1075,6 +1072,15 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (dst_crc != src_crc) {
         fprintf(stderr, "client: CRC mismatch: %u != %u\n", src_crc, dst_crc);
         abort();
+    } else {
+        fprintf(stdout, "client: CRC match, we did it! :)\n");
+    }
+
+    /* XXX set device state to running */
+    device_state = VFIO_DEVICE_STATE_RUNNING;
+    ret = set_migration_state(sock, device_state);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to set device state to running");
     }
 
     return sock;

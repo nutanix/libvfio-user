@@ -43,18 +43,15 @@ struct migration {
 /* valid migration state transitions 
    indexed by vfio_device_mig_state enum */
 static const bool transitions[8][8] = {
-    {0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 1, 1, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 1, 0},
-    {0, 1, 0, 0, 0, 0, 0, 0},
-    {0, 1, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 1, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0}
+    {0, 0, 0, 0, 0, 0, 0, 0}, // ERROR
+    {0, 0, 1, 1, 1, 0, 0, 0}, // STOP
+    {0, 1, 0, 0, 0, 0, 1, 0}, // RUNNING
+    {0, 1, 0, 0, 0, 0, 0, 0}, // STOP_COPY
+    {0, 1, 0, 0, 0, 0, 0, 0}, // RESUMING
+    {0, 0, 0, 0, 0, 0, 0, 0}, // RUNNING_P2P
+    {0, 0, 1, 1, 0, 0, 0, 0}, // PRE_COPY
+    {0, 0, 0, 0, 0, 0, 0, 0}  // PRE_COPY_P2P
 };
-
-MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
-             enum vfio_device_mig_state state);
 
 MOCK_DECLARE(vfu_migr_state_t, migr_state_vfio_to_vfu, uint32_t device_state);
 

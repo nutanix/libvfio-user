@@ -267,13 +267,13 @@ enum vfio_device_mig_state {
 // used for read request and write response
 struct vfio_user_mig_data_without_data {
     uint32_t    argsz;
-    uint32_t    size;
+    uint64_t    size;
 } __attribute__((packed));
 
 // used for write request and read response
 struct vfio_user_mig_data_with_data {
     uint32_t    argsz;
-    uint32_t    size;
+    uint64_t    size;
     uint8_t     data[];
 } __attribute__((packed));
 

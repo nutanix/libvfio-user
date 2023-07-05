@@ -894,15 +894,14 @@ static int
 device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
-
+    
     ret = call_reset_cb(vfu_ctx, reason);
     if (ret < 0) {
         return ret;
     }
 
     if (vfu_ctx->migration != NULL) {
-        return handle_device_state(vfu_ctx, vfu_ctx->migration,
-                                   VFIO_DEVICE_STATE_V1_RUNNING, false);
+        migr_state_transition(vfu_ctx->migration, VFIO_DEVICE_STATE_RUNNING);
     }
     return 0;
 }
@@ -1044,8 +1043,10 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ssize_t ret;
 
     if (req->flags & VFIO_DEVICE_FEATURE_PROBE) {
-        msg->out.iov.iov_base = msg->in.iov.iov_base;
+        msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+               msg->out.iov.iov_len);
 
         ret = 0;
     } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
@@ -1055,11 +1056,12 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = migration_feature_get(vfu_ctx, req->flags,
                                     msg->out.iov.iov_base);
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
-        msg->out.iov.iov_base = msg->in.iov.iov_base;
+        msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+               msg->out.iov.iov_len);
 
-        ret = migration_feature_set(vfu_ctx, req->flags,
-                                    msg->out.iov.iov_base);
+        ret = migration_feature_set(vfu_ctx, req->flags, req->data);
     }
 
     return ret;
@@ -1244,6 +1246,7 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     case VFIO_USER_MIG_DATA_WRITE:
         ret = handle_mig_data_write(vfu_ctx, msg);
+        break;
 
     default:
         msg->processed_cmd = false;
@@ -1348,7 +1351,9 @@ MOCK_DEFINE(cmd_allowed_when_stopped_and_copying)(uint16_t cmd)
 {
     return cmd == VFIO_USER_REGION_READ ||
            cmd == VFIO_USER_REGION_WRITE ||
-           cmd == VFIO_USER_DIRTY_PAGES;
+           cmd == VFIO_USER_DIRTY_PAGES ||
+           cmd == VFIO_USER_DEVICE_FEATURE ||
+           cmd == VFIO_USER_MIG_DATA_READ;
 }
 
 bool
@@ -2046,7 +2051,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx, uint64_t flags,
         return ERROR_INT(ret);
     }
 
-    return 0;
+    return ret;
 }
 
 #ifdef DEBUG

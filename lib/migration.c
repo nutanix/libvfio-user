@@ -71,7 +71,11 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
     /* FIXME this should be done in vfu_ctx_realize */
-    migr->state = VFIO_DEVICE_STATE_RUNNING;
+    if (flags & LIBVFIO_USER_MIG_FLAG_START_RESUMING) {
+        migr->state = VFIO_DEVICE_STATE_RESUMING;
+    } else {
+        migr->state = VFIO_DEVICE_STATE_RUNNING;
+    }
 
     migr->callbacks = *callbacks;
     if (migr->callbacks.transition == NULL ||
@@ -233,7 +237,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return -EINVAL;
     }
 
-    msg->out.iov.iov_len = sizeof(req) + req->size;
+    msg->out.iov.iov_len = msg->in.iov.iov_len + req->size;
     msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
     struct vfio_user_mig_data_with_data *res = msg->out.iov.iov_base;
@@ -241,7 +245,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
 
     res->size = ret;
-    res->argsz = ret + sizeof(req);
+    res->argsz = ret + msg->in.iov.iov_len;
 
     if (ret < 0) {
         return -1;
