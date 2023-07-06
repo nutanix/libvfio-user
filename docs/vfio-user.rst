@@ -1,5 +1,4 @@
 .. include:: <isonum.txt>
-
 ********************************
 vfio-user Protocol Specification
 ********************************
@@ -322,9 +321,9 @@ usual ``msg_size`` field in the header, not the ``argsz`` field.
 
 In a reply, the server sets ``argsz`` field to the size needed for a full
 payload size. This may be less than the requested maximum size. This may be
-larger than the requested maximum size: in that case, the payload reply header
-is returned, but the ``argsz`` field in the reply indicates the needed size,
-allowing a client to allocate a larger buffer for holding the reply before
+larger than the requested maximum size: in that case, the full payload is not
+included in the reply, but the ``argsz`` field in the reply indicates the needed
+size, allowing a client to allocate a larger buffer for holding the reply before
 trying again.
 
 In addition, during negotiation (see  `Version`_), the client and server may
@@ -337,8 +336,9 @@ Protocol Specification
 
 To distinguish from the base VFIO symbols, all vfio-user symbols are prefixed
 with ``vfio_user`` or ``VFIO_USER``. In this revision, all data is in the
-little-endian format, although this may be relaxed in future revisions in cases
-where the client and server are both big-endian.
+endianness of the host system, although this may be relaxed in future
+revisions in cases where the client and server run on different hosts
+with different endianness.
 
 Unless otherwise specified, all sizes should be presumed to be in bytes.
 
@@ -365,7 +365,7 @@ Name                                    Command    Request Direction
 ``VFIO_USER_DMA_READ``                  11         server -> client
 ``VFIO_USER_DMA_WRITE``                 12         server -> client
 ``VFIO_USER_DEVICE_RESET``              13         client -> server
-``VFIO_USER_DIRTY_PAGES``               14         client -> server
+``VFIO_USER_REGION_WRITE_MULTI``        15         client -> server
 ======================================  =========  =================
 
 Header
@@ -488,30 +488,45 @@ format:
 
 Capabilities:
 
-+--------------------+--------+------------------------------------------------+
-| Name               | Type   | Description                                    |
-+====================+========+================================================+
-| max_msg_fds        | number | Maximum number of file descriptors that can be |
-|                    |        | received by the sender in one message.         |
-|                    |        | Optional. If not specified then the receiver   |
-|                    |        | must assume a value of ``1``.                  |
-+--------------------+--------+------------------------------------------------+
-| max_data_xfer_size | number | Maximum ``count`` for data transfer messages;  |
-|                    |        | see `Read and Write Operations`_. Optional,    |
-|                    |        | with a default value of 1048576 bytes.         |
-+--------------------+--------+------------------------------------------------+
-| migration          | object | Migration capability parameters. If missing    |
-|                    |        | then migration is not supported by the sender. |
-+--------------------+--------+------------------------------------------------+
++--------------------+---------+------------------------------------------------+
+| Name               | Type    | Description                                    |
++====================+=========+================================================+
+| max_msg_fds        | number  | Maximum number of file descriptors that can be |
+|                    |         | received by the sender in one message.         |
+|                    |         | Optional. If not specified then the receiver   |
+|                    |         | must assume a value of ``1``.                  |
++--------------------+---------+------------------------------------------------+
+| max_data_xfer_size | number  | Maximum ``count`` for data transfer messages;  |
+|                    |         | see `Read and Write Operations`_. Optional,    |
+|                    |         | with a default value of 1048576 bytes.         |
++--------------------+---------+------------------------------------------------+
+| pgsizes            | number  | Page sizes supported in DMA map operations     |
+|                    |         | or'ed together. Optional, with a default value |
+|                    |         | of supporting only 4k pages.                   |
++--------------------+---------+------------------------------------------------+
+| max_dma_maps       | number  | Maximum number DMA map windows that can be     |
+|                    |         | valid simultaneously.  Optional, with a        |
+|                    |         | value of 65535 (64k-1).                        |
++--------------------+---------+------------------------------------------------+
+| migration          | object  | Migration capability parameters. If missing    |
+|                    |         | then migration is not supported by the sender. |
++--------------------+---------+------------------------------------------------+
+| write_multiple     | boolean | ``VFIO_USER_REGION_WRITE_MULTI`` messages      |
+|                    |         | are supported if the value is ``true``.        |
++--------------------+---------+------------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
-+--------+--------+-----------------------------------------------+
-| Name   | Type   | Description                                   |
-+========+========+===============================================+
-| pgsize | number | Page size of dirty pages bitmap. The smallest |
-|        |        | between the client and the server is used.    |
-+--------+--------+-----------------------------------------------+
++-----------------+--------+--------------------------------------------------+
+| Name            | Type   | Description                                      |
++=================+========+==================================================+
+| pgsize          | number | Page size of dirty pages bitmap. The smallest    |
+|                 |        | between the client and the server is used.       |
++-----------------+--------+--------------------------------------------------+
+| max_bitmap_size | number | Maximum bitmap size in ``VFIO_USER_DIRTY_PAGES`` |
+|                 |        | and ``VFIO_DMA_UNMAP`` messages.  Optional,      |
+|                 |        | with a default value of 256MB.                   |
++-----------------+--------+--------------------------------------------------+
 
 Reply
 ^^^^^
@@ -607,56 +622,18 @@ The request payload for this message is a structure of the following format:
 +--------------+--------+------------------------+
 | flags        | 4      | 4                      |
 +--------------+--------+------------------------+
-|              | +-----+-----------------------+ |
-|              | | Bit | Definition            | |
-|              | +=====+=======================+ |
-|              | | 0   | get dirty page bitmap | |
-|              | +-----+-----------------------+ |
-|              | | 1   | unmap all regions     | |
-|              | +-----+-----------------------+ |
-+--------------+--------+------------------------+
 | address      | 8      | 8                      |
 +--------------+--------+------------------------+
 | size         | 16     | 8                      |
 +--------------+--------+------------------------+
 
 * *argsz* is the maximum size of the reply payload.
-* *flags* contains the following DMA region attributes:
-
-  * *get dirty page bitmap* indicates that a dirty page bitmap must be
-    populated before unmapping the DMA region. The client must provide a
-    `VFIO Bitmap`_ structure, explained below, immediately following this
-    entry.
-  * *unmap all regions* indicates to unmap all the regions previously
-    mapped via `VFIO_USER_DMA_MAP`. This flag cannot be combined with
-    *get dirty page bitmap* and expects *address* and *size* to be 0.
-
+* *flags* is unused in this version.
 * *address* is the base DMA address of the DMA region.
 * *size* is the size of the DMA region.
 
 The address and size of the DMA region being unmapped must match exactly a
-previous mapping. The size of request message depends on whether or not the
-*get dirty page bitmap* bit is set in Flags:
-
-* If not set, the size of the total request message is: 16 + 24.
-
-* If set, the size of the total request message is: 16 + 24 + 16.
-
-.. _VFIO Bitmap:
-
-VFIO Bitmap Format
-""""""""""""""""""
-
-+--------+--------+------+
-| Name   | Offset | Size |
-+========+========+======+
-| pgsize | 0      | 8    |
-+--------+--------+------+
-| size   | 8      | 8    |
-+--------+--------+------+
-
-* *pgsize* is the page size for the bitmap, in bytes.
-* *size* is the size for the bitmap, in bytes, excluding the VFIO bitmap header.
+previous mapping.
 
 Reply
 ^^^^^
@@ -665,14 +642,8 @@ Upon receiving a ``VFIO_USER_DMA_UNMAP`` command, if the file descriptor is
 mapped then the server must release all references to that DMA region before
 replying, which potentially includes in-flight DMA transactions.
 
-The server responds with the original DMA entry in the request. If the
-*get dirty page bitmap* bit is set in flags in the request, then
-the server also includes the `VFIO Bitmap`_ structure sent in the request,
-followed by the corresponding dirty page bitmap, where each bit represents
-one page of size *pgsize* in `VFIO Bitmap`_ .
+The server responds with the original DMA entry in the request.
 
-The total size of the total reply message is:
-16 + 24 + (16 + *size* in `VFIO Bitmap`_ if *get dirty page bitmap* is set).
 
 ``VFIO_USER_DEVICE_GET_INFO``
 -----------------------------
@@ -888,7 +859,7 @@ VFIO region info cap sparse mmap
 +----------+--------+------+
 | offset   | 8      | 8    |
 +----------+--------+------+
-| size     | 16     | 9    |
+| size     | 16     | 8    |
 +----------+--------+------+
 | ...      |        |      |
 +----------+--------+------+
@@ -902,39 +873,6 @@ VFIO region info cap sparse mmap
 The VFIO sparse mmap area is defined in ``<linux/vfio.h>`` (``struct
 vfio_region_info_cap_sparse_mmap``).
 
-VFIO region type cap header
-"""""""""""""""""""""""""""
-
-+------------------+---------------------------+
-| Name             | Value                     |
-+==================+===========================+
-| id               | VFIO_REGION_INFO_CAP_TYPE |
-+------------------+---------------------------+
-| version          | 0x1                       |
-+------------------+---------------------------+
-| next             | <next>                    |
-+------------------+---------------------------+
-| region info type | VFIO region info type     |
-+------------------+---------------------------+
-
-This capability is defined when a region is specific to the device.
-
-VFIO region info type cap
-"""""""""""""""""""""""""
-
-The VFIO region info type is defined in ``<linux/vfio.h>``
-(``struct vfio_region_info_cap_type``).
-
-+---------+--------+------+
-| Name    | Offset | Size |
-+=========+========+======+
-| type    | 0      | 4    |
-+---------+--------+------+
-| subtype | 4      | 4    |
-+---------+--------+------+
-
-The only device-specific region type and subtype supported by vfio-user is
-``VFIO_REGION_TYPE_MIGRATION`` (3) and ``VFIO_REGION_SUBTYPE_MIGRATION`` (1).
 
 ``VFIO_USER_DEVICE_GET_REGION_IO_FDS``
 --------------------------------------
@@ -1000,7 +938,7 @@ Reply
 
 * *argsz* is the size of the region IO FD info structure plus the
   total size of the sub-region array. Thus, each array entry "i" is at offset
-  i * ((argsz - 16) / count). Note that currently this is 40 bytes for both IO
+  i * ((argsz - 32) / count). Note that currently this is 40 bytes for both IO
   FD types, but this is not to be relied on. As elsewhere, this indicates the
   full reply payload size needed.
 * *flags* must be zero
@@ -1016,8 +954,8 @@ Note that it is the client's responsibility to verify the requested values (for
 example, that the requested offset does not exceed the region's bounds).
 
 Each sub-region given in the response has one of two possible structures,
-depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` (0) or
-``VFIO_USER_IO_FD_TYPE_IOREGIONFD`` (1):
+depending whether *type* is ``VFIO_USER_IO_FD_TYPE_IOEVENTFD`` or
+``VFIO_USER_IO_FD_TYPE_IOREGIONFD``:
 
 Sub-Region IO FD info format (ioeventfd)
 """"""""""""""""""""""""""""""""""""""""
@@ -1477,290 +1415,59 @@ Reply
 This command message is sent from the client to the server to reset the device.
 Neither the request or reply have a payload.
 
-``VFIO_USER_DIRTY_PAGES``
--------------------------
+``VFIO_USER_REGION_WRITE_MULTI``
+--------------------------------
 
-This command is analogous to ``VFIO_IOMMU_DIRTY_PAGES``. It is sent by the client
-to the server in order to control logging of dirty pages, usually during a live
-migration.
-
-Dirty page tracking is optional for server implementation; clients should not
-rely on it.
+This message can be used to coalesce multiple device write operations
+into a single messgage.  It is only used as an optimization when the
+outgoing message queue is relatively full.
 
 Request
 ^^^^^^^
 
-+-------+--------+-----------------------------------------+
-| Name  | Offset | Size                                    |
-+=======+========+=========================================+
-| argsz | 0      | 4                                       |
-+-------+--------+-----------------------------------------+
-| flags | 4      | 4                                       |
-+-------+--------+-----------------------------------------+
-|       | +-----+----------------------------------------+ |
-|       | | Bit | Definition                             | |
-|       | +=====+========================================+ |
-|       | | 0   | VFIO_IOMMU_DIRTY_PAGES_FLAG_START      | |
-|       | +-----+----------------------------------------+ |
-|       | | 1   | VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP       | |
-|       | +-----+----------------------------------------+ |
-|       | | 2   | VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP | |
-|       | +-----+----------------------------------------+ |
-+-------+--------+-----------------------------------------+
++---------+--------+----------+
+| Name    | Offset | Size     |
++=========+========+==========+
+| wr_cnt  | 0      | 8        |
++---------+--------+----------+
+| wrs     | 8      | variable |
++---------+--------+----------+
 
-* *argsz* is the size of the VFIO dirty bitmap info structure for
-  ``START/STOP``; and for ``GET_BITMAP``, the maximum size of the reply payload
+* *wr_cnt* is the number of device writes coalesced in the message
+* *wrs* is an array of device writes defined below
 
-* *flags* defines the action to be performed by the server:
+Single Device Write Format
+""""""""""""""""""""""""""
 
-  * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_START`` instructs the server to start logging
-    pages it dirties. Logging continues until explicitly disabled by
-    ``VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP``.
++--------+--------+----------+
+| Name   | Offset | Size     |
++========+========+==========+
+| offset | 0      | 8        |
++--------+--------+----------+
+| region | 8      | 4        |
++--------+--------+----------+
+| count  | 12     | 4        |
++--------+--------+----------+
+| data   | 16     | 8        |
++--------+--------+----------+
 
-  * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP`` instructs the server to stop logging
-    dirty pages.
-
-  * ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP`` requests the server to return
-    the dirty bitmap for a specific IOVA range. The IOVA range is specified by
-    a "VFIO Bitmap Range" structure, which must immediately follow this
-    "VFIO Dirty Pages" structure. See `VFIO Bitmap Range Format`_.
-    This operation is only valid if logging of dirty pages has been previously
-    started.
-
-  These flags are mutually exclusive with each other.
-
-This part of the request is analogous to VFIO's ``struct
-vfio_iommu_type1_dirty_bitmap``.
-
-.. _VFIO Bitmap Range Format:
-
-VFIO Bitmap Range Format
-""""""""""""""""""""""""
-
-+--------+--------+------+
-| Name   | Offset | Size |
-+========+========+======+
-| iova   | 0      | 8    |
-+--------+--------+------+
-| size   | 8      | 8    |
-+--------+--------+------+
-| bitmap | 16     | 24   |
-+--------+--------+------+
-
-* *iova* is the IOVA offset
-
-* *size* is the size of the IOVA region
-
-* *bitmap* is the VFIO Bitmap explained in `VFIO Bitmap`_.
-
-This part of the request is analogous to VFIO's ``struct
-vfio_iommu_type1_dirty_bitmap_get``.
+* *offset* into the region being accessed.
+* *region* is the index of the region being accessed.
+* *count* is the size of the data to be transferred.  This format can
+  only describe writes of 8 bytes or less.
+* *data* is the data to write.
 
 Reply
 ^^^^^
 
-For ``VFIO_IOMMU_DIRTY_PAGES_FLAG_START`` or
-``VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP``, there is no reply payload.
++---------+--------+----------+
+| Name    | Offset | Size     |
++=========+========+==========+
+| wr_cnt  | 0      | 8        |
++---------+--------+----------+
 
-For ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP``, the reply payload is as follows:
+* *wr_cnt* is the number of device writes completed.
 
-+--------------+--------+-----------------------------------------+
-| Name         | Offset | Size                                    |
-+==============+========+=========================================+
-| argsz        | 0      | 4                                       |
-+--------------+--------+-----------------------------------------+
-| flags        | 4      | 4                                       |
-+--------------+--------+-----------------------------------------+
-|              | +-----+----------------------------------------+ |
-|              | | Bit | Definition                             | |
-|              | +=====+========================================+ |
-|              | | 2   | VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP | |
-|              | +-----+----------------------------------------+ |
-+--------------+--------+-----------------------------------------+
-| bitmap range | 8      | 40                                      |
-+--------------+--------+-----------------------------------------+
-| bitmap       | 48     | variable                                |
-+--------------+--------+-----------------------------------------+
-
-* *argsz* is the size required for the full reply payload (dirty pages structure
-  + bitmap range structure + actual bitmap)
-* *flags* is ``VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP``
-* *bitmap range* is the same bitmap range struct provided in the request, as
-  defined in `VFIO Bitmap Range Format`_.
-* *bitmap* is the actual dirty pages bitmap corresponding to the range request
-
-VFIO Device Migration Info
---------------------------
-
-A device may contain a migration region (of type
-``VFIO_REGION_TYPE_MIGRATION``).  The beginning of the region must contain
-``struct vfio_device_migration_info``, defined in ``<linux/vfio.h>``. This
-subregion is accessed like any other part of a standard vfio-user region
-using ``VFIO_USER_REGION_READ``/``VFIO_USER_REGION_WRITE``.
-
-+---------------+--------+--------------------------------+
-| Name          | Offset | Size                           |
-+===============+========+================================+
-| device_state  | 0      | 4                              |
-+---------------+--------+--------------------------------+
-|               | +-----+-------------------------------+ |
-|               | | Bit | Definition                    | |
-|               | +=====+===============================+ |
-|               | | 0   | VFIO_DEVICE_STATE_V1_RUNNING  | |
-|               | +-----+-------------------------------+ |
-|               | | 1   | VFIO_DEVICE_STATE_V1_SAVING   | |
-|               | +-----+-------------------------------+ |
-|               | | 2   | VFIO_DEVICE_STATE_V1_RESUMING | |
-|               | +-----+-------------------------------+ |
-+---------------+--------+--------------------------------+
-| reserved      | 4      | 4                              |
-+---------------+--------+--------------------------------+
-| pending_bytes | 8      | 8                              |
-+---------------+--------+--------------------------------+
-| data_offset   | 16     | 8                              |
-+---------------+--------+--------------------------------+
-| data_size     | 24     | 8                              |
-+---------------+--------+--------------------------------+
-
-* *device_state* defines the state of the device:
-
-  The client initiates device state transition by writing the intended state.
-  The server must respond only after it has successfully transitioned to the new
-  state. If an error occurs then the server must respond to the
-  ``VFIO_USER_REGION_WRITE`` operation with the Error field set accordingly and
-  must remain at the previous state, or in case of internal error it must
-  transition to the error state, defined as
-  ``VFIO_DEVICE_STATE_V1_RESUMING | VFIO_DEVICE_STATE_V1_SAVING``. The client
-  must re-read the device state in order to determine it afresh.
-
-  The following device states are defined:
-
-  +-----------+---------+----------+-----------------------------------+
-  | _RESUMING | _SAVING | _RUNNING | Description                       |
-  +===========+=========+==========+===================================+
-  | 0         | 0       | 0        | Device is stopped.                |
-  +-----------+---------+----------+-----------------------------------+
-  | 0         | 0       | 1        | Device is running, default state. |
-  +-----------+---------+----------+-----------------------------------+
-  | 0         | 1       | 0        | Stop-and-copy state               |
-  +-----------+---------+----------+-----------------------------------+
-  | 0         | 1       | 1        | Pre-copy state                    |
-  +-----------+---------+----------+-----------------------------------+
-  | 1         | 0       | 0        | Resuming                          |
-  +-----------+---------+----------+-----------------------------------+
-  | 1         | 0       | 1        | Invalid state                     |
-  +-----------+---------+----------+-----------------------------------+
-  | 1         | 1       | 0        | Error state                       |
-  +-----------+---------+----------+-----------------------------------+
-  | 1         | 1       | 1        | Invalid state                     |
-  +-----------+---------+----------+-----------------------------------+
-
-  Valid state transitions are shown in the following table:
-
-  +-------------------------+---------+---------+---------------+----------+----------+
-  | |darr| From / To |rarr| | Stopped | Running | Stop-and-copy | Pre-copy | Resuming |
-  +=========================+=========+=========+===============+==========+==========+
-  | Stopped                 |    \-   |    1    |       0       |    0     |     0    |
-  +-------------------------+---------+---------+---------------+----------+----------+
-  | Running                 |    1    |    \-   |       1       |    1     |     1    |
-  +-------------------------+---------+---------+---------------+----------+----------+
-  | Stop-and-copy           |    1    |    1    |       \-      |    0     |     0    |
-  +-------------------------+---------+---------+---------------+----------+----------+
-  | Pre-copy                |    0    |    0    |       1       |    \-    |     0    |
-  +-------------------------+---------+---------+---------------+----------+----------+
-  | Resuming                |    0    |    1    |       0       |    0     |     \-   |
-  +-------------------------+---------+---------+---------------+----------+----------+
-
-  A device is migrated to the destination as follows:
-
-  * The source client transitions the device state from the running state to
-    the pre-copy state. This transition is optional for the client but must be
-    supported by the server. The source server starts sending device state data
-    to the source client through the migration region while the device is
-    running.
-
-  * The source client transitions the device state from the running state or the
-    pre-copy state to the stop-and-copy state. The source server stops the
-    device, saves device state and sends it to the source client through the
-    migration region.
-
-  The source client is responsible for sending the migration data to the
-  destination client.
-
-  A device is resumed on the destination as follows:
-
-  * The destination client transitions the device state from the running state
-    to the resuming state. The destination server uses the device state data
-    received through the migration region to resume the device.
-
-  * The destination client provides saved device state to the destination
-    server and then transitions the device to back to the running state.
-
-* *reserved* This field is reserved and any access to it must be ignored by the
-  server.
-
-* *pending_bytes* Remaining bytes to be migrated by the server. This field is
-  read only.
-
-* *data_offset* Offset in the migration region where the client must:
-
-  * read from, during the pre-copy or stop-and-copy state, or
-
-  * write to, during the resuming state.
-
-  This field is read only.
-
-* *data_size* Contains the size, in bytes, of the amount of data copied to:
-
-  * the source migration region by the source server during the pre-copy or
-    stop-and copy state, or
-
-  * the destination migration region by the destination client during the
-    resuming state.
-
-Device-specific data must be stored at any position after
-``struct vfio_device_migration_info``. Note that the migration region can be
-memory mappable, even partially. In practise, only the migration data portion
-can be memory mapped.
-
-The client processes device state data during the pre-copy and the
-stop-and-copy state in the following iterative manner:
-
-  1. The client reads ``pending_bytes`` to mark a new iteration. Repeated reads
-     of this field is an idempotent operation. If there are no migration data
-     to be consumed then the next step depends on the current device state:
-
-     * pre-copy: the client must try again.
-
-     * stop-and-copy: this procedure can end and the device can now start
-       resuming on the destination.
-
-  2. The client reads ``data_offset``; at this point the server must make
-     available a portion of migration data at this offset to be read by the
-     client, which must happen *before* completing the read operation. The
-     amount of data to be read must be stored in the ``data_size`` field, which
-     the client reads next.
-
-  3. The client reads ``data_size`` to determine the amount of migration data
-     available.
-
-  4. The client reads and processes the migration data.
-
-  5. Go to step 1.
-
-Note that the client can transition the device from the pre-copy state to the
-stop-and-copy state at any time; ``pending_bytes`` does not need to become zero.
-
-The client initializes the device state on the destination by setting the
-device state in the resuming state and writing the migration data to the
-destination migration region at ``data_offset`` offset. The client can write the
-source migration data in an iterative manner and the server must consume this
-data before completing each write operation, updating the ``data_offset`` field.
-The server must apply the source migration data on the device resume state. The
-client must write data on the same order and transaction size as read.
-
-If an error occurs then the server must fail the read or write operation. It is
-an implementation detail of the client how to handle errors.
 
 Appendices
 ==========
