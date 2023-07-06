@@ -66,10 +66,11 @@ enum vfio_user_command {
     VFIO_USER_DMA_READ                  = 11,
     VFIO_USER_DMA_WRITE                 = 12,
     VFIO_USER_DEVICE_RESET              = 13,
-    VFIO_USER_DIRTY_PAGES               = 14,
-    VFIO_USER_DEVICE_FEATURE            = 15,
-    VFIO_USER_MIG_DATA_READ             = 16,
-    VFIO_USER_MIG_DATA_WRITE            = 17,
+    VFIO_USER_DIRTY_PAGES               = 14, // TODO remove
+    VFIO_USER_REGION_WRITE_MULTI        = 15, // TODO implement
+    VFIO_USER_DEVICE_FEATURE            = 16,
+    VFIO_USER_MIG_DATA_READ             = 17,
+    VFIO_USER_MIG_DATA_WRITE            = 18,
     VFIO_USER_MAX,
 };
 
