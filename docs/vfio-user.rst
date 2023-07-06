@@ -1528,6 +1528,22 @@ Device Features
 ^^^^^^^^^^^^^^^
 
 The only device features supported by vfio-user are those related to migration.
+They are a subset of those supported in the VFIO implementation of the Linux
+kernel.
+
++----------------------------------------+-------+
+| Name                                   | Value |
++========================================+=======+
+| VFIO_DEVICE_FEATURE_MIGRATION          | 1     |
++----------------------------------------+-------+
+| VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE   | 2     |
++----------------------------------------+-------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_START  | 6     |
++----------------------------------------+-------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP   | 7     |
++----------------------------------------+-------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT | 8     |
++----------------------------------------+-------+
 
 ``VFIO_DEVICE_FEATURE_MIGRATION``
 """""""""""""""""""""""""""""""""
@@ -1604,6 +1620,91 @@ structured as follows:
 * *data_fd* is unused in vfio-user, as the ``VFIO_USER_MIG_DATA_READ`` and
   ``VFIO_USER_MIG_DATA_WRITE`` messages are used instead for migration data
   transport.
+  
+``VFIO_DEVICE_FEATURE_DMA_LOGGING_START`` / ``VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP``
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Upon ``VFIO_DEVICE_FEATURE_SET``, start/stop DMA logging. These features can
+also be probed to determine whether the device supports DMA logging.
+
+When DMA logging is started, a range of IOVAs to monitor is provided and the
+device can optimize its logging to cover only the IOVA range given. Only DMA
+writes are logged.
+
+The data field of the ``SET`` request is structured as follows:
+
++------------+--------+----------+
+| Name       | Offset | Size     |
++============+========+==========+
+| page_size  | 0      | 8        |
++------------+--------+----------+
+| num_ranges | 8      | 4        |
++------------+--------+----------+
+| reserved   | 12     | 4        |
++------------+--------+----------+
+| ranges     | 16     | variable |
++------------+--------+----------+
+
+* *page_size* hints what tracking granularity the device should try to achieve.
+  If the device cannot do the hinted page size then it's the driver's choice
+  which page size to pick based on its support. On output the device will return
+  the page size it selected.
+
+* *num_ranges* is the number of IOVA ranges to monitor. A value of zero
+  indicates that all writes should be logged.
+
+* *ranges* is an array of ``vfio_user_device_feature_dma_logging_range``
+  entries:
+
++--------+--------+------+
+| Name   | Offset | Size |
++========+========+======+
+| iova   | 0      | 8    |
++--------+--------+------+
+| length | 8      | 8    |
++--------+--------+------+
+
+  * *iova* is the base IO virtual address
+  * *length* is the length of the range to log
+
+Upon success, the response data field will be the same as the request, unless
+the page size was changed, in which case this will be reflected in the response.
+
+``VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT``
+""""""""""""""""""""""""""""""""""""""""""
+
+Upon ``VFIO_DEVICE_FEATURE_GET``, returns the dirty bitmap for a specific IOVA
+range. This operation is only valid if logging of dirty pages has been
+previously started by setting ``VFIO_DEVICE_FEATURE_DMA_LOGGING_START``.
+
+The data field of the request is structured as follows:
+
++-----------+--------+------+
+| Name      | Offset | Size |
++===========+========+======+
+| iova      | 0      | 8    |
++-----------+--------+------+
+| length    | 8      | 8    |
++-----------+--------+------+
+| page_size | 16     | 8    |
++-----------+--------+------+
+
+* *iova* is the base IO virtual address
+
+* *length* is the length of the range
+
+* *page_size* is the unit of granularity of the bitmap, and must be a power of
+  two. It doesn't have to match the value given to
+  ``VFIO_DEVICE_FEATURE_DMA_LOGGING_START`` because the driver will format its
+  internal logging to match the reporting page size possibly by replicating bits
+  if the internal page size is lower than requested
+
+The data field of the response is identical, except with the bitmap added on
+the end at offset 24.
+
+The mapping of IOVA to bits is given by:
+
+``bitmap[(addr - iova)/page_size] & (1ULL << (addr % 64))``
 
 Direct State Transitions
 """"""""""""""""""""""""
