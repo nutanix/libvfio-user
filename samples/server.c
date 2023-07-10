@@ -62,7 +62,8 @@ struct server_data {
     size_t bar1_size;
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
-        uint64_t pending_bytes;
+        uint64_t pending_read;
+        uint64_t pending_write;
         vfu_migr_state_t state;
     } migration;
 };
@@ -134,7 +135,7 @@ bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
     if (is_write) {
         if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
             /* dirty the whole thing */
-            server_data->migration.pending_bytes = server_data->bar1_size;
+            server_data->migration.pending_read = server_data->bar1_size;
         }
         memcpy(server_data->bar1 + offset, buf, count);
     } else {
@@ -260,19 +261,20 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
             if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
                 err(EXIT_FAILURE, "failed to disable timer");
             }
-            server_data->migration.pending_bytes = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
+            server_data->migration.pending_read = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
             break;
         case VFU_MIGR_STATE_PRE_COPY:
-            /* TODO must be less than size of data region in migration region */
-            server_data->migration.pending_bytes = server_data->bar1_size;
+            server_data->migration.pending_read = server_data->bar1_size;
             break;
         case VFU_MIGR_STATE_STOP:
             /* FIXME should gracefully fail */
-            assert(server_data->migration.pending_bytes == 0);
+            assert(server_data->migration.pending_read == 0);
             break;
         case VFU_MIGR_STATE_RESUME:
+            server_data->migration.pending_write = server_data->bar1_size + sizeof(time_t);
             break;
         case VFU_MIGR_STATE_RUNNING:
+            assert(server_data->migration.pending_write == 0);
             ret = arm_timer(vfu_ctx, server_data->bar0);
             if (ret < 0) {
                 return ret;
@@ -285,125 +287,119 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
     return 0;
 }
 
-static uint64_t
-migration_get_pending_bytes(vfu_ctx_t *vfu_ctx)
-{
-    struct server_data *server_data = vfu_get_private(vfu_ctx);
-    return server_data->migration.pending_bytes;
-}
-
-static int
-migration_prepare_data(vfu_ctx_t *vfu_ctx, uint64_t *offset, uint64_t *size)
-{
-    struct server_data *server_data = vfu_get_private(vfu_ctx);
-
-    *offset = 0;
-    if (size != NULL) {
-       *size = server_data->migration.pending_bytes;
-    }
-    return 0;
-}
-
 static ssize_t
-migration_read_data(vfu_ctx_t *vfu_ctx, void *buf,
-                    uint64_t size, uint64_t offset)
+migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
-
-    if (server_data->migration.state != VFU_MIGR_STATE_PRE_COPY &&
-        server_data->migration.state != VFU_MIGR_STATE_STOP_AND_COPY)
-    {
-        return size;
-    }
 
     /*
-     * For ease of implementation we expect the client to read all migration
-     * data in one go; partial reads are not supported. This is allowed by VFIO
-     * however we don't yet support it. Similarly, when resuming, partial
-     * writes are supported by VFIO, however we don't in this sample.
-     *
      * If in pre-copy state we copy BAR1, if in stop-and-copy state we copy
      * both BAR1 and BAR0. Since we always copy BAR1 in the stop-and-copy state,
      * copying BAR1 in the pre-copy state is pointless. Fixing this requires
      * more complex state tracking which exceeds the scope of this sample.
      */
 
-    if (offset != 0 || size != server_data->migration.pending_bytes) {
-        errno = EINVAL;
-        return -1;
+    if (server_data->migration.pending_read == 0 || size == 0) {
+        return 0;
     }
 
-    memcpy(buf, server_data->bar1, server_data->bar1_size);
+    uint32_t total_read = server_data->bar1_size;
+
     if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
-        memcpy(buf + server_data->bar1_size, &server_data->bar0,
-               sizeof(server_data->bar0));
+        total_read += sizeof(server_data->bar0);
     }
-    server_data->migration.pending_bytes = 0;
 
-    return size;
+    uint32_t read_start = total_read - server_data->migration.pending_read;
+    uint32_t read_end = MIN(read_start + size, total_read); // exclusive
+    assert(read_end > read_start);
+
+    uint32_t bytes_read = read_end - read_start;
+
+    if (read_end <= server_data->bar1_size) {
+        // case 1: entire read lies within bar1
+        // TODO check the following is always allowed
+
+        memcpy(buf, server_data->bar1 + read_start, bytes_read);
+    } else if (
+        read_start < server_data->bar1_size // starts in bar1
+        && read_end > server_data->bar1_size // ends in bar0
+    ) {
+        // case 2: part of the read in bar1 and part of the read in bar0
+        // TODO check the following is always allowed
+
+        uint32_t length_in_bar1 = server_data->bar1_size - read_start;
+        uint32_t length_in_bar0 = read_end - server_data->bar1_size;
+        assert(length_in_bar1 + length_in_bar0 == bytes_read);
+        
+        memcpy(buf, server_data->bar1 + read_start, length_in_bar1);
+        memcpy(buf + length_in_bar1, &server_data->bar0, length_in_bar0);
+    } else if (read_start >= server_data->bar1_size) {
+        // case 3: entire read lies within bar0
+        // TODO check the following is always allowed
+
+        read_start -= server_data->bar1_size;
+        read_end -= server_data->bar1_size;
+
+        memcpy(buf, &server_data->bar0 + read_start, bytes_read);
+    }
+
+    server_data->migration.pending_read -= bytes_read;
+
+    return bytes_read;
 }
 
 static ssize_t
-migration_write_data(vfu_ctx_t *vfu_ctx, void *data,
-                     uint64_t size, uint64_t offset)
+migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
 {
     struct server_data *server_data = vfu_get_private(vfu_ctx);
     char *buf = data;
-    int ret;
 
     assert(server_data != NULL);
     assert(data != NULL);
 
-    if (offset != 0 || size < server_data->bar1_size) {
-        vfu_log(vfu_ctx, LOG_DEBUG, "XXX bad migration data write %#llx-%#llx",
-                (unsigned long long)offset,
-                (unsigned long long)offset + size - 1);
-        errno = EINVAL;
-        return -1;
-    }
-
-    memcpy(server_data->bar1, buf, server_data->bar1_size);
-    buf += server_data->bar1_size;
-    size -= server_data->bar1_size;
-    if (size == 0) {
+    if (server_data->migration.pending_write == 0 || size == 0) {
         return 0;
     }
-    if (size != sizeof(server_data->bar0)) {
-        errno = EINVAL;
-        return -1;
+
+    uint32_t total_write = server_data->bar1_size + sizeof(server_data->bar0);
+
+    uint32_t write_start = total_write - server_data->migration.pending_write;
+    uint32_t write_end = MIN(write_start + size, total_write); // exclusive
+    assert(write_end > write_start);
+
+    uint32_t bytes_written = write_end - write_start;
+
+    if (write_end <= server_data->bar1_size) {
+        // case 1: entire write lies within bar1
+        // TODO check the following is always allowed
+
+        memcpy(server_data->bar1 + write_start, buf, bytes_written);
+    } else if (
+        write_start < server_data->bar1_size // starts in bar1
+        && write_end > server_data->bar1_size // ends in bar0
+    ) {
+        // case 2: part of the write in bar1 and part of the write in bar0
+        // TODO check the following is always allowed
+
+        uint32_t length_in_bar1 = server_data->bar1_size - write_start;
+        uint32_t length_in_bar0 = write_end - server_data->bar1_size;
+        assert(length_in_bar1 + length_in_bar0 == bytes_written);
+        
+        memcpy(server_data->bar1 + write_start, buf, length_in_bar1);
+        memcpy(&server_data->bar0, buf + length_in_bar1, length_in_bar0);
+    } else if (write_start >= server_data->bar1_size) {
+        // case 3: entire write lies within bar0
+        // TODO check the following is always allowed
+
+        write_start -= server_data->bar1_size;
+        write_end -= server_data->bar1_size;
+
+        memcpy(&server_data->bar0 + write_start, buf, bytes_written);
     }
-    memcpy(&server_data->bar0, buf, sizeof(server_data->bar0));
-    ret = bar0_access(vfu_ctx, buf, sizeof(server_data->bar0), 0, true);
-    assert(ret == (int)size); /* FIXME */
 
-    return 0;
-}
+    server_data->migration.pending_write -= bytes_written;
 
-
-static int
-migration_data_written(UNUSED vfu_ctx_t *vfu_ctx, UNUSED uint64_t count)
-{
-    /*
-     * We apply migration state directly in the migration_write_data callback,
-     * so we don't need to do anything here. We would have to apply migration
-     * state in this callback if the migration region was memory mappable, in
-     * which case we wouldn't know when the client wrote migration data.
-     */
-
-    return 0;
-}
-
-static size_t
-nr_pages(size_t size)
-{
-    return (size / sysconf(_SC_PAGE_SIZE) +
-            (size % sysconf(_SC_PAGE_SIZE) > 1));
-}
-
-static size_t
-page_align(size_t size)
-{
-    return  nr_pages(size) * sysconf(_SC_PAGE_SIZE);
+    return bytes_written;
 }
 
 int main(int argc, char *argv[])
@@ -411,10 +407,10 @@ int main(int argc, char *argv[])
     char template[] = "/tmp/libvfio-user.XXXXXX";
     int ret;
     bool verbose = false;
+    bool destination = false;
     int opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     const size_t bar1_size = 0x3000;
-    size_t migr_regs_size, migr_data_size, migr_size;
     struct server_data server_data = {
         .migration = {
             .state = VFU_MIGR_STATE_RUNNING
@@ -426,20 +422,23 @@ int main(int argc, char *argv[])
     const vfu_migration_callbacks_t migr_callbacks = {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
-        .get_pending_bytes = &migration_get_pending_bytes,
-        .prepare_data = &migration_prepare_data,
         .read_data = &migration_read_data,
-        .data_written = &migration_data_written,
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "v")) != -1) {
+    while ((opt = getopt(argc, argv, "vr")) != -1) {
         switch (opt) {
             case 'v':
                 verbose = true;
                 break;
+            case 'r':
+                destination = true;
+                server_data.migration.state = VFU_MIGR_STATE_RESUME;
+                server_data.migration.pending_write =
+                    bar1_size + sizeof(time_t);
+                break;
             default: /* '?' */
-                errx(EXIT_FAILURE, "Usage: %s [-v] <socketpath>", argv[0]);
+                errx(EXIT_FAILURE, "Usage: %s [-v] [-r] <socketpath>", argv[0]);
         }
     }
 
@@ -488,9 +487,6 @@ int main(int argc, char *argv[])
      * are mappable. The client can still mmap the 2nd page, we can't prohibit
      * this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
-     *
-     * We choose to use a single file which contains both BAR1 and the migration
-     * registers. They could also be completely different files.
      */
     if ((tmpfd = mkstemp(template)) == -1) {
         err(EXIT_FAILURE, "failed to create backing file");
@@ -500,16 +496,7 @@ int main(int argc, char *argv[])
 
     server_data.bar1_size = bar1_size;
 
-    /*
-     * The migration registers aren't memory mappable, so in order to make the
-     * rest of the migration region memory mappable we must effectively reserve
-     * an entire page.
-     */
-    migr_regs_size = vfu_get_migr_register_area_size();
-    migr_data_size = page_align(bar1_size + sizeof(time_t));
-    migr_size = migr_regs_size + migr_data_size;
-
-    if (ftruncate(tmpfd, server_data.bar1_size + migr_size) == -1) {
+    if (ftruncate(tmpfd, server_data.bar1_size) == -1) {
         err(EXIT_FAILURE, "failed to truncate backing file");
     }
     server_data.bar1 = mmap(NULL, server_data.bar1_size, PROT_READ | PROT_WRITE,
@@ -529,29 +516,12 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    /* setup migration */
-
-    struct iovec migr_mmap_areas[] = {
-        [0] = {
-            .iov_base  = (void *)migr_regs_size,
-            .iov_len = migr_data_size
-        },
-    };
-
-    /*
-     * The migration region comes after bar1 in the backing file, so offset is
-     * server_data.bar1_size.
-     */
-    ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_MIGR_REGION_IDX, migr_size,
-                           NULL, VFU_REGION_FLAG_RW, migr_mmap_areas,
-                           ARRAY_SIZE(migr_mmap_areas), tmpfd,
-                           server_data.bar1_size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to setup migration region");
-    }
-
-    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks,
-                                               migr_regs_size);
+    ret = vfu_setup_device_migration_callbacks(
+        vfu_ctx,
+        destination ? LIBVFIO_USER_MIG_FLAG_START_RESUMING : 0,
+        &migr_callbacks
+    );
+    
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
     }
