@@ -33,93 +33,25 @@
 
 #include <linux/vfio.h>
 
-/*
- * FSM to simplify saving device state.
- */
-enum migr_iter_state {
-    VFIO_USER_MIGR_ITER_STATE_INITIAL,
-    VFIO_USER_MIGR_ITER_STATE_STARTED,
-    VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED,
-    VFIO_USER_MIGR_ITER_STATE_FINISHED
-};
-
 struct migration {
-    /*
-     * TODO if the user provides an FD then should mmap it and use the migration
-     * registers in the file
-     */
-    struct vfio_user_migration_info info;
+    uint64_t flags;
+    enum vfio_device_mig_state state;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
-    uint64_t data_offset;
-
-    /*
-     * This is only for the saving state. The resuming state is simpler so we
-     * don't need it.
-     */
-    struct {
-        enum migr_iter_state state;
-        uint64_t pending_bytes;
-        uint64_t offset;
-        uint64_t size;
-    } iter;
 };
 
-struct migr_state_data {
-    uint32_t state;
-    const char *name;
+/* valid migration state transitions 
+   indexed by vfio_device_mig_state enum */
+static const bool transitions[8][8] = {
+    {0, 0, 0, 0, 0, 0, 0, 0}, // ERROR
+    {0, 0, 1, 1, 1, 0, 0, 0}, // STOP
+    {0, 1, 0, 0, 0, 0, 1, 0}, // RUNNING
+    {0, 1, 0, 0, 0, 0, 0, 0}, // STOP_COPY
+    {0, 1, 0, 0, 0, 0, 0, 0}, // RESUMING
+    {0, 0, 0, 0, 0, 0, 0, 0}, // RUNNING_P2P
+    {0, 0, 1, 1, 0, 0, 0, 0}, // PRE_COPY
+    {0, 0, 0, 0, 0, 0, 0, 0}  // PRE_COPY_P2P
 };
-
-#define VFIO_DEVICE_STATE_V1_ERROR (VFIO_DEVICE_STATE_V1_SAVING | VFIO_DEVICE_STATE_V1_RESUMING)
-
-/* valid migration state transitions */
-static const struct migr_state_data migr_states[(VFIO_DEVICE_STATE_MASK + 1)] = {
-    [VFIO_DEVICE_STATE_V1_STOP] = {
-        .state =
-            (1 << VFIO_DEVICE_STATE_V1_STOP) |
-            (1 << VFIO_DEVICE_STATE_V1_RUNNING),
-        .name = "stopped"
-    },
-    [VFIO_DEVICE_STATE_V1_RUNNING] = {
-        .state =
-            (1 << VFIO_DEVICE_STATE_V1_STOP) |
-            (1 << VFIO_DEVICE_STATE_V1_RUNNING) |
-            (1 << VFIO_DEVICE_STATE_V1_SAVING) |
-            (1 << (VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING)) |
-            (1 << VFIO_DEVICE_STATE_V1_RESUMING) |
-            (1 << VFIO_DEVICE_STATE_V1_ERROR),
-        .name = "running"
-    },
-    [VFIO_DEVICE_STATE_V1_SAVING] = {
-        .state =
-            (1 << VFIO_DEVICE_STATE_V1_STOP) |
-            (1 << VFIO_DEVICE_STATE_V1_RUNNING) |
-            (1 << VFIO_DEVICE_STATE_V1_SAVING) |
-            (1 << VFIO_DEVICE_STATE_V1_ERROR),
-        .name = "stop-and-copy"
-    },
-    [VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING] = {
-        .state =
-            (1 << VFIO_DEVICE_STATE_V1_STOP) |
-            (1 << VFIO_DEVICE_STATE_V1_SAVING) |
-            (1 << VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING) |
-            (1 << VFIO_DEVICE_STATE_V1_ERROR),
-        .name = "pre-copy"
-    },
-    [VFIO_DEVICE_STATE_V1_RESUMING] = {
-        .state =
-            (1 << VFIO_DEVICE_STATE_V1_RUNNING) |
-            (1 << VFIO_DEVICE_STATE_V1_RESUMING) |
-            (1 << VFIO_DEVICE_STATE_V1_ERROR),
-        .name = "resuming"
-    }
-};
-
-MOCK_DECLARE(ssize_t, migration_region_access_registers, vfu_ctx_t *vfu_ctx,
-             char *buf, size_t count, loff_t pos,  bool is_write);
-
-MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
-             enum migr_iter_state state);
 
 MOCK_DECLARE(vfu_migr_state_t, migr_state_vfio_to_vfu, uint32_t device_state);
 
