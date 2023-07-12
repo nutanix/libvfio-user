@@ -48,14 +48,14 @@ struct migration *
 init_migration(const vfu_migration_callbacks_t *callbacks,
                uint64_t flags, int *err);
 
-bool
-migration_feature_supported(uint32_t flags);
+uint32_t
+migration_feature_flags(uint32_t feature);
 
 ssize_t
-migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
+migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
 
 ssize_t
-migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf);
+migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
 
 ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
@@ -80,7 +80,7 @@ uint64_t
 migration_get_flags(struct migration *migr);
 
 MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
-             enum vfio_device_mig_state state);
+             enum vfio_user_device_mig_state state);
 
 MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
              uint32_t to);

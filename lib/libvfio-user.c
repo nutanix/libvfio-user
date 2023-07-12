@@ -1028,15 +1028,23 @@ handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 static int
 handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
+        return -EINVAL;
+    }
+
     struct vfio_user_device_feature *req = msg->in.iov.iov_base;
 
     if (vfu_ctx->migration == NULL) {
         return -EINVAL;
     }
 
-    if (!migration_feature_supported(req->flags)) {
-        // FIXME what error code to return? we really want "not supported"
-        //   instead of "not permitted"?
+    uint32_t supported_flags =
+        migration_feature_flags(req->flags & VFIO_DEVICE_FEATURE_MASK);
+
+    if ((req->flags & supported_flags) != req->flags || supported_flags == 0) {
         return -EINVAL;
     }
 
@@ -1045,23 +1053,42 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     if (req->flags & VFIO_DEVICE_FEATURE_PROBE) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+
+        if (msg->out.iov.iov_base == NULL) {
+            return -1;
+        }
+
         memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
                msg->out.iov.iov_len);
 
         ret = 0;
     } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
-        msg->out.iov.iov_base = calloc(8, 1);
-        msg->out.iov.iov_len = 8;
+        // all supported outgoing data is currently the same size as 
+        //   vfio_user_device_feature_migration
+        msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature_migration);
+        msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
-        ret = migration_feature_get(vfu_ctx, req->flags,
+        if (msg->out.iov.iov_base == NULL) {
+            return -1;
+        }
+
+        ret = migration_feature_get(vfu_ctx,
+                                    req->flags & VFIO_DEVICE_FEATURE_MASK,
                                     msg->out.iov.iov_base);
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+
+        if (msg->out.iov.iov_base == NULL) {
+            return -1;
+        }
+
         memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
                msg->out.iov.iov_len);
 
-        ret = migration_feature_set(vfu_ctx, req->flags, req->data);
+        ret = migration_feature_set(vfu_ctx,
+                                    req->flags & VFIO_DEVICE_FEATURE_MASK,
+                                    req->data);
     }
 
     return ret;
@@ -2051,7 +2078,7 @@ vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx, uint64_t flags,
         return ERROR_INT(ret);
     }
 
-    return ret;
+    return 0;
 }
 
 #ifdef DEBUG

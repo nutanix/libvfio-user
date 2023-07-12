@@ -42,7 +42,7 @@
 bool
 MOCK_DEFINE(vfio_migr_state_transition_is_valid)(uint32_t from, uint32_t to)
 {
-    return transitions[from][to];
+    return (transitions[from] & (1 << to)) != 0;
 }
 
 /*
@@ -91,7 +91,7 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
 
 void
 MOCK_DEFINE(migr_state_transition)(struct migration *migr,
-                                   enum vfio_device_mig_state state)
+                                   enum vfio_user_device_mig_state state)
 {
     assert(migr != NULL);
     /* FIXME validate that state transition */
@@ -99,7 +99,7 @@ MOCK_DEFINE(migr_state_transition)(struct migration *migr,
 }
 
 vfu_migr_state_t
-MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_device_mig_state state)
+MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_user_device_mig_state state)
 {
     switch (state) {
         case VFIO_DEVICE_STATE_STOP:
@@ -163,6 +163,7 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                  uint32_t device_state, bool notify)
 {
 
+    assert(vfu_ctx != NULL);
     assert(migr != NULL);
 
     if (!vfio_migr_state_transition_is_valid(migr->state, device_state)) {
@@ -171,48 +172,55 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return migr_trans_to_valid_state(vfu_ctx, migr, device_state, notify);
 }
 
-bool
-migration_feature_supported(uint32_t flags) {
-    switch (flags & VFIO_DEVICE_FEATURE_MASK) {
+uint32_t
+migration_feature_flags(uint32_t feature) {
+    switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
-            return !(flags & VFIO_DEVICE_FEATURE_SET); // not supported for set
+            return VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_PROBE;
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
-            return true;
+            return VFIO_DEVICE_FEATURE_GET
+                | VFIO_DEVICE_FEATURE_SET
+                | VFIO_DEVICE_FEATURE_PROBE;
         default:
-            return false;
+            return 0;
     };
 }
 
 ssize_t
-migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf)
+migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 {
+    assert(vfu_ctx != NULL);
+
     struct vfio_user_device_feature_migration *res;
     struct vfio_user_device_feature_mig_state *state;
 
-    switch (flags & VFIO_DEVICE_FEATURE_MASK) {
+    switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
             res = buf;
             // FIXME are these always supported? Can we consider to be
             //   "supported" if said support is just an empty callback?
+            //
+            // We don't need to return RUNNING or ERROR since they are always
+            //   supported.
             res->flags = VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY;
 
             return 0;
-
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
             state = buf;
             state->device_state = vfu_ctx->migration->state;
 
             return 0;
-
         default:
             return -EINVAL;
     };
 }
 
 ssize_t
-migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf)
+migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 {
-    if (flags & VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE) {
+    assert(vfu_ctx != NULL);
+
+    if (feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE) {
         struct vfio_user_device_feature_mig_state *res = buf;
         struct migration *migr = vfu_ctx->migration;
         
@@ -225,8 +233,11 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t flags, void *buf)
 ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
     struct migration *migr = vfu_ctx->migration;
-    struct vfio_user_mig_data_without_data *req = msg->in.iov.iov_base;
+    struct vfio_user_mig_data *req = msg->in.iov.iov_base;
 
     if (vfu_ctx->migration == NULL) {
         return -EINVAL;
@@ -234,22 +245,27 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (migr->state != VFIO_DEVICE_STATE_PRE_COPY
         && migr->state != VFIO_DEVICE_STATE_STOP_COPY) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad state to read data: %d", migr->state);
+        return -EINVAL;
+    }
+
+    if (req->size > vfu_ctx->client_max_data_xfer_size) {
         return -EINVAL;
     }
 
     msg->out.iov.iov_len = msg->in.iov.iov_len + req->size;
     msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
-    struct vfio_user_mig_data_with_data *res = msg->out.iov.iov_base;
+    if (msg->out.iov.iov_base == NULL) {
+        return -EINVAL;
+    }
+
+    struct vfio_user_mig_data *res = msg->out.iov.iov_base;
 
     ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
 
     res->size = ret;
     res->argsz = ret + msg->in.iov.iov_len;
-
-    if (ret < 0) {
-        return -1;
-    }
 
     return ret;
 }
@@ -257,24 +273,22 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 ssize_t
 handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
     struct migration *migr = vfu_ctx->migration;
-    struct vfio_user_mig_data_with_data *req = msg->in.iov.iov_base;
+    struct vfio_user_mig_data *req = msg->in.iov.iov_base;
 
     if (vfu_ctx->migration == NULL) {
         return -EINVAL;
     }
 
     if (migr->state != VFIO_DEVICE_STATE_RESUMING) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad state to write data: %d", migr->state);
         return -EINVAL;
     }
 
-    ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
-
-    if (ret < 0) {
-        return -1;
-    }
-
-    return ret;
+    return migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
 }
 
 bool

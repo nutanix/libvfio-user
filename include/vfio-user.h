@@ -229,30 +229,42 @@ struct vfio_user_bitmap_range {
 struct vfio_user_device_feature {
 	uint32_t	argsz;
 	uint32_t	flags;
+#ifndef VFIO_DEVICE_FEATURE_MASK
 #define VFIO_DEVICE_FEATURE_MASK	(0xffff)  /* 16-bit feature index */
 #define VFIO_DEVICE_FEATURE_GET		(1 << 16) /* Get feature into data[] */
 #define VFIO_DEVICE_FEATURE_SET		(1 << 17) /* Set feature from data[] */
 #define VFIO_DEVICE_FEATURE_PROBE	(1 << 18) /* Probe feature support */
+#endif
 	uint8_t  	data[];
 } __attribute__((packed));
 
 /* Analogous to vfio_device_feature_migration */
 struct vfio_user_device_feature_migration {
     uint64_t flags;
+#ifndef VFIO_MIGRATION_STOP_COPY
 #define VFIO_MIGRATION_STOP_COPY    (1 << 0)
 #define VFIO_MIGRATION_P2P          (1 << 1)
 #define VFIO_MIGRATION_PRE_COPY     (1 << 2)
+#endif
 } __attribute__((packed));
+#ifndef VFIO_DEVICE_FEATURE_MIGRATION
 #define VFIO_DEVICE_FEATURE_MIGRATION 1
+#endif
+_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+               "bad vfio_user_device_feature_migration size");
 
 /* Analogous to vfio_device_feature_mig_state */
 struct vfio_user_device_feature_mig_state {
     uint32_t    device_state;
     uint32_t    data_fd;
 } __attribute__((packed));
+#ifndef VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
 #define VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE 2
+#endif
+_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+               "bad vfio_user_device_feature_mig_state size");
 
-enum vfio_device_mig_state {
+enum vfio_user_device_mig_state {
 	VFIO_DEVICE_STATE_ERROR = 0,
 	VFIO_DEVICE_STATE_STOP = 1,
 	VFIO_DEVICE_STATE_RUNNING = 2,
@@ -263,16 +275,7 @@ enum vfio_device_mig_state {
 	VFIO_DEVICE_STATE_PRE_COPY_P2P = 7,
 };
 
-// FIXME awful names below
-
-// used for read request and write response
-struct vfio_user_mig_data_without_data {
-    uint32_t    argsz;
-    uint64_t    size;
-} __attribute__((packed));
-
-// used for write request and read response
-struct vfio_user_mig_data_with_data {
+struct vfio_user_mig_data {
     uint32_t    argsz;
     uint64_t    size;
     uint8_t     data[];
