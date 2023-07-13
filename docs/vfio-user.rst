@@ -511,14 +511,9 @@ Capabilities:
 |                    |         | valid simultaneously.  Optional, with a        |
 |                    |         | value of 65535 (64k-1).                        |
 +--------------------+---------+------------------------------------------------+
-| migration          | object  | Migration capability parameters. If missing    |
-|                    |         | then migration is not supported by the sender. |
-+--------------------+---------+------------------------------------------------+
 | write_multiple     | boolean | ``VFIO_USER_REGION_WRITE_MULTI`` messages      |
 |                    |         | are supported if the value is ``true``.        |
 +--------------------+---------+------------------------------------------------+
-
-The migration capability is currently an empty object.
 
 Reply
 ^^^^^
@@ -1498,17 +1493,19 @@ The request payload for this message is a structure of the following format.
 * *flags* defines the action to be performed by the server and upon which
   feature:
 
-  * ``VFIO_DEVICE_FEATURE_MASK`` is the 16-bit feature index of the relevant
-    feature.
+  * The feature is selected using the 16-bit ``VFIO_DEVICE_FEATURE_MASK``
+    portion of the flags field.
   
-  * ``VFIO_DEVICE_FEATURE_GET`` instructs the server to get the feature data.
+  * ``VFIO_DEVICE_FEATURE_GET`` instructs the server to get the data for the
+    given feature.
 
   * ``VFIO_DEVICE_FEATURE_SET`` instructs the server to set the feature data to
     that given in the ``data`` field of the payload.
 
   * ``VFIO_DEVICE_FEATURE_PROBE`` instructs the server to probe for feature
-    support. If ``VFIO_DEVICE_FEATURE_GET/SET`` are also set, the probe will
-    only return success if all of the indicated methods are supported.
+    support. If ``VFIO_DEVICE_FEATURE_GET`` or ``VFIO_DEVICE_FEATURE_SET`` are
+    also set, the probe will only return success if all of the indicated methods
+    are supported.
 
   ``VFIO_DEVICE_FEATURE_GET`` and ``VFIO_DEVICE_FEATURE_SET`` are mutually
   exclusive, except for use with ``VFIO_DEVICE_FEATURE_PROBE``.
@@ -1527,9 +1524,9 @@ section and its length is added to ``argsz``.
 Device Features
 ^^^^^^^^^^^^^^^
 
-The only device features supported by vfio-user are those related to migration.
-They are a subset of those supported in the VFIO implementation of the Linux
-kernel.
+The only device features supported by vfio-user are those related to migration,
+although this may change in the future. They are a subset of those supported in
+the VFIO implementation of the Linux kernel.
 
 +----------------------------------------+-------+
 | Name                                   | Value |
@@ -1589,7 +1586,7 @@ structured as follows:
 +==============+========+======+
 | device_state | 0      | 4    |
 +--------------+--------+------+
-| data_fd      | 4      + 4    |
+| data_fd      | 4      | 4    |
 +--------------+--------+------+
 
 * *device_state* is the current state of the device (for ``GET``) or the
