@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/eventfd.h>
+#include <sys/param.h>
 #include <time.h>
 #include <err.h>
 #include <assert.h>
@@ -560,7 +561,7 @@ static int
 read_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x6904;
-    struct vfio_user_mig_data_without_data req = {
+    struct vfio_user_mig_data req = {
         .argsz = 12,
         .size = len
     };
@@ -570,7 +571,7 @@ read_migr_data(int sock, void *buf, size_t len)
             .iov_len = sizeof(req)
         }
     };
-    struct vfio_user_mig_data_with_data *res = calloc(1, sizeof(req) + len);
+    struct vfio_user_mig_data *res = calloc(1, sizeof(req) + len);
 
     pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
@@ -594,7 +595,7 @@ static int
 write_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x2023;
-    struct vfio_user_mig_data_with_data req = {
+    struct vfio_user_mig_data req = {
         .argsz = 12 + len,
         .size = len
     };
@@ -909,7 +910,7 @@ fake_guest(void *arg)
 
 static size_t
 migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
-             uint32_t *crcp, size_t bar1_size)
+             uint32_t *crcp, size_t bar1_size, size_t max_iter_size)
 {
     uint32_t device_state;
     int ret;
@@ -921,15 +922,13 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         .crcp = crcp
     };
 
-    size_t max_iter_size = 4096;
-
     ret = pthread_create(&thread, NULL, fake_guest, &fake_guest_data);
     if (ret != 0) {
         errno = ret;
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    *nr_iters = 8;
+    *nr_iters = 16;
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -1296,7 +1295,9 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to write to BAR0");
     }
 
-    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, &crc, bar1_size);
+    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, &crc, bar1_size,
+                            MIN(server_max_data_xfer_size,
+                                CLIENT_MAX_DATA_XFER_SIZE));
 
     /*
      * Normally the client would now send the device state to the destination
