@@ -1065,16 +1065,29 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
         // all supported outgoing data is currently the same size as 
         //   vfio_user_device_feature_migration
-        msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature_migration);
+        msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
+            + sizeof(struct vfio_user_device_feature_migration);
         msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
         if (msg->out.iov.iov_base == NULL) {
             return -1;
         }
 
+        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+               sizeof(struct vfio_user_device_feature));
+
         ret = migration_feature_get(vfu_ctx,
                                     req->flags & VFIO_DEVICE_FEATURE_MASK,
-                                    msg->out.iov.iov_base);
+                                    msg->out.iov.iov_base +
+                                    sizeof(struct vfio_user_device_feature));
+
+        struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+        if (ret < 0) {
+            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature);
+        } else {
+            res->argsz = sizeof(struct vfio_user_device_feature) + ret;
+        }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;

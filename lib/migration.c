@@ -264,8 +264,13 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
 
-    res->size = ret;
-    res->argsz = ret + msg->in.iov.iov_len;
+    if (ret < 0) {
+        res->size = 0;
+        res->argsz = sizeof(struct vfio_user_mig_data);
+    } else {
+        res->size = ret;
+        res->argsz = sizeof(struct vfio_user_mig_data) + ret;
+    }
 
     return ret;
 }
