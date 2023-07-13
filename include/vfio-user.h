@@ -229,7 +229,7 @@ struct vfio_user_bitmap_range {
 struct vfio_user_device_feature {
 	uint32_t	argsz;
 	uint32_t	flags;
-#ifndef VFIO_DEVICE_FEATURE_MASK
+#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_DEVICE_FEATURE_MASK	(0xffff)  /* 16-bit feature index */
 #define VFIO_DEVICE_FEATURE_GET		(1 << 16) /* Get feature into data[] */
 #define VFIO_DEVICE_FEATURE_SET		(1 << 17) /* Set feature from data[] */
@@ -241,13 +241,13 @@ struct vfio_user_device_feature {
 /* Analogous to vfio_device_feature_migration */
 struct vfio_user_device_feature_migration {
     uint64_t flags;
-#ifndef VFIO_MIGRATION_STOP_COPY
+#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_MIGRATION_STOP_COPY    (1 << 0)
 #define VFIO_MIGRATION_P2P          (1 << 1)
 #define VFIO_MIGRATION_PRE_COPY     (1 << 2)
 #endif
 } __attribute__((packed));
-#ifndef VFIO_DEVICE_FEATURE_MIGRATION
+#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_DEVICE_FEATURE_MIGRATION 1
 #endif
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,

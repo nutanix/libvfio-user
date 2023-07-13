@@ -1044,7 +1044,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     uint32_t supported_flags =
         migration_feature_flags(req->flags & VFIO_DEVICE_FEATURE_MASK);
 
-    if ((req->flags & supported_flags) != req->flags || supported_flags == 0) {
+    if ((req->flags & supported_flags) !=
+        (req->flags & ~VFIO_DEVICE_FEATURE_MASK) || supported_flags == 0) {
         return -EINVAL;
     }
 
@@ -1086,7 +1087,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         if (ret < 0) {
             msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature);
         } else {
-            res->argsz = sizeof(struct vfio_user_device_feature) + ret;
+            res->argsz = sizeof(struct vfio_user_device_feature)
+                + sizeof(struct vfio_user_device_feature_migration);
         }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
