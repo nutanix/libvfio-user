@@ -45,10 +45,14 @@ struct migration {
    if the bit is set then the transition is allowed
    the indices of each state are those in the vfio_user_device_mig_state enum */
 static const char transitions[8] = {
-    // ERROR    STOP        RUNNING     STOP_COPY
-    0b00000000, 0b00111000, 0b01000010, 0b01000000,
-    // RESUMING RUNNING_P2P PRE_COPY    PRE_COPY_P2P 
-    0b01000000, 0b00000000, 0b00110000, 0b00000000
+    0b00000000, // ERROR        -> {}
+    0b00011100, // STOP         -> {RUNNING, STOP_COPY, RESUMING}
+    0b01000010, // RUNNING      -> {STOP, PRE_COPY}
+    0b00000010, // STOP_COPY    -> {STOP}
+    0b00000010, // RESUMING     -> {STOP}
+    0b00000000, // RUNNING_P2P  -> {}
+    0b00001100, // PRE_COPY     -> {RUNNING, STOP_COPY}
+    0b00000000  // PRE_COPY_P2P -> {}
 };
 
 MOCK_DECLARE(vfu_migr_state_t, migr_state_vfio_to_vfu, uint32_t device_state);

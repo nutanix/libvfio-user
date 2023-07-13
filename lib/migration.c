@@ -198,10 +198,10 @@ migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
         case VFIO_DEVICE_FEATURE_MIGRATION:
             res = buf;
             // FIXME are these always supported? Can we consider to be
-            //   "supported" if said support is just an empty callback?
+            // "supported" if said support is just an empty callback?
             //
             // We don't need to return RUNNING or ERROR since they are always
-            //   supported.
+            // supported.
             res->flags = VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY;
 
             return 0;
@@ -245,11 +245,14 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (migr->state != VFIO_DEVICE_STATE_PRE_COPY
         && migr->state != VFIO_DEVICE_STATE_STOP_COPY) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad state to read data: %d", migr->state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration state to read data: %d",
+                migr->state);
         return -EINVAL;
     }
 
     if (req->size > vfu_ctx->client_max_data_xfer_size) {
+        vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%ld > %ld)",
+                req->size, vfu_ctx->client_max_data_xfer_size);
         return -EINVAL;
     }
 
@@ -289,7 +292,8 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     if (migr->state != VFIO_DEVICE_STATE_RESUMING) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad state to write data: %d", migr->state);
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration state to write data: %d",
+                migr->state);
         return -EINVAL;
     }
 
