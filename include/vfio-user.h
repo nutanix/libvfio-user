@@ -277,7 +277,7 @@ enum vfio_user_device_mig_state {
 
 struct vfio_user_mig_data {
     uint32_t    argsz;
-    uint64_t    size;
+    uint32_t    size;
     uint8_t     data[];
 } __attribute__((packed));
 

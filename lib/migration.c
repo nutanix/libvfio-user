@@ -251,7 +251,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     }
 
     if (req->size > vfu_ctx->client_max_data_xfer_size) {
-        vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%ld > %ld)",
+        vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%d > %ld)",
                 req->size, vfu_ctx->client_max_data_xfer_size);
         return -EINVAL;
     }
