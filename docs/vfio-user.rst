@@ -1711,7 +1711,8 @@ between FSM states. The following transitions need to be supported by the
 server, a subset of those defined in ``<linux/vfio.h>``
 (``enum vfio_device_mig_state``).
 
-* ``RUNNING -> STOP``, ``STOP_COPY -> STOP``: Stop the operation of the device. The ``STOP_COPY`` arc terminates the data transfer session.
+* ``RUNNING -> STOP``, ``STOP_COPY -> STOP``: Stop the operation of the device.
+  The ``STOP_COPY`` arc terminates the data transfer session.
 
 * ``RESUMING -> STOP``: Terminate the data transfer session. Complete processing
   of the migration data. Stop the operation of the device. If the delivered data
@@ -1781,7 +1782,7 @@ The request payload for this message is a structure of the following format.
 +=======+========+======+
 | argsz | 0      | 4    |
 +-------+--------+------+
-| size  | 4      | 8    |
+| size  | 4      | 4    |
 +-------+--------+------+
 
 * *argsz* is the size of the above structure.
@@ -1798,9 +1799,9 @@ The reply payload for this message is a structure of the following format.
 +=======+========+==========+
 | argsz | 0      | 4        |
 +-------+--------+----------+
-| size  | 4      | 8        |
+| size  | 4      | 4        |
 +-------+--------+----------+
-| data  | 12     | variable |
+| data  | 8      | variable |
 +-------+--------+----------+
 
 * *argsz* is the size of the above structure.
@@ -1829,9 +1830,9 @@ The request payload for this message is a structure of the following format.
 +=======+========+==========+
 | argsz | 0      | 4        |
 +-------+--------+----------+
-| size  | 4      | 8        |
+| size  | 4      | 4        |
 +-------+--------+----------+
-| data  | 12     | variable |
+| data  | 8      | variable |
 +-------+--------+----------+
 
 * *argsz* is the size of the above structure.
