@@ -216,7 +216,7 @@ send_device_reset(int sock)
 }
 
 /* returns whether a VFIO migration capability is found */
-static bool
+static void
 get_region_vfio_caps(struct vfio_info_cap_header *header,
                      struct vfio_region_info_cap_sparse_mmap **sparse)
 {
@@ -243,7 +243,6 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
         }
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
-    return false;
 }
 
 static void
@@ -255,40 +254,6 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
                                 region_info, region_info->argsz, fds, nr_fds);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to get device region info");
-    }
-}
-
-static void
-mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
-                  struct vfio_region_info_cap_sparse_mmap *sparse)
-{
-    size_t i;
-
-    for (i = 0; i < sparse->nr_areas; i++) {
-
-        ssize_t ret;
-        void *addr;
-        char pathname[PATH_MAX];
-        char buf[PATH_MAX] = "";
-
-        ret = snprintf(pathname, sizeof(pathname), "/proc/self/fd/%d", fds[i]);
-        assert(ret != -1 && (size_t)ret < sizeof(pathname));
-        ret = readlink(pathname, buf, sizeof(buf) - 1);
-        if (ret == -1) {
-            err(EXIT_FAILURE, "failed to resolve file descriptor %d", fds[i]);
-        }
-        addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, fds[i], region_info->offset +
-                    sparse->areas[i].offset);
-        if (addr == MAP_FAILED) {
-            err(EXIT_FAILURE,
-                "failed to mmap sparse region %zu in %s (%#llx-%#llx)",
-                i, buf, (ull_t)sparse->areas[i].offset,
-                (ull_t)sparse->areas[i].offset + sparse->areas[i].size - 1);
-        }
-
-        ret = munmap(addr, sparse->areas[i].size);
-        assert(ret == 0);
     }
 }
 
@@ -335,14 +300,8 @@ get_device_region_info(int sock, uint32_t index)
            nr_fds);
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
-        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
-                                 &sparse)) {
-            if (sparse != NULL) {
-                assert((index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 2));
-                assert(nr_fds == sparse->nr_areas);
-                mmap_sparse_areas(fds, region_info, sparse);
-            }
-        }
+        get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
+                             &sparse);
 
     }
     free(region_info);
@@ -520,12 +479,13 @@ set_migration_state(int sock, uint32_t state)
 {
     static int msg_id = 0xfab1;
     struct vfio_user_device_feature req = {
-        .argsz = 16,
+        .argsz = sizeof(struct vfio_user_device_feature)
+                 + sizeof(struct vfio_user_device_feature_mig_state),
         .flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
     };
     struct vfio_user_device_feature_mig_state change_state = {
         .device_state = state,
-        .data_fd = 0
+        .data_fd = -1
     };
     struct iovec send_iovecs[3] = {
         [1] = {
@@ -538,6 +498,10 @@ set_migration_state(int sock, uint32_t state)
         }
     };
     void* response = malloc(sizeof(req) + sizeof(change_state));
+
+    if (response == NULL) {
+        return -1;
+    }
     
     pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_DEVICE_FEATURE,
@@ -547,12 +511,17 @@ set_migration_state(int sock, uint32_t state)
     pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
-        return -1;
+        return ret;
     }
 
-    assert(memcmp(&req, response, sizeof(req)) == 0);
-    assert(memcmp(&change_state, response + sizeof(req),
-                  sizeof(change_state)) == 0);
+    if (memcmp(&req, response, sizeof(req)) != 0) {
+        err(EXIT_FAILURE, "invalid response to set_migration_state (header)");
+    }
+
+    if (memcmp(&change_state, response + sizeof(req),
+               sizeof(change_state)) != 0) {
+        err(EXIT_FAILURE, "invalid response to set_migration_state (payload)");
+    }
 
     return ret;
 }
@@ -562,7 +531,7 @@ read_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x6904;
     struct vfio_user_mig_data req = {
-        .argsz = 12,
+        .argsz = sizeof(struct vfio_user_mig_data),
         .size = len
     };
     struct iovec send_iovecs[2] = {
@@ -573,6 +542,10 @@ read_migr_data(int sock, void *buf, size_t len)
     };
     struct vfio_user_mig_data *res = calloc(1, sizeof(req) + len);
 
+    if (res == NULL) {
+        return -1;
+    }
+
     pthread_mutex_lock(&mutex);
     int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
                                   send_iovecs, 2, NULL, 0, NULL,
@@ -581,7 +554,7 @@ read_migr_data(int sock, void *buf, size_t len)
 
     if (ret < 0) {
         free(res);
-        return -1;
+        return ret;
     }
 
     memcpy(buf, res->data, res->size);
@@ -596,7 +569,7 @@ write_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x2023;
     struct vfio_user_mig_data req = {
-        .argsz = 12 + len,
+        .argsz = sizeof(struct vfio_user_mig_data) + len,
         .size = len
     };
     struct iovec send_iovecs[3] = {
@@ -615,10 +588,6 @@ write_migr_data(int sock, void *buf, size_t len)
                                   send_iovecs, 3, NULL, 0, NULL,
                                   &req, sizeof(req), NULL, 0);
     pthread_mutex_unlock(&mutex);
-
-    if (ret < 0) {
-        return -1;
-    }
 
     return ret;
 }
@@ -832,15 +801,29 @@ usage(char *argv0)
             basename(argv0));
 }
 
+/*
+ * Normally each time the source client (QEMU) would read migration data from
+ * the device it would send them to the destination client. However, since in
+ * our sample both the source and the destination client are the same process,
+ * we simply accumulate the migration data of each iteration and apply it to
+ * the destination server at the end.
+ *
+ * Performs as many migration loops as @nr_iters or until the device has no
+ * more migration data (pending_bytes is zero), which ever comes first. The
+ * result of each migration iteration is stored in @migr_iter.  @migr_iter must
+ * be at least @nr_iters.
+ *
+ * @returns the number of iterations performed
+ */
 static size_t
-do_migrate(int sock, size_t max_iters, size_t max_iter_size,
+do_migrate(int sock, size_t nr_iters, size_t max_iter_size,
            struct iovec *migr_iter)
 {
     int ret;
-    size_t i;
     bool is_more = true;
+    size_t i = 0;
 
-    for (i = 0; i < max_iters && is_more; i++) {
+    for (i = 0; i < nr_iters && is_more; i++) {
 
         migr_iter[i].iov_len = max_iter_size;
         migr_iter[i].iov_base = malloc(migr_iter[i].iov_len);
@@ -855,12 +838,9 @@ do_migrate(int sock, size_t max_iters, size_t max_iter_size,
             err(EXIT_FAILURE, "failed to read migration data");
         }
 
-        if (ret < (int)migr_iter[i].iov_len) {
-            // FIXME is it pointless shuffling stuff around?
-            void* buf = malloc(ret);
-            memcpy(buf, migr_iter[i].iov_base, ret);
-            free(migr_iter[i].iov_base);
-            migr_iter[i].iov_base = buf;
+        // We know we've finished transferring data when less is returned
+        // than is requested.
+        if ((size_t)ret < migr_iter[i].iov_len) {
             migr_iter[i].iov_len = ret;
             is_more = false;
         }
@@ -928,7 +908,12 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    *nr_iters = 16;
+    size_t expected_data = bar1_size + sizeof(time_t);
+
+    *nr_iters = (expected_data + max_iter_size - 1) / max_iter_size;
+
+    printf("client: calculated %ld iters needed to migrate\n", *nr_iters);
+
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -1008,7 +993,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (ret == -1) {
         err(EXIT_FAILURE, "failed to fork");
     }
-    if (ret == 0) { /* child (destination server) */
+    if (ret > 0) { /* child (destination server) */
         char *_argv[] = {
             path_to_server,
             (char *)"-r", // start in VFIO_DEVICE_STATE_RESUMING
@@ -1072,7 +1057,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         fprintf(stderr, "client: CRC mismatch: %u != %u\n", src_crc, dst_crc);
         abort();
     } else {
-        fprintf(stdout, "client: CRC match, we did it! :)\n");
+        printf("client: CRC match, we did it! :)\n");
     }
 
     /* XXX set device state to running */

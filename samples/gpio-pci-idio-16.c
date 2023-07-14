@@ -86,9 +86,9 @@ migration_read_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
         memcpy(buf, &pin, sizeof(pin));
         dirty = false;
         return sizeof(pin);
-    } else {
-        return 0;
     }
+
+    return 0;
 }
 
 static ssize_t

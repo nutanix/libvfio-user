@@ -62,8 +62,7 @@ struct server_data {
     size_t bar1_size;
     struct dma_regions regions[NR_DMA_REGIONS];
     struct {
-        uint64_t pending_read;
-        uint64_t pending_write;
+        uint64_t pending_bytes;
         vfu_migr_state_t state;
     } migration;
 };
@@ -135,7 +134,7 @@ bar1_access(vfu_ctx_t *vfu_ctx, char * const buf,
     if (is_write) {
         if (server_data->migration.state == VFU_MIGR_STATE_PRE_COPY) {
             /* dirty the whole thing */
-            server_data->migration.pending_read = server_data->bar1_size;
+            server_data->migration.pending_bytes = server_data->bar1_size;
         }
         memcpy(server_data->bar1 + offset, buf, count);
     } else {
@@ -261,20 +260,20 @@ migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
             if (setitimer(ITIMER_REAL, &new, NULL) != 0) {
                 err(EXIT_FAILURE, "failed to disable timer");
             }
-            server_data->migration.pending_read = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
+            server_data->migration.pending_bytes = server_data->bar1_size + sizeof(time_t); /* FIXME BAR0 region size */
             break;
         case VFU_MIGR_STATE_PRE_COPY:
-            server_data->migration.pending_read = server_data->bar1_size;
+            server_data->migration.pending_bytes = server_data->bar1_size;
             break;
         case VFU_MIGR_STATE_STOP:
             /* FIXME should gracefully fail */
-            assert(server_data->migration.pending_read == 0);
+            assert(server_data->migration.pending_bytes == 0);
             break;
         case VFU_MIGR_STATE_RESUME:
-            server_data->migration.pending_write = server_data->bar1_size + sizeof(time_t);
+            server_data->migration.pending_bytes = server_data->bar1_size + sizeof(time_t);
             break;
         case VFU_MIGR_STATE_RUNNING:
-            assert(server_data->migration.pending_write == 0);
+            assert(server_data->migration.pending_bytes == 0);
             ret = arm_timer(vfu_ctx, server_data->bar0);
             if (ret < 0) {
                 return ret;
@@ -299,7 +298,8 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
      * more complex state tracking which exceeds the scope of this sample.
      */
 
-    if (server_data->migration.pending_read == 0 || size == 0) {
+    if (server_data->migration.pending_bytes == 0 || size == 0) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "no data left to read");
         return 0;
     }
 
@@ -309,7 +309,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
         total_read += sizeof(server_data->bar0);
     }
 
-    uint32_t read_start = total_read - server_data->migration.pending_read;
+    uint32_t read_start = total_read - server_data->migration.pending_bytes;
     uint32_t read_end = MIN(read_start + size, total_read); // exclusive
     assert(read_end > read_start);
 
@@ -343,7 +343,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
         memcpy(buf, &server_data->bar0 + read_start, bytes_read);
     }
 
-    server_data->migration.pending_read -= bytes_read;
+    server_data->migration.pending_bytes -= bytes_read;
 
     return bytes_read;
 }
@@ -357,13 +357,13 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
     assert(server_data != NULL);
     assert(data != NULL);
 
-    if (server_data->migration.pending_write == 0 || size == 0) {
+    if (server_data->migration.pending_bytes == 0 || size == 0) {
         return 0;
     }
 
     uint32_t total_write = server_data->bar1_size + sizeof(server_data->bar0);
 
-    uint32_t write_start = total_write - server_data->migration.pending_write;
+    uint32_t write_start = total_write - server_data->migration.pending_bytes;
     uint32_t write_end = MIN(write_start + size, total_write); // exclusive
     assert(write_end > write_start);
 
@@ -397,7 +397,7 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
         memcpy(&server_data->bar0 + write_start, buf, bytes_written);
     }
 
-    server_data->migration.pending_write -= bytes_written;
+    server_data->migration.pending_bytes -= bytes_written;
 
     return bytes_written;
 }
@@ -434,7 +434,7 @@ int main(int argc, char *argv[])
             case 'r':
                 destination = true;
                 server_data.migration.state = VFU_MIGR_STATE_RESUME;
-                server_data.migration.pending_write =
+                server_data.migration.pending_bytes =
                     bar1_size + sizeof(time_t);
                 break;
             default: /* '?' */
