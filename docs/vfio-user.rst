@@ -1476,7 +1476,7 @@ The request payload for this message is a structure of the following format.
 |       | +---------+---------------------------+ |
 |       | | Bit     | Definition                | |
 |       | +=========+===========================+ |
-|       | | 0 to 15 | VFIO_DEVICE_FEATURE_MASK  | |
+|       | | 0 to 15 | Feature bits              | |
 |       | +---------+---------------------------+ |
 |       | | 16      | VFIO_DEVICE_FEATURE_GET   | |
 |       | +---------+---------------------------+ |
@@ -1493,8 +1493,8 @@ The request payload for this message is a structure of the following format.
 * *flags* defines the action to be performed by the server and upon which
   feature:
 
-  * The feature is selected using the 16-bit ``VFIO_DEVICE_FEATURE_MASK``
-    portion of the flags field.
+  * The feature bits are the least significant 16 bits of the flags field, and
+    can be accessed using the ``VFIO_DEVICE_FEATURE_MASK`` bit mask.
   
   * ``VFIO_DEVICE_FEATURE_GET`` instructs the server to get the data for the
     given feature.
@@ -1503,9 +1503,9 @@ The request payload for this message is a structure of the following format.
     that given in the ``data`` field of the payload.
 
   * ``VFIO_DEVICE_FEATURE_PROBE`` instructs the server to probe for feature
-    support. If ``VFIO_DEVICE_FEATURE_GET`` or ``VFIO_DEVICE_FEATURE_SET`` are
-    also set, the probe will only return success if all of the indicated methods
-    are supported.
+    support. If ``VFIO_DEVICE_FEATURE_GET`` and/or ``VFIO_DEVICE_FEATURE_SET``
+    are also set, the probe will only return success if all of the indicated
+    methods are supported.
 
   ``VFIO_DEVICE_FEATURE_GET`` and ``VFIO_DEVICE_FEATURE_SET`` are mutually
   exclusive, except for use with ``VFIO_DEVICE_FEATURE_PROBE``.
@@ -1571,6 +1571,8 @@ The data field of the reply message is structured as follows:
 |       | +-----+--------------------------+ |
 +-------+--------+---------------------------+
 
+These flags are interpreted in the same way as VFIO.
+
 ``VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE``
 """"""""""""""""""""""""""""""""""""""""
 
@@ -1617,6 +1619,62 @@ structured as follows:
 * *data_fd* is unused in vfio-user, as the ``VFIO_USER_MIG_DATA_READ`` and
   ``VFIO_USER_MIG_DATA_WRITE`` messages are used instead for migration data
   transport.
+
+Direct State Transitions
+""""""""""""""""""""""""
+
+The device migration FSM is a Mealy machine, so actions are taken upon the arcs
+between FSM states. The following transitions need to be supported by the
+server, a subset of those defined in ``<linux/vfio.h>``
+(``enum vfio_device_mig_state``).
+
+* ``RUNNING -> STOP``, ``STOP_COPY -> STOP``: Stop the operation of the device.
+  The ``STOP_COPY`` arc terminates the data transfer session.
+
+* ``RESUMING -> STOP``: Terminate the data transfer session. Complete processing
+  of the migration data. Stop the operation of the device. If the delivered data
+  is found to be incomplete, inconsistent, or otherwise invalid, fail the
+  ``SET`` command and optionally transition to the ``ERROR`` state.
+
+* ``PRE_COPY -> RUNNING``: Terminate the data transfer session. The device is
+  now fully operational.
+
+* ``STOP -> RUNNING``: Start the operation of the device.
+
+* ``RUNNING -> PRE_COPY``, ``STOP -> STOP_COPY``: Begin the process of saving
+  the device state. The device operation is unchanged, but data transfer begins.
+  ``PRE_COPY`` and ``STOP_COPY`` are referred to as the "saving group" of
+  states.
+
+* ``PRE_COPY -> STOP_COPY``: Continue to transfer migration data, but stop 
+  device operation.
+
+* ``STOP -> RESUMING``: Start the process of restoring the device state. The
+  internal device state may be changed to prepare the device to receive the
+  migration data.
+
+The ``STOP_COPY -> PRE_COPY`` transition is explicitly not allowed and should
+return an error if requested.
+
+``ERROR`` cannot be specified as a device state, but any transition request can
+be failed and then move the state into ``ERROR`` if the server was unable to
+execute the requested arc AND was unable to restore the device into any valid
+state. To recover from ``ERROR``, ``VFIO_USER_DEVICE_RESET`` must be used to
+return back to ``RUNNING``.
+
+If ``PRE_COPY`` is not supported, arcs touching it are removed.
+
+Complex State Transitions
+"""""""""""""""""""""""""
+
+The remaining possible transitions are to be implemented as combinations of the
+above FSM arcs. As there are multiple paths, the path should be selected based
+on the following rules:
+
+* Select the shortest path.
+
+* The path cannot have saving group states as interior arcs, only start/end
+  states.
   
 ``VFIO_DEVICE_FEATURE_DMA_LOGGING_START`` / ``VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP``
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -1702,62 +1760,6 @@ the end at offset 24.
 The mapping of IOVA to bits is given by:
 
 ``bitmap[(addr - iova)/page_size] & (1ULL << (addr % 64))``
-
-Direct State Transitions
-""""""""""""""""""""""""
-
-The device migration FSM is a Mealy machine, so actions are taken upon the arcs
-between FSM states. The following transitions need to be supported by the
-server, a subset of those defined in ``<linux/vfio.h>``
-(``enum vfio_device_mig_state``).
-
-* ``RUNNING -> STOP``, ``STOP_COPY -> STOP``: Stop the operation of the device.
-  The ``STOP_COPY`` arc terminates the data transfer session.
-
-* ``RESUMING -> STOP``: Terminate the data transfer session. Complete processing
-  of the migration data. Stop the operation of the device. If the delivered data
-  is found to be incomplete, inconsistent, or otherwise invalid, fail the
-  ``SET`` command and optionally transition to the ``ERROR`` state.
-
-* ``PRE_COPY -> RUNNING``: Terminate the data transfer session. The device is
-  now fully operational.
-
-* ``STOP -> RUNNING``: Start the operation of the device.
-
-* ``RUNNING -> PRE_COPY``, ``STOP -> STOP_COPY``: Begin the process of saving
-  the device state. The device operation is unchanged, but data transfer begins.
-  ``PRE_COPY`` and ``STOP_COPY`` are referred to as the "saving group" of
-  states.
-
-* ``PRE_COPY -> STOP_COPY``: Continue to transfer migration data, but stop 
-  device operation.
-
-* ``STOP -> RESUMING``: Start the process of restoring the device state. The
-  internal device state may be changed to prepare the device to receive the
-  migration data.
-
-The ``STOP_COPY -> PRE_COPY`` transition is explicitly not allowed and should
-return an error if requested.
-
-``ERROR`` cannot be specified as a device state, but any transition request can
-be failed and then move the state into ``ERROR`` if the server was unable to
-execute the requested arc AND was unable to restore the device into any valid
-state. To recover from ``ERROR``, ``VFIO_USER_DEVICE_RESET`` must be used to
-return back to ``RUNNING``.
-
-If ``PRE_COPY`` is not supported, arcs touching it are removed.
-
-Complex State Transitions
-"""""""""""""""""""""""""
-
-The remaining possible transitions are to be implemented as combinations of the
-above FSM arcs. As there are multiple paths, the path should be selected based
-on the following rules:
-
-* Select the shortest path.
-
-* The path cannot have saving group states as interior arcs, only start/end
-  states.
 
 ``VFIO_USER_MIG_DATA_READ``
 ---------------------------
