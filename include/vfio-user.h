@@ -264,7 +264,8 @@ struct vfio_user_device_feature_mig_state {
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_mig_state size");
 
-enum vfio_user_device_mig_state {
+#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
+enum vfio_device_mig_state {
 	VFIO_DEVICE_STATE_ERROR = 0,
 	VFIO_DEVICE_STATE_STOP = 1,
 	VFIO_DEVICE_STATE_RUNNING = 2,
@@ -274,6 +275,7 @@ enum vfio_user_device_mig_state {
 	VFIO_DEVICE_STATE_PRE_COPY = 6,
 	VFIO_DEVICE_STATE_PRE_COPY_P2P = 7,
 };
+#endif
 
 struct vfio_user_mig_data {
     uint32_t    argsz;
