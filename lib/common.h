@@ -41,6 +41,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <sys/uio.h>
 
 #define UNUSED __attribute__((unused))
 #define EXPORT __attribute__((visibility("default")))
@@ -62,6 +63,20 @@
 
 typedef unsigned long long ull_t;
 
+static inline int
+ERROR_INT(int err)
+{
+    errno = err;
+    return -1;
+}
+
+static inline void *
+ERROR_PTR(int err)
+{
+    errno = err;
+    return NULL;
+}
+
 /* Saturating uint64_t addition. */
 static inline uint64_t
 satadd_u64(uint64_t a, uint64_t b)
@@ -73,11 +88,21 @@ satadd_u64(uint64_t a, uint64_t b)
 /*
  * The size, in bytes, of the bitmap that represents the given range with the
  * given page size.
+ * 
+ * Returns -1 and sets errno if the given page size is invalid for the given 
+ * range.
  */
-static inline size_t
-_get_bitmap_size(size_t size, size_t pgsize)
+static inline ssize_t
+get_bitmap_size(size_t region_size, size_t pgsize)
 {
-    size_t nr_pages = (size / pgsize) + (size % pgsize != 0);
+    if (pgsize == 0) {
+        return ERROR_INT(EINVAL);
+    }
+    if (region_size < pgsize) {
+        return ERROR_INT(EINVAL);
+    }
+
+    size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
 }
 
@@ -105,6 +130,16 @@ close_safely(int *fd)
         *fd = -1;
     }
     errno = saved_errno;
+}
+
+static inline void
+iov_free(struct iovec *iov)
+{
+    if (iov->iov_base != NULL) {
+        free(iov->iov_base);
+        iov->iov_base = NULL;
+    }
+    iov->iov_len = 0;
 }
 
 #ifdef UNIT_TEST

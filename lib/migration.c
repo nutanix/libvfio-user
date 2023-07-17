@@ -39,17 +39,100 @@
 #include "private.h"
 #include "migration_priv.h"
 
+/*
+ * This defines valid migration state transitions. Each element in the array
+ * corresponds to a FROM state and each bit of the element to a TO state. If the
+ * bit is set, then the transition is allowed.
+ * 
+ * The indices of each state are those in the vfio_user_device_mig_state enum.
+ */
+static const char transitions[VFIO_USER_DEVICE_NUM_STATES] = {
+    [VFIO_USER_DEVICE_STATE_ERROR] = 0,
+    [VFIO_USER_DEVICE_STATE_STOP] = (1 << VFIO_USER_DEVICE_STATE_RUNNING) |
+                                    (1 << VFIO_USER_DEVICE_STATE_STOP_COPY) |
+                                    (1 << VFIO_USER_DEVICE_STATE_RESUMING),
+    [VFIO_USER_DEVICE_STATE_RUNNING] = (1 << VFIO_USER_DEVICE_STATE_STOP) |
+                                       (1 << VFIO_USER_DEVICE_STATE_PRE_COPY),
+    [VFIO_USER_DEVICE_STATE_STOP_COPY] = 1 << VFIO_USER_DEVICE_STATE_STOP,
+    [VFIO_USER_DEVICE_STATE_RESUMING] = 1 << VFIO_USER_DEVICE_STATE_STOP,
+    [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = 0,
+    [VFIO_USER_DEVICE_STATE_PRE_COPY] = (1 << VFIO_USER_DEVICE_STATE_RUNNING) |
+                                        (1 << VFIO_USER_DEVICE_STATE_STOP_COPY),
+    [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = 0
+};
+
+/*
+ * The spec dictates that, if no direct transition is allowed, and the
+ * transition is not one of the explicitly disallowed ones (i.e. anything to
+ * ERROR, anything from ERROR, and STOP_COPY -> PRE_COPY), we should take the
+ * shortest allowed path.
+ * 
+ * This can be indexed as `next_state[current][target] == next`. If next is
+ * ERROR, then the transition is not allowed.
+ */
+static const uint32_t
+next_state[VFIO_USER_DEVICE_NUM_STATES][VFIO_USER_DEVICE_NUM_STATES] = {
+    [VFIO_USER_DEVICE_STATE_ERROR] = { 0, 0, 0, 0, 0, 0, 0, 0 },
+    [VFIO_USER_DEVICE_STATE_STOP] = {
+        [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_STOP_COPY] = VFIO_USER_DEVICE_STATE_STOP_COPY,
+        [VFIO_USER_DEVICE_STATE_RESUMING] = VFIO_USER_DEVICE_STATE_RESUMING,
+        [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+    },
+    [VFIO_USER_DEVICE_STATE_RUNNING] = {
+        [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_STOP_COPY] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RESUMING] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_PRE_COPY,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+    },
+    [VFIO_USER_DEVICE_STATE_STOP_COPY] = {
+        [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_STOP_COPY] = VFIO_USER_DEVICE_STATE_STOP_COPY,
+        [VFIO_USER_DEVICE_STATE_RESUMING] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+    },
+    [VFIO_USER_DEVICE_STATE_RESUMING] = {
+        [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RUNNING] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_STOP_COPY] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_RESUMING] = VFIO_USER_DEVICE_STATE_RESUMING,
+        [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_STOP,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+    },
+    [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = { 0, 0, 0, 0, 0, 0, 0, 0 },
+    [VFIO_USER_DEVICE_STATE_PRE_COPY] = {
+        [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_RUNNING] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_STOP_COPY] = VFIO_USER_DEVICE_STATE_STOP_COPY,
+        [VFIO_USER_DEVICE_STATE_RESUMING] = VFIO_USER_DEVICE_STATE_RUNNING,
+        [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_PRE_COPY,
+        [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
+    },
+    [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = { 0, 0, 0, 0, 0, 0, 0, 0 },
+};
+
 bool
 MOCK_DEFINE(vfio_migr_state_transition_is_valid)(uint32_t from, uint32_t to)
 {
-    return migr_states[from].state & (1 << to);
-}
-
-EXPORT size_t
-vfu_get_migr_register_area_size(void)
-{
-    return ROUND_UP(sizeof(struct vfio_user_migration_info),
-                    sysconf(_SC_PAGE_SIZE));
+    return from < VFIO_USER_DEVICE_NUM_STATES
+        && to < VFIO_USER_DEVICE_NUM_STATES
+        && (transitions[from] & (1 << to)) != 0;
 }
 
 /*
@@ -57,15 +140,9 @@ vfu_get_migr_register_area_size(void)
  * in vfu_ctx_t.
  */
 struct migration *
-init_migration(const vfu_migration_callbacks_t * callbacks,
-               uint64_t data_offset, int *err)
+init_migration(const vfu_migration_callbacks_t *callbacks, int *err)
 {
     struct migration *migr;
-
-    if (data_offset < vfu_get_migr_register_area_size()) {
-        *err = EINVAL;
-        return NULL;
-    }
 
     migr = calloc(1, sizeof(*migr));
     if (migr == NULL) {
@@ -81,15 +158,13 @@ init_migration(const vfu_migration_callbacks_t * callbacks,
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
     /* FIXME this should be done in vfu_ctx_realize */
-    migr->info.device_state = VFIO_DEVICE_STATE_V1_RUNNING;
-    migr->data_offset = data_offset;
+    migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
 
     migr->callbacks = *callbacks;
     if (migr->callbacks.transition == NULL ||
-        migr->callbacks.get_pending_bytes == NULL ||
-        migr->callbacks.prepare_data == NULL ||
         migr->callbacks.read_data == NULL ||
-        migr->callbacks.write_data == NULL) {
+        migr->callbacks.write_data == NULL ||
+        migr->callbacks.version != VFU_MIGR_CALLBACKS_VERS) {
         free(migr);
         *err = EINVAL;
         return NULL;
@@ -100,35 +175,29 @@ init_migration(const vfu_migration_callbacks_t * callbacks,
 
 void
 MOCK_DEFINE(migr_state_transition)(struct migration *migr,
-                                   enum migr_iter_state state)
+                                   enum vfio_user_device_mig_state state)
 {
     assert(migr != NULL);
-    /* FIXME validate that state transition */
-    migr->iter.state = state;
+    migr->state = state;
 }
 
 vfu_migr_state_t
-MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t device_state)
+MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_user_device_mig_state state)
 {
-    switch (device_state) {
-        case VFIO_DEVICE_STATE_V1_STOP:
+    switch (state) {
+        case VFIO_USER_DEVICE_STATE_STOP:
             return VFU_MIGR_STATE_STOP;
-        case VFIO_DEVICE_STATE_V1_RUNNING:
+        case VFIO_USER_DEVICE_STATE_RUNNING:
             return VFU_MIGR_STATE_RUNNING;
-        case VFIO_DEVICE_STATE_V1_SAVING:
-            /*
-             * FIXME How should the device operate during the stop-and-copy
-             * phase? Should we only allow the migration data to be read from
-             * the migration region? E.g. Access to any other region should be
-             * failed? This might be a good question to send to LKML.
-             */
+        case VFIO_USER_DEVICE_STATE_STOP_COPY:
             return VFU_MIGR_STATE_STOP_AND_COPY;
-        case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
-            return VFU_MIGR_STATE_PRE_COPY;
-        case VFIO_DEVICE_STATE_V1_RESUMING:
+        case VFIO_USER_DEVICE_STATE_RESUMING:
             return VFU_MIGR_STATE_RESUME;
+        case VFIO_USER_DEVICE_STATE_PRE_COPY:
+            return VFU_MIGR_STATE_PRE_COPY;
+        default:
+            return -1;
     }
-    return -1;
 }
 
 /**
@@ -165,8 +234,7 @@ MOCK_DEFINE(migr_trans_to_valid_state)(vfu_ctx_t *vfu_ctx, struct migration *mig
             return ret;
         }
     }
-    migr->info.device_state = device_state;
-    migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_INITIAL);
+    migr_state_transition(migr, device_state);
     return 0;
 }
 
@@ -178,372 +246,176 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
                                  uint32_t device_state, bool notify)
 {
 
+    assert(vfu_ctx != NULL);
     assert(migr != NULL);
 
-    if (!vfio_migr_state_transition_is_valid(migr->info.device_state,
-                                             device_state)) {
+    if (!vfio_migr_state_transition_is_valid(migr->state, device_state)) {
         return ERROR_INT(EINVAL);
     }
     return migr_trans_to_valid_state(vfu_ctx, migr, device_state, notify);
 }
 
-/**
- * Returns 0 on success, -1 on error setting errno.
- */
-static ssize_t
-handle_pending_bytes(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                     uint64_t *pending_bytes, bool is_write)
+size_t
+migration_get_state(vfu_ctx_t *vfu_ctx)
 {
-    assert(migr != NULL);
-    assert(pending_bytes != NULL);
-
-    if (is_write) {
-        return ERROR_INT(EINVAL);
-    }
-
-    if (migr->iter.state == VFIO_USER_MIGR_ITER_STATE_FINISHED) {
-        *pending_bytes = 0;
-        return 0;
-    }
-
-    switch (migr->iter.state) {
-        case VFIO_USER_MIGR_ITER_STATE_INITIAL:
-        case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
-            /*
-             * FIXME what happens if data haven't been consumed in the previous
-             * iteration? Check https://www.spinics.net/lists/kvm/msg228608.html.
-             */
-            *pending_bytes = migr->iter.pending_bytes = migr->callbacks.get_pending_bytes(vfu_ctx);
-
-            if (*pending_bytes == 0) {
-                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_FINISHED);
-            } else {
-                migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_STARTED);
-            }
-            break;
-        case VFIO_USER_MIGR_ITER_STATE_STARTED:
-            /*
-             * FIXME We might be wrong returning a cached value, check
-             * https://www.spinics.net/lists/kvm/msg228608.html
-             *
-             */
-            *pending_bytes = migr->iter.pending_bytes;
-            break;
-        default:
-            return ERROR_INT(EINVAL);
-    }
-    return 0;
+    return vfu_ctx->migration->state;
 }
 
-/*
- * FIXME reading or writing migration registers with the wrong device state or
- * out of sequence is undefined, but should not result in EINVAL, it should
- * simply be ignored. However this way it's easier to catch development errors.
- * Make this behavior conditional.
- */
-
-/**
- * Returns 0 on success, -1 on error setting errno.
- */
-static ssize_t
-handle_data_offset_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                               bool is_write)
-{
-    int ret = 0;
-
-    assert(migr != NULL);
-
-    if (is_write) {
-        vfu_log(vfu_ctx, LOG_ERR, "data_offset is RO when saving");
-        return ERROR_INT(EINVAL);
-    }
-
-    switch (migr->iter.state) {
-    case VFIO_USER_MIGR_ITER_STATE_STARTED:
-        ret = migr->callbacks.prepare_data(vfu_ctx, &migr->iter.offset,
-                                           &migr->iter.size);
-        if (ret != 0) {
-            return ret;
-        }
-        /*
-         * FIXME must first read data_offset and then data_size. They way we've
-         * implemented it now, if data_size is read before data_offset we
-         * transition to state VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED without
-         * calling callbacks.prepare_data, which is wrong. Maybe we need
-         * separate states for data_offset and data_size.
-         */
-        migr_state_transition(migr, VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED);
-        break;
-    case VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED:
-        /*
-         * data_offset is invariant during a save iteration.
-         */
-        break;
-    default:
-        vfu_log(vfu_ctx, LOG_ERR,
-                "reading data_offset out of sequence is undefined");
-        return ERROR_INT(EINVAL);
-    }
-
-    return 0;
-}
-
-/**
- * Returns 0 on success, -1 on error setting errno.
- */
-static ssize_t
-handle_data_offset(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                   uint64_t *offset, bool is_write)
-{
-    int ret;
-
-    assert(migr != NULL);
-    assert(offset != NULL);
-
-    switch (migr->info.device_state) {
-    case VFIO_DEVICE_STATE_V1_SAVING:
-    case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
-        ret = handle_data_offset_when_saving(vfu_ctx, migr, is_write);
-        if (ret == 0 && !is_write) {
-            *offset = migr->iter.offset + migr->data_offset;
-        }
-        return ret;
-    case VFIO_DEVICE_STATE_V1_RESUMING:
-        if (is_write) {
-            /* TODO writing to read-only registers should be simply ignored */
-            vfu_log(vfu_ctx, LOG_ERR, "bad write to migration data_offset");
-            return ERROR_INT(EINVAL);
-        }
-        ret = migr->callbacks.prepare_data(vfu_ctx, offset, NULL);
-        if (ret != 0) {
-            return ret;
-        }
-        *offset += migr->data_offset;
-        return 0;
-    }
-    /* TODO improve error message */
-    vfu_log(vfu_ctx, LOG_ERR,
-            "bad access to migration data_offset in state %s",
-            migr_states[migr->info.device_state].name);
-    return ERROR_INT(EINVAL);
-}
-
-/**
- * Returns 0 on success, -1 on failure setting errno.
- */
-static ssize_t
-handle_data_size_when_saving(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                             bool is_write)
-{
-    assert(migr != NULL);
-
-    if (is_write) {
-        /* TODO improve error message */
-        vfu_log(vfu_ctx, LOG_ERR, "data_size is RO when saving");
-        return ERROR_INT(EINVAL);
-    }
-
-    if (migr->iter.state != VFIO_USER_MIGR_ITER_STATE_STARTED &&
-        migr->iter.state != VFIO_USER_MIGR_ITER_STATE_DATA_PREPARED) {
-        vfu_log(vfu_ctx, LOG_ERR,
-                "reading data_size ouf of sequence is undefined");
-        return ERROR_INT(EINVAL);
-    }
-    return 0;
-}
-
-/**
- * Returns 0 on success, -1 on error setting errno.
- */
-static ssize_t
-handle_data_size_when_resuming(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                               uint64_t size, bool is_write)
-{
-    assert(migr != NULL);
-
-    if (is_write) {
-        return migr->callbacks.data_written(vfu_ctx, size);
-    }
-    return 0;
-}
-
-/**
- * Returns 0 on success, -1 on failure setting errno.
- */
-static ssize_t
-handle_data_size(vfu_ctx_t *vfu_ctx, struct migration *migr,
-                 uint64_t *size, bool is_write)
-{
-    int ret;
-
-    assert(vfu_ctx != NULL);
-    assert(size != NULL);
-
-    switch (migr->info.device_state){
-    case VFIO_DEVICE_STATE_V1_SAVING:
-    case VFIO_DEVICE_STATE_V1_RUNNING | VFIO_DEVICE_STATE_V1_SAVING:
-        ret = handle_data_size_when_saving(vfu_ctx, migr, is_write);
-        if (ret == 0 && !is_write) {
-            *size = migr->iter.size;
-        }
-        return ret;
-    case VFIO_DEVICE_STATE_V1_RESUMING:
-        return handle_data_size_when_resuming(vfu_ctx, migr, *size, is_write);
-    }
-    /* TODO improve error message */
-    vfu_log(vfu_ctx, LOG_ERR, "bad access to data_size");
-    return ERROR_INT(EINVAL);
-}
-
-/**
- * Returns 0 on success, -1 on failure setting errno.
- */
 ssize_t
-MOCK_DEFINE(migration_region_access_registers)(vfu_ctx_t *vfu_ctx, char *buf,
-                                               size_t count, loff_t pos,
-                                               bool is_write)
+migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state)
 {
     struct migration *migr = vfu_ctx->migration;
-    int ret;
-    uint32_t *device_state, old_device_state;
-
-    assert(migr != NULL);
-
-    switch (pos) {
-    case offsetof(struct vfio_user_migration_info, device_state):
-        if (count != sizeof(migr->info.device_state)) {
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "bad device_state access size %zu", count);
-            return ERROR_INT(EINVAL);
-        }
-        device_state = (uint32_t *)buf;
-        if (!is_write) {
-            *device_state = migr->info.device_state;
-            return 0;
-        }
-        old_device_state = migr->info.device_state;
-        vfu_log(vfu_ctx, LOG_DEBUG,
-            "migration: transitioning from state %s to state %s",
-             migr_states[old_device_state].name,
-             migr_states[*device_state].name);
-
-        ret = handle_device_state(vfu_ctx, migr, *device_state, true);
-        if (ret == 0) {
-            vfu_log(vfu_ctx, LOG_DEBUG,
-                "migration: transitioned from state %s to state %s",
-                 migr_states[old_device_state].name,
-                 migr_states[*device_state].name);
-        } else {
-            vfu_log(vfu_ctx, LOG_ERR,
-                "migration: failed to transition from state %s to state %s",
-                 migr_states[old_device_state].name,
-                 migr_states[*device_state].name);
-        }
-        break;
-    case offsetof(struct vfio_user_migration_info, pending_bytes):
-        if (count != sizeof(migr->info.pending_bytes)) {
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "bad pending_bytes access size %zu", count);
-            return ERROR_INT(EINVAL);
-        }
-        ret = handle_pending_bytes(vfu_ctx, migr, (uint64_t *)buf, is_write);
-        break;
-    case offsetof(struct vfio_user_migration_info, data_offset):
-        if (count != sizeof(migr->info.data_offset)) {
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "bad data_offset access size %zu", count);
-            return ERROR_INT(EINVAL);
-        }
-        ret = handle_data_offset(vfu_ctx, migr, (uint64_t *)buf, is_write);
-        break;
-    case offsetof(struct vfio_user_migration_info, data_size):
-        if (count != sizeof(migr->info.data_size)) {
-            vfu_log(vfu_ctx, LOG_ERR,
-                    "bad data_size access size %zu", count);
-            return ERROR_INT(EINVAL);
-        }
-        ret = handle_data_size(vfu_ctx, migr, (uint64_t *)buf, is_write);
-        break;
-    default:
-        vfu_log(vfu_ctx, LOG_ERR,
-                "bad migration region register offset %#llx",
-                (ull_t)pos);
+    uint32_t state;
+    ssize_t ret = 0;
+    
+    if (device_state > VFIO_USER_DEVICE_NUM_STATES) {
         return ERROR_INT(EINVAL);
     }
+    
+    while (migr->state != device_state && ret == 0) {
+        state = next_state[migr->state][device_state];
+
+        if (state == VFIO_USER_DEVICE_STATE_ERROR) {
+            return ERROR_INT(EINVAL);
+        }
+
+        ret = handle_device_state(vfu_ctx, migr, state, true);
+    };
+    
     return ret;
 }
 
 ssize_t
-migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                        loff_t pos, bool is_write)
+handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    struct migration *migr = vfu_ctx->migration;
-    ssize_t ret;
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
 
-    assert(migr != NULL);
-    assert(buf != NULL);
-
-    /*
-     * FIXME don't call the device callback if the migration state is in not in
-     * pre-copy/stop-and-copy/resuming state, since the behavior is undefined
-     * in that case.
-     */
-
-    if (pos + count <= sizeof(struct vfio_user_migration_info)) {
-        ret = migration_region_access_registers(vfu_ctx, buf, count,
-                                                pos, is_write);
-        if (ret != 0) {
-            return ret;
-        }
-    } else {
-
-        if (pos < (loff_t)migr->data_offset) {
-            /*
-             * TODO we can simply ignore the access to that part and handle
-             * any access to the data region properly.
-             */
-            vfu_log(vfu_ctx, LOG_WARNING,
-                    "bad access to dead space %#llx - %#llx in migration region",
-                    (ull_t)pos,
-                    (ull_t)(pos + count - 1));
-            return ERROR_INT(EINVAL);
-        }
-
-        pos -= migr->data_offset;
-        if (is_write) {
-            ret = migr->callbacks.write_data(vfu_ctx, buf, count, pos);
-            if (ret < 0) {
-                return -1;
-            }
-        } else {
-            /*
-             * FIXME <linux/vfio.h> says:
-             *
-             *  d. Read data_size bytes of data from (region + data_offset) from the
-             *     migration region.
-             *
-             * Does this mean that partial reads are not allowed?
-             */
-            ret = migr->callbacks.read_data(vfu_ctx, buf, count, pos);
-            if (ret < 0) {
-                return -1;
-            }
-        }
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data)) {
+        vfu_log(vfu_ctx, LOG_ERR, "message too short (%ld)",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
     }
 
-    return count;
+    struct migration *migr = vfu_ctx->migration;
+    struct vfio_user_mig_data *req = msg->in.iov.iov_base;
+
+    if (vfu_ctx->migration == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "migration not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    if (migr->state != VFIO_USER_DEVICE_STATE_PRE_COPY
+        && migr->state != VFIO_USER_DEVICE_STATE_STOP_COPY) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration state to read data: %d",
+                migr->state);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->size > vfu_ctx->client_max_data_xfer_size) {
+        vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%d > %ld)",
+                req->size, vfu_ctx->client_max_data_xfer_size);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->argsz < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "argsz too small (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
+        return ERROR_INT(EINVAL);
+    }
+
+    msg->out.iov.iov_len = msg->in.iov.iov_len + req->size;
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+    if (msg->out.iov.iov_base == NULL) {
+        return ERROR_INT(ENOMEM);
+    }
+
+    struct vfio_user_mig_data *res = msg->out.iov.iov_base;
+
+    ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "read_data callback failed, errno=%d", errno);
+        iov_free(&msg->out.iov);
+        return ret;
+    }
+
+    res->size = ret;
+    res->argsz = sizeof(struct vfio_user_mig_data) + ret;
+
+    return 0;
+}
+
+ssize_t
+handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data)) {
+        vfu_log(vfu_ctx, LOG_ERR, "message too short (%ld)",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    struct migration *migr = vfu_ctx->migration;
+    struct vfio_user_mig_data *req = msg->in.iov.iov_base;
+
+    if (vfu_ctx->migration == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "migration not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    if (migr->state != VFIO_USER_DEVICE_STATE_RESUMING) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration state to write data: %d",
+                migr->state);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->size > vfu_ctx->client_max_data_xfer_size) {
+        vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%d > %ld)",
+                req->size, vfu_ctx->client_max_data_xfer_size);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->argsz < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "argsz too small (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "short write (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
+        return ERROR_INT(EINVAL);
+    }
+
+    ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "write_data callback failed, errno=%d",
+                errno);
+        return ret;
+    } else if (ret != req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "migration data partial write of size=%ld",
+                ret);
+        return ERROR_INT(EINVAL);
+    }
+
+    return 0;
 }
 
 bool
 MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {
-    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_V1_SAVING;
+    return migr != NULL && migr->state == VFIO_USER_DEVICE_STATE_STOP_COPY;
 }
 
 bool
 MOCK_DEFINE(device_is_stopped)(struct migration *migr)
 {
-    return migr != NULL && migr->info.device_state == VFIO_DEVICE_STATE_V1_STOP;
+    return migr != NULL && migr->state == VFIO_USER_DEVICE_STATE_STOP;
 }
 
 size_t
@@ -569,17 +441,11 @@ migration_set_pgsize(struct migration *migr, size_t pgsize)
 }
 
 bool
-access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                              uint64_t offset)
+migration_feature_needs_quiesce(struct vfio_user_device_feature *feature)
 {
-    /*
-     * Writing to the migration state register with an unaligned access won't
-     * trigger this check but that's not a problem because
-     * migration_region_access_registers will fail the access.
-     */
-    return region_index == VFU_PCI_DEV_MIGR_REGION_IDX
-           && vfu_ctx->migration != NULL
-           && offset == offsetof(struct vfio_user_migration_info, device_state);
+    return ((feature->flags &
+        (VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE)) != 0)
+        && !(feature->flags & VFIO_DEVICE_FEATURE_PROBE);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

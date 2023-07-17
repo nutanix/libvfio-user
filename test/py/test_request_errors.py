@@ -54,10 +54,6 @@ def setup_function(function):
     ret = vfu_setup_device_reset_cb(ctx)
     assert ret == 0
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=2 << PAGE_SHIFT, flags=VFU_REGION_FLAG_RW)
-    assert ret == 0
-
     ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
@@ -189,24 +185,21 @@ def test_disconnected_socket_quiesce_busy(mock_quiesce):
 
 @patch('libvfio_user.reset_cb')
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
-@patch('libvfio_user.migr_get_pending_bytes_cb')
-def test_reply_fail_quiesce_busy(mock_get_pending_bytes, mock_quiesce,
+@patch('libvfio_user.migr_trans_cb')
+def test_reply_fail_quiesce_busy(mock_migr_trans_cb, mock_quiesce,
                                  mock_reset):
     """Tests failing to reply and the quiesce callback returning EBUSY."""
 
     global ctx, client
 
-    def get_pending_bytes_side_effect(ctx):
+    def migr_trans_cb_side_effect(ctx, state):
         client.sock.close()
         return 0
-    mock_get_pending_bytes.side_effect = get_pending_bytes_side_effect
+    mock_migr_trans_cb.side_effect = migr_trans_cb_side_effect
 
-    # read the get_pending_bytes register, it should close the socket causing
-    # the reply to fail
-    read_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX,
-                vfio_user_migration_info.pending_bytes.offset,
-                vfio_user_migration_info.pending_bytes.size, rsp=False,
-                busy=True)
+    # change the state, it should close the socket causing the reply to fail
+    transition_to_state(ctx, client.sock, VFIO_USER_DEVICE_STATE_STOP_COPY,
+                        rsp=False, busy=True)
 
     # vfu_run_ctx will try to reset the context and to do that it needs to
     # quiesce the device first
