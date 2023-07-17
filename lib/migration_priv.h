@@ -35,7 +35,7 @@
 
 struct migration {
     uint64_t flags;
-    enum vfio_user_device_mig_state state;
+    enum vfio_device_mig_state state;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
 };
@@ -43,7 +43,7 @@ struct migration {
 /* valid migration state transitions
    each number corresponds to a FROM state and each bit a TO state
    if the bit is set then the transition is allowed
-   the indices of each state are those in the vfio_user_device_mig_state enum */
+   the indices of each state are those in the vfio_device_mig_state enum */
 static const char transitions[8] = {
     0b00000000, // ERROR        -> {}
     0b00011100, // STOP         -> {RUNNING, STOP_COPY, RESUMING}

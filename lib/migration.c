@@ -91,7 +91,7 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
 
 void
 MOCK_DEFINE(migr_state_transition)(struct migration *migr,
-                                   enum vfio_user_device_mig_state state)
+                                   enum vfio_device_mig_state state)
 {
     assert(migr != NULL);
     /* FIXME validate that state transition */
@@ -99,7 +99,7 @@ MOCK_DEFINE(migr_state_transition)(struct migration *migr,
 }
 
 vfu_migr_state_t
-MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_user_device_mig_state state)
+MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_device_mig_state state)
 {
     switch (state) {
         case VFIO_DEVICE_STATE_STOP:
@@ -268,8 +268,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
 
     if (ret < 0) {
-        res->size = 0;
-        res->argsz = sizeof(struct vfio_user_mig_data);
+        msg->out.iov.iov_len = 0;
     } else {
         res->size = ret;
         res->argsz = sizeof(struct vfio_user_mig_data) + ret;

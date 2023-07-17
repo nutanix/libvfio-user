@@ -88,8 +88,10 @@ dma_sg_size(void);
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
-// Should the server start in the migration "RESUMING" state? Given to
-//   init_migration
+/*
+ * If set in the flags given to `init_migration`, the server will start in the
+ * RESUMING state, ready to receive migration data.
+ */
 #define LIBVFIO_USER_MIG_FLAG_START_RESUMING (1 << 0)
 
 typedef enum {
@@ -607,8 +609,21 @@ typedef struct {
      */
     int (*transition)(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state);
     
+    /*
+     * Function that is called to read `count` bytes of migration data into
+     * `buf`. The function must return the amount of data read or -1 on error,
+     * setting errno.
+     * 
+     * If the function returns any non-negative number less than `count`, this
+     * is interpreted to mean that there is no more migration data to read.
+     */
     ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
+    /*
+     * Function that is called for writing previously stored device state. The
+     * function must return the amount of data written or -1 on error, setting
+     * errno.
+     */
     ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
 } vfu_migration_callbacks_t;
@@ -642,8 +657,7 @@ _Static_assert(VFIO_DEVICE_STATE_STOP == 0,
 #endif /* VFIO_REGION_TYPE_MIGRATION_DEPRECATED */
 
 int
-vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
-                                     uint64_t flags,
+vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx, uint64_t flags,
                                      const vfu_migration_callbacks_t
                                      *callbacks);
 

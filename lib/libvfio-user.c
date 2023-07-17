@@ -894,7 +894,7 @@ static int
 device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
-    
+
     ret = call_reset_cb(vfu_ctx, reason);
     if (ret < 0) {
         return ret;
@@ -1031,15 +1031,12 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
+    if (vfu_ctx->migration == NULL ||
+        msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
         return -EINVAL;
     }
 
     struct vfio_user_device_feature *req = msg->in.iov.iov_base;
-
-    if (vfu_ctx->migration == NULL) {
-        return -EINVAL;
-    }
 
     uint32_t supported_flags =
         migration_feature_flags(req->flags & VFIO_DEVICE_FEATURE_MASK);
@@ -1085,7 +1082,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
         if (ret < 0) {
-            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature);
+            msg->out.iov.iov_len = 0;
         } else {
             res->argsz = sizeof(struct vfio_user_device_feature)
                 + sizeof(struct vfio_user_device_feature_migration);
