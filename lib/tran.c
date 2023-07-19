@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include <json.h>
 
@@ -63,7 +64,8 @@
  */
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
-                        size_t *client_max_data_xfer_sizep, size_t *pgsizep)
+                        size_t *client_max_data_xfer_sizep, size_t *pgsizep,
+                        bool *enable_cmd_conn)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -126,6 +128,19 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
             if (errno != 0) {
                 goto out;
             }
+        }
+    }
+
+    if (json_object_object_get_ex(jo_caps, "cmd_conn", &jo)) {
+        if (json_object_get_type(jo) != json_type_boolean) {
+            goto out;
+        }
+
+        errno = 0;
+        *enable_cmd_conn = json_object_get_boolean(jo);
+
+        if (errno != 0) {
+            goto out;
         }
     }
 
@@ -207,7 +222,7 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
                                       &vfu_ctx->client_max_data_xfer_size,
-                                      &pgsize);
+                                      &pgsize, &vfu_ctx->enable_cmd_conn);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
@@ -267,13 +282,15 @@ out:
 
 static int
 send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
-             struct vfio_user_version *cversion)
+             struct vfio_user_version *cversion, int *cmd_conn_fd)
 {
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
     char server_caps[1024];
     vfu_msg_t msg = { { 0 } };
     int slen;
+    int ret;
+    int cmd_conn_fds[2] = {-1, -1};
 
     if (vfu_ctx->migration == NULL) {
         slen = snprintf(server_caps, sizeof(server_caps),
@@ -313,11 +330,34 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
     msg.out_iovecs = iovecs;
     msg.nr_out_iovecs = 2;
 
-    return vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+    if (vfu_ctx->enable_cmd_conn && vfu_ctx->client_max_fds > 0 &&
+        cmd_conn_fd != NULL) {
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, cmd_conn_fds) == -1) {
+            return -1;
+        }
+
+        msg.out.fds = cmd_conn_fds;
+        msg.out.nr_fds = 1;
+    }
+
+    ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+
+    /*
+     * The remote end of the cmd connection is no longer needed, the local only
+     * if successful.
+     */
+    close_safely(&cmd_conn_fds[0]);
+    if (ret == -1) {
+        close_safely(&cmd_conn_fds[1]);
+    } else if (cmd_conn_fd) {
+        *cmd_conn_fd = cmd_conn_fds[1];
+    }
+
+    return ret;
 }
 
 int
-tran_negotiate(vfu_ctx_t *vfu_ctx)
+tran_negotiate(vfu_ctx_t *vfu_ctx, int *cmd_conn_fd)
 {
     struct vfio_user_version *client_version = NULL;
     uint16_t msg_id = 0x0bad;
@@ -330,7 +370,7 @@ tran_negotiate(vfu_ctx_t *vfu_ctx)
         return ret;
     }
 
-    ret = send_version(vfu_ctx, msg_id, client_version);
+    ret = send_version(vfu_ctx, msg_id, client_version, cmd_conn_fd);
 
     free(client_version);
 

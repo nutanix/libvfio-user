@@ -285,7 +285,7 @@ tran_pipe_attach(vfu_ctx_t *vfu_ctx)
     tp->in_fd = STDIN_FILENO;
     tp->out_fd = STDOUT_FILENO;
 
-    ret = tran_negotiate(vfu_ctx);
+    ret = tran_negotiate(vfu_ctx, NULL);
     if (ret < 0) {
         ret = errno;
         tp->in_fd = -1;
