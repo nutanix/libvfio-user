@@ -206,24 +206,30 @@ typedef struct vfio_user_region_io_fds_reply {
     } sub_regions[];
 } __attribute__((packed)) vfio_user_region_io_fds_reply_t;
 
-
-/* Analogous to vfio_iommu_type1_dirty_bitmap. */
-struct vfio_user_dirty_pages {
-    uint32_t    argsz;
-#ifndef VFIO_IOMMU_DIRTY_PAGES_FLAG_START
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_START      (1 << 0)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP       (1 << 1)
-#define VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP (1 << 2)
-#endif
-    uint32_t    flags;
-} __attribute__((packed));
-
-/* Analogous to struct vfio_iommu_type1_dirty_bitmap_get. */
-struct vfio_user_bitmap_range {
+struct vfio_user_device_feature_dma_logging_range {
     uint64_t iova;
-    uint64_t size;
-    struct vfio_user_bitmap bitmap;
+    uint64_t length;
 } __attribute__((packed));
+
+struct vfio_user_device_feature_dma_logging_control {
+    uint64_t                                          page_size;
+    uint32_t                                          num_ranges;
+    uint32_t                                          reserved;
+    struct vfio_user_device_feature_dma_logging_range ranges[];
+} __attribute__((packed));
+
+struct vfio_user_device_feature_dma_logging_report {
+    uint64_t iova;
+    uint64_t length;
+    uint64_t page_size;
+    uint8_t  bitmap[];
+} __attribute__((packed));
+
+#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
+#define VFIO_DEVICE_FEATURE_DMA_LOGGING_START  6
+#define VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP   7
+#define VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT 8
+#endif
 
 /* Analogous to vfio_device_feature */
 struct vfio_user_device_feature {

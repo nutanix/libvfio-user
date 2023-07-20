@@ -906,123 +906,22 @@ device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     return 0;
 }
 
-static int
-handle_dirty_pages_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
-{
-    struct vfio_user_dirty_pages *dirty_pages_in;
-    struct vfio_user_dirty_pages *dirty_pages_out;
-    struct vfio_user_bitmap_range *range_in;
-    struct vfio_user_bitmap_range *range_out;
-    size_t argsz;
-    int ret;
-
-
-    dirty_pages_in = msg->in.iov.iov_base;
-
-    if (msg->in.iov.iov_len < sizeof(*dirty_pages_in) + sizeof(*range_in) ||
-        dirty_pages_in->argsz > SERVER_MAX_DATA_XFER_SIZE ||
-        dirty_pages_in->argsz < sizeof(*dirty_pages_out)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid message size=%zu argsz=%u",
-                msg->in.iov.iov_len, dirty_pages_in->argsz);
-        return ERROR_INT(EINVAL);
-    }
-
-    range_in = msg->in.iov.iov_base + sizeof(*dirty_pages_in);
-
-    /*
-     * range_in is client-controlled, but we only need to protect against
-     * overflow here: we'll take MIN() against a validated value next, and
-     * dma_controller_dirty_page_get() will validate the actual ->bitmap.size
-     * value later, anyway.
-     */
-    argsz = satadd_u64(sizeof(*dirty_pages_out) + sizeof(*range_out),
-                       range_in->bitmap.size);
-
-    msg->out.iov.iov_len = MIN(dirty_pages_in->argsz, argsz);
-    msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
-    if (msg->out.iov.iov_base == NULL) {
-        return -1;
-    }
-    dirty_pages_out = msg->out.iov.iov_base;
-    memcpy(dirty_pages_out, dirty_pages_in, sizeof(*dirty_pages_out));
-    dirty_pages_out->argsz = argsz;
-
-    /*
-     * If the reply doesn't fit, reply with just the dirty pages header, giving
-     * the needed argsz. Typically this shouldn't happen, as the client knows
-     * the needed reply size and has already provided the correct bitmap size.
-     */
-    if (dirty_pages_in->argsz >= argsz) {
-        void *bitmap_out = msg->out.iov.iov_base + sizeof(*dirty_pages_out)
-                           + sizeof(*range_out);
-        range_out = msg->out.iov.iov_base + sizeof(*dirty_pages_out);
-        memcpy(range_out, range_in, sizeof(*range_out));
-        ret = dma_controller_dirty_page_get(vfu_ctx->dma,
-                                            (vfu_dma_addr_t)(uintptr_t)range_in->iova,
-                                            range_in->size,
-                                            range_in->bitmap.pgsize,
-                                            range_in->bitmap.size, bitmap_out);
-        if (ret != 0) {
-            ret = errno;
-            vfu_log(vfu_ctx, LOG_WARNING,
-                    "failed to get dirty bitmap from DMA controller: %m");
-            free(msg->out.iov.iov_base);
-            msg->out.iov.iov_base = NULL;
-            msg->out.iov.iov_len = 0;
-            return ERROR_INT(ret);
-        }
-    } else {
-        vfu_log(vfu_ctx, LOG_ERR,
-                "dirty pages: get [%#llx, %#llx): buffer too small (%u < %zu)",
-                (ull_t)range_in->iova, (ull_t)range_in->iova + range_in->size,
-                dirty_pages_in->argsz, argsz);
-    }
-
-    return 0;
-}
-
-static int
-handle_dirty_pages(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
-{
-    struct vfio_user_dirty_pages *dirty_pages = msg->in.iov.iov_base;
-    int ret;
-
-    assert(vfu_ctx != NULL);
-    assert(msg != NULL);
-
-    if (msg->in.iov.iov_len < sizeof(*dirty_pages) ||
-        dirty_pages->argsz < sizeof(*dirty_pages)) {
-        vfu_log(vfu_ctx, LOG_ERR, "invalid message size %zu", msg->in.iov.iov_len);
-        return ERROR_INT(EINVAL);
-    }
-
-    if (vfu_ctx->migration == NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "migration not configured");
-        return ERROR_INT(ENOTSUP);
-    }
-
-    switch (dirty_pages->flags) {
-    case VFIO_IOMMU_DIRTY_PAGES_FLAG_START:
-        ret = dma_controller_dirty_page_logging_start(vfu_ctx->dma,
-                  migration_get_pgsize(vfu_ctx->migration));
-        break;
-
-    case VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP:
-        dma_controller_dirty_page_logging_stop(vfu_ctx->dma);
-        ret = 0;
-        break;
-
-    case VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP:
-        ret = handle_dirty_pages_get(vfu_ctx, msg);
-        break;
-
-    default:
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags %#x", dirty_pages->flags);
-        ret = ERROR_INT(EINVAL);
-        break;
-    }
-
-    return ret;
+static uint32_t
+device_feature_flags(uint32_t feature) {
+    switch (feature) {
+        case VFIO_DEVICE_FEATURE_MIGRATION:
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT:
+            return VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_PROBE;
+        case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
+            return VFIO_DEVICE_FEATURE_GET
+                | VFIO_DEVICE_FEATURE_SET
+                | VFIO_DEVICE_FEATURE_PROBE;
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_START:
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP:
+            return VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_PROBE;
+        default:
+            return 0;
+    };
 }
 
 static int
@@ -1039,12 +938,14 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_user_device_feature *req = msg->in.iov.iov_base;
 
     uint32_t supported_flags =
-        migration_feature_flags(req->flags & VFIO_DEVICE_FEATURE_MASK);
+        device_feature_flags(req->flags & VFIO_DEVICE_FEATURE_MASK);
 
     if ((req->flags & supported_flags) !=
         (req->flags & ~VFIO_DEVICE_FEATURE_MASK) || supported_flags == 0) {
         return -EINVAL;
     }
+
+    uint32_t feature = req->flags & VFIO_DEVICE_FEATURE_MASK;
 
     ssize_t ret;
 
@@ -1061,31 +962,52 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
         ret = 0;
     } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
-        // all supported outgoing data is currently the same size as 
-        //   vfio_user_device_feature_migration
-        msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
-            + sizeof(struct vfio_user_device_feature_migration);
-        msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
-
-        if (msg->out.iov.iov_base == NULL) {
-            return -1;
-        }
-
-        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-               sizeof(struct vfio_user_device_feature));
-
-        ret = migration_feature_get(vfu_ctx,
-                                    req->flags & VFIO_DEVICE_FEATURE_MASK,
-                                    msg->out.iov.iov_base +
-                                    sizeof(struct vfio_user_device_feature));
-
-        struct vfio_user_device_feature *res = msg->out.iov.iov_base;
-
-        if (ret < 0) {
-            msg->out.iov.iov_len = 0;
-        } else {
-            res->argsz = sizeof(struct vfio_user_device_feature)
+        if (is_migration_feature(feature)) {
+            // all supported outgoing data is currently the same size as 
+            //   vfio_user_device_feature_migration
+            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
                 + sizeof(struct vfio_user_device_feature_migration);
+            msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+            if (msg->out.iov.iov_base == NULL) {
+                return -1;
+            }
+
+            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+                   sizeof(struct vfio_user_device_feature));
+
+            ret = migration_feature_get(vfu_ctx, feature,
+                                        msg->out.iov.iov_base +
+                                        sizeof(struct vfio_user_device_feature));
+
+            struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+            if (ret < 0) {
+                msg->out.iov.iov_len = 0;
+            } else {
+                res->argsz = sizeof(struct vfio_user_device_feature)
+                    + sizeof(struct vfio_user_device_feature_migration);
+            }
+        } else if (is_dma_feature(feature)) {
+            ssize_t bitmap_size = dma_get_request_bitmap_size(
+                req->argsz - sizeof(struct vfio_user_device_feature),
+                req->data
+            );
+
+            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
+                + bitmap_size;
+            msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
+
+            if (msg->out.iov.iov_base == NULL) {
+                return -1;
+            }
+
+            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+                   sizeof(struct vfio_user_device_feature));
+
+            struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+            ret = dma_feature_get(vfu_ctx, feature, res->data);
         }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
@@ -1098,9 +1020,13 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
                msg->out.iov.iov_len);
 
-        ret = migration_feature_set(vfu_ctx,
-                                    req->flags & VFIO_DEVICE_FEATURE_MASK,
-                                    req->data);
+        struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+        if (is_migration_feature(feature)) {
+            ret = migration_feature_set(vfu_ctx, feature, res->data);
+        } else if (is_dma_feature(feature)) {
+            ret = dma_feature_set(vfu_ctx, feature, res->data);
+        }
     }
 
     return ret;
@@ -1267,12 +1193,7 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         break;
 
     case VFIO_USER_DIRTY_PAGES:
-        // FIXME: don't allow migration calls if migration == NULL
-        if (vfu_ctx->dma != NULL) {
-            ret = handle_dirty_pages(vfu_ctx, msg);
-        } else {
-            ret = 0;
-        }
+        vfu_log(vfu_ctx, LOG_ERR, "VFIO_USER_DIRTY_PAGES deprecated");
         break;
 
     case VFIO_USER_DEVICE_FEATURE:
@@ -1437,16 +1358,6 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
 
     case VFIO_USER_DEVICE_RESET:
         return true;
-
-    case VFIO_USER_DIRTY_PAGES: {
-        struct vfio_user_dirty_pages *dirty_pages = msg->in.iov.iov_base;
-
-        if (msg->in.iov.iov_len < sizeof(*dirty_pages)) {
-            return false;
-        }
-
-        return !(dirty_pages->flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP);
-    }
 
     case VFIO_USER_REGION_WRITE:
         if (msg->in.iov.iov_len < sizeof(*reg)) {
