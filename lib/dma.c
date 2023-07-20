@@ -327,6 +327,7 @@ ssize_t
 dma_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 {
     assert(vfu_ctx != NULL);
+    assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT);
 
     struct dma_controller *dma = vfu_ctx->dma;
 
@@ -336,16 +337,15 @@ dma_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 
     ssize_t bitmap_size = get_bitmap_size(req->length, req->page_size);
 
-    int ret;
+    char* bitmap = (char*) buf
+        + sizeof(struct vfio_user_device_feature_dma_logging_report);
 
-    ret = dma_controller_dirty_page_get(dma,
-                                        req->iova,
-                                        req->length,
-                                        req->page_size,
-                                        bitmap_size,
-                                        buf + sizeof(struct vfio_user_device_feature_dma_logging_report));
-
-    return -1;
+    return dma_controller_dirty_page_get(dma,
+                                         (vfu_dma_addr_t) req->iova,
+                                         req->length,
+                                         req->page_size,
+                                         bitmap_size,
+                                         bitmap);
 }
 
 /*
