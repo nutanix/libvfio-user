@@ -48,8 +48,8 @@ struct migration *
 init_migration(const vfu_migration_callbacks_t *callbacks,
                uint64_t flags, int *err);
 
-uint32_t
-migration_feature_flags(uint32_t feature);
+bool
+is_migration_feature(uint32_t feature);
 
 ssize_t
 migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);

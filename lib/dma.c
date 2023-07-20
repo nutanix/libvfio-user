@@ -288,6 +288,147 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
     return 0;
 }
 
+static dma_memory_region_t *
+find_region(dma_controller_t *dma, uint64_t iova, uint64_t length) {
+    for (size_t i = 0; i < (size_t)dma->nregions; i++) {
+        if ((uint64_t)dma->regions[i].info.iova.iov_base == iova &&
+            dma->regions[i].info.iova.iov_len == length) {
+            return &dma->regions[i];
+        }
+    }
+
+    return NULL;
+}
+
+bool
+is_dma_feature(uint32_t feature) {
+    switch (feature) {
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_START:
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP:
+        case VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT:
+            return true;
+    }
+
+    return false;
+}
+
+ssize_t
+dma_get_request_bitmap_size(size_t length, void *buf) {
+    if (length != sizeof(struct vfio_user_device_feature_dma_logging_report)) {
+        return ERROR_INT(EINVAL);
+    }
+
+    struct vfio_user_device_feature_dma_logging_report *req = buf;
+
+    return get_bitmap_size(req->length, req->page_size);
+}
+
+ssize_t
+dma_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
+{
+    assert(vfu_ctx != NULL);
+
+    struct dma_controller *dma = vfu_ctx->dma;
+
+    assert(dma != NULL);
+
+    struct vfio_user_device_feature_dma_logging_report *req = buf;
+
+    ssize_t bitmap_size = get_bitmap_size(req->length, req->page_size);
+
+    int ret;
+
+    ret = dma_controller_dirty_page_get(dma,
+                                        req->iova,
+                                        req->length,
+                                        req->page_size,
+                                        bitmap_size,
+                                        buf + sizeof(struct vfio_user_device_feature_dma_logging_report));
+
+    return -1;
+}
+
+/*
+ * Currently we only support IOVA ranges that correspond exactly to a region.
+ * Also, once DMA logging has been started on a certain subset of the regions,
+ * it must be stopped on all of those regions at the same time before any other
+ * regions can start logging.
+ */
+ssize_t
+dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
+{
+    assert(vfu_ctx != NULL);
+
+    struct dma_controller *dma = vfu_ctx->dma;
+
+    assert(dma != NULL);
+    
+    struct vfio_user_device_feature_dma_logging_control *req = buf;
+
+    if (feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_START) {
+        if (req->page_size == 0) {
+            return ERROR_INT(EINVAL);
+        }
+
+        if (dma->dirty_pgsize > 0) {
+            if (dma->dirty_pgsize != req->page_size) {
+                return ERROR_INT(EINVAL);
+            }
+            return 0;
+        }
+
+        for (size_t i = 0; i < req->num_ranges; i++) {
+            dma_memory_region_t *region = find_region(dma, req->ranges[i].iova,
+                                                      req->ranges[i].length);
+
+            if (region == NULL) {
+                return ERROR_INT(EINVAL);
+            }
+            
+            if (dirty_page_logging_start_on_region(region,
+                                                   req->page_size) < 0) {
+                int _errno = errno;
+                size_t j;
+
+                for (j = 0; j < i; j++) {
+                    region = find_region(dma, req->ranges[i].iova,
+                                         req->ranges[i].length);
+                    free(region->dirty_bitmap);
+                    region->dirty_bitmap = NULL;
+                }
+
+                return ERROR_INT(_errno);
+            }
+        }
+
+        dma->dirty_pgsize = req->page_size;
+
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: started logging");
+    } else if (feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP) {
+        if (dma->dirty_pgsize == 0) {
+            return 0;
+        }
+
+        for (size_t i = 0; i < req->num_ranges; i++) {
+            dma_memory_region_t *region = find_region(dma, req->ranges[i].iova,
+                                                      req->ranges[i].length);
+
+            if (region == NULL || region->dirty_bitmap == NULL) {
+                return ERROR_INT(EINVAL);
+            }
+
+            free(region->dirty_bitmap);
+            region->dirty_bitmap = NULL;
+        }
+
+        dma->dirty_pgsize = 0;
+
+        vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: stopped logging");
+    }
+
+    return 0;
+}
+
 int
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, uint64_t size,

@@ -135,6 +135,18 @@ MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
 MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
              dma_memory_region_t *region);
 
+bool
+is_dma_feature(uint32_t feature);
+
+ssize_t
+dma_get_request_bitmap_size(size_t length, void *buf);
+
+ssize_t
+dma_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
+
+ssize_t
+dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
+
 // Helper for dma_addr_to_sgl() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,

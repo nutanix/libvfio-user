@@ -172,18 +172,15 @@ MOCK_DEFINE(handle_device_state)(vfu_ctx_t *vfu_ctx, struct migration *migr,
     return migr_trans_to_valid_state(vfu_ctx, migr, device_state, notify);
 }
 
-uint32_t
-migration_feature_flags(uint32_t feature) {
+bool
+is_migration_feature(uint32_t feature) {
     switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
-            return VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_PROBE;
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
-            return VFIO_DEVICE_FEATURE_GET
-                | VFIO_DEVICE_FEATURE_SET
-                | VFIO_DEVICE_FEATURE_PROBE;
-        default:
-            return 0;
-    };
+            return true;
+    }
+
+    return false;
 }
 
 ssize_t
