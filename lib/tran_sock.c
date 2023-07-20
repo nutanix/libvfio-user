@@ -419,8 +419,8 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 
 out:
     if (ret != 0) {
-        if (ts != NULL && ts->listen_fd != -1) {
-            close(ts->listen_fd);
+        if (ts != NULL) {
+            close_safely(&ts->listen_fd);
         }
         free(ts);
         return ERROR_INT(ret);
@@ -466,10 +466,8 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
 
     ret = tran_negotiate(vfu_ctx);
     if (ret < 0) {
-        ret = errno;
-        close(ts->conn_fd);
-        ts->conn_fd = -1;
-        return ERROR_INT(ret);
+        close_safely(&ts->conn_fd);
+        return -1;
     }
 
     return 0;
@@ -636,10 +634,8 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
 
     ts = vfu_ctx->tran_data;
 
-    if (ts != NULL && ts->conn_fd != -1) {
-        // FIXME: handle EINTR
-        (void) close(ts->conn_fd);
-        ts->conn_fd = -1;
+    if (ts != NULL) {
+        close_safely(&ts->conn_fd);
     }
 }
 
@@ -654,11 +650,7 @@ tran_sock_fini(vfu_ctx_t *vfu_ctx)
 
     if (ts != NULL) {
         (void) unlink(vfu_ctx->uuid);
-        if (ts->listen_fd != -1) {
-            // FIXME: handle EINTR
-            (void) close(ts->listen_fd);
-            ts->listen_fd = -1;
-        }
+        close_safely(&ts->listen_fd);
     }
 
     free(vfu_ctx->tran_data);
