@@ -358,12 +358,25 @@ ssize_t
 dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 {
     assert(vfu_ctx != NULL);
+    assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_START ||
+           feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP);
 
     struct dma_controller *dma = vfu_ctx->dma;
 
     assert(dma != NULL);
     
     struct vfio_user_device_feature_dma_logging_control *req = buf;
+
+    size_t num_regions = req->num_ranges;
+    bool is_all_regions = false;
+
+    // If num_ranges is zero, we consider every region to be selected.
+    if (num_regions == 0) {
+        num_regions = dma->nregions;
+        is_all_regions = true;
+    }
+
+    dma_memory_region_t *region;
 
     if (feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_START) {
         if (req->page_size == 0) {
@@ -377,9 +390,13 @@ dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
             return 0;
         }
 
-        for (size_t i = 0; i < req->num_ranges; i++) {
-            dma_memory_region_t *region = find_region(dma, req->ranges[i].iova,
-                                                      req->ranges[i].length);
+        for (size_t i = 0; i < num_regions; i++) {
+            if (is_all_regions) {
+                region = &dma->regions[i];
+            } else {
+                region = find_region(dma, req->ranges[i].iova,
+                                     req->ranges[i].length);
+            }
 
             if (region == NULL) {
                 return ERROR_INT(EINVAL);
@@ -391,8 +408,12 @@ dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
                 size_t j;
 
                 for (j = 0; j < i; j++) {
-                    region = find_region(dma, req->ranges[i].iova,
-                                         req->ranges[i].length);
+                    if (is_all_regions) {
+                        region = &dma->regions[j];
+                    } else {
+                        region = find_region(dma, req->ranges[j].iova,
+                                             req->ranges[j].length);
+                    }
                     free(region->dirty_bitmap);
                     region->dirty_bitmap = NULL;
                 }
@@ -409,9 +430,13 @@ dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
             return 0;
         }
 
-        for (size_t i = 0; i < req->num_ranges; i++) {
-            dma_memory_region_t *region = find_region(dma, req->ranges[i].iova,
-                                                      req->ranges[i].length);
+        for (size_t i = 0; i < num_regions; i++) {
+            if (is_all_regions) {
+                region = &dma->regions[i];
+            } else {
+                region = find_region(dma, req->ranges[i].iova,
+                                     req->ranges[i].length);
+            }
 
             if (region == NULL || region->dirty_bitmap == NULL) {
                 return ERROR_INT(EINVAL);
