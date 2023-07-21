@@ -222,6 +222,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
         if (ret < 0) {
             err(EXIT_FAILURE, "vfu_sgl_write failed");
         }
+        vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
     }
 
     crc1 = rte_hash_crc(buf, sizeof(buf), 0);
