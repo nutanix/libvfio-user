@@ -995,6 +995,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             );
 
             msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
+                + sizeof(struct vfio_user_device_feature_dma_logging_report)
                 + bitmap_size;
             msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
 
@@ -1003,7 +1004,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             }
 
             memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-                   sizeof(struct vfio_user_device_feature));
+                   sizeof(struct vfio_user_device_feature) +
+                   sizeof(struct vfio_user_device_feature_dma_logging_report));
 
             struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
