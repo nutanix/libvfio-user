@@ -756,40 +756,40 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 {
     uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
                                             sysconf(_SC_PAGESIZE));
-    struct vfio_user_dirty_pages *dirty_pages;
-    struct vfio_user_bitmap_range *range;
+
+    struct vfio_user_device_feature *res;
+    struct vfio_user_device_feature_dma_logging_report *report;
+    
     char *bitmap;
-    size_t size;
-    void *data;
     int ret;
 
-    size = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
+    ssize_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
 
-    data = calloc(1, size);
+    void* data = calloc(1, size);
     assert(data != NULL);
 
-    dirty_pages = data;
-    dirty_pages->flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
-    dirty_pages->argsz = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
+    res = data;
+    res->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT
+               | VFIO_DEVICE_FEATURE_GET;
+    res->argsz = sizeof(*res) + sizeof(*report);
 
-    range = data + sizeof(*dirty_pages);
-    range->iova = dma_region->addr;
-    range->size = dma_region->size;
-    range->bitmap.size = bitmap_size;
-    range->bitmap.pgsize = sysconf(_SC_PAGESIZE);
+    report = data + sizeof(*res);
+    report->iova = dma_region->addr;
+    report->length = dma_region->size;
+    report->page_size = sysconf(_SC_PAGESIZE);
 
-    bitmap = data + sizeof(*dirty_pages) + sizeof(*range);
+    bitmap = data + sizeof(*res) + sizeof(*report);
 
-    ret = tran_sock_msg(sock, 0x99, VFIO_USER_DIRTY_PAGES,
-                        data, sizeof(*dirty_pages) + sizeof(*range),
+    ret = tran_sock_msg(sock, 0x99, VFIO_USER_DEVICE_FEATURE,
+                        data, sizeof(*res) + sizeof(*report),
                         NULL, data, size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to get dirty page bitmap");
     }
 
     printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
-           (ull_t)range->iova,
-           (ull_t)(range->iova + range->size - 1), bitmap[0]);
+           (ull_t)report->iova,
+           (ull_t)(report->iova + report->length - 1), bitmap[0]);
 
     free(data);
 }
@@ -1107,7 +1107,6 @@ int main(int argc, char *argv[])
     size_t server_max_data_xfer_size;
     size_t pgsize;
     int nr_dma_regions;
-    struct vfio_user_dirty_pages dirty_pages = {0};
     int opt;
     time_t t;
     char *path_to_server = NULL;
@@ -1116,6 +1115,14 @@ int main(int argc, char *argv[])
     size_t nr_iters;
     uint32_t crc;
     size_t bar1_size = 0x3000; /* FIXME get this value from region info */
+
+    struct vfio_user_device_feature *dirty_pages_feature;
+    struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
+    size_t dirty_pages_size = sizeof(*dirty_pages_feature) +
+                               sizeof(*dirty_pages_control);
+    void* dirty_pages = malloc(dirty_pages_size);
+    dirty_pages_feature = dirty_pages;
+    dirty_pages_control = dirty_pages + sizeof(*dirty_pages_feature);
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1211,11 +1218,15 @@ int main(int argc, char *argv[])
      */
     irq_fd = configure_irqs(sock);
 
-    dirty_pages.argsz = sizeof(dirty_pages);
-    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
-    ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_pages, sizeof(dirty_pages),
-                        NULL, NULL, 0);
+    dirty_pages_feature->argsz = sizeof(*dirty_pages_feature) +
+                                 sizeof(*dirty_pages_control);
+    dirty_pages_feature->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_START |
+                                 VFIO_DEVICE_FEATURE_SET;
+    dirty_pages_control->num_ranges = 0;
+    dirty_pages_control->page_size = sysconf(_SC_PAGESIZE);
+
+    ret = tran_sock_msg(sock, 0, VFIO_USER_DEVICE_FEATURE, dirty_pages,
+                        dirty_pages_size, NULL, dirty_pages, dirty_pages_size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to start dirty page logging");
     }
@@ -1239,11 +1250,15 @@ int main(int argc, char *argv[])
         get_dirty_bitmap(sock, &dma_regions[i]);
     }
 
-    dirty_pages.argsz = sizeof(dirty_pages);
-    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
-    ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_pages, sizeof(dirty_pages),
-                        NULL, NULL, 0);
+    dirty_pages_feature->argsz = sizeof(*dirty_pages_feature) +
+                                 sizeof(*dirty_pages_control);
+    dirty_pages_feature->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP |
+                                 VFIO_DEVICE_FEATURE_SET;
+    dirty_pages_control->num_ranges = 0;
+    dirty_pages_control->page_size = sysconf(_SC_PAGESIZE);
+
+    ret = tran_sock_msg(sock, 0, VFIO_USER_DEVICE_FEATURE, dirty_pages,
+                        dirty_pages_size, NULL, dirty_pages, dirty_pages_size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to stop dirty page logging");
     }
