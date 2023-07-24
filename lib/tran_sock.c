@@ -52,7 +52,7 @@ int
 tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                      enum vfio_user_command cmd,
                      struct iovec *iovecs, size_t nr_iovecs,
-                     int *fds, int count, int err)
+                     int *fds, int count, int err, bool no_reply)
 {
     int ret;
     struct vfio_user_header hdr = { .msg_id = msg_id };
@@ -78,6 +78,10 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     } else {
         hdr.cmd = cmd;
         hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
+
+        if (no_reply) {
+            hdr.flags.no_reply = true;
+        }
     }
 
     iovecs[0].iov_base = &hdr;
@@ -134,7 +138,7 @@ tran_sock_send(int sock, uint16_t msg_id, bool is_reply,
         }
     };
     return tran_sock_send_iovec(sock, msg_id, is_reply, cmd, iovecs,
-                                ARRAY_SIZE(iovecs), NULL, 0, 0);
+                                ARRAY_SIZE(iovecs), NULL, 0, 0, false);
 }
 
 static int
@@ -323,7 +327,7 @@ tran_sock_msg_iovec(int sock, uint16_t msg_id, enum vfio_user_command cmd,
                     int *recv_fds, size_t *recv_fd_count)
 {
     int ret = tran_sock_send_iovec(sock, msg_id, false, cmd, iovecs, nr_iovecs,
-                                   send_fds, send_fd_count, 0);
+                                   send_fds, send_fd_count, 0, false);
     if (ret < 0) {
         return ret;
     }
@@ -602,7 +606,7 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
 
     ret = tran_sock_send_iovec(ts->conn_fd, msg->hdr.msg_id, true, msg->hdr.cmd,
                                iovecs, nr_iovecs,
-                               msg->out.fds, msg->out.nr_fds, err);
+                               msg->out.fds, msg->out.nr_fds, err, false);
 
     free(iovecs);
 

@@ -126,7 +126,7 @@ send_version(int sock)
     iovecs[2].iov_len = slen + 1;
 
     ret = tran_sock_send_iovec(sock, msg_id, false, VFIO_USER_VERSION,
-                               iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0);
+                               iovecs, ARRAY_SIZE(iovecs), NULL, 0, 0, false);
 
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to send client version message");
@@ -503,34 +503,9 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
                                   NULL, 0, NULL,
                                   recv_data, recv_data_len, NULL, 0);
     } else {
-        struct msghdr msg;
-        struct vfio_user_header hdr = { .msg_id = msg_id-- };
-
-        memset(&msg, 0, sizeof(msg));
-
-        hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
-        hdr.flags.no_reply = true;
-        hdr.cmd = VFIO_USER_REGION_WRITE;
-
-        send_iovecs[0].iov_base = &hdr;
-        send_iovecs[0].iov_len = sizeof(hdr);
-
-        for (size_t i = 0; i < nr_send_iovecs; i++) {
-            hdr.msg_size += send_iovecs[i].iov_len;
-        }
-
-        memcpy(recv_data, send_iovecs[1].iov_base, send_iovecs[1].iov_len);
-
-        msg.msg_iovlen = nr_send_iovecs;
-        msg.msg_iov = send_iovecs;
-
-        ret = sendmsg(sock, &msg, MSG_NOSIGNAL);       
-
-        if (ret != (int)hdr.msg_size) {
-            ret = -1;
-        } else {
-            ret = 0;
-        }
+        ret = tran_sock_send_iovec(sock, msg_id--, false, op,
+                                   send_iovecs, nr_send_iovecs,
+                                   NULL, 0, 0, true);
     }
 
     if (ret != 0) {

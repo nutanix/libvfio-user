@@ -52,7 +52,8 @@ extern struct transport_ops tran_sock_ops;
 int
 tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
                      enum vfio_user_command cmd, struct iovec *iovecs,
-                     size_t nr_iovecs, int *fds, int count, int err);
+                     size_t nr_iovecs, int *fds, int count, int err,
+                     bool no_reply);
 
 /*
  * Send a message to the other end with the given data.
