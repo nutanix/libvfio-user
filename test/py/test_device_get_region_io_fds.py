@@ -34,12 +34,12 @@ import os
 import struct
 
 ctx = None
-sock = None
+client = None
 fds = []
 
 
 def test_device_get_region_io_fds_setup():
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -71,7 +71,7 @@ def test_device_get_region_io_fds_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
     for i in range(0, 6):
         tmp = eventfd(0, 0)
         fds.append(tmp)
@@ -86,7 +86,7 @@ def test_device_get_region_io_fds_bad_flags():
                 len(vfio_user_sub_region_ioeventfd()) * 5, flags=1,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -97,7 +97,7 @@ def test_device_get_region_io_fds_bad_count():
                 len(vfio_user_sub_region_ioeventfd()) * 5, flags=0,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=1)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -107,7 +107,7 @@ def test_device_get_region_io_fds_buffer_too_small():
             argsz=len(vfio_user_region_io_fds_reply()) - 1, flags=0,
             index=VFU_PCI_DEV_BAR2_REGION_IDX, count=1)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -118,7 +118,7 @@ def test_device_get_region_io_fds_buffer_too_large():
                                             index=VFU_PCI_DEV_BAR2_REGION_IDX,
                                             count=1)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -127,7 +127,7 @@ def test_device_get_region_io_fds_no_fds():
     payload = vfio_user_region_io_fds_request(argsz=512, flags=0,
                                 index=VFU_PCI_DEV_BAR1_REGION_IDX, count=0)
 
-    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    ret = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
               expect=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
@@ -143,7 +143,7 @@ def test_device_get_region_io_fds_no_regions_setup():
     payload = vfio_user_region_io_fds_request(argsz=512, flags=0,
                                 index=VFU_PCI_DEV_BAR3_REGION_IDX, count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -152,7 +152,7 @@ def test_device_get_region_io_fds_region_no_mmap():
     payload = vfio_user_region_io_fds_request(argsz=512, flags=0,
                                 index=VFU_PCI_DEV_BAR5_REGION_IDX, count=0)
 
-    ret = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    ret = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
               expect=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
@@ -168,7 +168,7 @@ def test_device_get_region_io_fds_region_out_of_range():
     payload = vfio_user_region_io_fds_request(argsz=512, flags=0,
                                               index=512, count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS, payload,
         expect=errno.EINVAL)
 
 
@@ -179,7 +179,7 @@ def test_device_get_region_io_fds_fds_read_write():
                 len(vfio_user_sub_region_ioeventfd()) * 10, flags=0,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
 
     assert len(newfds) == 6
@@ -209,7 +209,7 @@ def test_device_get_region_io_fds_full():
                 len(vfio_user_sub_region_ioeventfd()) * 6, flags=0,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
 
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
@@ -238,7 +238,7 @@ def test_device_get_region_io_fds_fds_read_write_nothing():
                 argsz=len(vfio_user_region_io_fds_reply()), flags=0,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
 
     assert len(newfds) == 0
@@ -263,7 +263,7 @@ def test_device_get_region_io_fds_fds_read_write_dupe_fd():
                 len(vfio_user_sub_region_ioeventfd()) * 8, flags=0,
                 index=VFU_PCI_DEV_BAR2_REGION_IDX, count=0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
     assert len(newfds) == 7
@@ -337,7 +337,7 @@ def test_device_get_region_io_fds_invalid_fd():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     fds = []
 
@@ -370,7 +370,7 @@ def test_device_get_region_io_fds_invalid_fd():
                 len(vfio_user_sub_region_ioeventfd()) * 5, flags=0,
                 index=VFU_PCI_DEV_BAR0_REGION_IDX, count=0)
 
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
 
     # two unique fds
