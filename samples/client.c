@@ -844,7 +844,7 @@ fake_guest(void *arg)
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
-        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, crc);
+        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, 0);
         __sync_synchronize();
     } while (!fake_guest_data->done);
 
