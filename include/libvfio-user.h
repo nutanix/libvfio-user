@@ -828,7 +828,8 @@ vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
 
 /**
  * Mark scatter/gather entries (previously acquired via vfu_sgl_get())
- * as dirty (written to). This is only necessary if vfu_sgl_put() is not called.
+ * as dirty (written to). This is only necessary if neither of vfu_sgl_put() and
+ * vfu_sgl_write() are called.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries to mark as dirty
@@ -868,6 +869,8 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t cnt, void *data);
  * Write to the dma region exposed by the client. This can be used as an
  * alternative to reading from a vfu_sgl_get() mapping, if the region is not
  * directly mappable, or DMA notification callbacks have not been provided.
+ * 
+ * This will automatically mark the sgl as dirty if needed.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: a DMA segment obtained from dma_addr_to_sg

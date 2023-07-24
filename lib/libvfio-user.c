@@ -2273,7 +2273,15 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
         return ERROR_INT(ENOTSUP);
     }
 
-    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sgl, data);
+    int ret = vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sgl, data);
+
+    if (ret < 0) {
+        return ret;
+    }
+
+    vfu_sgl_mark_dirty(vfu_ctx, sgl, cnt);
+
+    return ret;
 }
 
 EXPORT bool
