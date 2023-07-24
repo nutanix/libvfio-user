@@ -686,7 +686,7 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 }
 
 static void
-get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
+get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region, bool *some_dirty)
 {
     uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
                                             sysconf(_SC_PAGESIZE));
@@ -724,6 +724,10 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
            (ull_t)range->iova,
            (ull_t)(range->iova + range->size - 1), bitmap[0]);
+
+    if (bitmap[0] != 0) {
+        *some_dirty = true;
+    }
 
     free(data);
 }
@@ -1103,6 +1107,7 @@ int main(int argc, char *argv[])
     size_t nr_iters;
     uint32_t crc;
     size_t bar1_size = 0x3000; /* FIXME get this value from region info */
+    bool some_dirty = false;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1223,7 +1228,13 @@ int main(int argc, char *argv[])
     handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
 
     for (i = 0; i < nr_dma_regions; i++) {
-        get_dirty_bitmap(sock, &dma_regions[i]);
+        get_dirty_bitmap(sock, &dma_regions[i], &some_dirty);
+    }
+
+    if (some_dirty) {
+        printf("client: server dirtied some pages\n");
+    } else {
+        err(EXIT_FAILURE, "no dirty pages logged");
     }
 
     dirty_pages.argsz = sizeof(dirty_pages);
