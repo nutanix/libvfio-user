@@ -1010,6 +1010,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
             ret = dma_feature_get(vfu_ctx, feature, res->data);
+        } else {
+            return -1;
         }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
@@ -1028,7 +1030,11 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             ret = migration_feature_set(vfu_ctx, feature, res->data);
         } else if (is_dma_feature(feature)) {
             ret = dma_feature_set(vfu_ctx, feature, res->data);
+        } else {
+            return -1;
         }
+    } else {
+        return -1;
     }
 
     return ret;
