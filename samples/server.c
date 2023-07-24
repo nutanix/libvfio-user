@@ -45,9 +45,7 @@
 
 #include "common.h"
 #include "libvfio-user.h"
-#include "private.h"
 #include "rte_hash_crc.h"
-#include "tran_sock.h"
 
 struct dma_regions {
     struct iovec iova;
