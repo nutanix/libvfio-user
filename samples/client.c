@@ -827,12 +827,10 @@ fake_guest(void *arg)
     int ret;
     char buf[fake_guest_data->bar1_size];
     FILE *fp = fopen("/dev/urandom", "r");
-    uint32_t crc = 0;
 
     if (fp == NULL) {
         err(EXIT_FAILURE, "failed to open /dev/urandom");
     }
-
 
     do {
         ret = fread(buf, fake_guest_data->bar1_size, 1, fp);
@@ -844,11 +842,9 @@ fake_guest(void *arg)
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
-        crc = rte_hash_crc(buf, fake_guest_data->bar1_size, 0);
-        __sync_synchronize();
     } while (!fake_guest_data->done);
 
-    *fake_guest_data->crcp = crc;
+    *fake_guest_data->crcp = rte_hash_crc(buf, fake_guest_data->bar1_size, 0);
 
     return NULL;
 }
