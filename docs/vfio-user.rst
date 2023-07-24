@@ -204,12 +204,32 @@ A server can serve:
 1) one or more clients, and/or
 2) one or more virtual devices, belonging to one or more clients.
 
-The current protocol specification requires a dedicated socket per
-client/server connection. It is a server-side implementation detail whether a
-single server handles multiple virtual devices from the same or multiple
-clients. The location of the socket is implementation-specific. Multiplexing
-clients, devices, and servers over the same socket is not supported in this
-version of the protocol.
+The current protocol specification requires dedicated sockets per
+client/server connection. Commands in the client-to-server direction are
+handled on the main communication socket which the client connects to, and
+replies to these commands are passed on the same socket. Commands sent in the
+other direction from the server to the client as well as their corresponding
+replies, are exchanged on a separate socket, which is set up during negotiation
+(AF_UNIX servers just pass the file descriptor).
+
+Using separate sockets for each command channel avoids introducing an
+artificial point of synchronization between the channels. This simplifies
+implementations since it obviates the need to demultiplex incoming messages
+into commands and replies and interleave command handling and reply processing.
+Note that it is still illegal for implementations to stall command or reply
+processing indefinitely while waiting for replies on the other channel, as this
+may lead to deadlocks. However, since incoming commands and requests arrive on
+different sockets, it's possible to meet this requirement e.g. by running two
+independent request processing threads that can internally operate
+synchronously. It is expected that this is simpler to implement than fully
+asynchronous message handling code. Implementations may still choose a fully
+asynchronous, event-based design for other reasons, and the protocol fully
+supports it.
+
+It is a server-side implementation detail whether a single server handles
+multiple virtual devices from the same or multiple clients. The location of the
+socket is implementation-specific. Multiplexing clients, devices, and servers
+over the same socket is not supported in this version of the protocol.
 
 Authentication
 --------------
@@ -488,21 +508,31 @@ format:
 
 Capabilities:
 
-+--------------------+--------+------------------------------------------------+
-| Name               | Type   | Description                                    |
-+====================+========+================================================+
-| max_msg_fds        | number | Maximum number of file descriptors that can be |
-|                    |        | received by the sender in one message.         |
-|                    |        | Optional. If not specified then the receiver   |
-|                    |        | must assume a value of ``1``.                  |
-+--------------------+--------+------------------------------------------------+
-| max_data_xfer_size | number | Maximum ``count`` for data transfer messages;  |
-|                    |        | see `Read and Write Operations`_. Optional,    |
-|                    |        | with a default value of 1048576 bytes.         |
-+--------------------+--------+------------------------------------------------+
-| migration          | object | Migration capability parameters. If missing    |
-|                    |        | then migration is not supported by the sender. |
-+--------------------+--------+------------------------------------------------+
++--------------------+---------+-----------------------------------------------+
+| Name               | Type    | Description                                   |
++====================+=========+===============================================+
+| max_msg_fds        | number  | Maximum number of file descriptors that can   |
+|                    |         | be received by the sender in one message.     |
+|                    |         | Optional. If not specified then the receiver  |
+|                    |         | must assume a value of ``1``.                 |
++--------------------+---------+-----------------------------------------------+
+| max_data_xfer_size | number  | Maximum ``count`` for data transfer messages; |
+|                    |         | see `Read and Write Operations`_. Optional,   |
+|                    |         | with a default value of 1048576 bytes.        |
++--------------------+---------+-----------------------------------------------+
+| migration          | object  | Migration capability parameters. If missing   |
+|                    |         | then migration is not supported by the        |
+|                    |         | sender.                                       |
++--------------------+---------+-----------------------------------------------+
+| cmd_conn           | boolean | Indicates whether the client is capable of    |
+|                    |         | using a separate socket as the channel for    |
+|                    |         | server-to-client commands. If specified, the  |
+|                    |         | server will pass a file descriptor along with |
+|                    |         | its reply. This is enabled by request only    |
+|                    |         | for the benefit of clients that implement     |
+|                    |         | older drafts of this specification which did  |
+|                    |         | not include independent sockets per channel.  |
++--------------------+---------+-----------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
@@ -517,7 +547,9 @@ Reply
 ^^^^^
 
 The same message format is used in the server's reply with the semantics
-described above.
+described above. In case the client specified ``cmd_conn`` in its capabilities,
+the server may pass a file descriptor to use for the server-to-client command
+channel.
 
 ``VFIO_USER_DMA_MAP``
 ---------------------
@@ -1399,7 +1431,8 @@ Reply
 -----------------------
 
 If the client has not shared mappable memory, the server can use this message to
-read from guest memory.
+read from guest memory. This message and its reply are passed over the separate
+server-to-client socket if negotiated at connection setup.
 
 Request
 ^^^^^^^
@@ -1437,7 +1470,8 @@ Reply
 -----------------------
 
 If the client has not shared mappable memory, the server can use this message to
-write to guest memory.
+write to guest memory. This message and its reply are passed over the separate
+server-to-client socket if negotiated at connection setup.
 
 Request
 ^^^^^^^
