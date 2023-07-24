@@ -471,7 +471,6 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
             .iov_len = data_len
         }
     };
-    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     struct vfio_user_region_access *recv_data;
     size_t nr_send_iovecs, recv_data_len;
     int op, ret;
@@ -492,12 +491,48 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         err(EXIT_FAILURE, "failed to alloc recv_data");
     }
 
-    pthread_mutex_lock(&mutex);
-    ret = tran_sock_msg_iovec(sock, msg_id--, op,
-                              send_iovecs, nr_send_iovecs,
-                              NULL, 0, NULL,
-                              recv_data, recv_data_len, NULL, 0);
-    pthread_mutex_unlock(&mutex);
+    /*
+     * For all accesses that aren't writes to BAR1, use the standard method.
+     * For writes to BAR1 (which come from the fake guest thread), we send
+     * the command with the `no_reply` flag set so we don't interfere with
+     * the main thread. This means we don't require a mutex.
+     */
+    if (region != 1 || !is_write) {
+        ret = tran_sock_msg_iovec(sock, msg_id--, op,
+                                  send_iovecs, nr_send_iovecs,
+                                  NULL, 0, NULL,
+                                  recv_data, recv_data_len, NULL, 0);
+    } else {
+        struct msghdr msg;
+        struct vfio_user_header hdr = { .msg_id = msg_id-- };
+
+        memset(&msg, 0, sizeof(msg));
+
+        hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
+        hdr.flags.no_reply = true;
+        hdr.cmd = VFIO_USER_REGION_WRITE;
+
+        send_iovecs[0].iov_base = &hdr;
+        send_iovecs[0].iov_len = sizeof(hdr);
+
+        for (size_t i = 0; i < nr_send_iovecs; i++) {
+            hdr.msg_size += send_iovecs[i].iov_len;
+        }
+
+        memcpy(recv_data, send_iovecs[1].iov_base, send_iovecs[1].iov_len);
+
+        msg.msg_iovlen = nr_send_iovecs;
+        msg.msg_iov = send_iovecs;
+
+        ret = sendmsg(sock, &msg, MSG_NOSIGNAL);       
+
+        if (ret != (int)hdr.msg_size) {
+            ret = -1;
+        } else {
+            ret = 0;
+        }
+    }
+
     if (ret != 0) {
         warn("failed to %s region %d %#llx-%#llx",
              is_write ? "write to" : "read from", region,
