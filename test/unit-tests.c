@@ -398,9 +398,199 @@ typedef struct {
     int conn_fd;
 } tran_sock_t;
 
-// TODO: migration state transition tests
+static void
+test_migration_state_transitions(void **state UNUSED)
+{
+    bool (*f)(uint32_t, uint32_t) = vfio_migr_state_transition_is_valid;
+    uint32_t i;
 
-// TODO: test migration functions
+    /* from ERROR: all transitions are invalid */
+    for (i = 0; i < 8; i++) {
+        assert_false(f(VFIO_DEVICE_STATE_ERROR, i));
+    }
+
+    /* from STOP */
+    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_ERROR));
+    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_STOP));
+    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RUNNING));
+    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_STOP_COPY));
+    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RUNNING_P2P));
+    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+
+    /* from RUNNING */
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_ERROR));
+    assert_true(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_STOP));
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RUNNING));
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_STOP_COPY));
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RUNNING_P2P));
+    assert_true(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+
+    /* from STOP_COPY and RESUMING */
+    for (i = 3; i < 5; i++) {
+        assert_false(f(i, VFIO_DEVICE_STATE_ERROR));
+        assert_true(f(i, VFIO_DEVICE_STATE_STOP));
+        assert_false(f(i, VFIO_DEVICE_STATE_RUNNING));
+        assert_false(f(i, VFIO_DEVICE_STATE_STOP_COPY));
+        assert_false(f(i, VFIO_DEVICE_STATE_RESUMING));
+        assert_false(f(i, VFIO_DEVICE_STATE_RUNNING_P2P));
+        assert_false(f(i, VFIO_DEVICE_STATE_PRE_COPY));
+        assert_false(f(i, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+    }
+
+    /* from RUNNING_P2P: all transitions are invalid */
+    for (i = 0; i < 8; i++) {
+        assert_false(f(VFIO_DEVICE_STATE_RUNNING_P2P, i));
+    }
+
+    /* from PRE_COPY */
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_ERROR));
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_STOP));
+    assert_true(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RUNNING));
+    assert_true(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_STOP_COPY));
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RUNNING_P2P));
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+
+    /* from PRE_COPY_P2P: all transitions are invalid */
+    for (i = 0; i < 8; i++) {
+        assert_false(f(VFIO_DEVICE_STATE_PRE_COPY_P2P, i));
+    }
+}
+
+static struct test_setup_migr_reg_dat {
+    vfu_ctx_t *v;
+    const vfu_migration_callbacks_t c;
+} migr_reg_data = {
+    .c = {
+        .version = VFU_MIGR_CALLBACKS_VERS,
+        .transition = (void *)0x1,
+        .read_data = (void *)0x2,
+        .write_data = (void *)0x3
+    }
+};
+
+static int
+setup_test_setup_migration(void **state)
+{
+    struct test_setup_migr_reg_dat *p = &migr_reg_data;
+
+    p->v = vfu_create_ctx(VFU_TRANS_SOCK, "test", 0, NULL, VFU_DEV_TYPE_PCI);
+    if (p->v == NULL) {
+        return -1;
+    }
+
+    *state = p;
+    return setup(state);
+}
+
+static int
+teardown_test_setup_migration(void **state) {
+    struct test_setup_migr_reg_dat *p = *state;
+    vfu_destroy_ctx(p->v);
+    return 0;
+}
+
+static void
+test_setup_migration_callbacks(void **state)
+{
+    struct test_setup_migr_reg_dat *p = *state;
+    int r = vfu_setup_device_migration_callbacks(p->v, 0, &p->c);
+    assert_int_equal(0, r);
+    assert_non_null(p->v->migration);
+}
+
+static void
+test_device_is_stopped_and_copying(UNUSED void **state)
+{
+    assert_false(device_is_stopped_and_copying(vfu_ctx.migration));
+    assert_false(device_is_stopped(vfu_ctx.migration));
+
+    size_t i;
+    struct migration migration;
+    vfu_ctx.migration = &migration;
+    for (i = 0; i < 8; i++) {
+        migration.state = i;
+        bool r = device_is_stopped_and_copying(vfu_ctx.migration);
+        if (i == VFIO_DEVICE_STATE_STOP_COPY) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+        r = device_is_stopped(vfu_ctx.migration);
+        if (i == VFIO_DEVICE_STATE_STOP) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+    }
+    vfu_ctx.migration = NULL;
+}
+
+static void
+test_cmd_allowed_when_stopped_and_copying(UNUSED void **state)
+{
+    size_t i;
+
+    for (i = 0; i < VFIO_USER_MAX; i++) {
+        bool r = cmd_allowed_when_stopped_and_copying(i);
+        if (i == VFIO_USER_REGION_READ ||
+            i == VFIO_USER_REGION_WRITE ||
+            i == VFIO_USER_DIRTY_PAGES ||
+            i == VFIO_USER_DEVICE_FEATURE ||
+            i == VFIO_USER_MIG_DATA_READ) {
+            assert_true(r);
+        } else {
+            assert_false(r);
+        }
+    }
+}
+
+static void
+test_should_exec_command(UNUSED void **state)
+{
+    struct migration migration = { 0 };
+
+    vfu_ctx.migration = &migration;
+
+    patch("device_is_stopped_and_copying");
+    patch("cmd_allowed_when_stopped_and_copying");
+    patch("device_is_stopped");
+
+    /* TEST stopped and copying, command allowed */
+    will_return(device_is_stopped_and_copying, true);
+    expect_value(device_is_stopped_and_copying, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, true);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
+    assert_true(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* TEST stopped and copying, command not allowed */
+    will_return(device_is_stopped_and_copying, true);
+    expect_any(device_is_stopped_and_copying, migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_any(cmd_allowed_when_stopped_and_copying, cmd);
+    assert_false(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* TEST stopped */
+    will_return(device_is_stopped_and_copying, false);
+    expect_any(device_is_stopped_and_copying, migration);
+    will_return(device_is_stopped, true);
+    expect_value(device_is_stopped, migration, &migration);
+    will_return(cmd_allowed_when_stopped_and_copying, false);
+    expect_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
+    assert_false(should_exec_command(&vfu_ctx, 0xbeef));
+
+    /* TEST none of the above */
+    will_return(device_is_stopped_and_copying, false);
+    expect_any(device_is_stopped_and_copying, migration);
+    will_return(device_is_stopped, false);
+    expect_any(device_is_stopped, migration);
+    assert_true(should_exec_command(&vfu_ctx, 0xbeef));
+}
 
 int
 main(void)
@@ -414,7 +604,14 @@ main(void)
         cmocka_unit_test_setup(test_dma_controller_remove_region_mapped, setup),
         cmocka_unit_test_setup(test_dma_controller_remove_region_unmapped, setup),
         cmocka_unit_test_setup(test_dma_addr_to_sgl, setup),
-        cmocka_unit_test_setup(test_vfu_setup_device_dma, setup)
+        cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
+        cmocka_unit_test_setup(test_migration_state_transitions, setup),
+        cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
+            setup_test_setup_migration,
+            teardown_test_setup_migration),
+        cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
+        cmocka_unit_test_setup(test_cmd_allowed_when_stopped_and_copying, setup),
+        cmocka_unit_test_setup(test_should_exec_command, setup),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
