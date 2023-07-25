@@ -196,42 +196,56 @@ dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
  */
 static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 {
-    int count = 4096;
-    unsigned char buf[count];
+    const int size = 1024;
+    const int count = 4;
+    unsigned char buf[size * count];
     uint32_t crc1, crc2;
     dma_sg_t *sg;
+    void *addr;
     int ret;
 
     sg = alloca(dma_sg_size());
 
     assert(vfu_ctx != NULL);
 
-    ret = vfu_addr_to_sgl(vfu_ctx,
-                          (vfu_dma_addr_t)server_data->regions[0].iova.iov_base,
-                          count, sg, 1, PROT_WRITE);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to map %p-%p",
-            server_data->regions[0].iova.iov_base,
-            server_data->regions[0].iova.iov_base + count -1);
+    /* Write some data, chunked into multiple calls to exercise offsets. */
+    for (int i = 0; i < count; ++i) {
+        addr = server_data->regions[0].iova.iov_base + i * size;
+        ret = vfu_addr_to_sgl(vfu_ctx, (vfu_dma_addr_t)addr, size, sg, 1,
+                              PROT_WRITE);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to map %p-%p", addr, addr + size - 1);
+        }
+
+        memset(&buf[i * size], 'A' + i, size);
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p size %d", __func__, addr,
+                size);
+        ret = vfu_sgl_write(vfu_ctx, sg, 1, &buf[i * size]);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "vfu_sgl_write failed");
+        }
     }
 
-    memset(buf, 'A', count);
-    crc1 = rte_hash_crc(buf, count, 0);
-    vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p count %d", __func__,
-           server_data->regions[0].iova.iov_base, count);
-    ret = vfu_sgl_write(vfu_ctx, sg, 1, buf);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "vfu_sgl_write failed");
+    crc1 = rte_hash_crc(buf, sizeof(buf), 0);
+
+    /* Read the data back at double the chunk size. */
+    memset(buf, 0, sizeof(buf));
+    for (int i = 0; i < count; i += 2) {
+        addr = server_data->regions[0].iova.iov_base + i * size;
+        ret = vfu_addr_to_sgl(vfu_ctx, (vfu_dma_addr_t)addr, size * 2, sg, 1,
+                              PROT_READ);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "failed to map %p-%p", addr, addr + 2 * size - 1);
+        }
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s: READ  addr %p size %d", __func__, addr,
+                2 * size);
+        ret = vfu_sgl_read(vfu_ctx, sg, 1, &buf[i * size]);
+        if (ret < 0) {
+            err(EXIT_FAILURE, "vfu_sgl_read failed");
+        }
     }
 
-    memset(buf, 0, count);
-    vfu_log(vfu_ctx, LOG_DEBUG, "%s: READ  addr %p count %d", __func__,
-           server_data->regions[0].iova.iov_base, count);
-    ret = vfu_sgl_read(vfu_ctx, sg, 1, buf);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "vfu_sgl_read failed");
-    }
-    crc2 = rte_hash_crc(buf, count, 0);
+    crc2 = rte_hash_crc(buf, sizeof(buf), 0);
 
     if (crc1 != crc2) {
         errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
