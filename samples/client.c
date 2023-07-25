@@ -1233,11 +1233,7 @@ int main(int argc, char *argv[])
         get_dirty_bitmap(sock, &dma_regions[i], &some_dirty);
     }
 
-    if (some_dirty) {
-        printf("client: server dirtied some pages\n");
-    } else {
-        err(EXIT_FAILURE, "no dirty pages logged");
-    }
+    assert(some_dirty);
 
     dirty_pages.argsz = sizeof(dirty_pages);
     dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
