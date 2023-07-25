@@ -113,26 +113,6 @@ def test_dma_unmap_dirty_not_tracking():
         expect=errno.EINVAL)
 
 
-def test_dma_unmap_dirty_not_mapped():
-
-    setup_dma_regions([(PAGE_SIZE, PAGE_SIZE)])
-    vfu_setup_device_migration_callbacks(ctx, offset=PAGE_SIZE)
-    payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
-                                    flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
-
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
-
-    argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
-    unmap = vfio_user_dma_unmap(argsz=argsz,
-        flags=VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP, addr=PAGE_SIZE,
-        size=PAGE_SIZE)
-    bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
-    payload = bytes(unmap) + bytes(bitmap) + bytes(8)
-
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
-        expect=errno.EINVAL)
-
-
 def test_dma_unmap_invalid_flags():
 
     setup_dma_regions()

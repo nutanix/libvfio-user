@@ -111,30 +111,6 @@ def test_setup_region_bad_pci():
     assert c.get_errno() == errno.EINVAL
 
 
-def test_setup_region_bad_migr():
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=512,
-                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
-    assert ret == -1
-    assert c.get_errno() == errno.EINVAL
-
-    f = tempfile.TemporaryFile()
-    f.truncate(0x2000)
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
-                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),
-                           fd=f.fileno())
-    assert ret == -1
-    assert c.get_errno() == errno.EINVAL
-
-    mmap_areas = [(0x0, 0x1000), (0x1000, 0x1000)]
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX, size=0x2000,
-                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM),
-                           mmap_areas=mmap_areas, fd=f.fileno())
-    assert ret == -1
-    assert c.get_errno() == errno.EINVAL
-
-
 def test_setup_region_cfg_always_cb_nocb():
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
                            size=PCI_CFG_SPACE_EXP_SIZE, cb=None,

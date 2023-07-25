@@ -54,10 +54,6 @@ def setup_function(function):
     ret = vfu_setup_device_reset_cb(ctx)
     assert ret == 0
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=2 << PAGE_SHIFT, flags=VFU_REGION_FLAG_RW)
-    assert ret == 0
-
     ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
@@ -185,55 +181,6 @@ def test_disconnected_socket_quiesce_busy(mock_quiesce):
 
     # no further calls to the quiesce callback should have been made
     mock_quiesce.assert_called_once_with(ctx)
-
-
-@patch('libvfio_user.reset_cb')
-@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
-@patch('libvfio_user.migr_get_pending_bytes_cb')
-def test_reply_fail_quiesce_busy(mock_get_pending_bytes, mock_quiesce,
-                                 mock_reset):
-    """Tests failing to reply and the quiesce callback returning EBUSY."""
-
-    global ctx, sock
-
-    def get_pending_bytes_side_effect(ctx):
-        sock.close()
-        return 0
-    mock_get_pending_bytes.side_effect = get_pending_bytes_side_effect
-
-    # read the get_pending_bytes register, it should close the socket causing
-    # the reply to fail
-    read_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX,
-                vfio_user_migration_info.pending_bytes.offset,
-                vfio_user_migration_info.pending_bytes.size, rsp=False,
-                busy=True)
-
-    # vfu_run_ctx will try to reset the context and to do that it needs to
-    # quiesce the device first
-    mock_quiesce.assert_called_once_with(ctx)
-
-    # vfu_run_ctx will be returning EBUSY and nothing should have happened
-    # until the device quiesces
-    for _ in range(0, 3):
-        vfu_run_ctx(ctx, errno.EBUSY)
-    mock_quiesce.assert_called_once_with(ctx)
-    mock_reset.assert_not_called()
-
-    ret = vfu_device_quiesced(ctx, 0)
-    assert ret == 0
-
-    # the device quiesced, reset should should happen now
-    mock_quiesce.assert_called_once_with(ctx)
-    mock_reset.assert_called_once_with(ctx, VFU_RESET_LOST_CONN)
-
-    try:
-        get_reply(sock)
-    except OSError as e:
-        assert e.errno == errno.EBADF
-    else:
-        assert False
-
-    vfu_run_ctx(ctx, errno.ENOTCONN)
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

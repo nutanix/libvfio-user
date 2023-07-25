@@ -42,7 +42,6 @@ import socket
 import struct
 import syslog
 import copy
-import tempfile
 import sys
 from resource import getpagesize
 from math import log2
@@ -171,7 +170,11 @@ VFIO_USER_DMA_READ = 11
 VFIO_USER_DMA_WRITE = 12
 VFIO_USER_DEVICE_RESET = 13
 VFIO_USER_DIRTY_PAGES = 14
-VFIO_USER_MAX = 15
+VFIO_USER_REGION_WRITE_MULTI = 15
+VFIO_USER_DEVICE_FEATURE = 16
+VFIO_USER_MIG_DATA_READ = 17
+VFIO_USER_MIG_DATA_WRITE = 18
+VFIO_USER_MAX = 19
 
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
@@ -187,8 +190,7 @@ VFU_PCI_DEV_BAR5_REGION_IDX = 5
 VFU_PCI_DEV_ROM_REGION_IDX = 6
 VFU_PCI_DEV_CFG_REGION_IDX = 7
 VFU_PCI_DEV_VGA_REGION_IDX = 8
-VFU_PCI_DEV_MIGR_REGION_IDX = 9
-VFU_PCI_DEV_NUM_REGIONS = 10
+VFU_PCI_DEV_NUM_REGIONS = 9
 
 VFU_REGION_FLAG_READ = 1
 VFU_REGION_FLAG_WRITE = 2
@@ -233,7 +235,7 @@ VFU_CAP_FLAG_EXTENDED = (1 << 0)
 VFU_CAP_FLAG_CALLBACK = (1 << 1)
 VFU_CAP_FLAG_READONLY = (1 << 2)
 
-VFU_MIGR_CALLBACKS_VERS = 1
+VFU_MIGR_CALLBACKS_VERS = 2
 
 SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
 
@@ -534,24 +536,16 @@ class vfio_user_bitmap_range(Structure):
 
 
 transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
-get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
-prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
-                                c.POINTER(c.c_uint64))
-read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p,
-                             c.c_uint64, c.c_uint64)
-write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_uint64)
-data_written_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_uint64)
+read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
+write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
 
 
 class vfu_migration_callbacks_t(Structure):
     _fields_ = [
         ("version", c.c_int),
         ("transition", transition_cb_t),
-        ("get_pending_bytes", get_pending_bytes_cb_t),
-        ("prepare_data", prepare_data_cb_t),
         ("read_data", read_data_cb_t),
         ("write_data", write_data_cb_t),
-        ("data_written", data_written_cb_t),
     ]
 
 
@@ -568,17 +562,6 @@ class dma_sg_t(Structure):
         return "DMA addr=%s, region index=%s, length=%s, offset=%s, RW=%s" % \
             (hex(self.dma_addr), self.region, hex(self.length),
                 hex(self.offset), self.writeable)
-
-
-class vfio_user_migration_info(Structure):
-    _pack_ = 1
-    _fields_ = [
-        ("device_state", c.c_uint32),
-        ("reserved", c.c_uint32),
-        ("pending_bytes", c.c_uint64),
-        ("data_offset", c.c_uint64),
-        ("data_size", c.c_uint64),
-    ]
 
 
 #
@@ -623,8 +606,8 @@ vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                       use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
-lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
-    c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
+lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p, c.c_uint64,
+    c.POINTER(vfu_migration_callbacks_t))
 lib.dma_sg_size.restype = (c.c_size_t)
 lib.vfu_addr_to_sgl.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                 c.POINTER(dma_sg_t), c.c_size_t, c.c_int)
@@ -929,18 +912,6 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
         ret = vfu_setup_device_reset_cb(ctx, reset)
         assert ret == 0
 
-    f = tempfile.TemporaryFile()
-    migr_region_size = 2 << PAGE_SHIFT
-    f.truncate(migr_region_size)
-
-    mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=migr_region_size,
-                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
-                           fd=f.fileno())
-    assert ret == 0
-
     if migration_callbacks:
         ret = vfu_setup_device_migration_callbacks(ctx)
         assert ret == 0
@@ -1136,24 +1107,6 @@ def __migr_trans_cb(ctx, state):
     return migr_trans_cb(ctx, state)
 
 
-def migr_get_pending_bytes_cb(ctx):
-    pass
-
-
-@get_pending_bytes_cb_t
-def __migr_get_pending_bytes_cb(ctx):
-    return migr_get_pending_bytes_cb(ctx)
-
-
-def migr_prepare_data_cb(ctx, offset, size):
-    pass
-
-
-@prepare_data_cb_t
-def __migr_prepare_data_cb(ctx, offset, size):
-    return migr_prepare_data_cb(ctx, offset, size)
-
-
 def migr_read_data_cb(ctx, buf, count, offset):
     pass
 
@@ -1172,29 +1125,17 @@ def __migr_write_data_cb(ctx, buf, count, offset):
     return migr_write_data_cb(ctx, buf, count, offset)
 
 
-def migr_data_written_cb(ctx, count):
-    pass
-
-
-@data_written_cb_t
-def __migr_data_written_cb(ctx, count):
-    return migr_data_written_cb(ctx, count)
-
-
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=PAGE_SIZE):
+def vfu_setup_device_migration_callbacks(ctx, flags=0, cbs=None):
     assert ctx is not None
 
     if not cbs:
         cbs = vfu_migration_callbacks_t()
         cbs.version = VFU_MIGR_CALLBACKS_VERS
         cbs.transition = __migr_trans_cb
-        cbs.get_pending_bytes = __migr_get_pending_bytes_cb
-        cbs.prepare_data = __migr_prepare_data_cb
         cbs.read_data = __migr_read_data_cb
         cbs.write_data = __migr_write_data_cb
-        cbs.data_written = __migr_data_written_cb
 
-    return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
+    return lib.vfu_setup_device_migration_callbacks(ctx, flags, cbs)
 
 
 def dma_sg_size():

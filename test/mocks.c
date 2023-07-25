@@ -200,23 +200,6 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
 }
 
 ssize_t
-migration_region_access_registers(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                                  loff_t pos, bool is_write)
-{
-    if (!is_patched("migration_region_access_registers")) {
-        return __real_migration_region_access_registers(vfu_ctx, buf, count,
-                                                        pos, is_write);
-    }
-    check_expected(vfu_ctx);
-    check_expected(buf);
-    check_expected(count);
-    check_expected(pos);
-    check_expected(is_write);
-    errno = mock();
-    return mock();
-}
-
-ssize_t
 handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
                     uint32_t device_state, bool notify) {
 
@@ -232,7 +215,7 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 }
 
 void
-migr_state_transition(struct migration *migr, enum migr_iter_state state)
+migr_state_transition(struct migration *migr, enum vfio_device_mig_state state)
 {
     if (!is_patched("migr_state_transition")) {
         __real_migr_state_transition(migr, state);

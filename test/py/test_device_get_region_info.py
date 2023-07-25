@@ -78,14 +78,6 @@ def test_device_get_region_info_setup():
                            mmap_areas=mmap_areas, fd=f.fileno(), offset=0x0)
     assert ret == 0
 
-    f = tempfile.TemporaryFile()
-    f.truncate(migr_region_size)
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=migr_region_size, flags=VFU_REGION_FLAG_RW,
-                           mmap_areas=migr_mmap_areas, fd=f.fileno())
-    assert ret == 0
-
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -203,44 +195,6 @@ def test_device_get_region_info_caps():
     assert area2.size == 0x2000
 
     assert len(fds) == 1
-    disconnect_client(ctx, sock)
-
-
-def test_device_get_region_info_migr():
-    global sock
-
-    sock = connect_client(ctx)
-
-    payload = vfio_region_info(argsz=80, flags=0,
-                          index=VFU_PCI_DEV_MIGR_REGION_IDX, cap_offset=0,
-                          size=0, offset=0)
-    payload = bytes(payload) + b'\0' * (80 - 32)
-
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
-
-    info, result = vfio_region_info.pop_from_buffer(result)
-    mcap, result = vfio_region_info_cap_type.pop_from_buffer(result)
-    cap, result = vfio_region_info_cap_sparse_mmap.pop_from_buffer(result)
-    area, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
-
-    assert info.argsz == 80
-    assert info.cap_offset == 32
-
-    assert mcap.id == VFIO_REGION_INFO_CAP_TYPE
-    assert mcap.version == 1
-    assert mcap.next == 48
-    assert mcap.type == VFIO_REGION_TYPE_MIGRATION
-    assert mcap.subtype == VFIO_REGION_SUBTYPE_MIGRATION
-
-    assert cap.id == VFIO_REGION_INFO_CAP_SPARSE_MMAP
-    assert cap.version == 1
-    assert cap.next == 0
-    assert cap.nr_areas == len(migr_mmap_areas) == 1
-
-    assert area.offset == migr_mmap_areas[0][0]
-    assert area.size == migr_mmap_areas[0][1]
-
-    # skip reading the SCM_RIGHTS
     disconnect_client(ctx, sock)
 
 

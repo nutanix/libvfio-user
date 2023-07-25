@@ -33,7 +33,6 @@ python_tests = [
     'test_device_get_region_info_zero_size.py',
     'test_device_get_region_io_fds.py',
     'test_device_set_irqs.py',
-    'test_dirty_pages.py',
     'test_dma_map.py',
     'test_dma_unmap.py',
     'test_irq_trigger.py',

@@ -52,27 +52,26 @@ def test_device_get_region_info_zero_sized_region():
 
     global sock
 
-    for index in [VFU_PCI_DEV_BAR1_REGION_IDX, VFU_PCI_DEV_MIGR_REGION_IDX]:
-        payload = vfio_region_info(argsz=argsz, flags=0,
-                              index=index, cap_offset=0,
-                              size=0, offset=0)
+    payload = vfio_region_info(argsz=argsz, flags=0,
+                               index=VFU_PCI_DEV_BAR1_REGION_IDX, cap_offset=0,
+                               size=0, offset=0)
 
-        hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO,
-                               size=len(payload))
-        sock.send(hdr + payload)
-        vfu_run_ctx(ctx)
-        result = get_reply(sock)
+    hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO,
+                            size=len(payload))
+    sock.send(hdr + payload)
+    vfu_run_ctx(ctx)
+    result = get_reply(sock)
 
-        assert len(result) == argsz
+    assert len(result) == argsz
 
-        info, _ = vfio_region_info.pop_from_buffer(result)
+    info, _ = vfio_region_info.pop_from_buffer(result)
 
-        assert info.argsz == argsz
-        assert info.flags == 0
-        assert info.index == index
-        assert info.cap_offset == 0
-        assert info.size == 0
-        assert info.offset == 0
+    assert info.argsz == argsz
+    assert info.flags == 0
+    assert info.index == VFU_PCI_DEV_BAR1_REGION_IDX
+    assert info.cap_offset == 0
+    assert info.size == 0
+    assert info.offset == 0
 
     vfu_destroy_ctx(ctx)
 
