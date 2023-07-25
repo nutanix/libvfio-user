@@ -200,6 +200,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     uint32_t crc1, crc2;
     dma_sg_t *sg;
     void *addr;
+    int max_page_idx;
     int ret;
 
     sg = alloca(dma_sg_size());
@@ -222,6 +223,10 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
         if (ret < 0) {
             err(EXIT_FAILURE, "vfu_sgl_write failed");
         }
+
+        // Assert that we are only dirtying one of the region's first 8 pages.
+        max_page_idx = ((i + 1) * size + PAGE_SIZE - 1) / PAGE_SIZE;
+        assert(max_page_idx < 8);
         vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
     }
 

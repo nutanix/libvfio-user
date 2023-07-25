@@ -725,6 +725,8 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region, bool *some_dirt
            (ull_t)range->iova,
            (ull_t)(range->iova + range->size - 1), bitmap[0]);
 
+    // We only ever dirty one of the first 8 pages of the region.
+    // See the assertion in `do_dma_io` (server.c).
     if (bitmap[0] != 0) {
         *some_dirty = true;
     }
