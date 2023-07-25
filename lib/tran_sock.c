@@ -78,10 +78,7 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     } else {
         hdr.cmd = cmd;
         hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
-
-        if (no_reply) {
-            hdr.flags.no_reply = true;
-        }
+        hdr.flags.no_reply = no_reply;
     }
 
     iovecs[0].iov_base = &hdr;

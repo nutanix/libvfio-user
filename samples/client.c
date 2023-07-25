@@ -453,7 +453,7 @@ configure_irqs(int sock)
 
 static int
 access_region(int sock, int region, bool is_write, uint64_t offset,
-            void *data, size_t data_len)
+              void *data, size_t data_len, bool no_reply)
 {
     static int msg_id = 0xf00f;
     struct vfio_user_region_access send_region_access = {
@@ -492,20 +492,19 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     }
 
     /*
-     * For all accesses that aren't writes to BAR1, use the standard method.
-     * For writes to BAR1 (which come from the fake guest thread), we send
-     * the command with the `no_reply` flag set so we don't interfere with
-     * the main thread. This means we don't require a mutex.
+     * We set `no_reply` for writes from the fake guest thread so the replies
+     * don't get mixed up with those from the main thread. Since the fake guest
+     * only calls `access_region` with writes, this means we don't need a mutex.
      */
-    if (region != 1 || !is_write) {
+    if (no_reply) {
+        ret = tran_sock_send_iovec(sock, msg_id--, false, op,
+                                   send_iovecs, nr_send_iovecs,
+                                   NULL, 0, 0, true);
+    } else {
         ret = tran_sock_msg_iovec(sock, msg_id--, op,
                                   send_iovecs, nr_send_iovecs,
                                   NULL, 0, NULL,
                                   recv_data, recv_data_len, NULL, 0);
-    } else {
-        ret = tran_sock_send_iovec(sock, msg_id--, false, op,
-                                   send_iovecs, nr_send_iovecs,
-                                   NULL, 0, 0, true);
     }
 
     if (ret != 0) {
@@ -516,7 +515,7 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
         free(recv_data);
         return ret;
     }
-    if (recv_data->count != data_len) {
+    if (!no_reply && recv_data->count != data_len) {
         warnx("bad %s data count, expected=%zu, actual=%d",
              is_write ? "write" : "read", data_len,
              recv_data->count);
@@ -543,14 +542,16 @@ access_bar0(int sock, time_t *t)
 
     assert(t != NULL);
 
-    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, t, sizeof(*t));
+    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, t,
+                        sizeof(*t), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to BAR0");
     }
 
     printf("client: wrote to BAR0: %ld\n", *t);
 
-    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, false, 0, t, sizeof(*t));
+    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, false, 0, t,
+                        sizeof(*t), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to read from BAR0");
     }
@@ -771,7 +772,7 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
     /* XXX read pending_bytes */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                         offsetof(struct vfio_user_migration_info, pending_bytes),
-                        &pending_bytes, sizeof(pending_bytes));
+                        &pending_bytes, sizeof(pending_bytes), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to read pending_bytes");
     }
@@ -781,14 +782,14 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
         /* XXX read data_offset and data_size */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                             offsetof(struct vfio_user_migration_info, data_offset),
-                            &data_offset, sizeof(data_offset));
+                            &data_offset, sizeof(data_offset), false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read data_offset");
         }
 
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                             offsetof(struct vfio_user_migration_info, data_size),
-                            &data_size, sizeof(data_size));
+                            &data_size, sizeof(data_size), false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read data_size");
         }
@@ -802,7 +803,7 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
         /* XXX read migration data */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                             data_offset,
-                            (char *)migr_iter[i].iov_base, data_size);
+                            (char *)migr_iter[i].iov_base, data_size, false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read migration data");
         }
@@ -815,7 +816,7 @@ do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
          */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                             offsetof(struct vfio_user_migration_info, pending_bytes),
-                            &pending_bytes, sizeof(pending_bytes));
+                            &pending_bytes, sizeof(pending_bytes), false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read pending_bytes");
         }
@@ -850,7 +851,7 @@ fake_guest(void *arg)
             errx(EXIT_FAILURE, "short read %d", ret);
         }
         ret = access_region(fake_guest_data->sock, 1, true, 0, buf,
-                            fake_guest_data->bar1_size);
+                            fake_guest_data->bar1_size, true);
         if (ret != 0) {
             err(EXIT_FAILURE, "fake guest failed to write garbage to BAR1");
         }
@@ -897,7 +898,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     device_state = VFIO_DEVICE_STATE_V1_SAVING | VFIO_DEVICE_STATE_V1_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                         offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+                        &device_state, sizeof(device_state), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
@@ -918,7 +919,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     device_state = VFIO_DEVICE_STATE_V1_SAVING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                         offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+                        &device_state, sizeof(device_state), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
@@ -934,7 +935,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     device_state = VFIO_DEVICE_STATE_V1_STOP;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                               offsetof(struct vfio_user_migration_info, device_state),
-                              &device_state, sizeof(device_state));
+                              &device_state, sizeof(device_state), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
@@ -1005,7 +1006,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     /* XXX set device state to resuming */
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                         offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+                        &device_state, sizeof(device_state), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to resuming");
     }
@@ -1015,7 +1016,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         /* XXX read data offset */
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
                             offsetof(struct vfio_user_migration_info, data_offset),
-                            &data_offset, sizeof(data_offset));
+                            &data_offset, sizeof(data_offset), false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read migration data offset");
         }
@@ -1031,7 +1032,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
                (ull_t)(data_offset + migr_iters[i].iov_len - 1));
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             data_offset, migr_iters[i].iov_base,
-                            migr_iters[i].iov_len);
+                            migr_iters[i].iov_len, false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to write device migration data");
         }
@@ -1040,7 +1041,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
         data_len = migr_iters[i].iov_len;
         ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             offsetof(struct vfio_user_migration_info, data_size),
-                            &data_len, sizeof(data_len));
+                            &data_len, sizeof(data_len), false);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to write migration data size");
         }
@@ -1050,14 +1051,14 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     device_state = VFIO_DEVICE_STATE_V1_RUNNING;
     ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
                             offsetof(struct vfio_user_migration_info, device_state),
-                            &device_state, sizeof(device_state));
+                            &device_state, sizeof(device_state), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to running");
     }
 
     /* validate contents of BAR1 */
 
-    if (access_region(sock, 1, false, 0, buf, bar1_size) != 0) {
+    if (access_region(sock, 1, false, 0, buf, bar1_size, false) != 0) {
         err(EXIT_FAILURE, "failed to read BAR1");
     }
 
@@ -1144,7 +1145,7 @@ int main(int argc, char *argv[])
     negotiate(sock, &server_max_fds, &server_max_data_xfer_size, &pgsize);
 
     /* try to access a bogus region, we should get an error */
-    ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof(ret));
+    ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof(ret), false);
     if (ret != -1 || errno != EINVAL) {
         errx(EXIT_FAILURE,
              "expected EINVAL accessing bogus region, got %d instead", errno);
@@ -1157,7 +1158,7 @@ int main(int argc, char *argv[])
     get_device_regions_info(sock, &client_dev_info);
 
     ret = access_region(sock, VFU_PCI_DEV_CFG_REGION_IDX, false, 0, &config_space,
-                        sizeof(config_space));
+                        sizeof(config_space), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to read PCI configuration space");
     }
@@ -1276,7 +1277,8 @@ int main(int argc, char *argv[])
      * TODO make this value a command line option.
      */
     t = time(NULL) + 10;
-    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t, sizeof(t));
+    ret = access_region(sock, VFU_PCI_DEV_BAR0_REGION_IDX, true, 0, &t,
+                        sizeof(t), false);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to BAR0");
     }
