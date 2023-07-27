@@ -462,13 +462,19 @@ test_migration_state_transitions(void **state UNUSED)
     }
 }
 
+static vfu_migr_state_t LAST_STATE = -1;
+static int transition_callback(vfu_ctx_t *ctx UNUSED, vfu_migr_state_t state) {
+    LAST_STATE = state;
+    return 0;
+}
+
 static struct test_setup_migr_reg_dat {
     vfu_ctx_t *v;
     const vfu_migration_callbacks_t c;
 } migr_reg_data = {
     .c = {
         .version = VFU_MIGR_CALLBACKS_VERS,
-        .transition = (void *)0x1,
+        .transition = transition_callback,
         .read_data = (void *)0x2,
         .write_data = (void *)0x3
     }
@@ -502,6 +508,33 @@ test_setup_migration_callbacks(void **state)
     int r = vfu_setup_device_migration_callbacks(p->v, 0, &p->c);
     assert_int_equal(0, r);
     assert_non_null(p->v->migration);
+}
+
+static void
+test_migration_state_sequence(void **state)
+{
+    test_setup_migration_callbacks(state);
+
+    struct test_setup_migr_reg_dat *p = *state;
+    struct migration *migr = p->v->migration;
+
+    int r;
+
+    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_PRE_COPY, true);
+    assert_int_equal(0, r);
+    assert_int_equal(LAST_STATE, VFU_MIGR_STATE_PRE_COPY);
+
+    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_STOP_COPY, true);
+    assert_int_equal(0, r);
+    assert_int_equal(LAST_STATE, VFU_MIGR_STATE_STOP_AND_COPY);
+
+    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_STOP, true);
+    assert_int_equal(0, r);
+    assert_int_equal(LAST_STATE, VFU_MIGR_STATE_STOP);
+    
+    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_RUNNING, true);
+    assert_int_equal(0, r);
+    assert_int_equal(LAST_STATE, VFU_MIGR_STATE_RUNNING);
 }
 
 static void
@@ -607,6 +640,9 @@ main(void)
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
+            setup_test_setup_migration,
+            teardown_test_setup_migration),
+        cmocka_unit_test_setup_teardown(test_migration_state_sequence,
             setup_test_setup_migration,
             teardown_test_setup_migration),
         cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
