@@ -192,7 +192,8 @@ dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
  * sparsely memory mappable. We should also have a test where the server does
  * DMA directly on the client memory.
  */
-static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
+static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
+                      int region, bool use_messages)
 {
     const int size = 1024;
     const int count = 4;
@@ -200,34 +201,49 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     uint32_t crc1, crc2;
     dma_sg_t *sg;
     void *addr;
-    int max_page_idx;
     int ret;
 
     sg = alloca(dma_sg_size());
 
     assert(vfu_ctx != NULL);
 
+    struct iovec iov = {0};
+
     /* Write some data, chunked into multiple calls to exercise offsets. */
     for (int i = 0; i < count; ++i) {
-        addr = server_data->regions[0].iova.iov_base + i * size;
+        addr = server_data->regions[region].iova.iov_base + i * size;
         ret = vfu_addr_to_sgl(vfu_ctx, (vfu_dma_addr_t)addr, size, sg, 1,
                               PROT_WRITE);
+                              
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to map %p-%p", addr, addr + size - 1);
         }
 
         memset(&buf[i * size], 'A' + i, size);
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s: WRITE addr %p size %d", __func__, addr,
-                size);
-        ret = vfu_sgl_write(vfu_ctx, sg, 1, &buf[i * size]);
-        if (ret < 0) {
-            err(EXIT_FAILURE, "vfu_sgl_write failed");
-        }
 
-        // Assert that we are only dirtying one of the region's first 8 pages.
-        max_page_idx = ((i + 1) * size + PAGE_SIZE - 1) / PAGE_SIZE;
-        assert(max_page_idx < 8);
-        vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
+        if (use_messages) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: MESSAGE WRITE addr %p size %d",
+                    __func__, addr, size);
+            ret = vfu_sgl_write(vfu_ctx, sg, 1, &buf[i * size]);
+            if (ret < 0) {
+                err(EXIT_FAILURE, "vfu_sgl_write failed");
+            }
+        } else {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: DIRECT WRITE  addr %p size %d",
+                    __func__, addr, size);
+            ret = vfu_sgl_get(vfu_ctx, sg, &iov, 1, 0);
+            if (ret < 0) {
+                err(EXIT_FAILURE, "vfu_sgl_get failed");
+            }
+            assert(iov.iov_len == (size_t)size);
+            memcpy(iov.iov_base, &buf[i * size], size);
+
+            /*
+             * When directly writing to client memory we are responsible for
+             * tracking dirty pages.
+             */
+            vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
+        }
     }
 
     crc1 = rte_hash_crc(buf, sizeof(buf), 0);
@@ -235,17 +251,29 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
     /* Read the data back at double the chunk size. */
     memset(buf, 0, sizeof(buf));
     for (int i = 0; i < count; i += 2) {
-        addr = server_data->regions[0].iova.iov_base + i * size;
+        addr = server_data->regions[region].iova.iov_base + i * size;
         ret = vfu_addr_to_sgl(vfu_ctx, (vfu_dma_addr_t)addr, size * 2, sg, 1,
                               PROT_READ);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to map %p-%p", addr, addr + 2 * size - 1);
         }
-        vfu_log(vfu_ctx, LOG_DEBUG, "%s: READ  addr %p size %d", __func__, addr,
-                2 * size);
-        ret = vfu_sgl_read(vfu_ctx, sg, 1, &buf[i * size]);
-        if (ret < 0) {
-            err(EXIT_FAILURE, "vfu_sgl_read failed");
+
+        if (use_messages) {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: MESSAGE READ  addr %p size %d",
+                    __func__, addr, 2 * size);
+            ret = vfu_sgl_read(vfu_ctx, sg, 1, &buf[i * size]);
+            if (ret < 0) {
+                err(EXIT_FAILURE, "vfu_sgl_read failed");
+            }
+        } else {
+            vfu_log(vfu_ctx, LOG_DEBUG, "%s: DIRECT READ   addr %p size %d",
+                    __func__, addr, 2 * size);
+            ret = vfu_sgl_get(vfu_ctx, sg, &iov, 1, 0);
+            if (ret < 0) {
+                err(EXIT_FAILURE, "vfu_sgl_get failed");
+            }
+            assert(iov.iov_len == 2 * (size_t)size);
+            memcpy(&buf[i * size], iov.iov_base, 2 * size);
         }
     }
 
@@ -253,6 +281,9 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data)
 
     if (crc1 != crc2) {
         errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
+    } else {
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s: %s       success", __func__,
+                use_messages ? "MESSAGE" : "DIRECT ");
     }
 }
 
@@ -609,14 +640,25 @@ int main(int argc, char *argv[])
                     err(EXIT_FAILURE, "vfu_irq_trigger() failed");
                 }
 
+                printf("doing dma io\n");
+
                 /*
-                 * We also initiate some dummy DMA via an explicit message,
-                 * again to show how DMA is done. This is used if the client's
-                 * RAM isn't mappable or the server implementation prefers it
-                 * this way.  Again, the client expects the server to send DMA
-                 * messages right after it has triggered the IRQs.
+                 * We initiate some dummy DMA via explicit messages to show how
+                 * DMA is done if the client's RAM isn't mappable or the server
+                 * implementation prefers it this way. In this case, the client
+                 * is responsible for tracking pages that are dirtied, as it is
+                 * the one actually performing the writes.
                  */
-                do_dma_io(vfu_ctx, &server_data);
+                do_dma_io(vfu_ctx, &server_data, 0, true);
+
+                /*
+                 * We also do some dummy DMA by directly accessing the client's
+                 * memory. In this case, we keep track of dirty pages ourselves,
+                 * as the client has no knowledge of what and when we have
+                 * written to its memory.
+                 */
+                do_dma_io(vfu_ctx, &server_data, 1, false);
+
                 ret = 0;
             }
         }
