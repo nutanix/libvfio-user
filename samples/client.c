@@ -54,6 +54,13 @@
 /* This is low, so we get testing of vfu_sgl_read/write() chunking. */
 #define CLIENT_MAX_DATA_XFER_SIZE (1024)
 
+/*
+ * Our DMA regions are one page in size so we only need one bit to mark them as
+ * dirty. This flag goes in the flags field of the vfio_user_dma_map struct.
+ */
+#define CLIENT_DIRTY_DMA_REGION_FLAG (1 << 31)
+#define CLIENT_DIRTY_PAGE_TRACKING_ENABLED_FLAG (1 << 30)
+
 static char const *irq_to_str[] = {
     [VFU_DEV_INTX_IRQ] = "INTx",
     [VFU_DEV_MSI_IRQ] = "MSI",
@@ -602,6 +609,16 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
                     dma_region_fds[i], (ull_t)offset,
                     (ull_t)(offset + dma_access.count));
         }
+
+        /*
+         * DMA regions in this example are one page in size so we use one bit
+         * to mark the newly-dirtied page as dirty.
+         */
+        if (dma_regions[i].flags & CLIENT_DIRTY_PAGE_TRACKING_ENABLED_FLAG) {
+            assert(dma_regions[i].size == PAGE_SIZE);
+            dma_regions[i].flags |= CLIENT_DIRTY_DMA_REGION_FLAG;
+        }
+
         break;
     }
 
@@ -686,7 +703,8 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 }
 
 static void
-get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region, bool *some_dirty)
+get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region,
+                 bool expect_dirty)
 {
     uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
                                             sysconf(_SC_PAGESIZE));
@@ -721,14 +739,16 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region, bool *some_dirt
         err(EXIT_FAILURE, "failed to get dirty page bitmap");
     }
 
+    char dirtied_by_server = bitmap[0];
+    char dirtied_by_client = (dma_region->flags & CLIENT_DIRTY_DMA_REGION_FLAG) != 0;
+    char dirtied = dirtied_by_server | dirtied_by_client;
+
     printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
            (ull_t)range->iova,
-           (ull_t)(range->iova + range->size - 1), bitmap[0]);
+           (ull_t)(range->iova + range->size - 1), dirtied);
 
-    // We only ever dirty one of the first 8 pages of the region.
-    // See the assertion in `do_dma_io` (server.c).
-    if (bitmap[0] != 0) {
-        *some_dirty = true;
+    if (expect_dirty) {
+        assert(dirtied);
     }
 
     free(data);
@@ -1109,7 +1129,6 @@ int main(int argc, char *argv[])
     size_t nr_iters;
     uint32_t crc;
     size_t bar1_size = 0x3000; /* FIXME get this value from region info */
-    bool some_dirty = false;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1215,6 +1234,14 @@ int main(int argc, char *argv[])
     }
 
     /*
+     * Start client-side dirty page tracking (which happens in
+     * `handle_dma_write` when writes are successful).
+     */
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].flags |= CLIENT_DIRTY_PAGE_TRACKING_ENABLED_FLAG;
+    }
+
+    /*
      * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
      *
      * BAR0 in the server does not support memory mapping so it must be accessed
@@ -1230,10 +1257,13 @@ int main(int argc, char *argv[])
     handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
 
     for (i = 0; i < nr_dma_regions; i++) {
-        get_dirty_bitmap(sock, &dma_regions[i], &some_dirty);
+        /*
+         * We expect regions 0 and 1 to be dirtied: 0 through messages (so
+         * marked by the client) and 1 directly (so marked by the server). See
+         * the bottom of the main function of server.c.
+         */
+        get_dirty_bitmap(sock, &dma_regions[i], i < 2);
     }
-
-    assert(some_dirty);
 
     dirty_pages.argsz = sizeof(dirty_pages);
     dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
@@ -1242,6 +1272,11 @@ int main(int argc, char *argv[])
                         NULL, NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to stop dirty page logging");
+    }
+
+    /* Stop client-side dirty page tracking */
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].flags &= ~CLIENT_DIRTY_PAGE_TRACKING_ENABLED_FLAG;
     }
 
     /* BAR1 can be memory mapped and read directly */

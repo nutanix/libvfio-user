@@ -240,9 +240,13 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
 
             /*
              * When directly writing to client memory we are responsible for
-             * tracking dirty pages.
+             * tracking dirty pages. We assert that all dirty writes are within
+             * the first page of region 1. In fact, all regions are only one
+             * page in size.
              */
             vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
+            assert(region == 1);
+            assert(i * size < (int)PAGE_SIZE);
         }
     }
 
@@ -643,21 +647,21 @@ int main(int argc, char *argv[])
                 printf("doing dma io\n");
 
                 /*
-                 * We initiate some dummy DMA via explicit messages to show how
+                 * We initiate some dummy DMA by directly accessing the client's
+                 * memory. In this case, we keep track of dirty pages ourselves,
+                 * as the client has no knowledge of what and when we have
+                 * written to its memory.
+                 */
+                do_dma_io(vfu_ctx, &server_data, 1, false);
+                
+                /*
+                 * We also do some dummy DMA via explicit messages to show how
                  * DMA is done if the client's RAM isn't mappable or the server
                  * implementation prefers it this way. In this case, the client
                  * is responsible for tracking pages that are dirtied, as it is
                  * the one actually performing the writes.
                  */
                 do_dma_io(vfu_ctx, &server_data, 0, true);
-
-                /*
-                 * We also do some dummy DMA by directly accessing the client's
-                 * memory. In this case, we keep track of dirty pages ourselves,
-                 * as the client has no knowledge of what and when we have
-                 * written to its memory.
-                 */
-                do_dma_io(vfu_ctx, &server_data, 1, false);
 
                 ret = 0;
             }
