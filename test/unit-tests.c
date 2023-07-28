@@ -463,6 +463,7 @@ test_migration_state_transitions(void **state UNUSED)
 }
 
 static vfu_migr_state_t LAST_STATE = -1;
+static void *LAST_WRITE = NULL;
 static int transition_callback(vfu_ctx_t *ctx UNUSED, vfu_migr_state_t state) {
     LAST_STATE = state;
     return 0;
@@ -476,6 +477,16 @@ static ssize_t read_callback(vfu_ctx_t *ctx UNUSED, void *buf, uint64_t count)
     }
     return count;
 }
+static ssize_t write_callback(vfu_ctx_t *ctx UNUSED, void *buf, uint64_t count)
+{
+    if (LAST_WRITE != NULL) {
+        free(LAST_WRITE);
+    }
+
+    LAST_WRITE = malloc(count);
+    memcpy(LAST_WRITE, buf, count);
+    return count;
+}
 
 static struct test_setup_migr_reg_dat {
     vfu_ctx_t *v;
@@ -485,7 +496,7 @@ static struct test_setup_migr_reg_dat {
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = transition_callback,
         .read_data = read_callback,
-        .write_data = (void *)0x3
+        .write_data = write_callback
     }
 };
 
@@ -560,7 +571,7 @@ test_handle_mig_data_read(void **state)
         .argsz = sizeof(data),
         .size = 4
     };
-    
+
     vfu_msg_t *m = mkmsg(VFIO_USER_MIG_DATA_READ, &data, sizeof(data));
 
     uint8_t expect[4] = {0, 1, 2, 3};
@@ -629,6 +640,67 @@ test_handle_mig_data_read_invalid_state(void **state) {
 
     migr->state = VFIO_DEVICE_STATE_STOP;
     r = handle_mig_data_read(p->v, m);
+    assert_int_equal(-EINVAL, r);
+}
+
+static void
+test_handle_mig_data_write(void **state)
+{
+    test_setup_migration_callbacks(state);
+
+    struct test_setup_migr_reg_dat *p = *state;
+    struct migration *migr = p->v->migration;
+
+    uint8_t req[12] = {0};
+    
+    struct vfio_user_mig_data *data = (void*)&req;
+    data->argsz = sizeof(req);
+    data->size = 4;
+
+    uint8_t *buf = (void*)data + sizeof(*data);
+    for (int i = 0; i < 4; i++) {
+        *(buf + i) = i;
+    }
+    
+    vfu_msg_t *m = mkmsg(VFIO_USER_MIG_DATA_READ, &req, sizeof(req));
+
+    p->v->client_max_data_xfer_size = 4;
+
+    ssize_t r;
+
+    migr->state = VFIO_DEVICE_STATE_RESUMING;
+    r = handle_mig_data_write(p->v, m);
+    assert_int_equal(4, r);
+    assert_int_equal(0, memcmp(LAST_WRITE, buf, 4));
+}
+
+static void
+test_handle_mig_data_write_invalid_state(void **state)
+{
+    test_setup_migration_callbacks(state);
+
+    struct test_setup_migr_reg_dat *p = *state;
+    struct migration *migr = p->v->migration;
+
+    uint8_t req[12] = {0};
+    
+    struct vfio_user_mig_data *data = (void*)&req;
+    data->argsz = sizeof(req);
+    data->size = 4;
+
+    uint8_t *buf = (void*)data + sizeof(*data);
+    for (int i = 0; i < 4; i++) {
+        *(buf + i) = i;
+    }
+    
+    vfu_msg_t *m = mkmsg(VFIO_USER_MIG_DATA_READ, &req, sizeof(req));
+
+    p->v->client_max_data_xfer_size = 4;
+
+    ssize_t r;
+
+    migr->state = VFIO_DEVICE_STATE_RUNNING;
+    r = handle_mig_data_write(p->v, m);
     assert_int_equal(-EINVAL, r);
 }
 
@@ -747,6 +819,12 @@ main(void)
             setup_test_setup_migration,
             teardown_test_setup_migration),
         cmocka_unit_test_setup_teardown(test_handle_mig_data_read_invalid_state,
+            setup_test_setup_migration,
+            teardown_test_setup_migration),
+        cmocka_unit_test_setup_teardown(test_handle_mig_data_write,
+            setup_test_setup_migration,
+            teardown_test_setup_migration),
+        cmocka_unit_test_setup_teardown(test_handle_mig_data_write_invalid_state,
             setup_test_setup_migration,
             teardown_test_setup_migration),
         cmocka_unit_test_setup(test_device_is_stopped_and_copying, setup),
