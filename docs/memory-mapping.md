@@ -133,7 +133,11 @@ case, then the server may only read or write the region the slower way:
 
 ```
 ...
-vfu_addr_to_sgl(ctx, iova, len, sg, 1, PROT_READ);
+vfu_addr_to_sgl(ctx, iova, len, sg, 1, PROT_WRITE);
 
-vfu_sgl_read(ctx, sg, 1, &buf);
+vfu_sgl_write(ctx, sg, 1, &buf);
 ```
+
+Note that in this case, the server is not expected to report any dirty writes
+via `vfu_sgl_mark_dirty()`: as the client is actually writing to memory, it's
+the client's responsibility to track any dirtying.
