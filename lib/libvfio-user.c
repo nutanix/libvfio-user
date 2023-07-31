@@ -1009,6 +1009,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
             struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
+            res->argsz = msg->out.iov.iov_len;
+
             ret = dma_feature_get(vfu_ctx, feature, res->data);
         } else {
             return -1;
