@@ -518,6 +518,12 @@ static int
 teardown_test_setup_migration(void **state) {
     struct test_setup_migr_reg_dat *p = *state;
     vfu_destroy_ctx(p->v);
+
+    if (LAST_WRITE != NULL) {
+        free(LAST_WRITE);
+        LAST_WRITE = NULL;
+    }
+
     return 0;
 }
 
