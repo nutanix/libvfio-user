@@ -203,9 +203,14 @@ VFIO_USER_F_DMA_REGION_WRITE = (1 << 1)
 
 VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP = (1 << 0)
 
-VFIO_IOMMU_DIRTY_PAGES_FLAG_START = (1 << 0)
-VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP = (1 << 1)
-VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
+VFIO_DEVICE_FEATURE_MASK = 0xffff
+VFIO_DEVICE_FEATURE_GET = (1 << 16)
+VFIO_DEVICE_FEATURE_SET = (1 << 17)
+VFIO_DEVICE_FEATURE_PROBE = (1 << 18)
+
+VFIO_DEVICE_FEATURE_DMA_LOGGING_START = 6
+VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP = 7
+VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT = 8
 
 VFIO_USER_IO_FD_TYPE_IOEVENTFD = 0
 VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
@@ -546,6 +551,40 @@ class vfu_migration_callbacks_t(Structure):
         ("transition", transition_cb_t),
         ("read_data", read_data_cb_t),
         ("write_data", write_data_cb_t),
+    ]
+
+
+class vfio_user_device_feature(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32)
+    ]
+
+
+class vfio_user_device_feature_dma_logging_control(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("page_size", c.c_uint64),
+        ("num_ranges", c.c_uint32),
+        ("reserved", c.c_uint32),
+    ]
+
+
+class vfio_user_device_feature_dma_logging_range(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("iova", c.c_uint64),
+        ("length", c.c_uint64),
+    ]
+
+
+class vfio_user_device_feature_dma_logging_report(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("iova", c.c_uint64),
+        ("length", c.c_uint64),
+        ("page_size", c.c_uint64)
     ]
 
 
