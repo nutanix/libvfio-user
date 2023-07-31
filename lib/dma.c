@@ -401,6 +401,24 @@ dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
             if (region == NULL) {
                 return ERROR_INT(EINVAL);
             }
+
+            if (region->fd == -1) {
+                if (is_all_regions) {
+                    /*
+                    * DMA regions not mapped by the server are not dirty tracked
+                    * (the client must track changes via handling
+                    * VFIO_USER_DMA_WRITE). Therefore, we don't enable dirty page
+                    * tracking for such regions. See #627.
+                    */
+                    continue;
+                } else {
+                    /*
+                     * Explicitly trying to enable dirty page tracking on a
+                     * non-mapped region is invalid.
+                     */
+                    return ERROR_INT(EINVAL);
+                }
+            }
             
             if (dirty_page_logging_start_on_region(region,
                                                    req->page_size) < 0) {
@@ -438,7 +456,19 @@ dma_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
                                      req->ranges[i].length);
             }
 
-            if (region == NULL || region->dirty_bitmap == NULL) {
+            if (region == NULL) {
+                return ERROR_INT(EINVAL);
+            }
+
+            if (region->fd == -1) {
+                if (is_all_regions) {
+                    continue;
+                } else {
+                    return ERROR_INT(EINVAL);
+                }
+            }
+
+            if (region->dirty_bitmap == NULL) {
                 return ERROR_INT(EINVAL);
             }
 
