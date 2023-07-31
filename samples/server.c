@@ -238,17 +238,24 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
             assert(iov.iov_len == (size_t)size);
             memcpy(iov.iov_base, &buf[i * size], size);
 
+            
             /*
              * When directly writing to client memory we are responsible for
-             * tracking dirty pages. Upon `vfu_sgl_put` for an SGL acquired with
-             * `PROT_WRITE`, if dirty pages are being logged, the pages are
-             * marked dirty. We assert that all dirty writes are within the
-             * first page of region 1. In fact, all regions are only one page in
-             * size.
+             * tracking dirty pages. We assert that all dirty writes are within
+             * the first page of region 1. In fact, all regions are only one
+             * page in size.
+             * 
+             * Note: this is not strictly necessary in this example, since we
+             * later call `vfu_sgl_put`, which marks pages dirty if the SGL was
+             * acquired with `PROT_WRITE`. However, `vfu_sgl_mark_dirty` is
+             * useful in cases where the server needs to mark guest memory dirty
+             * without releasing the memory.
              */
-            vfu_sgl_put(vfu_ctx, sg, &iov, 1);
+            vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
             assert(region == 1);
             assert(i * size < (int)PAGE_SIZE);
+
+            vfu_sgl_put(vfu_ctx, sg, &iov, 1);
         }
     }
 
@@ -290,7 +297,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
         errx(EXIT_FAILURE, "DMA write and DMA read mismatch");
     } else {
         vfu_log(vfu_ctx, LOG_DEBUG, "%s: %s success", __func__,
-                use_messages ? "MESSAGE" : "DIRECT ");
+                use_messages ? "MESSAGE" : "DIRECT");
     }
 }
 
