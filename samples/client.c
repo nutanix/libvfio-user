@@ -923,7 +923,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
      * XXX set device state to pre-copy. This is technically optional but any
      * VMM that cares about performance needs this.
      */
-    device_state = VFIO_DEVICE_STATE_PRE_COPY;
+    device_state = VFIO_USER_DEVICE_STATE_PRE_COPY;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -945,7 +945,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     printf("client: setting device state to stop-and-copy\n");
 
-    device_state = VFIO_DEVICE_STATE_STOP_COPY;
+    device_state = VFIO_USER_DEVICE_STATE_STOP_COPY;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -957,7 +957,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
     }
 
     /* XXX read device state, migration must have finished now */
-    device_state = VFIO_DEVICE_STATE_STOP;
+    device_state = VFIO_USER_DEVICE_STATE_STOP;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
@@ -975,7 +975,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     int ret, sock;
     char *sock_path;
     struct stat sb;
-    uint32_t device_state = VFIO_DEVICE_STATE_RESUMING;
+    uint32_t device_state = VFIO_USER_DEVICE_STATE_RESUMING;
     size_t i;
     uint32_t dst_crc;
     char buf[bar1_size];
@@ -996,7 +996,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (ret > 0) { /* child (destination server) */
         char *_argv[] = {
             path_to_server,
-            (char *)"-r", // start in VFIO_DEVICE_STATE_RESUMING
+            (char *)"-r", // start in VFIO_USER_DEVICE_STATE_RESUMING
             (char *)"-v",
             sock_path,
             NULL
@@ -1039,7 +1039,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     }
 
     /* XXX set device state to stop to finish the transfer */
-    device_state = VFIO_DEVICE_STATE_STOP;
+    device_state = VFIO_USER_DEVICE_STATE_STOP;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to stop");
@@ -1061,7 +1061,7 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     }
 
     /* XXX set device state to running */
-    device_state = VFIO_DEVICE_STATE_RUNNING;
+    device_state = VFIO_USER_DEVICE_STATE_RUNNING;
     ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to running");
