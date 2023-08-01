@@ -215,7 +215,8 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
 }
 
 void
-migr_state_transition(struct migration *migr, enum vfio_device_mig_state state)
+migr_state_transition(struct migration *migr,
+                      enum vfio_user_device_mig_state state)
 {
     if (!is_patched("migr_state_transition")) {
         __real_migr_state_transition(migr, state);

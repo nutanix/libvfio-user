@@ -406,59 +406,59 @@ test_migration_state_transitions(void **state UNUSED)
 
     /* from ERROR: all transitions are invalid */
     for (i = 0; i < 8; i++) {
-        assert_false(f(VFIO_DEVICE_STATE_ERROR, i));
+        assert_false(f(VFIO_USER_DEVICE_STATE_ERROR, i));
     }
 
     /* from STOP */
-    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_ERROR));
-    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_STOP));
-    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RUNNING));
-    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_STOP_COPY));
-    assert_true(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RESUMING));
-    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_RUNNING_P2P));
-    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_PRE_COPY));
-    assert_false(f(VFIO_DEVICE_STATE_STOP, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+    assert_false(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_ERROR));
+    assert_false(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_STOP));
+    assert_true(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_RUNNING));
+    assert_true(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_STOP_COPY));
+    assert_true(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_RUNNING_P2P));
+    assert_false(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_USER_DEVICE_STATE_STOP, VFIO_USER_DEVICE_STATE_PRE_COPY_P2P));
 
     /* from RUNNING */
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_ERROR));
-    assert_true(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_STOP));
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RUNNING));
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_STOP_COPY));
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RESUMING));
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_RUNNING_P2P));
-    assert_true(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_PRE_COPY));
-    assert_false(f(VFIO_DEVICE_STATE_RUNNING, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_ERROR));
+    assert_true(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_STOP));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_RUNNING));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_STOP_COPY));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_RUNNING_P2P));
+    assert_true(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING, VFIO_USER_DEVICE_STATE_PRE_COPY_P2P));
 
     /* from STOP_COPY and RESUMING */
     for (i = 3; i < 5; i++) {
-        assert_false(f(i, VFIO_DEVICE_STATE_ERROR));
-        assert_true(f(i, VFIO_DEVICE_STATE_STOP));
-        assert_false(f(i, VFIO_DEVICE_STATE_RUNNING));
-        assert_false(f(i, VFIO_DEVICE_STATE_STOP_COPY));
-        assert_false(f(i, VFIO_DEVICE_STATE_RESUMING));
-        assert_false(f(i, VFIO_DEVICE_STATE_RUNNING_P2P));
-        assert_false(f(i, VFIO_DEVICE_STATE_PRE_COPY));
-        assert_false(f(i, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_ERROR));
+        assert_true(f(i, VFIO_USER_DEVICE_STATE_STOP));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_RUNNING));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_STOP_COPY));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_RESUMING));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_RUNNING_P2P));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_PRE_COPY));
+        assert_false(f(i, VFIO_USER_DEVICE_STATE_PRE_COPY_P2P));
     }
 
     /* from RUNNING_P2P: all transitions are invalid */
     for (i = 0; i < 8; i++) {
-        assert_false(f(VFIO_DEVICE_STATE_RUNNING_P2P, i));
+        assert_false(f(VFIO_USER_DEVICE_STATE_RUNNING_P2P, i));
     }
 
     /* from PRE_COPY */
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_ERROR));
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_STOP));
-    assert_true(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RUNNING));
-    assert_true(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_STOP_COPY));
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RESUMING));
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_RUNNING_P2P));
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_PRE_COPY));
-    assert_false(f(VFIO_DEVICE_STATE_PRE_COPY, VFIO_DEVICE_STATE_PRE_COPY_P2P));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_ERROR));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_STOP));
+    assert_true(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_RUNNING));
+    assert_true(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_STOP_COPY));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_RESUMING));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_RUNNING_P2P));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_PRE_COPY));
+    assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY, VFIO_USER_DEVICE_STATE_PRE_COPY_P2P));
 
     /* from PRE_COPY_P2P: all transitions are invalid */
     for (i = 0; i < 8; i++) {
-        assert_false(f(VFIO_DEVICE_STATE_PRE_COPY_P2P, i));
+        assert_false(f(VFIO_USER_DEVICE_STATE_PRE_COPY_P2P, i));
     }
 }
 
@@ -534,7 +534,7 @@ test_setup_migration_callbacks(void **state)
     int r = vfu_setup_device_migration_callbacks(p->v, 0, &p->c);
     assert_int_equal(0, r);
     assert_non_null(p->v->migration);
-    assert_int_equal(p->v->migration->state, VFIO_DEVICE_STATE_RUNNING);
+    assert_int_equal(p->v->migration->state, VFIO_USER_DEVICE_STATE_RUNNING);
 }
 
 static void
@@ -545,7 +545,7 @@ test_setup_migration_callbacks_resuming(void **state)
         LIBVFIO_USER_MIG_FLAG_START_RESUMING, &p->c);
     assert_int_equal(0, r);
     assert_non_null(p->v->migration);
-    assert_int_equal(p->v->migration->state, VFIO_DEVICE_STATE_RESUMING);
+    assert_int_equal(p->v->migration->state, VFIO_USER_DEVICE_STATE_RESUMING);
 }
 
 static void
@@ -556,23 +556,23 @@ test_handle_device_state(void **state)
     struct test_setup_migr_reg_dat *p = *state;
     struct migration *migr = p->v->migration;
 
-    assert(migr->state == VFIO_DEVICE_STATE_RUNNING);
+    assert(migr->state == VFIO_USER_DEVICE_STATE_RUNNING);
 
     int r;
 
-    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_PRE_COPY, true);
+    r = handle_device_state(p->v, migr, VFIO_USER_DEVICE_STATE_PRE_COPY, true);
     assert_int_equal(0, r);
     assert_int_equal(LAST_STATE, VFU_MIGR_STATE_PRE_COPY);
 
-    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_STOP_COPY, true);
+    r = handle_device_state(p->v, migr, VFIO_USER_DEVICE_STATE_STOP_COPY, true);
     assert_int_equal(0, r);
     assert_int_equal(LAST_STATE, VFU_MIGR_STATE_STOP_AND_COPY);
 
-    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_STOP, true);
+    r = handle_device_state(p->v, migr, VFIO_USER_DEVICE_STATE_STOP, true);
     assert_int_equal(0, r);
     assert_int_equal(LAST_STATE, VFU_MIGR_STATE_STOP);
     
-    r = handle_device_state(p->v, migr, VFIO_DEVICE_STATE_RUNNING, true);
+    r = handle_device_state(p->v, migr, VFIO_USER_DEVICE_STATE_RUNNING, true);
     assert_int_equal(0, r);
     assert_int_equal(LAST_STATE, VFU_MIGR_STATE_RUNNING);
 }
@@ -598,13 +598,13 @@ test_handle_mig_data_read(void **state)
 
     ssize_t r;
 
-    migr->state = VFIO_DEVICE_STATE_PRE_COPY;
+    migr->state = VFIO_USER_DEVICE_STATE_PRE_COPY;
     r = handle_mig_data_read(p->v, m);
     assert_int_equal(4, r);
     assert_int_equal(0, memcmp(msg.out.iov.iov_base + sizeof(data), &expect, 4));
     free(msg.out.iov.iov_base);
 
-    migr->state = VFIO_DEVICE_STATE_STOP_COPY;
+    migr->state = VFIO_USER_DEVICE_STATE_STOP_COPY;
     r = handle_mig_data_read(p->v, m);
     assert_int_equal(4, r);
     assert_int_equal(0, memcmp(msg.out.iov.iov_base + sizeof(data), &expect, 4));
@@ -629,7 +629,7 @@ test_handle_mig_data_read_too_long(void **state) {
 
     ssize_t r;
 
-    migr->state = VFIO_DEVICE_STATE_PRE_COPY;
+    migr->state = VFIO_USER_DEVICE_STATE_PRE_COPY;
     r = handle_mig_data_read(p->v, m);
     assert_int_equal(-EINVAL, r);
 }
@@ -652,11 +652,11 @@ test_handle_mig_data_read_invalid_state(void **state) {
 
     ssize_t r;
 
-    migr->state = VFIO_DEVICE_STATE_RUNNING;
+    migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
     r = handle_mig_data_read(p->v, m);
     assert_int_equal(-EINVAL, r);
 
-    migr->state = VFIO_DEVICE_STATE_STOP;
+    migr->state = VFIO_USER_DEVICE_STATE_STOP;
     r = handle_mig_data_read(p->v, m);
     assert_int_equal(-EINVAL, r);
 }
@@ -686,7 +686,7 @@ test_handle_mig_data_write(void **state)
 
     ssize_t r;
 
-    migr->state = VFIO_DEVICE_STATE_RESUMING;
+    migr->state = VFIO_USER_DEVICE_STATE_RESUMING;
     r = handle_mig_data_write(p->v, m);
     assert_int_equal(4, r);
     assert_int_equal(0, memcmp(LAST_WRITE, buf, 4));
@@ -717,7 +717,7 @@ test_handle_mig_data_write_invalid_state(void **state)
 
     ssize_t r;
 
-    migr->state = VFIO_DEVICE_STATE_RUNNING;
+    migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
     r = handle_mig_data_write(p->v, m);
     assert_int_equal(-EINVAL, r);
 }
@@ -734,13 +734,13 @@ test_device_is_stopped_and_copying(UNUSED void **state)
     for (i = 0; i < 8; i++) {
         migration.state = i;
         bool r = device_is_stopped_and_copying(vfu_ctx.migration);
-        if (i == VFIO_DEVICE_STATE_STOP_COPY) {
+        if (i == VFIO_USER_DEVICE_STATE_STOP_COPY) {
             assert_true(r);
         } else {
             assert_false(r);
         }
         r = device_is_stopped(vfu_ctx.migration);
-        if (i == VFIO_DEVICE_STATE_STOP) {
+        if (i == VFIO_USER_DEVICE_STATE_STOP) {
             assert_true(r);
         } else {
             assert_false(r);
