@@ -238,12 +238,11 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
             assert(iov.iov_len == (size_t)size);
             memcpy(iov.iov_base, &buf[i * size], size);
 
-            
             /*
-             * When directly writing to client memory we are responsible for
-             * tracking dirty pages. We assert that all dirty writes are within
-             * the first page of region 1. In fact, all regions are only one
-             * page in size.
+             * When directly writing to client memory the server is responsible
+             * for tracking dirty pages. We assert that all dirty writes are
+             * within the first page of region 1. In fact, all regions are only
+             * one page in size.
              * 
              * Note: this is not strictly necessary in this example, since we
              * later call `vfu_sgl_put`, which marks pages dirty if the SGL was
