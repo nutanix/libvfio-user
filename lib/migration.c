@@ -72,9 +72,9 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
 
     /* FIXME this should be done in vfu_ctx_realize */
     if (flags & LIBVFIO_USER_MIG_FLAG_START_RESUMING) {
-        migr->state = VFIO_DEVICE_STATE_RESUMING;
+        migr->state = VFIO_USER_DEVICE_STATE_RESUMING;
     } else {
-        migr->state = VFIO_DEVICE_STATE_RUNNING;
+        migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
     }
 
     migr->callbacks = *callbacks;
@@ -91,7 +91,7 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
 
 void
 MOCK_DEFINE(migr_state_transition)(struct migration *migr,
-                                   enum vfio_device_mig_state state)
+                                   enum vfio_user_device_mig_state state)
 {
     assert(migr != NULL);
     /* FIXME validate that state transition */
@@ -99,18 +99,18 @@ MOCK_DEFINE(migr_state_transition)(struct migration *migr,
 }
 
 vfu_migr_state_t
-MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_device_mig_state state)
+MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_user_device_mig_state state)
 {
     switch (state) {
-        case VFIO_DEVICE_STATE_STOP:
+        case VFIO_USER_DEVICE_STATE_STOP:
             return VFU_MIGR_STATE_STOP;
-        case VFIO_DEVICE_STATE_RUNNING:
+        case VFIO_USER_DEVICE_STATE_RUNNING:
             return VFU_MIGR_STATE_RUNNING;
-        case VFIO_DEVICE_STATE_STOP_COPY:
+        case VFIO_USER_DEVICE_STATE_STOP_COPY:
             return VFU_MIGR_STATE_STOP_AND_COPY;
-        case VFIO_DEVICE_STATE_RESUMING:
+        case VFIO_USER_DEVICE_STATE_RESUMING:
             return VFU_MIGR_STATE_RESUME;
-        case VFIO_DEVICE_STATE_PRE_COPY:
+        case VFIO_USER_DEVICE_STATE_PRE_COPY:
             return VFU_MIGR_STATE_PRE_COPY;
         default:
             return -1;
@@ -240,8 +240,8 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return -EINVAL;
     }
 
-    if (migr->state != VFIO_DEVICE_STATE_PRE_COPY
-        && migr->state != VFIO_DEVICE_STATE_STOP_COPY) {
+    if (migr->state != VFIO_USER_DEVICE_STATE_PRE_COPY
+        && migr->state != VFIO_USER_DEVICE_STATE_STOP_COPY) {
         vfu_log(vfu_ctx, LOG_ERR, "bad migration state to read data: %d",
                 migr->state);
         return -EINVAL;
@@ -287,7 +287,7 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return -EINVAL;
     }
 
-    if (migr->state != VFIO_DEVICE_STATE_RESUMING) {
+    if (migr->state != VFIO_USER_DEVICE_STATE_RESUMING) {
         vfu_log(vfu_ctx, LOG_ERR, "bad migration state to write data: %d",
                 migr->state);
         return -EINVAL;
@@ -299,13 +299,13 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 bool
 MOCK_DEFINE(device_is_stopped_and_copying)(struct migration *migr)
 {
-    return migr != NULL && migr->state == VFIO_DEVICE_STATE_STOP_COPY;
+    return migr != NULL && migr->state == VFIO_USER_DEVICE_STATE_STOP_COPY;
 }
 
 bool
 MOCK_DEFINE(device_is_stopped)(struct migration *migr)
 {
-    return migr != NULL && migr->state == VFIO_DEVICE_STATE_STOP;
+    return migr != NULL && migr->state == VFIO_USER_DEVICE_STATE_STOP;
 }
 
 size_t
