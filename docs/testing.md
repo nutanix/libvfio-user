@@ -81,6 +81,18 @@ LIBVFIO_SO_DIR='/root/src/libvfio-user/build/lib' pytest-3 test/py/test_quiesce.
 
 To print libvfio-user's log messages, append the `--capture=tee-sys` option.
 
+To use GDB to debug libvfio-user code called from Python unit tests, add a
+`time.sleep` somewhere to give you time to attach to the process and set
+breakpoints, run the tests with
+```
+meson test -C build --timeout-multiplier=10000
+```
+to prevent the test process from being killed by meson, and attach to the
+`python3` process in the usual way using
+```
+gdb --pid=<pid>
+```
+
 AFL++
 -----
 
