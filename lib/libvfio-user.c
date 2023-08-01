@@ -901,7 +901,8 @@ device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
     }
 
     if (vfu_ctx->migration != NULL) {
-        migr_state_transition(vfu_ctx->migration, VFIO_DEVICE_STATE_RUNNING);
+        migr_state_transition(vfu_ctx->migration,
+                              VFIO_USER_DEVICE_STATE_RUNNING);
     }
     return 0;
 }

@@ -628,34 +628,6 @@ typedef struct {
 
 } vfu_migration_callbacks_t;
 
-/**
- * The definition for VFIO_DEVICE_STATE_XXX differs with the version of vfio
- * header file used. Some old systems wouldn't have these definitions. Some
- * other newer systems would be using region based migration, and not
- * have VFIO_DEVICE_STATE_V1_XXXX defined. The latest ones have
- * VFIO_DEVICE_STATE_V1_XXXX defined. The following addresses all
- * these scenarios.
- */
-#if defined(VFIO_DEVICE_STATE_STOP)
-
-_Static_assert(VFIO_DEVICE_STATE_STOP == 0,
-               "incompatible VFIO_DEVICE_STATE_STOP definition");
-
-#define VFIO_DEVICE_STATE_V1_STOP         VFIO_DEVICE_STATE_STOP
-#define VFIO_DEVICE_STATE_V1_RUNNING      VFIO_DEVICE_STATE_RUNNING
-#define VFIO_DEVICE_STATE_V1_SAVING       VFIO_DEVICE_STATE_SAVING
-#define VFIO_DEVICE_STATE_V1_RESUMING     VFIO_DEVICE_STATE_RESUMING
-
-#elif !defined(VFIO_REGION_TYPE_MIGRATION_DEPRECATED) /* VFIO_DEVICE_STATE_STOP */
-
-#define VFIO_DEVICE_STATE_V1_STOP         (0)
-#define VFIO_DEVICE_STATE_V1_RUNNING      (1 << 0)
-#define VFIO_DEVICE_STATE_V1_SAVING       (1 << 1)
-#define VFIO_DEVICE_STATE_V1_RESUMING     (1 << 2)
-#define VFIO_DEVICE_STATE_MASK            ((1 << 3) - 1)
-
-#endif /* VFIO_REGION_TYPE_MIGRATION_DEPRECATED */
-
 int
 vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx, uint64_t flags,
                                      const vfu_migration_callbacks_t

@@ -225,7 +225,7 @@ struct vfio_user_device_feature_dma_logging_report {
     uint8_t  bitmap[];
 } __attribute__((packed));
 
-#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
+#ifndef VFIO_DEVICE_FEATURE_DMA_LOGGING_START
 #define VFIO_DEVICE_FEATURE_DMA_LOGGING_START  6
 #define VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP   7
 #define VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT 8
@@ -250,6 +250,8 @@ struct vfio_user_device_feature_migration {
 #ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_MIGRATION_STOP_COPY    (1 << 0)
 #define VFIO_MIGRATION_P2P          (1 << 1)
+#endif
+#ifndef VFIO_MIGRATION_PRE_COPY
 #define VFIO_MIGRATION_PRE_COPY     (1 << 2)
 #endif
 } __attribute__((packed));
@@ -270,18 +272,17 @@ struct vfio_user_device_feature_mig_state {
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_mig_state size");
 
-#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
-enum vfio_device_mig_state {
-	VFIO_DEVICE_STATE_ERROR = 0,
-	VFIO_DEVICE_STATE_STOP = 1,
-	VFIO_DEVICE_STATE_RUNNING = 2,
-	VFIO_DEVICE_STATE_STOP_COPY = 3,
-	VFIO_DEVICE_STATE_RESUMING = 4,
-	VFIO_DEVICE_STATE_RUNNING_P2P = 5,
-	VFIO_DEVICE_STATE_PRE_COPY = 6,
-	VFIO_DEVICE_STATE_PRE_COPY_P2P = 7,
+/* Analogous to vfio_device_mig_state */
+enum vfio_user_device_mig_state {
+	VFIO_USER_DEVICE_STATE_ERROR = 0,
+	VFIO_USER_DEVICE_STATE_STOP = 1,
+	VFIO_USER_DEVICE_STATE_RUNNING = 2,
+	VFIO_USER_DEVICE_STATE_STOP_COPY = 3,
+	VFIO_USER_DEVICE_STATE_RESUMING = 4,
+	VFIO_USER_DEVICE_STATE_RUNNING_P2P = 5,
+	VFIO_USER_DEVICE_STATE_PRE_COPY = 6,
+	VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7,
 };
-#endif
 
 struct vfio_user_mig_data {
     uint32_t    argsz;
