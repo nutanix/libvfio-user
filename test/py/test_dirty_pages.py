@@ -92,24 +92,43 @@ def test_dirty_pages_setup():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
+    f2 = tempfile.TemporaryFile()
+    f2.truncate(0x10 << PAGE_SHIFT)
+
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x60 << PAGE_SHIFT, size=0x20 << PAGE_SHIFT)
+
+    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f2.fileno()])
+
 
 def test_setup_migr_region():
     ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
 
-def start_logging():
+def start_logging(addr=None, length=None):
+    if addr is not None:
+        ranges = vfio_user_device_feature_dma_logging_range(
+            iova=addr,
+            length=length
+        )
+    else:
+        ranges = []
+
     feature = vfio_user_device_feature(
         argsz=len(vfio_user_device_feature()) +
-              len(vfio_user_device_feature_dma_logging_control()),
+              len(vfio_user_device_feature_dma_logging_control()) +
+              len(ranges),
         flags=VFIO_DEVICE_FEATURE_DMA_LOGGING_START | VFIO_DEVICE_FEATURE_SET)
 
     payload = vfio_user_device_feature_dma_logging_control(
         page_size=PAGE_SIZE,
-        num_ranges=0,
+        num_ranges=(1 if addr is not None else 0),
         reserved=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload))
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
+        bytes(feature) + bytes(payload) + bytes(ranges))
 
 
 def test_dirty_pages_start():
@@ -158,7 +177,7 @@ def test_dirty_pages_get_unmodified():
         assert b == 0
 
 
-def get_dirty_page_bitmap():
+def get_dirty_page_bitmap(addr=None, length=None, expect=0):
     argsz = len(vfio_user_device_feature()) + \
             len(vfio_user_device_feature_dma_logging_report())
 
@@ -168,14 +187,17 @@ def get_dirty_page_bitmap():
     )
 
     report = vfio_user_device_feature_dma_logging_report(
-        iova=0x10 << PAGE_SHIFT,
-        length=0x10 << PAGE_SHIFT,
+        iova=(0x10 << PAGE_SHIFT if addr is None else addr),
+        length=(0x10 << PAGE_SHIFT if length is None else length),
         page_size=PAGE_SIZE
     )
 
     payload = bytes(feature) + bytes(report)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload)
+    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=expect)
+
+    if expect != 0:
+        return
 
     assert len(result) == argsz + 8
 
@@ -301,20 +323,68 @@ def test_dirty_pages_get_modified():
     assert bitmap == 0b010000000000000000001100
 
 
-def test_dirty_pages_stop():
-    # FIXME we have a memory leak as we don't free dirty bitmaps when
-    # destroying the context.
+def stop_logging(specific_page=None):
+    if specific_page is not None:
+        ranges = vfio_user_device_feature_dma_logging_range(
+            iova=specific_page << PAGE_SHIFT,
+            length=PAGE_SIZE
+        )
+    else:
+        ranges = []
+
     feature = vfio_user_device_feature(
         argsz=len(vfio_user_device_feature()) +
-              len(vfio_user_device_feature_dma_logging_control()),
+              len(vfio_user_device_feature_dma_logging_control()) +
+              len(ranges),
         flags=VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP | VFIO_DEVICE_FEATURE_SET)
 
     payload = vfio_user_device_feature_dma_logging_control(
         page_size=PAGE_SIZE,
-        num_ranges=0,
+        num_ranges=(1 if specific_page is not None else 0),
         reserved=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload))
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
+        bytes(feature) + bytes(payload) + bytes(ranges))
+
+
+def test_dirty_pages_stop():
+    stop_logging()
+
+
+def test_dirty_pages_start_specific():
+    start_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
+    # should be idempotent
+    start_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
+
+
+def test_dirty_pages_get_modified_specific():
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x60 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
+    assert ret == 1
+    iovec1 = iovec_t()
+    ret = vfu_sgl_get(ctx, sg1, iovec1)
+    assert ret == 0
+
+    # not put yet, dirty bitmap should be zero
+    bitmap = get_dirty_page_bitmap(addr=0x60 << PAGE_SHIFT, length=PAGE_SIZE)
+    assert bitmap == 0b0000000000000000
+
+    # put SGLs, dirty bitmap should be updated
+    vfu_sgl_put(ctx, sg1, iovec1)
+    bitmap = get_dirty_page_bitmap(addr=0x60 << PAGE_SHIFT, length=PAGE_SIZE)
+    assert bitmap == 0b0000000000000001
+
+
+def test_dirty_pages_get_modified_specific_not_logged():
+    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
+                               length=PAGE_SIZE)
+    assert ret == 1
+    iovec1 = iovec_t()
+    ret = vfu_sgl_get(ctx, sg1, iovec1)
+    assert ret == 0
+    vfu_sgl_put(ctx, sg1, iovec1)
+
+    get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=PAGE_SIZE, expect=22)
 
 
 def test_dirty_pages_cleanup():
