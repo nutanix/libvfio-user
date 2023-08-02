@@ -559,9 +559,11 @@ read_migr_data(int sock, void *buf, size_t len)
 
     memcpy(buf, res->data, res->size);
 
+    uint32_t size = res->size;
+
     free(res);
 
-    return res->size;
+    return size;
 }
 
 static int
