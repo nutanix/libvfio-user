@@ -804,6 +804,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
+    if (region->dirty_bitmap == NULL) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "region %d is not logged", sg.region);
+        return ERROR_INT(EINVAL);
+    }
+
     for (i = 0; i < (size_t)bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
         uint8_t *outp = (uint8_t *)&bitmap[i];
