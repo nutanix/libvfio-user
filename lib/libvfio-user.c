@@ -1013,6 +1013,10 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             res->argsz = msg->out.iov.iov_len;
 
             ret = dma_feature_get(vfu_ctx, feature, res->data);
+
+            if (ret < 0) {
+                msg->out.iov.iov_len = 0;
+            }
         } else {
             return -1;
         }
