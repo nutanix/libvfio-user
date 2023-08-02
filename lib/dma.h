@@ -373,7 +373,7 @@ dma_sgl_put(dma_controller_t *dma, dma_sg_t *sgl, size_t cnt)
         region = &dma->regions[sg->region];
 
         if (sg->writeable) {
-            if (dma->dirty_pgsize > 0) {
+            if (dma->dirty_pgsize > 0 && region->dirty_bitmap != NULL) {
                 _dma_mark_dirty(dma, region, sg);
             }
         }
