@@ -323,11 +323,11 @@ def test_dirty_pages_get_modified():
     assert bitmap == 0b010000000000000000001100
 
 
-def stop_logging(specific_page=None):
-    if specific_page is not None:
+def stop_logging(addr=None, length=None):
+    if addr is not None:
         ranges = vfio_user_device_feature_dma_logging_range(
-            iova=specific_page << PAGE_SHIFT,
-            length=PAGE_SIZE
+            iova=addr,
+            length=length
         )
     else:
         ranges = []
@@ -340,7 +340,7 @@ def stop_logging(specific_page=None):
 
     payload = vfio_user_device_feature_dma_logging_control(
         page_size=PAGE_SIZE,
-        num_ranges=(1 if specific_page is not None else 0),
+        num_ranges=(1 if addr is not None else 0),
         reserved=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
@@ -385,6 +385,10 @@ def test_dirty_pages_get_modified_specific_not_logged():
     vfu_sgl_put(ctx, sg1, iovec1)
 
     get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=PAGE_SIZE, expect=22)
+
+
+def test_dirty_pages_stop_specific():
+    stop_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
 
 
 def test_dirty_pages_cleanup():
