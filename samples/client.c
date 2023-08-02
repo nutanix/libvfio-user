@@ -54,12 +54,25 @@
 /* This is low, so we get testing of vfu_sgl_read/write() chunking. */
 #define CLIENT_MAX_DATA_XFER_SIZE (1024)
 
+
 static char const *irq_to_str[] = {
     [VFU_DEV_INTX_IRQ] = "INTx",
     [VFU_DEV_MSI_IRQ] = "MSI",
     [VFU_DEV_MSIX_IRQ] = "MSI-X",
     [VFU_DEV_ERR_IRQ] = "ERR",
     [VFU_DEV_REQ_IRQ] = "REQ"
+};
+
+struct client_dma_region {
+/*
+ * Our DMA regions are one page in size so we only need one bit to mark them as
+ * dirty.
+ */
+#define CLIENT_DIRTY_PAGE_TRACKING_ENABLED (1 << 0)
+#define CLIENT_DIRTY_DMA_REGION (1 << 1)
+    uint32_t flags;
+    struct vfio_user_dma_map map;
+    int fd;
 };
 
 void
@@ -560,8 +573,8 @@ wait_for_irq(int irq_fd)
 }
 
 static void
-handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
-                 int nr_dma_regions, int *dma_region_fds)
+handle_dma_write(int sock, struct client_dma_region *dma_regions,
+                 int nr_dma_regions)
 {
     struct vfio_user_dma_region_access dma_access;
     struct vfio_user_header hdr;
@@ -588,20 +601,30 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
         off_t offset;
         ssize_t c;
 
-        if (dma_access.addr < dma_regions[i].addr ||
-            dma_access.addr >= dma_regions[i].addr + dma_regions[i].size) {
+        if (dma_access.addr < dma_regions[i].map.addr ||
+            dma_access.addr >= dma_regions[i].map.addr + dma_regions[i].map.size) {
             continue;
         }
 
-        offset = dma_regions[i].offset + dma_access.addr;
+        offset = dma_regions[i].map.offset + dma_access.addr;
 
-        c = pwrite(dma_region_fds[i], data, dma_access.count, offset);
+        c = pwrite(dma_regions[i].fd, data, dma_access.count, offset);
 
         if (c != (ssize_t)dma_access.count) {
             err(EXIT_FAILURE, "failed to write to fd=%d at [%#llx-%#llx)",
-                    dma_region_fds[i], (ull_t)offset,
+                    dma_regions[i].fd, (ull_t)offset,
                     (ull_t)(offset + dma_access.count));
         }
+
+        /*
+         * DMA regions in this example are one page in size so we use one bit
+         * to mark the newly-dirtied page as dirty.
+         */
+        if (dma_regions[i].flags & CLIENT_DIRTY_PAGE_TRACKING_ENABLED) {
+            assert(dma_regions[i].map.size == PAGE_SIZE);
+            dma_regions[i].flags |= CLIENT_DIRTY_DMA_REGION;
+        }
+
         break;
     }
 
@@ -616,8 +639,8 @@ handle_dma_write(int sock, struct vfio_user_dma_map *dma_regions,
 }
 
 static void
-handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
-                int nr_dma_regions, int *dma_region_fds)
+handle_dma_read(int sock, struct client_dma_region *dma_regions,
+                int nr_dma_regions)
 {
     struct vfio_user_dma_region_access dma_access, *response;
     struct vfio_user_header hdr;
@@ -644,18 +667,18 @@ handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
         off_t offset;
         ssize_t c;
 
-        if (dma_access.addr < dma_regions[i].addr ||
-            dma_access.addr >= dma_regions[i].addr + dma_regions[i].size) {
+        if (dma_access.addr < dma_regions[i].map.addr ||
+            dma_access.addr >= dma_regions[i].map.addr + dma_regions[i].map.size) {
             continue;
         }
 
-        offset = dma_regions[i].offset + dma_access.addr;
+        offset = dma_regions[i].map.offset + dma_access.addr;
 
-        c = pread(dma_region_fds[i], data, dma_access.count, offset);
+        c = pread(dma_regions[i].fd, data, dma_access.count, offset);
 
         if (c != (ssize_t)dma_access.count) {
             err(EXIT_FAILURE, "failed to read from fd=%d at [%#llx-%#llx)",
-                    dma_region_fds[i], (ull_t)offset,
+                    dma_regions[i].fd, (ull_t)offset,
                     (ull_t)offset + dma_access.count);
         }
         break;
@@ -672,23 +695,24 @@ handle_dma_read(int sock, struct vfio_user_dma_map *dma_regions,
 }
 
 static void
-handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
-              int nr_dma_regions, int *dma_region_fds)
+handle_dma_io(int sock, struct client_dma_region *dma_regions,
+              int nr_dma_regions)
 {
     size_t i;
 
     for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
-        handle_dma_write(sock, dma_regions, nr_dma_regions, dma_region_fds);
+        handle_dma_write(sock, dma_regions, nr_dma_regions);
     }
     for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
-        handle_dma_read(sock, dma_regions, nr_dma_regions, dma_region_fds);
+        handle_dma_read(sock, dma_regions, nr_dma_regions);
     }
 }
 
 static void
-get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
+get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
+                 bool expect_dirty)
 {
-    uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
+    uint64_t bitmap_size = _get_bitmap_size(dma_region->map.size,
                                             sysconf(_SC_PAGESIZE));
     struct vfio_user_dirty_pages *dirty_pages;
     struct vfio_user_bitmap_range *range;
@@ -707,8 +731,8 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     dirty_pages->argsz = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
 
     range = data + sizeof(*dirty_pages);
-    range->iova = dma_region->addr;
-    range->size = dma_region->size;
+    range->iova = dma_region->map.addr;
+    range->size = dma_region->map.size;
     range->bitmap.size = bitmap_size;
     range->bitmap.pgsize = sysconf(_SC_PAGESIZE);
 
@@ -721,9 +745,17 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
         err(EXIT_FAILURE, "failed to get dirty page bitmap");
     }
 
+    char dirtied_by_server = bitmap[0];
+    char dirtied_by_client = (dma_region->flags & CLIENT_DIRTY_DMA_REGION) != 0;
+    char dirtied = dirtied_by_server | dirtied_by_client;
+
     printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
            (ull_t)range->iova,
-           (ull_t)(range->iova + range->size - 1), bitmap[0]);
+           (ull_t)(range->iova + range->size - 1), dirtied);
+
+    if (expect_dirty) {
+        assert(dirtied);
+    }
 
     free(data);
 }
@@ -1058,8 +1090,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 }
 
 static void
-map_dma_regions(int sock, struct vfio_user_dma_map *dma_regions,
-                int *dma_region_fds, int nr_dma_regions)
+map_dma_regions(int sock, struct client_dma_region *dma_regions,
+                int nr_dma_regions)
 {
     int i, ret;
 
@@ -1067,13 +1099,13 @@ map_dma_regions(int sock, struct vfio_user_dma_map *dma_regions,
         struct iovec iovecs[2] = {
             /* [0] is for the header. */
             [1] = {
-                .iov_base = &dma_regions[i],
-                .iov_len = sizeof(*dma_regions)
+                .iov_base = &dma_regions[i].map,
+                .iov_len = sizeof(struct vfio_user_dma_map)
             }
         };
         ret = tran_sock_msg_iovec(sock, 0x1234 + i, VFIO_USER_DMA_MAP,
                                   iovecs, ARRAY_SIZE(iovecs),
-                                  &dma_region_fds[i], 1,
+                                  &dma_regions[i].fd, 1,
                                   NULL, NULL, 0, NULL, 0);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to map DMA regions");
@@ -1085,9 +1117,8 @@ int main(int argc, char *argv[])
 {
     char template[] = "/tmp/libvfio-user.XXXXXX";
     int ret, sock, irq_fd;
-    struct vfio_user_dma_map *dma_regions;
+    struct client_dma_region *dma_regions;
     struct vfio_user_device_info client_dev_info = {0};
-    int *dma_region_fds;
     int i;
     int tmpfd;
     int server_max_fds;
@@ -1176,21 +1207,21 @@ int main(int argc, char *argv[])
     unlink(template);
 
     dma_regions = calloc(nr_dma_regions, sizeof(*dma_regions));
-    dma_region_fds = calloc(nr_dma_regions, sizeof(*dma_region_fds));
-    if (dma_regions == NULL || dma_region_fds == NULL) {
+    if (dma_regions == NULL) {
         err(EXIT_FAILURE, "%m\n");
     }
 
     for (i = 0; i < nr_dma_regions; i++) {
-        dma_regions[i].argsz = sizeof(struct vfio_user_dma_map);
-        dma_regions[i].addr = i * sysconf(_SC_PAGESIZE);
-        dma_regions[i].size = sysconf(_SC_PAGESIZE);
-        dma_regions[i].offset = dma_regions[i].addr;
-        dma_regions[i].flags = VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE;
-        dma_region_fds[i] = tmpfd;
+        dma_regions[i].map.argsz = sizeof(struct vfio_user_dma_map);
+        dma_regions[i].map.addr = i * sysconf(_SC_PAGESIZE);
+        dma_regions[i].map.size = sysconf(_SC_PAGESIZE);
+        dma_regions[i].map.offset = dma_regions[i].map.addr;
+        dma_regions[i].map.flags = VFIO_USER_F_DMA_REGION_READ |
+                                   VFIO_USER_F_DMA_REGION_WRITE;
+        dma_regions[i].fd = tmpfd;
     }
 
-    map_dma_regions(sock, dma_regions, dma_region_fds, nr_dma_regions);
+    map_dma_regions(sock, dma_regions, nr_dma_regions);
 
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
@@ -1208,6 +1239,14 @@ int main(int argc, char *argv[])
     }
 
     /*
+     * Start client-side dirty page tracking (which happens in
+     * `handle_dma_write` when writes are successful).
+     */
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].flags |= CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
+    }
+
+    /*
      * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
      *
      * BAR0 in the server does not support memory mapping so it must be accessed
@@ -1220,10 +1259,15 @@ int main(int argc, char *argv[])
 
     /* FIXME check that above took at least 1s */
 
-    handle_dma_io(sock, dma_regions, nr_dma_regions, dma_region_fds);
+    handle_dma_io(sock, dma_regions, nr_dma_regions);
 
     for (i = 0; i < nr_dma_regions; i++) {
-        get_dirty_bitmap(sock, &dma_regions[i]);
+        /*
+         * We expect regions 0 and 1 to be dirtied: 0 through messages (so
+         * marked by the client) and 1 directly (so marked by the server). See
+         * the bottom of the main function of server.c.
+         */
+        get_dirty_bitmap(sock, &dma_regions[i], i < 2);
     }
 
     dirty_pages.argsz = sizeof(dirty_pages);
@@ -1233,6 +1277,11 @@ int main(int argc, char *argv[])
                         NULL, NULL, 0);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to stop dirty page logging");
+    }
+
+    /* Stop client-side dirty page tracking */
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].flags &= ~CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
     }
 
     /* BAR1 can be memory mapped and read directly */
@@ -1245,8 +1294,8 @@ int main(int argc, char *argv[])
     for (i = 0; i < server_max_fds; i++) {
         struct vfio_user_dma_unmap r = {
             .argsz = sizeof(r),
-            .addr = dma_regions[i].addr,
-            .size = dma_regions[i].size
+            .addr = dma_regions[i].map.addr,
+            .size = dma_regions[i].map.size
         };
         ret = tran_sock_msg(sock, 7, VFIO_USER_DMA_UNMAP, &r, sizeof(r),
                             NULL, &r, sizeof(r));
@@ -1297,7 +1346,6 @@ int main(int argc, char *argv[])
      * unmapped.
      */
     map_dma_regions(sock, dma_regions + server_max_fds,
-                    dma_region_fds + server_max_fds,
                     nr_dma_regions - server_max_fds);
 
     /*
@@ -1311,8 +1359,7 @@ int main(int argc, char *argv[])
     wait_for_irq(irq_fd);
 
     handle_dma_io(sock, dma_regions + server_max_fds,
-                  nr_dma_regions - server_max_fds,
-                  dma_region_fds + server_max_fds);
+                  nr_dma_regions - server_max_fds);
 
     struct vfio_user_dma_unmap r = {
         .argsz = sizeof(r),
@@ -1327,7 +1374,6 @@ int main(int argc, char *argv[])
     }
 
     free(dma_regions);
-    free(dma_region_fds);
 
     return 0;
 }
