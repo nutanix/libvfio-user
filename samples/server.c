@@ -248,7 +248,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
              * later call `vfu_sgl_put`, which marks pages dirty if the SGL was
              * acquired with `PROT_WRITE`. However, `vfu_sgl_mark_dirty` is
              * useful in cases where the server needs to mark guest memory dirty
-             * without releasing the memory.
+             * without releasing the memory with `vfu_sgl_put`.
              */
             vfu_sgl_mark_dirty(vfu_ctx, sg, 1);
             assert(region == 1);
