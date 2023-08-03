@@ -998,7 +998,6 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (ret > 0) { /* child (destination server) */
         char *_argv[] = {
             path_to_server,
-            (char *)"-r", // start in VFIO_USER_DEVICE_STATE_RESUMING
             (char *)"-v",
             sock_path,
             NULL
@@ -1027,6 +1026,12 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     free(sock_path);
 
     negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
+
+    device_state = VFIO_USER_DEVICE_STATE_RESUMING;
+    ret = set_migration_state(sock, device_state);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to set device state to resuming");
+    }
 
     for (i = 0; i < nr_iters; i++) {
 

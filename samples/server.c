@@ -407,7 +407,6 @@ int main(int argc, char *argv[])
     char template[] = "/tmp/libvfio-user.XXXXXX";
     int ret;
     bool verbose = false;
-    bool destination = false;
     int opt;
     struct sigaction act = {.sa_handler = _sa_handler};
     const size_t bar1_size = 0x3000;
@@ -426,19 +425,13 @@ int main(int argc, char *argv[])
         .write_data = &migration_write_data
     };
 
-    while ((opt = getopt(argc, argv, "vr")) != -1) {
+    while ((opt = getopt(argc, argv, "v")) != -1) {
         switch (opt) {
             case 'v':
                 verbose = true;
                 break;
-            case 'r':
-                destination = true;
-                server_data.migration.state = VFU_MIGR_STATE_RESUME;
-                server_data.migration.pending_bytes =
-                    bar1_size + sizeof(time_t);
-                break;
             default: /* '?' */
-                errx(EXIT_FAILURE, "Usage: %s [-v] [-r] <socketpath>", argv[0]);
+                errx(EXIT_FAILURE, "Usage: %s [-v] <socketpath>", argv[0]);
         }
     }
 
@@ -516,11 +509,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    ret = vfu_setup_device_migration_callbacks(
-        vfu_ctx,
-        destination ? LIBVFIO_USER_MIG_FLAG_START_RESUMING : 0,
-        &migr_callbacks
-    );
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, 0, &migr_callbacks);
     
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
