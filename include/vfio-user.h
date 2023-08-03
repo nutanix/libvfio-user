@@ -284,6 +284,8 @@ enum vfio_user_device_mig_state {
 	VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7,
 };
 
+#define VFIO_USER_DEVICE_NUM_STATES 8
+
 struct vfio_user_mig_data {
     uint32_t    argsz;
     uint32_t    size;

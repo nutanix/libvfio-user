@@ -88,12 +88,6 @@ dma_sg_size(void);
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
-/*
- * If set in the flags given to `init_migration`, the server will start in the
- * RESUMING state, ready to receive migration data.
- */
-#define LIBVFIO_USER_MIG_FLAG_START_RESUMING (1 << 0)
-
 typedef enum {
     VFU_TRANS_SOCK,
     // For internal testing only

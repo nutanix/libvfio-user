@@ -71,11 +71,7 @@ init_migration(const vfu_migration_callbacks_t *callbacks,
     migr->pgsize = sysconf(_SC_PAGESIZE);
 
     /* FIXME this should be done in vfu_ctx_realize */
-    if (flags & LIBVFIO_USER_MIG_FLAG_START_RESUMING) {
-        migr->state = VFIO_USER_DEVICE_STATE_RESUMING;
-    } else {
-        migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
-    }
+    migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
 
     migr->callbacks = *callbacks;
     if (migr->callbacks.transition == NULL ||
@@ -220,8 +216,20 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
     if (feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE) {
         struct vfio_user_device_feature_mig_state *res = buf;
         struct migration *migr = vfu_ctx->migration;
+        uint32_t state;
+        ssize_t ret;
         
-        return handle_device_state(vfu_ctx, migr, res->device_state, true);
+        do {
+            state = next_state[migr->state][res->device_state];
+
+            if (state == VFIO_USER_DEVICE_STATE_ERROR) {
+                return -EINVAL;
+            }
+
+            ret = handle_device_state(vfu_ctx, migr, state, true);
+        } while (migr->state != res->device_state && ret == 0);
+        
+        return ret;
     }
 
     return -EINVAL;
