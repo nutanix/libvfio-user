@@ -511,6 +511,7 @@ set_migration_state(int sock, uint32_t state)
     pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
+        free(response);
         return ret;
     }
 
@@ -522,6 +523,8 @@ set_migration_state(int sock, uint32_t state)
                sizeof(change_state)) != 0) {
         err(EXIT_FAILURE, "invalid response to set_migration_state (payload)");
     }
+
+    free(response);
 
     return ret;
 }
@@ -765,7 +768,7 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     char *bitmap;
     int ret;
 
-    ssize_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
+    size_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
 
     void* data = calloc(1, size);
     assert(data != NULL);
@@ -1365,6 +1368,7 @@ int main(int argc, char *argv[])
 
     free(dma_regions);
     free(dma_region_fds);
+    free(dirty_pages);
 
     return 0;
 }
