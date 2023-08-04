@@ -981,6 +981,7 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
  * Certain standard capabilities are handled entirely within the library:
  *
  * PCI_CAP_ID_EXP (pxcap)
+ * PCI_CAP_ID_MSI (msicap)
  * PCI_CAP_ID_MSIX (msixcap)
  * PCI_CAP_ID_PM (pmcap)
  *
