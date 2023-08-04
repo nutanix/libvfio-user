@@ -933,7 +933,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (vfu_ctx->migration == NULL ||
         msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     struct vfio_user_device_feature *req = msg->in.iov.iov_base;
@@ -943,7 +943,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if ((req->flags & supported_flags) !=
         (req->flags & ~VFIO_DEVICE_FEATURE_MASK) || supported_flags == 0) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     uint32_t feature = req->flags & VFIO_DEVICE_FEATURE_MASK;
@@ -955,7 +955,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         msg->out.iov.iov_len = msg->in.iov.iov_len;
 
         if (msg->out.iov.iov_base == NULL) {
-            return -1;
+            return ERROR_INT(ENOMEM);
         }
 
         memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
@@ -971,7 +971,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
             if (msg->out.iov.iov_base == NULL) {
-                return -1;
+                return ERROR_INT(ENOMEM);
             }
 
             memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
@@ -1001,7 +1001,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
 
             if (msg->out.iov.iov_base == NULL) {
-                return -1;
+                return ERROR_INT(ENOMEM);
             }
 
             memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
@@ -1018,14 +1018,14 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                 msg->out.iov.iov_len = 0;
             }
         } else {
-            return -1;
+            return ERROR_INT(EINVAL);
         }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
         msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
 
         if (msg->out.iov.iov_base == NULL) {
-            return -1;
+            return ERROR_INT(ENOMEM);
         }
 
         memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
@@ -1038,10 +1038,10 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         } else if (is_dma_feature(feature)) {
             ret = dma_feature_set(vfu_ctx, feature, res->data);
         } else {
-            return -1;
+            return ERROR_INT(EINVAL);
         }
     } else {
-        return -1;
+        return ERROR_INT(EINVAL);
     }
 
     return ret;
