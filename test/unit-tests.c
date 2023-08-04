@@ -538,17 +538,6 @@ test_setup_migration_callbacks(void **state)
 }
 
 static void
-test_setup_migration_callbacks_resuming(void **state)
-{
-    struct test_setup_migr_reg_dat *p = *state;
-    int r = vfu_setup_device_migration_callbacks(p->v,
-        LIBVFIO_USER_MIG_FLAG_START_RESUMING, &p->c);
-    assert_int_equal(0, r);
-    assert_non_null(p->v->migration);
-    assert_int_equal(p->v->migration->state, VFIO_USER_DEVICE_STATE_RESUMING);
-}
-
-static void
 test_handle_device_state(void **state)
 {
     test_setup_migration_callbacks(state);
@@ -631,7 +620,7 @@ test_handle_mig_data_read_too_long(void **state) {
 
     migr->state = VFIO_USER_DEVICE_STATE_PRE_COPY;
     r = handle_mig_data_read(p->v, m);
-    assert_int_equal(-EINVAL, r);
+    assert_int_equal(-1, r);
 }
 
 static void
@@ -654,11 +643,11 @@ test_handle_mig_data_read_invalid_state(void **state) {
 
     migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
     r = handle_mig_data_read(p->v, m);
-    assert_int_equal(-EINVAL, r);
+    assert_int_equal(-1, r);
 
     migr->state = VFIO_USER_DEVICE_STATE_STOP;
     r = handle_mig_data_read(p->v, m);
-    assert_int_equal(-EINVAL, r);
+    assert_int_equal(-1, r);
 }
 
 static void
@@ -719,7 +708,7 @@ test_handle_mig_data_write_invalid_state(void **state)
 
     migr->state = VFIO_USER_DEVICE_STATE_RUNNING;
     r = handle_mig_data_write(p->v, m);
-    assert_int_equal(-EINVAL, r);
+    assert_int_equal(-1, r);
 }
 
 static void
@@ -825,9 +814,6 @@ main(void)
         cmocka_unit_test_setup(test_vfu_setup_device_dma, setup),
         cmocka_unit_test_setup(test_migration_state_transitions, setup),
         cmocka_unit_test_setup_teardown(test_setup_migration_callbacks,
-            setup_test_setup_migration,
-            teardown_test_setup_migration),
-        cmocka_unit_test_setup_teardown(test_setup_migration_callbacks_resuming,
             setup_test_setup_migration,
             teardown_test_setup_migration),
         cmocka_unit_test_setup_teardown(test_handle_device_state,

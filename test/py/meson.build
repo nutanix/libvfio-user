@@ -37,6 +37,7 @@ python_tests = [
     'test_dma_map.py',
     'test_dma_unmap.py',
     'test_irq_trigger.py',
+    'test_migration.py',
     'test_negotiate.py',
     'test_pci_caps.py',
     'test_pci_ext_caps.py',
