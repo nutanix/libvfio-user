@@ -204,7 +204,7 @@ migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
 
             return 0;
         default:
-            return -EINVAL;
+            return ERROR_INT(EINVAL);
     };
 }
 
@@ -223,7 +223,7 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
             state = next_state[migr->state][res->device_state];
 
             if (state == VFIO_USER_DEVICE_STATE_ERROR) {
-                return -EINVAL;
+                return ERROR_INT(EINVAL);
             }
 
             ret = handle_device_state(vfu_ctx, migr, state, true);
@@ -232,7 +232,7 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
         return ret;
     }
 
-    return -EINVAL;
+    return ERROR_INT(EINVAL);
 }
 
 ssize_t
@@ -245,27 +245,27 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_user_mig_data *req = msg->in.iov.iov_base;
 
     if (vfu_ctx->migration == NULL) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (migr->state != VFIO_USER_DEVICE_STATE_PRE_COPY
         && migr->state != VFIO_USER_DEVICE_STATE_STOP_COPY) {
         vfu_log(vfu_ctx, LOG_ERR, "bad migration state to read data: %d",
                 migr->state);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (req->size > vfu_ctx->client_max_data_xfer_size) {
         vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%d > %ld)",
                 req->size, vfu_ctx->client_max_data_xfer_size);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     msg->out.iov.iov_len = msg->in.iov.iov_len + req->size;
     msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
     if (msg->out.iov.iov_base == NULL) {
-        return -EINVAL;
+        return ERROR_INT(ENOMEM);
     }
 
     struct vfio_user_mig_data *res = msg->out.iov.iov_base;
@@ -292,13 +292,13 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     struct vfio_user_mig_data *req = msg->in.iov.iov_base;
 
     if (vfu_ctx->migration == NULL) {
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     if (migr->state != VFIO_USER_DEVICE_STATE_RESUMING) {
         vfu_log(vfu_ctx, LOG_ERR, "bad migration state to write data: %d",
                 migr->state);
-        return -EINVAL;
+        return ERROR_INT(EINVAL);
     }
 
     return migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
