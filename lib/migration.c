@@ -217,9 +217,9 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
         struct vfio_user_device_feature_mig_state *res = buf;
         struct migration *migr = vfu_ctx->migration;
         uint32_t state;
-        ssize_t ret;
+        ssize_t ret = 0;
         
-        do {
+        while (migr->state != res->device_state && ret == 0) {
             state = next_state[migr->state][res->device_state];
 
             if (state == VFIO_USER_DEVICE_STATE_ERROR) {
@@ -227,7 +227,7 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
             }
 
             ret = handle_device_state(vfu_ctx, migr, state, true);
-        } while (migr->state != res->device_state && ret == 0);
+        };
         
         return ret;
     }
