@@ -99,6 +99,8 @@ cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
             return PCI_PM_SIZEOF;
         case PCI_CAP_ID_EXP:
             return VFIO_USER_PCI_CAP_EXP_SIZEOF;
+        case PCI_CAP_ID_MSI:
+            return 0x18;
         case PCI_CAP_ID_MSIX:
             return PCI_CAP_MSIX_SIZEOF;
         case PCI_CAP_ID_VNDR:
@@ -164,6 +166,24 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
         return ERROR_INT(ENOTSUP);
     }
     return ERROR_INT(EINVAL);
+}
+
+static ssize_t
+cap_write_msi(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
+               size_t count, loff_t offset)
+{
+    struct msicap *msi = cap_data(vfu_ctx, cap);
+    struct msicap new_msi = *msi;
+
+    memcpy((char *)&new_msi + offset - cap->off, buf, count);
+
+    if (msi->mc.msie != new_msi.mc.msie) {
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI",
+                msi->mc.msie ? "enable" : "disable");
+        msi->mc.msie = new_msi.mc.msie;
+    }
+
+    return count;
 }
 
 static ssize_t
@@ -681,6 +701,10 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case PCI_CAP_ID_EXP:
             cap.name = "PCI Express";
             cap.cb = cap_write_px;
+            break;
+        case PCI_CAP_ID_MSI:
+            cap.name = "MSI";
+            cap.cb = cap_write_msi;
             break;
         case PCI_CAP_ID_MSIX:
             cap.name = "MSI-X";
