@@ -178,9 +178,52 @@ cap_write_msi(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
     memcpy((char *)&new_msi + offset - cap->off, buf, count);
 
     if (msi->mc.msie != new_msi.mc.msie) {
+        msi->mc.msie = new_msi.mc.msie;
         vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI",
                 msi->mc.msie ? "enable" : "disable");
-        msi->mc.msie = new_msi.mc.msie;
+    }
+
+    if (msi->mc.mme != new_msi.mc.mme) {
+        if (new_msi.mc.mme > 5) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "MSI cannot have more than 32 interrupt vectors");
+            return ERROR_INT(EINVAL);
+        }
+
+        if (new_msi.mc.mme > msi->mc.mmc) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "MSI cannot have more interrupt vectors"
+                    " in MME than defined in MMC");
+            return ERROR_INT(EINVAL);
+        }
+        msi->mc.mme = new_msi.mc.mme;
+
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Updated Multiple Message Enable count");
+    }
+
+    if (msi->ma.addr != new_msi.ma.addr) {
+        msi->ma.addr = new_msi.ma.addr;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Address set to %x", msi->ma.addr << 2);
+    }
+
+    if (msi->mua != new_msi.mua) {
+        msi->mua = new_msi.mua;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Upper Address set to %x", msi->mua);
+    }
+
+    if (msi->md != new_msi.md) {
+        msi->md = new_msi.md;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Data set to %x", msi->md);
+    }
+
+    if (msi->mmask != new_msi.mmask) {
+        msi->mmask = new_msi.mmask;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Mask Bits set to %x", msi->mmask);
     }
 
     return count;
