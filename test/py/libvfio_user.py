@@ -70,6 +70,7 @@ PCI_CAP_LIST_NEXT = 1
 
 PCI_CAP_ID_PM = 0x1
 PCI_CAP_ID_VNDR = 0x9
+PCI_CAP_ID_MSI = 0x5
 PCI_CAP_ID_MSIX = 0x11
 PCI_CAP_ID_EXP = 0x10
 
@@ -82,6 +83,12 @@ PCI_EXT_CAP_ID_VNDR = 0x0b
 PCI_EXT_CAP_DSN_SIZEOF = 12
 
 PCI_EXT_CAP_VNDR_HDR_SIZEOF = 8
+
+# MSI registers
+PCI_MSI_FLAGS = 2  # Message Control offset
+PCI_MSI_ADDRESS_LO = 4  # Message Address offset
+PCI_MSI_FLAGS_ENABLE = 0x0001  # MSI enable
+PCI_CAP_MSI_SIZEOF = 24  # size of MSI registers
 
 # MSI-X registers
 PCI_MSIX_FLAGS = 2  # Message Control
