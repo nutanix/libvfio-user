@@ -342,6 +342,64 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
                          expect=errno.EINVAL)
 
 
+def test_pci_cap_write_msi():
+    setup_pci_dev(realize=True)
+    sock = connect_client(ctx)
+
+    # Set MMC to 100b (16 interrupt vectors)
+    mmc = 0b00001000
+
+    # Bad MME with 101b (32 interrupt vectors), over MMC
+    mme_bad = 0b01010000
+    # Test MME with 100b (16 interrupt vectors)
+    mme_good = 0b01000000
+
+    # Test if capability is placed at right offset
+    pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
+                                 data=struct.pack("ccHIIIII",
+                                                  to_byte(PCI_CAP_ID_MSI),
+                                                  b'\0', mmc, 0, 0, 0, 0, 0))
+    assert pos == cap_offsets[0]
+
+    offset = vfu_pci_find_capability(ctx, False, PCI_CAP_ID_MSI)
+
+    # Test if write fails as expected
+    # as MME is out of bounds, 111b is over the max of 101b (32 vectors)
+    data = b'\xff\xff'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSI_FLAGS,
+                 count=len(data), data=data, expect=errno.EINVAL)
+
+    # Test if write fails as expected
+    # as MME is over MMC, 101b (32 vectors) > 100b (16 vectors)
+    data = to_bytes_le(mme_bad, 2)
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSI_FLAGS,
+                 count=len(data), data=data, expect=errno.EINVAL)
+
+    # Test good write, MSI Enable + good MME
+    data = to_bytes_le(PCI_MSI_FLAGS_ENABLE | mme_good, 2)
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSI_FLAGS,
+                 count=len(data), data=data)
+
+    size_before_flags = PCI_CAP_MSI_SIZEOF - PCI_MSI_FLAGS
+    size_after_flags = PCI_CAP_MSI_SIZEOF - PCI_MSI_ADDRESS_LO
+
+    # reset
+    data = size_before_flags * b'\x00'
+    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=offset + PCI_MSI_FLAGS,
+                 count=len(data), data=data)
+
+    # Check if MMC is still present after reset (since it is RO)
+    expected = (to_bytes_le(PCI_CAP_ID_MSI) + b'\x00' +
+                to_bytes_le(mmc, 2) + (size_after_flags * b'\x00'))
+    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+                          count=len(expected))
+    assert expected == payload
+
+
 def test_pci_cap_write_msix():
     setup_pci_dev(realize=True)
     sock = connect_client(ctx)
