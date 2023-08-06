@@ -182,7 +182,7 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
 
     if (msix->mxc.fm != new_msix.mxc.fm) {
         msix->mxc.fm = new_msix.mxc.fm;
-        if (new_msix.mxc.fm) {
+        if (msix->mxc.fm) {
             vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked");
         } else {
             vfu_log(vfu_ctx, LOG_DEBUG,
