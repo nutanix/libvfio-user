@@ -111,12 +111,9 @@ send_version(int sock)
         "{"
             "\"capabilities\":{"
                 "\"max_msg_fds\":%u,"
-                "\"max_data_xfer_size\":%u,"
-                "\"migration\":{"
-                    "\"pgsize\":%ld"
-                "}"
+                "\"max_data_xfer_size\":%u"
             "}"
-         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE, sysconf(_SC_PAGESIZE));
+         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE);
 
     cversion.major = LIB_VFIO_USER_MAJOR;
     cversion.minor = LIB_VFIO_USER_MINOR;
@@ -215,7 +212,6 @@ send_device_reset(int sock)
     }
 }
 
-/* returns whether a VFIO migration capability is found */
 static void
 get_region_vfio_caps(struct vfio_info_cap_header *header,
                      struct vfio_region_info_cap_sparse_mmap **sparse)
@@ -254,6 +250,40 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
                                 region_info, region_info->argsz, fds, nr_fds);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to get device region info");
+    }
+}
+
+static void
+mmap_sparse_areas(int fd, struct vfio_region_info *region_info,
+                  struct vfio_region_info_cap_sparse_mmap *sparse)
+{
+    size_t i;
+
+    for (i = 0; i < sparse->nr_areas; i++) {
+
+        ssize_t ret;
+        void *addr;
+        char pathname[PATH_MAX];
+        char buf[PATH_MAX] = "";
+
+        ret = snprintf(pathname, sizeof(pathname), "/proc/self/fd/%d", fd);
+        assert(ret != -1 && (size_t)ret < sizeof(pathname));
+        ret = readlink(pathname, buf, sizeof(buf) - 1);
+        if (ret == -1) {
+            err(EXIT_FAILURE, "failed to resolve file descriptor %d", fd);
+        }
+        addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
+                    MAP_SHARED, fd, region_info->offset +
+                    sparse->areas[i].offset);
+        if (addr == MAP_FAILED) {
+            err(EXIT_FAILURE,
+                "failed to mmap sparse region %zu in %s (%#llx-%#llx)",
+                i, buf, (ull_t)sparse->areas[i].offset,
+                (ull_t)sparse->areas[i].offset + sparse->areas[i].size - 1);
+        }
+
+        ret = munmap(addr, sparse->areas[i].size);
+        assert(ret == 0);
     }
 }
 
@@ -303,6 +333,10 @@ get_device_region_info(int sock, uint32_t index)
         get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
                              &sparse);
 
+        if (sparse != NULL) {
+            assert(index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 1);
+            mmap_sparse_areas(fds[0], region_info, sparse);
+        }
     }
     free(region_info);
 }
