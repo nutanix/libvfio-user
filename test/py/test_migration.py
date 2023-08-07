@@ -237,6 +237,21 @@ def test_migration_stop_copy_to_pre_copy_blocked():
         expect=22)
 
 
+def test_migration_nonexistent_state():
+    global ctx, sock
+
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(
+        device_state=0xabcd
+    )
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        expect=22)
+
+
 def test_migration_cleanup():
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)
