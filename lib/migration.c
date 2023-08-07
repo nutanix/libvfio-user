@@ -42,7 +42,9 @@
 bool
 MOCK_DEFINE(vfio_migr_state_transition_is_valid)(uint32_t from, uint32_t to)
 {
-    return (transitions[from] & (1 << to)) != 0;
+    return from < VFIO_USER_DEVICE_NUM_STATES
+        && to < VFIO_USER_DEVICE_NUM_STATES
+        && (transitions[from] & (1 << to)) != 0;
 }
 
 /*
@@ -218,6 +220,10 @@ migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf)
         struct migration *migr = vfu_ctx->migration;
         uint32_t state;
         ssize_t ret = 0;
+        
+        if (res->device_state > VFIO_USER_DEVICE_NUM_STATES) {
+            return ERROR_INT(EINVAL);
+        }
         
         while (migr->state != res->device_state && ret == 0) {
             state = next_state[migr->state][res->device_state];
