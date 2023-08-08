@@ -181,19 +181,19 @@ cap_write_msix(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
      */
 
     if (msix->mxc.fm != new_msix.mxc.fm) {
-        if (new_msix.mxc.fm) {
+        msix->mxc.fm = new_msix.mxc.fm;
+        if (msix->mxc.fm) {
             vfu_log(vfu_ctx, LOG_DEBUG, "all MSI-X vectors masked");
         } else {
             vfu_log(vfu_ctx, LOG_DEBUG,
                    "vector's mask bit determines whether vector is masked");
         }
-        msix->mxc.fm = new_msix.mxc.fm;
     }
 
     if (msix->mxc.mxe != new_msix.mxc.mxe) {
+        msix->mxc.mxe = new_msix.mxc.mxe;
         vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI-X",
                 msix->mxc.mxe ? "enable" : "disable");
-        msix->mxc.mxe = new_msix.mxc.mxe;
     }
 
     return count;
