@@ -509,7 +509,7 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup BAR1 region");
     }
 
-    ret = vfu_setup_device_migration_callbacks(vfu_ctx, 0, &migr_callbacks);
+    ret = vfu_setup_device_migration_callbacks(vfu_ctx, &migr_callbacks);
     
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup device migration");
