@@ -45,17 +45,13 @@
 #include "private.h"
 
 struct migration *
-init_migration(const vfu_migration_callbacks_t *callbacks,
-               uint64_t flags, int *err);
+init_migration(const vfu_migration_callbacks_t *callbacks, int *err);
 
-bool
-is_migration_feature(uint32_t feature);
-
-ssize_t
-migration_feature_get(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
+size_t
+migration_get_state(vfu_ctx_t *vfu_ctx);
 
 ssize_t
-migration_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature, void *buf);
+migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state);
 
 ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);

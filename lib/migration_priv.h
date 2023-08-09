@@ -34,17 +34,17 @@
 #include <linux/vfio.h>
 
 struct migration {
-    uint64_t flags;
     enum vfio_user_device_mig_state state;
     size_t pgsize;
     vfu_migration_callbacks_t callbacks;
 };
 
 /*
- * valid migration state transitions
- * each number corresponds to a FROM state and each bit a TO state
- * if the bit is set then the transition is allowed
- * the indices of each state are those in the vfio_user_device_mig_state enum
+ * This defines valid migration state transitions. Each element in the array
+ * corresponds to a FROM state and each bit of the element to a TO state. If the
+ * bit is set, then the transition is allowed.
+ * 
+ * The indices of each state are those in the vfio_user_device_mig_state enum.
  */
 static const char transitions[8] = {
     0b00000000, // ERROR        -> {}
