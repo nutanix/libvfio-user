@@ -66,8 +66,7 @@ enum vfio_user_command {
     VFIO_USER_DMA_READ                  = 11,
     VFIO_USER_DMA_WRITE                 = 12,
     VFIO_USER_DEVICE_RESET              = 13,
-    VFIO_USER_DIRTY_PAGES               = 14, // TODO remove
-    VFIO_USER_REGION_WRITE_MULTI        = 15, // TODO implement
+    VFIO_USER_REGION_WRITE_MULTI        = 15,
     VFIO_USER_DEVICE_FEATURE            = 16,
     VFIO_USER_MIG_DATA_READ             = 17,
     VFIO_USER_MIG_DATA_WRITE            = 18,
@@ -212,9 +211,9 @@ struct vfio_user_device_feature_dma_logging_range {
 } __attribute__((packed));
 
 struct vfio_user_device_feature_dma_logging_control {
-    uint64_t                                          page_size;
-    uint32_t                                          num_ranges;
-    uint32_t                                          reserved;
+    uint64_t page_size;
+    uint32_t num_ranges;
+    uint32_t reserved;
     struct vfio_user_device_feature_dma_logging_range ranges[];
 } __attribute__((packed));
 
@@ -235,7 +234,7 @@ struct vfio_user_device_feature_dma_logging_report {
 struct vfio_user_device_feature {
 	uint32_t	argsz;
 	uint32_t	flags;
-#ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
+#ifndef VFIO_DEVICE_FEATURE_MASK
 #define VFIO_DEVICE_FEATURE_MASK	(0xffff)  /* 16-bit feature index */
 #define VFIO_DEVICE_FEATURE_GET		(1 << 16) /* Get feature into data[] */
 #define VFIO_DEVICE_FEATURE_SET		(1 << 17) /* Set feature from data[] */
@@ -282,9 +281,8 @@ enum vfio_user_device_mig_state {
 	VFIO_USER_DEVICE_STATE_RUNNING_P2P = 5,
 	VFIO_USER_DEVICE_STATE_PRE_COPY = 6,
 	VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7,
+    VFIO_USER_DEVICE_NUM_STATES = 8,
 };
-
-#define VFIO_USER_DEVICE_NUM_STATES 8
 
 struct vfio_user_mig_data {
     uint32_t    argsz;

@@ -623,9 +623,8 @@ typedef struct {
 } vfu_migration_callbacks_t;
 
 int
-vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx, uint64_t flags,
-                                     const vfu_migration_callbacks_t
-                                     *callbacks);
+vfu_setup_device_migration_callbacks(vfu_ctx_t *vfu_ctx,
+    const vfu_migration_callbacks_t *callbacks);
 
 /**
  * Triggers an interrupt.
