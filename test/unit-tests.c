@@ -531,7 +531,7 @@ static void
 test_setup_migration_callbacks(void **state)
 {
     struct test_setup_migr_reg_dat *p = *state;
-    int r = vfu_setup_device_migration_callbacks(p->v, 0, &p->c);
+    int r = vfu_setup_device_migration_callbacks(p->v, &p->c);
     assert_int_equal(0, r);
     assert_non_null(p->v->migration);
     assert_int_equal(p->v->migration->state, VFIO_USER_DEVICE_STATE_RUNNING);
@@ -747,7 +747,6 @@ test_cmd_allowed_when_stopped_and_copying(UNUSED void **state)
         bool r = cmd_allowed_when_stopped_and_copying(i);
         if (i == VFIO_USER_REGION_READ ||
             i == VFIO_USER_REGION_WRITE ||
-            i == VFIO_USER_DIRTY_PAGES ||
             i == VFIO_USER_DEVICE_FEATURE ||
             i == VFIO_USER_MIG_DATA_READ) {
             assert_true(r);

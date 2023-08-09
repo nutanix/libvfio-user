@@ -351,46 +351,6 @@ def test_dirty_pages_stop():
     stop_logging()
 
 
-def test_dirty_pages_start_specific():
-    start_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
-    # should be idempotent
-    start_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
-
-
-def test_dirty_pages_get_modified_specific():
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x60 << PAGE_SHIFT,
-                               length=PAGE_SIZE)
-    assert ret == 1
-    iovec1 = iovec_t()
-    ret = vfu_sgl_get(ctx, sg1, iovec1)
-    assert ret == 0
-
-    # not put yet, dirty bitmap should be zero
-    bitmap = get_dirty_page_bitmap(addr=0x60 << PAGE_SHIFT, length=PAGE_SIZE)
-    assert bitmap == 0b0000000000000000
-
-    # put SGLs, dirty bitmap should be updated
-    vfu_sgl_put(ctx, sg1, iovec1)
-    bitmap = get_dirty_page_bitmap(addr=0x60 << PAGE_SHIFT, length=PAGE_SIZE)
-    assert bitmap == 0b0000000000000001
-
-
-def test_dirty_pages_get_modified_specific_not_logged():
-    ret, sg1 = vfu_addr_to_sgl(ctx, dma_addr=0x10 << PAGE_SHIFT,
-                               length=PAGE_SIZE)
-    assert ret == 1
-    iovec1 = iovec_t()
-    ret = vfu_sgl_get(ctx, sg1, iovec1)
-    assert ret == 0
-    vfu_sgl_put(ctx, sg1, iovec1)
-
-    get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=PAGE_SIZE, expect=22)
-
-
-def test_dirty_pages_stop_specific():
-    stop_logging(addr=0x60 << PAGE_SHIFT, length=0x20 << PAGE_SHIFT)
-
-
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)
     vfu_destroy_ctx(ctx)

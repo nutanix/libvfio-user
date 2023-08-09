@@ -89,7 +89,7 @@ def test_migration_setup():
     cbs.read_data = migr_read_data_cb
     cbs.write_data = migr_write_data_cb
 
-    ret = vfu_setup_device_migration_callbacks(ctx, 0, cbs)
+    ret = vfu_setup_device_migration_callbacks(ctx, cbs)
     assert ret == 0
 
     vfu_setup_device_quiesce_cb(ctx)

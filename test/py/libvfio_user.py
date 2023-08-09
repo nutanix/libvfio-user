@@ -163,7 +163,6 @@ VFIO_USER_REGION_WRITE = 10
 VFIO_USER_DMA_READ = 11
 VFIO_USER_DMA_WRITE = 12
 VFIO_USER_DEVICE_RESET = 13
-VFIO_USER_DIRTY_PAGES = 14
 VFIO_USER_REGION_WRITE_MULTI = 15
 VFIO_USER_DEVICE_FEATURE = 16
 VFIO_USER_MIG_DATA_READ = 17
@@ -527,14 +526,6 @@ class vfu_dma_info_t(Structure):
         return result
 
 
-class vfio_user_dirty_pages(Structure):
-    _pack_ = 1
-    _fields_ = [
-        ("argsz", c.c_uint32),
-        ("flags", c.c_uint32)
-    ]
-
-
 class vfio_user_bitmap(Structure):
     _pack_ = 1
     _fields_ = [
@@ -665,7 +656,7 @@ vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                       use_errno=True)
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
-lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p, c.c_uint64,
+lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
     c.POINTER(vfu_migration_callbacks_t))
 lib.dma_sg_size.restype = (c.c_size_t)
 lib.vfu_addr_to_sgl.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
@@ -1184,7 +1175,7 @@ def __migr_write_data_cb(ctx, buf, count, offset):
     return migr_write_data_cb(ctx, buf, count, offset)
 
 
-def vfu_setup_device_migration_callbacks(ctx, flags=0, cbs=None):
+def vfu_setup_device_migration_callbacks(ctx, cbs=None):
     assert ctx is not None
 
     if not cbs:
@@ -1194,7 +1185,7 @@ def vfu_setup_device_migration_callbacks(ctx, flags=0, cbs=None):
         cbs.read_data = __migr_read_data_cb
         cbs.write_data = __migr_write_data_cb
 
-    return lib.vfu_setup_device_migration_callbacks(ctx, flags, cbs)
+    return lib.vfu_setup_device_migration_callbacks(ctx, cbs)
 
 
 def dma_sg_size():
