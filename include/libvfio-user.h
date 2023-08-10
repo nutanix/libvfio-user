@@ -608,8 +608,8 @@ typedef struct {
      * `buf`. The function must return the amount of data read or -1 on error,
      * setting errno.
      * 
-     * If the function returns any non-negative number less than `count`, this
-     * is interpreted to mean that there is no more migration data to read.
+     * If the function returns zero, this is interpreted to mean that there is
+     * no more migration data to read.
      */
     ssize_t (*read_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
