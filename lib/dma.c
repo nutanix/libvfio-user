@@ -536,16 +536,17 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 #ifdef DEBUG
 static void
 log_dirty_bitmap(vfu_ctx_t *vfu_ctx, dma_memory_region_t *region,
-                 char *bitmap, size_t size)
+                 char *bitmap, size_t size, size_t pgsize)
 {
     size_t i;
     size_t count;
     for (i = 0, count = 0; i < size; i++) {
-        count += __builtin_popcount(bitmap[i]);
+        count += __builtin_popcount((uint8_t)bitmap[i]);
     }
-    vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get [%p, %p), %zu dirty pages",
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "dirty pages: get [%p, %p), %zu dirty pages of size %zu",
             region->info.iova.iov_base, iov_end(&region->info.iova),
-            count);
+            count, pgsize);
 }
 #endif
 
@@ -556,8 +557,13 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 {
     dma_memory_region_t *region;
     ssize_t bitmap_size;
+    ssize_t converted_bitmap_size;
     dma_sg_t sg;
     size_t i;
+    size_t j;
+    size_t bit;
+    bool extend;
+    size_t factor;
     int ret;
 
     assert(dma != NULL);
@@ -580,24 +586,37 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(ENOTSUP);
     }
 
-    if (pgsize != dma->dirty_pgsize) {
+    /*
+     * If dirty page logging is not enabled, the requested page size is zero,
+     * or the requested page size is not a power of two, return an error.
+     */
+    if (dma->dirty_pgsize == 0 || pgsize == 0 || (pgsize & (pgsize - 1)) != 0) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
         return ERROR_INT(EINVAL);
     }
 
-    bitmap_size = get_bitmap_size(len, pgsize);
+    bitmap_size = get_bitmap_size(len, dma->dirty_pgsize);
     if (bitmap_size < 0) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get bitmap size");
         return bitmap_size;
     }
 
+    converted_bitmap_size = get_bitmap_size(len, pgsize);
+    if (converted_bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get bitmap size");
+        return converted_bitmap_size;
+    }
+
+    extend = pgsize <= dma->dirty_pgsize;
+    factor = extend ? dma->dirty_pgsize / pgsize : pgsize / dma->dirty_pgsize;
+
     /*
      * They must be equal because this is how much data the client expects to
      * receive.
      */
-    if (size != (size_t)bitmap_size) {
+    if (size != (size_t)converted_bitmap_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
-                bitmap_size);
+                converted_bitmap_size);
         return ERROR_INT(EINVAL);
     }
 
@@ -608,9 +627,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
+    bit = 0;
+
     for (i = 0; i < (size_t)bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
-        uint8_t *outp = (uint8_t *)&bitmap[i];
+        uint8_t out = 0;
 
         /*
          * If no bits are dirty, avoid the atomic exchange. This is obviously
@@ -623,16 +644,39 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
          * around.
          */
         if (val == 0) {
-            *outp = 0;
+            out = 0;
         } else {
             uint8_t zero = 0;
             __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                              outp, __ATOMIC_SEQ_CST);
+                              &out, __ATOMIC_SEQ_CST);
+        }
+
+        for (j = 0; j < 8; j++) {
+            uint8_t b = (out >> j) & 1;
+
+            if (extend) {
+                /*
+                 * Repeat `factor` times the bit at index `j` of `out`.
+                 */
+                size_t new_bit = bit + factor;
+                while (bit < new_bit) {
+                    bitmap[bit / 8] |= b << (bit % 8);
+                    bit++;
+                }
+            } else {
+                /*
+                 * OR the same bit with `factor` bits of the raw bitmap.
+                 */
+                bitmap[bit / 8] |= b << (bit % 8);
+                if (((i * 8) + j) % factor == factor - 1) {
+                    bit++;
+                }
+            }
         }
     }
 
 #ifdef DEBUG
-    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size);
+    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, pgsize);
 #endif
 
     return 0;
