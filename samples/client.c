@@ -531,7 +531,7 @@ set_migration_state(int sock, uint32_t state)
             .iov_len = sizeof(change_state)
         }
     };
-    void* response = malloc(sizeof(req) + sizeof(change_state));
+    void *response = malloc(sizeof(req) + sizeof(change_state));
 
     if (response == NULL) {
         return -1;
@@ -804,7 +804,7 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 
     size_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
 
-    void* data = calloc(1, size);
+    void *data = calloc(1, size);
     assert(data != NULL);
 
     res = data;
@@ -877,10 +877,10 @@ do_migrate(int sock, size_t nr_iters, size_t max_iter_size,
             err(EXIT_FAILURE, "failed to read migration data");
         }
 
-        // We know we've finished transferring data when less is returned
-        // than is requested.
-        if ((size_t)ret < migr_iter[i].iov_len) {
-            migr_iter[i].iov_len = ret;
+        migr_iter[i].iov_len = ret;
+
+        // We know we've finished transferring data when we read 0 bytes.
+        if (ret == 0) {
             is_more = false;
         }
     }
@@ -1164,7 +1164,7 @@ int main(int argc, char *argv[])
     struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
     size_t dirty_pages_size = sizeof(*dirty_pages_feature) +
                                sizeof(*dirty_pages_control);
-    void* dirty_pages = malloc(dirty_pages_size);
+    void *dirty_pages = malloc(dirty_pages_size);
     dirty_pages_feature = dirty_pages;
     dirty_pages_control = dirty_pages + sizeof(*dirty_pages_feature);
 
