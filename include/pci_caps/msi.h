@@ -57,6 +57,8 @@ struct ma {
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct ma) == 0x4, "bad MA size");
 
+#define VFIO_USER_PCI_CAP_MSI_SIZEOF (0x18)
+
 struct msicap {
     struct cap_hdr hdr;
     struct mc mc;
@@ -67,7 +69,8 @@ struct msicap {
     uint32_t mmask;         /* RW */
     uint32_t mpend;         /* RO */
 }  __attribute__ ((packed));
-_Static_assert(sizeof(struct msicap) == 0x18, "bad MSICAP size");
+_Static_assert(sizeof(struct msicap) == VFIO_USER_PCI_CAP_MSI_SIZEOF,
+        "bad MSICAP size");
 _Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus
