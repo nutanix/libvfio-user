@@ -315,7 +315,7 @@ class iovec_t(Structure):
     ]
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         return self.iov_base == other.iov_base \
             and self.iov_len == other.iov_len
@@ -491,7 +491,7 @@ class vfu_dma_info_t(Structure):
     ]
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         return self.iova == other.iova \
             and self.vaddr == other.vaddr \
