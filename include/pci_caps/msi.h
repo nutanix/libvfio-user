@@ -39,33 +39,38 @@
 extern "C" {
 #endif
 
+/* Message Control for MSI */
 struct mc {
-    unsigned int msie:1;
-    unsigned int mmc:3;
-    unsigned int mme:3;
-    unsigned int c64:1;
-    unsigned int pvm:1;
-    unsigned int res1:7;
+    unsigned int msie:1;    /* RW */
+    unsigned int mmc:3;     /* RO */
+    unsigned int mme:3;     /* RW */
+    unsigned int c64:1;     /* RO */
+    unsigned int pvm:1;     /* RO */
+    unsigned int res1:7;    /* not implemented, extended message data control */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct mc) == 0x2, "bad MC size");
 
+/* Message Address for MSI */
 struct ma {
-    unsigned int res1:2;
-    unsigned int addr:30;
+    unsigned int res1:2;    /* read must return 0, write has no effect */
+    unsigned int addr:30;   /* RW */
 } __attribute__ ((packed));
 _Static_assert(sizeof(struct ma) == 0x4, "bad MA size");
+
+#define VFIO_USER_PCI_CAP_MSI_SIZEOF (0x18)
 
 struct msicap {
     struct cap_hdr hdr;
     struct mc mc;
     struct ma ma;
-    uint32_t mua;
-    uint16_t md;
-    uint16_t padding;
-    uint32_t mmask;
-    uint32_t mpend;
+    uint32_t mua;           /* RW */
+    uint16_t md;            /* RW */
+    uint16_t padding;       /* not implemented, extended message data */
+    uint32_t mmask;         /* RW */
+    uint32_t mpend;         /* RO */
 }  __attribute__ ((packed));
-_Static_assert(sizeof(struct msicap) == 0x18, "bad MSICAP size");
+_Static_assert(sizeof(struct msicap) == VFIO_USER_PCI_CAP_MSI_SIZEOF,
+        "bad MSICAP size");
 _Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus

@@ -99,6 +99,8 @@ cap_size(vfu_ctx_t *vfu_ctx, void *data, bool extended)
             return PCI_PM_SIZEOF;
         case PCI_CAP_ID_EXP:
             return VFIO_USER_PCI_CAP_EXP_SIZEOF;
+        case PCI_CAP_ID_MSI:
+            return VFIO_USER_PCI_CAP_MSI_SIZEOF;
         case PCI_CAP_ID_MSIX:
             return PCI_CAP_MSIX_SIZEOF;
         case PCI_CAP_ID_VNDR:
@@ -164,6 +166,67 @@ cap_write_pm(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char * buf,
         return ERROR_INT(ENOTSUP);
     }
     return ERROR_INT(EINVAL);
+}
+
+static ssize_t
+cap_write_msi(vfu_ctx_t *vfu_ctx, struct pci_cap *cap, char *buf,
+               size_t count, loff_t offset)
+{
+    struct msicap *msi = cap_data(vfu_ctx, cap);
+    struct msicap new_msi = *msi;
+
+    memcpy((char *)&new_msi + offset - cap->off, buf, count);
+
+    if (msi->mc.msie != new_msi.mc.msie) {
+        msi->mc.msie = new_msi.mc.msie;
+        vfu_log(vfu_ctx, LOG_DEBUG, "%s MSI",
+                msi->mc.msie ? "enable" : "disable");
+    }
+
+    if (msi->mc.mme != new_msi.mc.mme) {
+        if (new_msi.mc.mme > 5) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "MSI cannot have more than 32 interrupt vectors");
+            return ERROR_INT(EINVAL);
+        }
+
+        if (new_msi.mc.mme > msi->mc.mmc) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "MSI cannot have more interrupt vectors"
+                    " in MME than defined in MMC");
+            return ERROR_INT(EINVAL);
+        }
+        msi->mc.mme = new_msi.mc.mme;
+
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Updated Multiple Message Enable count");
+    }
+
+    if (msi->ma.addr != new_msi.ma.addr) {
+        msi->ma.addr = new_msi.ma.addr;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Address set to %x", msi->ma.addr << 2);
+    }
+
+    if (msi->mua != new_msi.mua) {
+        msi->mua = new_msi.mua;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Upper Address set to %x", msi->mua);
+    }
+
+    if (msi->md != new_msi.md) {
+        msi->md = new_msi.md;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Message Data set to %x", msi->md);
+    }
+
+    if (msi->mmask != new_msi.mmask) {
+        msi->mmask = new_msi.mmask;
+        vfu_log(vfu_ctx, LOG_DEBUG,
+                "MSI Mask Bits set to %x", msi->mmask);
+    }
+
+    return count;
 }
 
 static ssize_t
@@ -681,6 +744,10 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
         case PCI_CAP_ID_EXP:
             cap.name = "PCI Express";
             cap.cb = cap_write_px;
+            break;
+        case PCI_CAP_ID_MSI:
+            cap.name = "MSI";
+            cap.cb = cap_write_msi;
             break;
         case PCI_CAP_ID_MSIX:
             cap.name = "MSI-X";
