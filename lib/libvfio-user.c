@@ -755,12 +755,9 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                     dma_map->size, fd, dma_map->offset,
                                     prot);
     if (ret < 0) {
-        ret = errno;
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
-        if (fd != -1) {
-            close(fd);
-        }
-        return ERROR_INT(ret);
+        close_safely(&fd);
+        return -1;
     }
 
     if (vfu_ctx->dma_register != NULL) {
@@ -1096,14 +1093,12 @@ free_msg(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     free(msg->in.iov.iov_base);
 
     for (i = 0; i < msg->in.nr_fds; i++) {
-        if (msg->in.fds[i] != -1) {
-            if (msg->processed_cmd) {
-                vfu_log(vfu_ctx, LOG_DEBUG,
-                        "closing unexpected fd %d (index %zu) from cmd %u",
-                        msg->in.fds[i], i, msg->hdr.cmd);
-            }
-            close(msg->in.fds[i]);
+        if (msg->in.fds[i] != -1 && msg->processed_cmd) {
+            vfu_log(vfu_ctx, LOG_DEBUG,
+                    "closing unexpected fd %d (index %zu) from cmd %u",
+                    msg->in.fds[i], i, msg->hdr.cmd);
         }
+        close_safely(&msg->in.fds[i]);
     }
 
     free(msg->in.fds);
@@ -1276,11 +1271,9 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
     *msgp = alloc_msg(&hdr, fds, nr_fds);
 
     if (*msgp == NULL) {
-        int saved_errno = errno;
         for (i = 0; i < nr_fds; i++) {
-            close(fds[i]);
+            close_safely(&fds[i]);
         }
-        errno = saved_errno;
         return -1;
     }
 

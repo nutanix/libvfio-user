@@ -252,9 +252,7 @@ out:
         (void) vfu_ctx->tran->reply(vfu_ctx, &rmsg, ret);
 
         for (i = 0; i < msg.in.nr_fds; i++) {
-            if (msg.in.fds[i] != -1) {
-                close(msg.in.fds[i]);
-            }
+            close_safely(&msg.in.fds[i]);
         }
 
         free(msg.in.iov.iov_base);

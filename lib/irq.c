@@ -122,14 +122,7 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
     }
 
     for (i = start; i < count; i++) {
-        if (efds[i] >= 0) {
-            if (close(efds[i]) == -1) {
-                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m",
-                        efds[i]);
-            }
-
-            efds[i] = -1;
-        }
+        close_safely(&efds[i]);
     }
 }
 
@@ -143,14 +136,7 @@ irqs_reset(vfu_ctx_t *vfu_ctx)
     irqs_disable(vfu_ctx, VFIO_PCI_ERR_IRQ_INDEX, 0, 0);
 
     for (i = 0; i < vfu_ctx->irqs->max_ivs; i++) {
-        if (efds[i] >= 0) {
-            if (close(efds[i]) == -1) {
-                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m",
-                        efds[i]);
-            }
-
-            efds[i] = -1;
-        }
+        close_safely(&efds[i]);
     }
 }
 
@@ -257,12 +243,7 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
     for (i = irq_set->start, j = 0; i < (irq_set->start + irq_set->count);
          i++, j++) {
         efd = irqs_get_efd(vfu_ctx, irq_set->index, i);
-        if (*efd >= 0) {
-            if (close(*efd) == -1) {
-                vfu_log(vfu_ctx, LOG_DEBUG, "failed to close IRQ fd %d: %m", *efd);
-            }
-            *efd = -1;
-        }
+        close_safely(efd);
         assert(data[j] >= 0);
         /*
          * We've already checked in handle_device_set_irqs that

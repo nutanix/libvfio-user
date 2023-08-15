@@ -37,8 +37,10 @@
 #ifndef LIB_VFIO_USER_COMMON_H
 #define LIB_VFIO_USER_COMMON_H
 
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #define UNUSED __attribute__((unused))
 #define EXPORT __attribute__((visibility("default")))
@@ -77,6 +79,32 @@ _get_bitmap_size(size_t size, size_t pgsize)
 {
     size_t nr_pages = (size / pgsize) + (size % pgsize != 0);
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+}
+
+/*
+ * Closes the given file descriptor, and resets the value to -1. Preserves
+ * errno. Skips closing if *fd is -1.
+ */
+static inline void
+close_safely(int *fd)
+{
+    int saved_errno = errno;
+    if (fd != NULL && *fd != -1) {
+        /*
+         * POSIX says that close may hit EINTR and leave the file descriptor in
+         * undefined state. But retrying on EINTR is incorrect, since a
+         * different thread might have re-opened a file on the same descriptor
+         * if close actually did free the descriptor. In practice, Linux always
+         * closes the file descriptor and POSIX has decided to align semantics
+         * with Linux. Thus, calling close once and ignoring the error is the
+         * most appropriate course of action.
+         *
+         * See also https://www.austingroupbugs.net/view.php?id=529
+         */
+        (void) close(*fd);
+        *fd = -1;
+    }
+    errno = saved_errno;
 }
 
 #ifdef UNIT_TEST

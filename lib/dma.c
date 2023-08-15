@@ -121,10 +121,7 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
 
     assert(region->fd != -1);
 
-    if (close(region->fd) == -1) {
-        vfu_log(dma->vfu_ctx, LOG_WARNING, "failed to close fd %d: %m",
-                region->fd);
-    }
+    close_safely(&region->fd);
 }
 
 static void
@@ -402,10 +399,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %s: %m", rstr);
 
-            if (close(region->fd) == -1) {
-                vfu_log(dma->vfu_ctx, LOG_WARNING,
-                        "failed to close fd %d: %m", region->fd);
-            }
+            close_safely(&region->fd);
             free(region->dirty_bitmap);
             return ERROR_INT(ret);
         }
