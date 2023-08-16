@@ -322,12 +322,13 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (ret < 0) {
         msg->out.iov.iov_len = 0;
-    } else {
-        res->size = ret;
-        res->argsz = sizeof(struct vfio_user_mig_data) + ret;
+        return ret;
     }
 
-    return ret;
+    res->size = ret;
+    res->argsz = sizeof(struct vfio_user_mig_data) + ret;
+
+    return 0;
 }
 
 ssize_t
@@ -359,7 +360,13 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
-    return migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
+    ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
+
+    if (ret < 0) {
+        return ret;
+    }
+
+    return 0;
 }
 
 bool
