@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2021 Nutanix Inc. All rights reserved.
+# Copyright (c) 2023 Nutanix Inc. All rights reserved.
 #
-# Authors: John Levon <john.levon@nutanix.com>
+# Authors: William Henderson <william.henderson@nutanix.com>
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -29,11 +29,15 @@
 
 from libvfio_user import *
 from collections import deque
+import ctypes
+import errno
 
 ctx = None
 sock = None
 current_state = None
 path = []
+read_data = None
+write_data = None
 
 
 UNREACHABLE_STATES = {
@@ -68,13 +72,31 @@ def migr_trans_cb(_ctx, state):
 
 
 @read_data_cb_t
-def migr_read_data_cb(_ctx, _buf, _count, _offset):
-    return
+def migr_read_data_cb(_ctx, buf, count):
+    global read_data
+    length = min(count, len(read_data))
+    ctypes.memmove(buf, read_data, length)
+    read_data = None
+    return length
 
 
 @write_data_cb_t
-def migr_write_data_cb(_ctx, _buf, _count, _offset):
-    return
+def migr_write_data_cb(_ctx, buf, count):
+    global write_data
+    write_data = bytes(count)
+    ctypes.memmove(write_data, buf, count)
+    return count
+
+
+def transition_to_state(state, expect=0):
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(device_state=state)
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        expect=expect)
 
 
 def test_migration_setup():
@@ -97,40 +119,26 @@ def test_migration_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    sock = connect_client(ctx, 4)
 
 
 def get_server_shortest_path(a, b, expectA=0, expectB=0):
-    global ctx, sock, path
-
-    feature = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()) +
-            len(vfio_user_device_feature_mig_state()),
-        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
-    )
+    global path
 
     if current_state == VFIO_USER_DEVICE_STATE_STOP_COPY and \
             a == VFIO_USER_DEVICE_STATE_PRE_COPY:
         # The transition STOP_COPY -> PRE_COPY is explicitly blocked so we
         # advance one state to get around this in order to set up the test.
-        payload = vfio_user_device_feature_mig_state(
-            device_state=VFIO_USER_DEVICE_STATE_STOP
-        )
-        msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
-            bytes(feature) + bytes(payload))
+        transition_to_state(VFIO_USER_DEVICE_STATE_STOP)
 
-    payload = vfio_user_device_feature_mig_state(device_state=a)
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
-        expect=expectA)
+    transition_to_state(a, expect=expectA)
 
     if expectA != 0:
         return None
 
     path = []
 
-    payload = vfio_user_device_feature_mig_state(device_state=b)
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
-        expect=expectB)
+    transition_to_state(b, expect=expectB)
 
     return path.copy()
 
@@ -148,8 +156,6 @@ def test_migration_shortest_state_transition_paths():
     This test implements a breadth-first search to ensure that the paths taken
     by the implementation correctly follow these rules.
     """
-
-    global ctx, sock
 
     # states (vertices)
     V = {VFIO_USER_DEVICE_STATE_ERROR, VFIO_USER_DEVICE_STATE_STOP,
@@ -218,38 +224,109 @@ def test_migration_shortest_state_transition_paths():
 
 
 def test_migration_stop_copy_to_pre_copy_blocked():
-    global ctx, sock
-
-    feature = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()) +
-            len(vfio_user_device_feature_mig_state()),
-        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
-    )
-    payload = vfio_user_device_feature_mig_state(
-        device_state=VFIO_USER_DEVICE_STATE_STOP_COPY
-    )
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload))
-
-    payload = vfio_user_device_feature_mig_state(
-        device_state=VFIO_USER_DEVICE_STATE_PRE_COPY
-    )
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
-        expect=22)
+    transition_to_state(VFIO_USER_DEVICE_STATE_STOP_COPY)
+    transition_to_state(VFIO_USER_DEVICE_STATE_PRE_COPY, expect=errno.EINVAL)
 
 
 def test_migration_nonexistent_state():
-    global ctx, sock
+    transition_to_state(0xabcd, expect=errno.EINVAL)
 
-    feature = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()) +
-            len(vfio_user_device_feature_mig_state()),
-        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+
+def test_handle_mig_data_read():
+    global read_data
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
+
+    argsz = len(vfio_user_mig_data())
+
+    payload = vfio_user_mig_data(
+        argsz=argsz,
+        size=4
     )
-    payload = vfio_user_device_feature_mig_state(
-        device_state=0xabcd
+
+    data = bytes([0, 1, 2, 3])
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
+    read_data = data
+    result = msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload)
+    assert len(result) == argsz + 4
+    assert result[argsz:argsz + 4] == data
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_STOP_COPY)
+    read_data = data
+    result = msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload)
+    assert len(result) == argsz + 4
+    assert result[argsz:argsz + 4] == data
+
+
+def test_handle_mig_data_read_too_long():
+    global read_data
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
+
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()),
+        size=8
     )
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
-        expect=22)
+
+    # When we set up the tests at the top of this file we specify that the max
+    # data transfer size is 4 bytes. Here we test to check that a transfer of 8
+    # bytes fails.
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
+    read_data = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
+
+
+def test_handle_mig_data_read_invalid_state():
+    global read_data
+
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()),
+        size=4
+    )
+
+    data = bytes([1, 2, 3, 4])
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
+    read_data = data
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_STOP)
+    read_data = data
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
+
+
+def test_handle_mig_data_write():
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()) + 4,
+        size=4
+    )
+
+    data = bytes([1, 2, 3, 4])
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RESUMING)
+    msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data)
+    assert write_data == data
+
+
+def test_handle_mig_data_write_invalid_state():
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()) + 4,
+        size=4
+    )
+
+    data = bytes([1, 2, 3, 4])
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
+    msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
+        expect=errno.EINVAL)
+
+
+def test_device_feature_short_write():
+    payload = struct.pack("I", 8)
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
 
 
 def test_migration_cleanup():

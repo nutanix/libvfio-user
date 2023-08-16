@@ -599,6 +599,14 @@ class vfio_user_device_feature_dma_logging_report(Structure):
     ]
 
 
+class vfio_user_mig_data(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("size", c.c_uint32)
+    ]
+
+
 class dma_sg_t(Structure):
     _fields_ = [
         ("dma_addr", c.c_void_p),
@@ -711,10 +719,15 @@ def connect_sock():
     return sock
 
 
-def connect_client(ctx):
+def connect_client(ctx, max_data_xfer_size=None):
     sock = connect_sock()
 
-    json = b'{ "capabilities": { "max_msg_fds": 8 } }'
+    if max_data_xfer_size is None:
+        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
+    else:
+        json = b'{ "capabilities": { "max_msg_fds": 8, "max_data_xfer_size": '\
+            + str(max_data_xfer_size).encode("utf-8") + b' } }'
+
     # struct vfio_user_version
     payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
                           LIBVFIO_USER_MINOR, json, b'\0')

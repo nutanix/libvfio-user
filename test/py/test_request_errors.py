@@ -183,4 +183,58 @@ def test_disconnected_socket_quiesce_busy(mock_quiesce):
     mock_quiesce.assert_called_once_with(ctx)
 
 
+@patch('libvfio_user.reset_cb')
+@patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
+@patch('libvfio_user.migr_trans_cb')
+def test_reply_fail_quiesce_busy(mock_migr_trans_cb, mock_quiesce,
+                                 mock_reset):
+    """Tests failing to reply and the quiesce callback returning EBUSY."""
+
+    global ctx, sock
+
+    def migr_trans_cb_side_effect(ctx, state):
+        sock.close()
+        return 0
+    mock_migr_trans_cb.side_effect = migr_trans_cb_side_effect
+
+    # change the state, it should close the socket causing the reply to fail
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(
+        device_state=VFIO_USER_DEVICE_STATE_STOP_COPY
+    )
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        rsp=False, busy=True)
+
+    # vfu_run_ctx will try to reset the context and to do that it needs to
+    # quiesce the device first
+    mock_quiesce.assert_called_once_with(ctx)
+
+    # vfu_run_ctx will be returning EBUSY and nothing should have happened
+    # until the device quiesces
+    for _ in range(0, 3):
+        vfu_run_ctx(ctx, errno.EBUSY)
+    mock_quiesce.assert_called_once_with(ctx)
+    mock_reset.assert_not_called()
+
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+
+    # the device quiesced, reset should should happen now
+    mock_quiesce.assert_called_once_with(ctx)
+    mock_reset.assert_called_once_with(ctx, VFU_RESET_LOST_CONN)
+
+    try:
+        get_reply(sock)
+    except OSError as e:
+        assert e.errno == errno.EBADF
+    else:
+        assert False
+
+    vfu_run_ctx(ctx, errno.ENOTCONN)
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
