@@ -1248,4 +1248,9 @@ def fds_are_same(fd1: int, fd2: int) -> bool:
     return s1.st_dev == s2.st_dev and s1.st_ino == s2.st_ino
 
 
+def get_bitmap_size(size: int, pgsize: int) -> int:
+    nr_pages = (size // pgsize) + (1 if size % pgsize != 0 else 0)
+    return ((nr_pages + 63) & ~63) // 8
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

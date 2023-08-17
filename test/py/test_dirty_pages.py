@@ -177,7 +177,8 @@ def test_dirty_pages_get_unmodified():
         assert b == 0
 
 
-def get_dirty_page_bitmap(addr=None, length=None, expect=0):
+def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
+                          page_size=PAGE_SIZE, expect=0):
     argsz = len(vfio_user_device_feature()) + \
             len(vfio_user_device_feature_dma_logging_report())
 
@@ -187,9 +188,9 @@ def get_dirty_page_bitmap(addr=None, length=None, expect=0):
     )
 
     report = vfio_user_device_feature_dma_logging_report(
-        iova=(0x10 << PAGE_SHIFT if addr is None else addr),
-        length=(0x10 << PAGE_SHIFT if length is None else length),
-        page_size=PAGE_SIZE
+        iova=addr,
+        length=length,
+        page_size=page_size
     )
 
     payload = bytes(feature) + bytes(report)
@@ -199,13 +200,13 @@ def get_dirty_page_bitmap(addr=None, length=None, expect=0):
     if expect != 0:
         return
 
-    assert len(result) == argsz + 8
+    assert len(result) == argsz + get_bitmap_size(length, page_size)
 
     _, result = vfio_user_device_feature.pop_from_buffer(result)
     _, result = \
         vfio_user_device_feature_dma_logging_report.pop_from_buffer(result)
 
-    assert len(result) == 8
+    assert len(result) == get_bitmap_size(length, page_size)
 
     return struct.unpack("Q", result)[0]
 
@@ -269,6 +270,27 @@ def test_dirty_pages_get_modified():
     vfu_sgl_put(ctx, sg4, iovec4)
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b0000001111000001
+
+    # check dirty bitmap is correctly extended when we give a smaller page size
+    vfu_sgl_put(ctx, sg1, iovec1)
+    vfu_sgl_put(ctx, sg4, iovec4)
+    bitmap = get_dirty_page_bitmap(page_size=PAGE_SIZE >> 1)
+    assert bitmap == 0b00000000000011111111000000000011
+
+    # check dirty bitmap is correctly shortened when we give a larger page size
+    vfu_sgl_put(ctx, sg1, iovec1)
+    vfu_sgl_put(ctx, sg4, iovec4)
+    bitmap = get_dirty_page_bitmap(page_size=PAGE_SIZE << 1)
+    assert bitmap == 0b00011001
+
+    # check dirty bitmap is correctly shortened when we give a page size that
+    # is so large that one bit corresponds to multiple bytes in the raw bitmap
+    vfu_sgl_put(ctx, sg1, iovec1)
+    vfu_sgl_put(ctx, sg4, iovec4)
+    bitmap = get_dirty_page_bitmap(page_size=PAGE_SIZE << 4)
+    assert bitmap == 0b1
+    bitmap = get_dirty_page_bitmap(page_size=PAGE_SIZE << 4)
+    assert bitmap == 0b0
 
     # after another two puts, should just be one dirty page
     vfu_sgl_put(ctx, sg2, iovec2)
