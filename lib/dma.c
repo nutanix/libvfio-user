@@ -631,6 +631,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 
     for (i = 0; i < (size_t)bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
+        uint8_t *outp = (uint8_t *)&bitmap[i];
         uint8_t out = 0;
 
         /*
@@ -647,8 +648,14 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
             out = 0;
         } else {
             uint8_t zero = 0;
-            __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                              &out, __ATOMIC_SEQ_CST);
+            if (dma->dirty_pgsize == pgsize) {
+                __atomic_exchange(&region->dirty_bitmap[i], &zero,
+                                  outp, __ATOMIC_SEQ_CST);
+                continue;
+            } else {
+                __atomic_exchange(&region->dirty_bitmap[i], &zero,
+                                  &out, __ATOMIC_SEQ_CST);
+            }
         }
 
         for (j = 0; j < 8; j++) {

@@ -46,7 +46,7 @@
  * 
  * The indices of each state are those in the vfio_user_device_mig_state enum.
  */
-static const char transitions[8] = {
+static const char transitions[VFIO_USER_DEVICE_NUM_STATES] = {
     0b00000000, // ERROR        -> {}
     0b00011100, // STOP         -> {RUNNING, STOP_COPY, RESUMING}
     0b01000010, // RUNNING      -> {STOP, PRE_COPY}
@@ -66,8 +66,9 @@ static const char transitions[8] = {
  * This can be indexed as `next_state[current][target] == next`. If next is
  * ERROR, then the transition is not allowed.
  */
-static const uint32_t next_state[VFIO_USER_DEVICE_NUM_STATES][VFIO_USER_DEVICE_NUM_STATES] = {
-    [VFIO_USER_DEVICE_STATE_ERROR] = {0, 0, 0, 0, 0, 0, 0, 0},
+static const uint32_t
+next_state[VFIO_USER_DEVICE_NUM_STATES][VFIO_USER_DEVICE_NUM_STATES] = {
+    [VFIO_USER_DEVICE_STATE_ERROR] = { 0, 0, 0, 0, 0, 0, 0, 0 },
     [VFIO_USER_DEVICE_STATE_STOP] = {
         [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
         [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_STOP,
@@ -108,7 +109,7 @@ static const uint32_t next_state[VFIO_USER_DEVICE_NUM_STATES][VFIO_USER_DEVICE_N
         [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_STOP,
         [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
     },
-    [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = {0, 0, 0, 0, 0, 0, 0, 0},
+    [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = { 0, 0, 0, 0, 0, 0, 0, 0 },
     [VFIO_USER_DEVICE_STATE_PRE_COPY] = {
         [VFIO_USER_DEVICE_STATE_ERROR] = VFIO_USER_DEVICE_STATE_ERROR,
         [VFIO_USER_DEVICE_STATE_STOP] = VFIO_USER_DEVICE_STATE_RUNNING,
@@ -119,7 +120,7 @@ static const uint32_t next_state[VFIO_USER_DEVICE_NUM_STATES][VFIO_USER_DEVICE_N
         [VFIO_USER_DEVICE_STATE_PRE_COPY] = VFIO_USER_DEVICE_STATE_PRE_COPY,
         [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = VFIO_USER_DEVICE_STATE_ERROR,
     },
-    [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = {0, 0, 0, 0, 0, 0, 0, 0},
+    [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = { 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 bool
@@ -158,7 +159,8 @@ init_migration(const vfu_migration_callbacks_t *callbacks, int *err)
     migr->callbacks = *callbacks;
     if (migr->callbacks.transition == NULL ||
         migr->callbacks.read_data == NULL ||
-        migr->callbacks.write_data == NULL) {
+        migr->callbacks.write_data == NULL ||
+        migr->callbacks.version != VFU_MIGR_CALLBACKS_VERS) {
         free(migr);
         *err = EINVAL;
         return NULL;

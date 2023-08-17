@@ -949,6 +949,133 @@ is_dma_feature(uint32_t feature) {
 }
 
 static int
+handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                                    uint32_t feature)
+{
+    // all supported outgoing data is currently the same size as 
+    //   vfio_user_device_feature_migration
+    msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
+        + sizeof(struct vfio_user_device_feature_migration);
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+    if (msg->out.iov.iov_base == NULL) {
+        return ERROR_INT(ENOMEM);
+    }
+
+    memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+            sizeof(struct vfio_user_device_feature));
+
+    struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+    res->argsz = sizeof(struct vfio_user_device_feature)
+            + sizeof(struct vfio_user_device_feature_migration);
+
+    switch (feature) {
+        case VFIO_DEVICE_FEATURE_MIGRATION: {
+            struct vfio_user_device_feature_migration *mig =
+                (void *)res->data;
+            // FIXME are these always supported? Can we consider to be
+            // "supported" if said support is just an empty callback?
+            //
+            // We don't need to return RUNNING or ERROR since they are
+            // always supported.
+            mig->flags = VFIO_MIGRATION_STOP_COPY
+                        | VFIO_MIGRATION_PRE_COPY;
+            return 0;
+        }
+
+        case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE: {
+            struct vfio_user_device_feature_mig_state *state =
+                (void *)res->data;
+            state->device_state = migration_get_state(vfu_ctx);
+            return 0;
+        }
+        
+        default: return ERROR_INT(EINVAL);
+    }
+}
+
+static int
+handle_migration_device_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature,
+                                    struct vfio_user_device_feature *res)
+{
+    assert(feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE);
+
+    struct vfio_user_device_feature_mig_state *state = (void *)res->data;
+
+    return migration_set_state(vfu_ctx, state->device_state);
+}
+
+static int
+handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
+                              struct vfio_user_device_feature *req)
+{
+    struct vfio_user_device_feature_dma_logging_report *rep =
+        (void *)req->data;
+
+    ssize_t bitmap_size = get_bitmap_size(rep->length, rep->page_size);
+
+    msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
+        + sizeof(struct vfio_user_device_feature_dma_logging_report)
+        + bitmap_size;
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+    if (msg->out.iov.iov_base == NULL) {
+        return ERROR_INT(ENOMEM);
+    }
+
+    memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+            sizeof(struct vfio_user_device_feature) +
+            sizeof(struct vfio_user_device_feature_dma_logging_report));
+
+    struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+    res->argsz = msg->out.iov.iov_len;
+
+    dma_controller_t *dma = vfu_ctx->dma;
+
+    assert(dma != NULL);
+
+    char * bitmap = (char *) msg->out.iov.iov_base
+        + sizeof(struct vfio_user_device_feature)
+        + sizeof(struct vfio_user_device_feature_dma_logging_report);
+
+    int ret = dma_controller_dirty_page_get(dma,
+                                            (vfu_dma_addr_t) rep->iova,
+                                            rep->length,
+                                            rep->page_size,
+                                            bitmap_size,
+                                            bitmap);
+
+    if (ret < 0) {
+        msg->out.iov.iov_len = 0;
+    }
+
+    return ret;
+}
+
+static int
+handle_dma_device_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature,
+                              struct vfio_user_device_feature *res)
+{
+    dma_controller_t *dma = vfu_ctx->dma;
+
+    assert(dma != NULL);
+
+    if (feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_START) {
+        struct vfio_user_device_feature_dma_logging_control *ctl =
+            (void *)res->data;
+        return dma_controller_dirty_page_logging_start(dma,
+                                                       ctl->page_size);
+    } else {
+        assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP);
+
+        dma_controller_dirty_page_logging_stop(dma);
+        return 0;
+    }
+}
+
+static int
 handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     assert(vfu_ctx != NULL);
@@ -961,21 +1088,20 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     struct vfio_user_device_feature *req = msg->in.iov.iov_base;
 
-    uint32_t supported_flags =
-        device_feature_flags_supported(req->flags & VFIO_DEVICE_FEATURE_MASK);
+    uint32_t operations = req->flags & ~VFIO_DEVICE_FEATURE_MASK;
+    uint32_t feature = req->flags & VFIO_DEVICE_FEATURE_MASK;
 
-    if ((req->flags & supported_flags) !=
-        (req->flags & ~VFIO_DEVICE_FEATURE_MASK) || supported_flags == 0) {
+    uint32_t supported_ops = device_feature_flags_supported(feature);
+
+    if ((req->flags & supported_ops) != operations || supported_ops == 0) {
         return ERROR_INT(EINVAL);
     }
-
-    uint32_t feature = req->flags & VFIO_DEVICE_FEATURE_MASK;
 
     ssize_t ret;
 
     if (req->flags & VFIO_DEVICE_FEATURE_PROBE) {
-        msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+        msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
 
         if (msg->out.iov.iov_base == NULL) {
             return ERROR_INT(ENOMEM);
@@ -987,93 +1113,15 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = 0;
     } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
         if (is_migration_feature(feature)) {
-            // all supported outgoing data is currently the same size as 
-            //   vfio_user_device_feature_migration
-            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
-                + sizeof(struct vfio_user_device_feature_migration);
-            msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
-
-            if (msg->out.iov.iov_base == NULL) {
-                return ERROR_INT(ENOMEM);
-            }
-
-            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-                   sizeof(struct vfio_user_device_feature));
-
-            struct vfio_user_device_feature *res = msg->out.iov.iov_base;
-
-            res->argsz = sizeof(struct vfio_user_device_feature)
-                    + sizeof(struct vfio_user_device_feature_migration);
-
-            if (feature == VFIO_DEVICE_FEATURE_MIGRATION) {
-                struct vfio_user_device_feature_migration *mig =
-                    (void*)res->data;
-
-                // FIXME are these always supported? Can we consider to be
-                // "supported" if said support is just an empty callback?
-                //
-                // We don't need to return RUNNING or ERROR since they are always
-                // supported.
-                mig->flags = VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY;
-
-                ret = 0;
-            } else {
-                assert(feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE);
-
-                struct vfio_user_device_feature_mig_state *state =
-                    (void*)res->data;
-                
-                state->device_state = migration_get_state(vfu_ctx);
-
-                ret = 0;
-            }
+            ret = handle_migration_device_feature_get(vfu_ctx, msg, feature);
         } else if (is_dma_feature(feature)) {
-            struct vfio_user_device_feature_dma_logging_report *rep =
-                (void*)req->data;
-
-            ssize_t bitmap_size = get_bitmap_size(rep->length, rep->page_size);
-
-            msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
-                + sizeof(struct vfio_user_device_feature_dma_logging_report)
-                + bitmap_size;
-            msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
-
-            if (msg->out.iov.iov_base == NULL) {
-                return ERROR_INT(ENOMEM);
-            }
-
-            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-                   sizeof(struct vfio_user_device_feature) +
-                   sizeof(struct vfio_user_device_feature_dma_logging_report));
-
-            struct vfio_user_device_feature *res = msg->out.iov.iov_base;
-
-            res->argsz = msg->out.iov.iov_len;
-
-            dma_controller_t *dma = vfu_ctx->dma;
-
-            assert(dma != NULL);
-
-            char* bitmap = (char*) msg->out.iov.iov_base
-                + sizeof(struct vfio_user_device_feature)
-                + sizeof(struct vfio_user_device_feature_dma_logging_report);
-
-            ret = dma_controller_dirty_page_get(dma,
-                                                (vfu_dma_addr_t) rep->iova,
-                                                rep->length,
-                                                rep->page_size,
-                                                bitmap_size,
-                                                bitmap);
-
-            if (ret < 0) {
-                msg->out.iov.iov_len = 0;
-            }
+            ret = handle_dma_device_feature_get(vfu_ctx, msg, req);
         } else {
             return ERROR_INT(EINVAL);
         }
     } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
-        msg->out.iov.iov_base = malloc(msg->in.iov.iov_len);
         msg->out.iov.iov_len = msg->in.iov.iov_len;
+        msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
 
         if (msg->out.iov.iov_base == NULL) {
             return ERROR_INT(ENOMEM);
@@ -1085,27 +1133,9 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
         if (is_migration_feature(feature)) {
-            assert(feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE);
-            
-            struct vfio_user_device_feature_mig_state *state = (void*)res->data;
-
-            ret = migration_set_state(vfu_ctx, state->device_state);
+            ret = handle_migration_device_feature_set(vfu_ctx, feature, res);
         } else if (is_dma_feature(feature)) {
-            dma_controller_t *dma = vfu_ctx->dma;
-
-            assert(dma != NULL);
-
-            if (feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_START) {
-                struct vfio_user_device_feature_dma_logging_control *ctl =
-                    (void*)res->data;
-                ret = dma_controller_dirty_page_logging_start(dma,
-                                                              ctl->page_size);
-            } else {
-                assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP);
-
-                dma_controller_dirty_page_logging_stop(dma);
-                ret = 0;
-            }
+            ret = handle_dma_device_feature_set(vfu_ctx, feature, res);
         } else {
             return ERROR_INT(EINVAL);
         }
