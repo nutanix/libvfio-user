@@ -629,7 +629,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 
     bit = 0;
 
-    for (i = 0; i < (size_t)bitmap_size; i++) {
+    for (i = 0; i < (size_t)bitmap_size &&
+         bit / 8 < (size_t)converted_bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
         uint8_t *outp = (uint8_t *)&bitmap[i];
         uint8_t out = 0;
