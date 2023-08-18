@@ -1476,7 +1476,7 @@ The request payload for this message is a structure of the following format.
 |       | +---------+---------------------------+ |
 |       | | Bit     | Definition                | |
 |       | +=========+===========================+ |
-|       | | 0 to 15 | Feature bits              | |
+|       | | 0 to 15 | Feature index             | |
 |       | +---------+---------------------------+ |
 |       | | 16      | VFIO_DEVICE_FEATURE_GET   | |
 |       | +---------+---------------------------+ |
@@ -1493,8 +1493,8 @@ The request payload for this message is a structure of the following format.
 * *flags* defines the action to be performed by the server and upon which
   feature:
 
-  * The feature bits are the least significant 16 bits of the flags field, and
-    can be accessed using the ``VFIO_DEVICE_FEATURE_MASK`` bit mask.
+  * The feature index consists of the least significant 16 bits of the flags
+    field, and can be accessed using the ``VFIO_DEVICE_FEATURE_MASK`` bit mask.
   
   * ``VFIO_DEVICE_FEATURE_GET`` instructs the server to get the data for the
     given feature.
@@ -1528,19 +1528,19 @@ The only device features supported by vfio-user are those related to migration,
 although this may change in the future. They are a subset of those supported in
 the VFIO implementation of the Linux kernel.
 
-+----------------------------------------+-------+
-| Name                                   | Value |
-+========================================+=======+
-| VFIO_DEVICE_FEATURE_MIGRATION          | 1     |
-+----------------------------------------+-------+
-| VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE   | 2     |
-+----------------------------------------+-------+
-| VFIO_DEVICE_FEATURE_DMA_LOGGING_START  | 6     |
-+----------------------------------------+-------+
-| VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP   | 7     |
-+----------------------------------------+-------+
-| VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT | 8     |
-+----------------------------------------+-------+
++----------------------------------------+---------------+
+| Name                                   | Feature Index |
++========================================+===============+
+| VFIO_DEVICE_FEATURE_MIGRATION          | 1             |
++----------------------------------------+---------------+
+| VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE   | 2             |
++----------------------------------------+---------------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_START  | 6             |
++----------------------------------------+---------------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP   | 7             |
++----------------------------------------+---------------+
+| VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT | 8             |
++----------------------------------------+---------------+
 
 ``VFIO_DEVICE_FEATURE_MIGRATION``
 """""""""""""""""""""""""""""""""
