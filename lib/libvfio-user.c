@@ -1014,6 +1014,9 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         (void *)req->data;
 
     ssize_t bitmap_size = get_bitmap_size(rep->length, rep->page_size);
+    if (bitmap_size < 0) {
+        return bitmap_size;
+    }
 
     msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
         + sizeof(struct vfio_user_device_feature_dma_logging_report)
