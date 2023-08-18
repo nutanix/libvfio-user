@@ -102,12 +102,12 @@ def test_dirty_pages_setup():
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f2.fileno()])
 
 
-def test_setup_migr_region():
+def test_setup_migration():
     ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
 
-def start_logging(addr=None, length=None):
+def start_logging(addr=None, length=None, page_size=PAGE_SIZE, expect=0):
     if addr is not None:
         ranges = vfio_user_device_feature_dma_logging_range(
             iova=addr,
@@ -123,18 +123,23 @@ def start_logging(addr=None, length=None):
         flags=VFIO_DEVICE_FEATURE_DMA_LOGGING_START | VFIO_DEVICE_FEATURE_SET)
 
     payload = vfio_user_device_feature_dma_logging_control(
-        page_size=PAGE_SIZE,
+        page_size=page_size,
         num_ranges=(1 if addr is not None else 0),
         reserved=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
-        bytes(feature) + bytes(payload) + bytes(ranges))
+        bytes(feature) + bytes(payload) + bytes(ranges), expect=expect)
 
 
 def test_dirty_pages_start():
     start_logging()
     # should be idempotent
     start_logging()
+
+
+def test_dirty_pages_start_different_pgsize():
+    start_logging(page_size=0, expect=errno.EINVAL)
+    start_logging(page_size=PAGE_SIZE >> 1, expect=errno.EINVAL)
 
 
 def test_dirty_pages_get_unmodified():
@@ -343,6 +348,22 @@ def test_dirty_pages_get_modified():
     write_to_page(ctx, 0x12, 2, get_bitmap=False)
     bitmap = get_dirty_page_bitmap()
     assert bitmap == 0b010000000000000000001100
+
+
+def test_dirty_pages_invalid_address():
+    # Failed to translate
+    get_dirty_page_bitmap(addr=0xdeadbeef, expect=errno.ENOENT)
+
+    # Does not exactly match a region
+    get_dirty_page_bitmap(addr=(0x10 << PAGE_SHIFT) + 1,
+                          length=(0x20 << PAGE_SHIFT) - 1,
+                          expect=errno.ENOTSUP)
+
+    # Invalid requested bitmap size
+    get_dirty_page_bitmap(page_size=1 << 24, expect=errno.EINVAL)
+
+    # Region not mapped
+    get_dirty_page_bitmap(addr=0x40 << PAGE_SHIFT, expect=errno.EINVAL)
 
 
 def stop_logging(addr=None, length=None):

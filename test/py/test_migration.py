@@ -38,6 +38,7 @@ current_state = None
 path = []
 read_data = None
 write_data = None
+fail_callbacks = False
 
 
 UNREACHABLE_STATES = {
@@ -50,6 +51,9 @@ UNREACHABLE_STATES = {
 @transition_cb_t
 def migr_trans_cb(_ctx, state):
     global current_state, path
+
+    if fail_callbacks:
+        return -1
 
     if state == VFU_MIGR_STATE_STOP:
         state = VFIO_USER_DEVICE_STATE_STOP
@@ -74,17 +78,27 @@ def migr_trans_cb(_ctx, state):
 @read_data_cb_t
 def migr_read_data_cb(_ctx, buf, count):
     global read_data
+
+    if fail_callbacks:
+        return -1
+
     length = min(count, len(read_data))
     ctypes.memmove(buf, read_data, length)
     read_data = None
+
     return length
 
 
 @write_data_cb_t
 def migr_write_data_cb(_ctx, buf, count):
     global write_data
+
+    if fail_callbacks:
+        return -1
+
     write_data = bytes(count)
     ctypes.memmove(write_data, buf, count)
+
     return count
 
 
@@ -106,11 +120,15 @@ def test_migration_setup():
     assert ctx is not None
 
     cbs = vfu_migration_callbacks_t()
-    cbs.version = VFU_MIGR_CALLBACKS_VERS
+    cbs.version = 1
     cbs.transition = migr_trans_cb
     cbs.read_data = migr_read_data_cb
     cbs.write_data = migr_write_data_cb
 
+    ret = vfu_setup_device_migration_callbacks(ctx, cbs)
+    assert ret < 0
+
+    cbs.version = VFU_MIGR_CALLBACKS_VERS
     ret = vfu_setup_device_migration_callbacks(ctx, cbs)
     assert ret == 0
 
@@ -232,6 +250,28 @@ def test_migration_nonexistent_state():
     transition_to_state(0xabcd, expect=errno.EINVAL)
 
 
+def test_migration_failed_callback():
+    global fail_callbacks
+    fail_callbacks = True
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING, expect=errno.EINVAL)
+    fail_callbacks = False
+
+
+def test_migration_get_state():
+    transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
+
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+
+    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, feature)
+    _, result = vfio_user_device_feature.pop_from_buffer(result)
+    state, _ = vfio_user_device_feature_mig_state.pop_from_buffer(result)
+    assert state.device_state == VFIO_USER_DEVICE_STATE_RUNNING
+
+
 def test_handle_mig_data_read():
     global read_data
 
@@ -297,6 +337,29 @@ def test_handle_mig_data_read_invalid_state():
     msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
 
 
+def test_handle_mig_data_read_failed_callback():
+    global fail_callbacks
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
+
+    fail_callbacks = True
+
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()),
+        size=4
+    )
+
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
+
+    fail_callbacks = False
+
+
+def test_handle_mig_data_read_short_write():
+    payload = struct.pack("I", 8)
+
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
+
+
 def test_handle_mig_data_write():
     payload = vfio_user_mig_data(
         argsz=len(vfio_user_mig_data()) + 4,
@@ -308,6 +371,22 @@ def test_handle_mig_data_write():
     transition_to_state(VFIO_USER_DEVICE_STATE_RESUMING)
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data)
     assert write_data == data
+
+
+def test_handle_mig_data_write_too_long():
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()) + 8,
+        size=8
+    )
+
+    # When we set up the tests at the top of this file we specify that the max
+    # data transfer size is 4 bytes. Here we test to check that a transfer of 8
+    # bytes fails.
+
+    data = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    transition_to_state(VFIO_USER_DEVICE_STATE_RESUMING)
+    msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
+        expect=errno.EINVAL)
 
 
 def test_handle_mig_data_write_invalid_state():
@@ -323,8 +402,74 @@ def test_handle_mig_data_write_invalid_state():
         expect=errno.EINVAL)
 
 
+def test_handle_mig_data_write_failed_callback():
+    global fail_callbacks
+
+    transition_to_state(VFIO_USER_DEVICE_STATE_RESUMING)
+
+    fail_callbacks = True
+
+    payload = vfio_user_mig_data(
+        argsz=len(vfio_user_mig_data()) + 4,
+        size=4
+    )
+
+    data = bytes([1, 2, 3, 4])
+
+    msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
+        expect=errno.EINVAL)
+
+    fail_callbacks = False
+
+
+def test_handle_mig_data_write_short_write():
+    payload = struct.pack("I", 8)
+
+    msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_migration():
+    payload = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),
+        flags=VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_MIGRATION
+    )
+
+    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload)
+    _, result = vfio_user_device_feature.pop_from_buffer(result)
+    flags, = struct.unpack("Q", result)
+
+    assert flags == VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY
+
+
 def test_device_feature_short_write():
     payload = struct.pack("I", 8)
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_unsupported_operation():
+    payload = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIGRATION
+    )
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_probe():
+    payload = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),
+        flags=VFIO_DEVICE_FEATURE_PROBE | VFIO_DEVICE_FEATURE_MIGRATION
+    )
+
+    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload)
+    assert bytes(payload) == result
+
+    payload = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),
+        flags=VFIO_DEVICE_FEATURE_PROBE | VFIO_DEVICE_FEATURE_SET |
+              VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_MIGRATION
+    )
 
     msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
 
