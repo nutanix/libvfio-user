@@ -535,7 +535,7 @@ log_dirty_bitmap(vfu_ctx_t *vfu_ctx, dma_memory_region_t *region,
     size_t i;
     size_t count;
     for (i = 0, count = 0; i < size; i++) {
-        count += __builtin_popcount(bitmap[i]);
+        count += __builtin_popcount((uint8_t)bitmap[i]);
     }
     vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get [%p, %p), %zu dirty pages",
             region->info.iova.iov_base, iov_end(&region->info.iova),
