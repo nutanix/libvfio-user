@@ -524,14 +524,15 @@ Capabilities:
 |                    |         | then migration is not supported by the        |
 |                    |         | sender.                                       |
 +--------------------+---------+-----------------------------------------------+
-| cmd_conn           | boolean | Indicates whether the client is capable of    |
+| reverse_cmd_socket | boolean | Indicates whether the client is capable of    |
 |                    |         | using a separate socket as the channel for    |
-|                    |         | server-to-client commands. If specified, the  |
-|                    |         | server will pass a file descriptor along with |
-|                    |         | its reply. This is enabled by request only    |
-|                    |         | for the benefit of clients that implement     |
-|                    |         | older drafts of this specification which did  |
-|                    |         | not include independent sockets per channel.  |
+|                    |         | server-to-client commands. If specified and   |
+|                    |         | the server supports it, it will pass a file   |
+|                    |         | descriptor along with its reply. This is      |
+|                    |         | enabled by request only for the benefit of    |
+|                    |         | clients that implement older drafts of this   |
+|                    |         | specification which did  not include          |
+|                    |         | independent sockets per channel.              |
 +--------------------+---------+-----------------------------------------------+
 
 The migration capability contains the following name/value pairs:
@@ -547,9 +548,9 @@ Reply
 ^^^^^
 
 The same message format is used in the server's reply with the semantics
-described above. In case the client specified ``cmd_conn`` in its capabilities,
-the server may pass a file descriptor to use for the server-to-client command
-channel.
+described above. In case the client specified ``reverse_cmd_socket`` in its
+capabilities, the server may pass a file descriptor to use for the
+server-to-client command channel.
 
 ``VFIO_USER_DMA_MAP``
 ---------------------

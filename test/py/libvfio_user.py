@@ -702,11 +702,11 @@ class Client:
 
     def __init__(self, sock=None):
         self.sock = sock
-        self.cmd_sock = None
+        self.reverse_cmd_sock = None
 
     def connect(self, ctx,
                 max_data_xfer_size=VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
-                cmd_conn=False):
+                reverse_cmd_socket=False):
         self.sock = connect_sock()
 
         json = f'''
@@ -714,7 +714,7 @@ class Client:
           "capabilities": {{
             "max_data_xfer_size": {max_data_xfer_size},
             "max_msg_fds": 8,
-            "cmd_conn": {str(cmd_conn).lower()}
+            "reverse_cmd_socket": {str(reverse_cmd_socket).lower()}
           }}
         }}
         '''
@@ -725,15 +725,15 @@ class Client:
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
         fds, payload = get_reply_fds(self.sock, expect=0)
-        self.cmd_sock = socket.socket(fileno=fds[0]) if fds else None
+        self.reverse_cmd_sock = socket.socket(fileno=fds[0]) if fds else None
         return self.sock
 
     def disconnect(self, ctx):
         self.sock.close()
         self.sock = None
-        if self.cmd_sock is not None:
-            self.cmd_sock.close()
-            self.cmd_sock = None
+        if self.reverse_cmd_sock is not None:
+            self.reverse_cmd_sock.close()
+            self.reverse_cmd_sock = None
 
         # notice client closed connection
         vfu_run_ctx(ctx, errno.ENOTCONN)

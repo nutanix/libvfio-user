@@ -73,10 +73,10 @@ struct transport_ops {
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
                         size_t *client_max_data_xfer_sizep, size_t *pgsizep,
-                        bool *enable_cmd_conn);
+                        bool *reverse_cmd_socket_supportedp);
 
 int
-tran_negotiate(vfu_ctx_t *vfu_ctx, int *cmd_conn_fd);
+tran_negotiate(vfu_ctx_t *vfu_ctx, int *reverse_cmd_socket_fdp);
 
 #endif /* LIB_VFIO_USER_TRAN_H */
 

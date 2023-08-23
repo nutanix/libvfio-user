@@ -106,7 +106,8 @@ def setup_function(function):
     global ctx, client, dma_handler
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
-    client = connect_client(ctx, max_data_xfer_size=PAGE_SIZE, cmd_conn=True)
+    client = connect_client(ctx, max_data_xfer_size=PAGE_SIZE,
+                            reverse_cmd_socket=True)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
                                 flags=(VFIO_USER_F_DMA_REGION_READ
@@ -117,7 +118,8 @@ def setup_function(function):
 
     msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
 
-    dma_handler = DMARegionHandler(client.cmd_sock, payload.addr, payload.size)
+    dma_handler = DMARegionHandler(client.reverse_cmd_sock, payload.addr,
+                                   payload.size)
 
 
 def teardown_function(function):
@@ -164,7 +166,7 @@ def test_dma_read_write_error():
     # Reinitialize the handler to return EIO.
     global dma_handler
     dma_handler.shutdown()
-    dma_handler = DMARegionHandler(client.cmd_sock, MAP_ADDR, MAP_SIZE,
+    dma_handler = DMARegionHandler(client.reverse_cmd_sock, MAP_ADDR, MAP_SIZE,
                                    error_no=errno.EIO)
 
     ret, sg = vfu_addr_to_sgl(ctx,
