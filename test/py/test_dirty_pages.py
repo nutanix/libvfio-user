@@ -144,7 +144,8 @@ def test_dirty_pages_start_different_pgsize():
 
 def test_dirty_pages_get_unmodified():
     argsz = len(vfio_user_device_feature()) + \
-            len(vfio_user_device_feature_dma_logging_report())
+            len(vfio_user_device_feature_dma_logging_report()) + \
+            8  # size of bitmap
 
     feature = vfio_user_device_feature(
         argsz=argsz,
@@ -161,11 +162,11 @@ def test_dirty_pages_get_unmodified():
 
     result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload)
 
-    assert len(result) == argsz + 8
+    assert len(result) == argsz
 
     feature, result = vfio_user_device_feature.pop_from_buffer(result)
 
-    assert feature.argsz == argsz + 8
+    assert feature.argsz == argsz
     assert feature.flags == VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT \
         | VFIO_DEVICE_FEATURE_GET
 
@@ -184,8 +185,11 @@ def test_dirty_pages_get_unmodified():
 
 def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
                           page_size=PAGE_SIZE, expect=0):
+    bitmap_size = get_bitmap_size(length, page_size)
+
     argsz = len(vfio_user_device_feature()) + \
-            len(vfio_user_device_feature_dma_logging_report())
+            len(vfio_user_device_feature_dma_logging_report()) + \
+            bitmap_size
 
     feature = vfio_user_device_feature(
         argsz=argsz,
@@ -205,13 +209,13 @@ def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
     if expect != 0:
         return
 
-    assert len(result) == argsz + get_bitmap_size(length, page_size)
+    assert len(result) == argsz
 
     _, result = vfio_user_device_feature.pop_from_buffer(result)
     _, result = \
         vfio_user_device_feature_dma_logging_report.pop_from_buffer(result)
 
-    assert len(result) == get_bitmap_size(length, page_size)
+    assert len(result) == bitmap_size
 
     return struct.unpack("Q", result)[0]
 

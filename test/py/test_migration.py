@@ -277,7 +277,7 @@ def test_handle_mig_data_read():
 
     transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
 
-    argsz = len(vfio_user_mig_data())
+    argsz = len(vfio_user_mig_data()) + 4
 
     payload = vfio_user_mig_data(
         argsz=argsz,
@@ -289,14 +289,14 @@ def test_handle_mig_data_read():
     transition_to_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
     read_data = data
     result = msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload)
-    assert len(result) == argsz + 4
-    assert result[argsz:argsz + 4] == data
+    assert len(result) == argsz
+    assert result[len(vfio_user_mig_data()):] == data
 
     transition_to_state(VFIO_USER_DEVICE_STATE_STOP_COPY)
     read_data = data
     result = msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload)
-    assert len(result) == argsz + 4
-    assert result[argsz:argsz + 4] == data
+    assert len(result) == argsz
+    assert result[len(vfio_user_mig_data()):] == data
 
 
 def test_handle_mig_data_read_too_long():
@@ -305,7 +305,7 @@ def test_handle_mig_data_read_too_long():
     transition_to_state(VFIO_USER_DEVICE_STATE_RUNNING)
 
     payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()),
+        argsz=len(vfio_user_mig_data()) + 8,
         size=8
     )
 
@@ -322,7 +322,7 @@ def test_handle_mig_data_read_invalid_state():
     global read_data
 
     payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()),
+        argsz=len(vfio_user_mig_data()) + 4,
         size=4
     )
 
@@ -345,7 +345,7 @@ def test_handle_mig_data_read_failed_callback():
     fail_callbacks = True
 
     payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()),
+        argsz=len(vfio_user_mig_data()) + 4,
         size=4
     )
 
@@ -430,7 +430,7 @@ def test_handle_mig_data_write_short_write():
 
 def test_device_feature_migration():
     payload = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()),
+        argsz=len(vfio_user_device_feature()) + 8,
         flags=VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_MIGRATION
     )
 
@@ -449,7 +449,7 @@ def test_device_feature_short_write():
 
 def test_device_feature_unsupported_operation():
     payload = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()),
+        argsz=len(vfio_user_device_feature()) + 4,
         flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIGRATION
     )
 
