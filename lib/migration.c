@@ -311,6 +311,12 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
+    if (req->argsz < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "argsz too small (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
+        return ERROR_INT(EINVAL);
+    }
+
     msg->out.iov.iov_len = msg->in.iov.iov_len + req->size;
     msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
 
@@ -359,6 +365,12 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     if (req->size > vfu_ctx->client_max_data_xfer_size) {
         vfu_log(vfu_ctx, LOG_ERR, "transfer size exceeds limit (%d > %ld)",
                 req->size, vfu_ctx->client_max_data_xfer_size);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (req->argsz < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "argsz too small (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
         return ERROR_INT(EINVAL);
     }
 
