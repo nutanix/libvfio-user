@@ -1488,7 +1488,7 @@ The request payload for this message is a structure of the following format.
 | data  | 8      | variable                       |
 +-------+--------+--------------------------------+
 
-* *argsz* is the size of the above structure.
+* *argsz* is the maximum size of the reply payload.
 
 * *flags* defines the action to be performed by the server and upon which
   feature:
@@ -1787,7 +1787,7 @@ The request payload for this message is a structure of the following format.
 | size  | 4      | 4    |
 +-------+--------+------+
 
-* *argsz* is the size of the above structure.
+* *argsz* is the maximum size of the reply payload.
 
 * *size* is the size of the migration data to read.
 
@@ -1806,7 +1806,7 @@ The reply payload for this message is a structure of the following format.
 | data  | 8      | variable |
 +-------+--------+----------+
 
-* *argsz* is the size of the above structure.
+* *argsz* is the size of the above structure, including the size of the data.
 
 * *size* indicates the size of returned migration data. If this is less than the
   requested size, there is no more migration data to read.
@@ -1837,7 +1837,7 @@ The request payload for this message is a structure of the following format.
 | data  | 8      | variable |
 +-------+--------+----------+
 
-* *argsz* is the size of the above structure.
+* *argsz* is the maximum size of the reply payload.
 
 * *size* is the size of the migration data to be written.
 
