@@ -449,11 +449,61 @@ def test_device_feature_short_write():
 
 def test_device_feature_unsupported_operation():
     payload = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()) + 4,
+        argsz=len(vfio_user_device_feature()) + 8,
         flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIGRATION
     )
 
     msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_bad_argsz_probe():
+    payload = vfio_user_device_feature(
+        argsz=2,
+        flags=VFIO_DEVICE_FEATURE_PROBE | VFIO_DEVICE_FEATURE_MIGRATION
+    )
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_bad_argsz_get_migration():
+    payload = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),
+        flags=VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_MIGRATION
+    )
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload, expect=errno.EINVAL)
+
+
+def test_device_feature_bad_argsz_get_dma():
+    argsz = len(vfio_user_device_feature()) + \
+            len(vfio_user_device_feature_dma_logging_report()) + \
+            8  # bitmap size
+
+    feature = vfio_user_device_feature(
+        argsz=argsz - 1,  # not big enough
+        flags=VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT | VFIO_DEVICE_FEATURE_GET
+    )
+
+    report = vfio_user_device_feature_dma_logging_report(
+        iova=0x10 << PAGE_SHIFT,
+        length=0x20 << PAGE_SHIFT,
+        page_size=PAGE_SIZE
+    )
+
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(report),
+        expect=errno.EINVAL)
+
+
+def test_device_feature_bad_argsz_set():
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()),  # no space for state data
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(
+        device_state=VFIO_USER_DEVICE_STATE_RUNNING
+    )
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        expect=errno.EINVAL)
 
 
 def test_device_feature_probe():
