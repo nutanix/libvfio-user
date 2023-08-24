@@ -568,7 +568,7 @@ read_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x6904;
     struct vfio_user_mig_data req = {
-        .argsz = sizeof(struct vfio_user_mig_data),
+        .argsz = sizeof(struct vfio_user_mig_data) + len,
         .size = len
     };
     struct iovec send_iovecs[2] = {
@@ -810,7 +810,7 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     res = data;
     res->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT
                | VFIO_DEVICE_FEATURE_GET;
-    res->argsz = sizeof(*res) + sizeof(*report);
+    res->argsz = size;
 
     report = data + sizeof(*res);
     report->iova = dma_region->addr;
