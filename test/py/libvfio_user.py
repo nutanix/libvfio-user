@@ -712,11 +712,10 @@ class Client:
     def connect(self, ctx, capabilities={}):
         self.sock = connect_sock()
 
-        effective_caps = {
+        client_caps = {
             "capabilities": {
                 "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
                 "max_msg_fds": 8,
-                "twin_socket": False,
             },
         }
 
@@ -728,8 +727,8 @@ class Client:
                 else:
                     target[k] = v
 
-        update(effective_caps, capabilities)
-        caps_json = json.dumps(effective_caps)
+        update(client_caps, capabilities)
+        caps_json = json.dumps(client_caps)
 
         # struct vfio_user_version
         payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
@@ -738,7 +737,15 @@ class Client:
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
         fds, payload = get_reply_fds(self.sock, expect=0)
-        self.client_cmd_socket = socket.socket(fileno=fds[0]) if fds else None
+
+        server_caps = json.loads(payload[struct.calcsize("HH"):-1].decode())
+        try:
+            if client_caps["capabilities"]["twin_socket"]["enable"]:
+                index = server_caps["capabilities"]["twin_socket"]["fd_index"]
+                self.client_cmd_socket = socket.socket(fileno=fds[index])
+        except KeyError:
+            pass
+
         return self.sock
 
     def disconnect(self, ctx):

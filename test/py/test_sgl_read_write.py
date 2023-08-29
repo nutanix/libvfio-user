@@ -109,10 +109,13 @@ def setup_function(function):
     caps = {
         "capabilities": {
             "max_data_xfer_size": PAGE_SIZE,
-            "twin_socket": True,
+            "twin_socket": {
+                "enable": True,
+            },
         }
     }
     client = connect_client(ctx, caps)
+    assert client.client_cmd_socket is not None
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
                                 flags=(VFIO_USER_F_DMA_REGION_READ

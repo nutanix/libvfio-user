@@ -53,11 +53,14 @@
  * {
  *     "capabilities": {
  *         "max_msg_fds": 32,
- *         "max_data_xfer_size": 1048576
+ *         "max_data_xfer_size": 1048576,
  *         "migration": {
  *             "pgsize": 4096
+ *         },
+ *         "twin_socket": {
+ *             "enable": true,
+ *             "fd_index": 0
  *         }
- *         "twin_socket": true,
  *     }
  * }
  *
@@ -134,15 +137,23 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
     }
 
     if (json_object_object_get_ex(jo_caps, "twin_socket", &jo)) {
-        if (json_object_get_type(jo) != json_type_boolean) {
+        struct json_object *jo2 = NULL;
+
+        if (json_object_get_type(jo) != json_type_object) {
             goto out;
         }
 
-        errno = 0;
-        *twin_socket_supportedp = json_object_get_boolean(jo);
+        if (json_object_object_get_ex(jo, "enable", &jo2)) {
+            if (json_object_get_type(jo2) != json_type_boolean) {
+                goto out;
+            }
 
-        if (errno != 0) {
-            goto out;
+            errno = 0;
+            *twin_socket_supportedp = json_object_get_boolean(jo2);
+
+            if (errno != 0) {
+                goto out;
+            }
         }
     }
 
@@ -159,8 +170,7 @@ out:
 
 static int
 recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
-             struct vfio_user_version **versionp,
-             bool *twin_socket_supportedp)
+             struct vfio_user_version **versionp, bool *twin_socket_supportedp)
 {
     struct vfio_user_version *cversion = NULL;
     vfu_msg_t msg = { { 0 } };
@@ -329,8 +339,9 @@ json_add_uint64(struct json_object *jso, const char *key, uint64_t value)
  * be freed by the caller.
  */
 static char *
-format_server_capabilities(vfu_ctx_t *vfu_ctx)
+format_server_capabilities(vfu_ctx_t *vfu_ctx, int twin_socket_fd_index)
 {
+    struct json_object *jo_twin_socket = NULL;
     struct json_object *jo_migration = NULL;
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -364,6 +375,21 @@ format_server_capabilities(vfu_ctx_t *vfu_ctx)
         }
     }
 
+    if (twin_socket_fd_index >= 0) {
+        if ((jo_twin_socket = json_object_new_object()) == NULL) {
+            goto out;
+        }
+
+        if (json_add_uint64(jo_twin_socket, "fd_index",
+                            twin_socket_fd_index) < 0) {
+            goto out;
+        }
+
+        if (json_add(jo_caps, "twin_socket", &jo_twin_socket) < 0) {
+            goto out;
+        }
+    }
+
     if ((jo_top = json_object_new_object()) == NULL ||
         json_add(jo_top, "capabilities", &jo_caps) < 0) {
         goto out;
@@ -372,6 +398,7 @@ format_server_capabilities(vfu_ctx_t *vfu_ctx)
     caps_str = strdup(json_object_to_json_string(jo_top));
 
 out:
+    json_object_put(jo_twin_socket);
     json_object_put(jo_migration);
     json_object_put(jo_caps);
     json_object_put(jo_top);
@@ -382,13 +409,15 @@ static int
 send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
              struct vfio_user_version *cversion, int client_cmd_socket_fd)
 {
+    int twin_socket_fd_index = client_cmd_socket_fd >= 0 ? 0 : -1;
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
     vfu_msg_t msg = { { 0 } };
     char *server_caps = NULL;
     int ret;
 
-    if ((server_caps = format_server_capabilities(vfu_ctx)) == NULL) {
+    server_caps = format_server_capabilities(vfu_ctx, twin_socket_fd_index);
+    if (server_caps == NULL) {
         errno = ENOMEM;
         return -1;
     }
@@ -408,9 +437,10 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
     msg.hdr.msg_id = msg_id;
     msg.out_iovecs = iovecs;
     msg.nr_out_iovecs = 2;
-    if (client_cmd_socket_fd != -1) {
+    if (client_cmd_socket_fd >= 0) {
         msg.out.fds = &client_cmd_socket_fd;
         msg.out.nr_fds = 1;
+        assert(msg.out.fds[twin_socket_fd_index] == client_cmd_socket_fd);
     }
 
     ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
