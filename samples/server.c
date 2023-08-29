@@ -320,10 +320,8 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
         // TODO check the following is always allowed
 
         memcpy(buf, server_data->bar1 + read_start, bytes_read);
-    } else if (
-        read_start < server_data->bar1_size // starts in bar1
-        && read_end > server_data->bar1_size // ends in bar0
-    ) {
+    } else if (read_start < server_data->bar1_size // starts in bar1
+               && read_end > server_data->bar1_size) { // ends in bar0
         // case 2: part of the read in bar1 and part of the read in bar0
         // TODO check the following is always allowed
 
