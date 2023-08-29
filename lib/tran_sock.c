@@ -609,6 +609,23 @@ tran_sock_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
     return ret;
 }
 
+static void maybe_print_cmd_collision_warning(vfu_ctx_t *vfu_ctx) {
+    static bool warning_printed = false;
+    static const char *warning_msg =
+        "You are using libvfio-user in a configuration that issues "
+        "client-to-server commands, but without the twin_socket feature "
+        "enabled. This is known to break when client and server send a command "
+        "at the same time. See "
+        "https://github.com/nutanix/libvfio-user/issues/279 for details.";
+
+    if (!warning_printed) {
+        /* Print to log and stderr. */
+        fprintf(stderr, "WARNING: %s\n", warning_msg);
+        vfu_log(vfu_ctx, LOG_WARNING, "%s", warning_msg);
+        warning_printed = true;
+    }
+}
+
 static int
 tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
               enum vfio_user_command cmd,
@@ -624,9 +641,12 @@ tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 
     ts = vfu_ctx->tran_data;
 
-    /* NB. use the client command socket file descriptor if available. */
-    fd = ts->client_cmd_socket_fd != -1 ? ts->client_cmd_socket_fd
-                                        : ts->conn_fd;
+    fd = ts->client_cmd_socket_fd;
+    if (fd == -1) {
+        maybe_print_cmd_collision_warning(vfu_ctx);
+        fd = ts->conn_fd;
+    }
+
     return tran_sock_msg(fd, msg_id, cmd, send_data, send_len, hdr, recv_data,
                          recv_len);
 }
