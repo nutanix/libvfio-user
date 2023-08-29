@@ -265,36 +265,98 @@ out:
     return 0;
 }
 
+/*
+ * A json_object_object_add wrapper that takes ownership of *val unconditionally:
+ * Resets *val to NULL and makes sure *val gets dropped, even when an error
+ * occurs. Assumes key is new and a constant.
+ */
+static int
+json_add(struct json_object *jso, const char *key, struct json_object **val)
+{
+    int ret = 0;
+
+#if JSON_C_MAJOR_VERSION > 0 || JSON_C_MINOR_VERSION >= 13
+    ret = json_object_object_add_ex(jso, key, *val,
+                                    JSON_C_OBJECT_ADD_KEY_IS_NEW |
+                                    JSON_C_OBJECT_KEY_IS_CONSTANT);
+#else
+    /* Earlier versions will abort() on allocation failure. */
+    json_object_object_add(jso, key, *val);
+#endif
+
+    if (ret < 0) {
+        json_object_put(*val);
+    }
+    *val = NULL;
+    return ret;
+}
+
+static json_object* create_caps_object(vfu_ctx_t *vfu_ctx) {
+    struct json_object *jo_migration = NULL;
+    struct json_object *jo_caps = NULL;
+    struct json_object *jo_top = NULL;
+    struct json_object *jo_tmp = NULL;
+
+    if ((jo_caps = json_object_new_object()) == NULL) {
+        goto error;
+    }
+
+    if ((jo_tmp = json_object_new_int64(SERVER_MAX_FDS)) == NULL ||
+        json_add(jo_caps, "max_msg_fds", &jo_tmp)) {
+        goto error;
+    }
+
+    if ((jo_tmp = json_object_new_int64(SERVER_MAX_DATA_XFER_SIZE)) == NULL ||
+        json_add(jo_caps, "max_data_xfer_size", &jo_tmp) < 0) {
+        goto error;
+    }
+
+    if (vfu_ctx->migration != NULL) {
+        if ((jo_migration = json_object_new_object()) == NULL) {
+            goto error;
+        }
+
+        int64_t pgsize = (int64_t)migration_get_pgsize(vfu_ctx->migration);
+        if ((jo_tmp = json_object_new_int64(pgsize)) == NULL ||
+            json_add(jo_migration, "pgsize", &jo_tmp) < 0) {
+            goto error;
+        }
+
+        if (json_add(jo_caps, "migration", &jo_migration) < 0) {
+            goto error;
+        }
+    }
+
+    if ((jo_top = json_object_new_object()) == NULL ||
+        json_add(jo_top, "capabilities", &jo_caps) < 0) {
+        goto error;
+    }
+
+    return jo_top;
+
+error:
+    json_object_put(jo_tmp);
+    json_object_put(jo_migration);
+    json_object_put(jo_caps);
+    json_object_put(jo_top);
+    return NULL;
+}
+
 static int
 send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
              struct vfio_user_version *cversion)
 {
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
-    char server_caps[1024];
+    struct json_object* jo_caps = NULL;
+    const char* server_caps = NULL;
     vfu_msg_t msg = { { 0 } };
-    int slen;
+    int ret;
 
-    if (vfu_ctx->migration == NULL) {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE);
-    } else {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u,"
-                    "\"migration\":{"
-                        "\"pgsize\":%zu"
-                    "}"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE,
-                  migration_get_pgsize(vfu_ctx->migration));
+    if ((jo_caps = create_caps_object(vfu_ctx)) == NULL ||
+        (server_caps = json_object_to_json_string(jo_caps)) == NULL) {
+        errno = ENOMEM;
+        return -1;
     }
 
     // FIXME: we should save the client minor here, and check that before trying
@@ -304,16 +366,18 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 
     iovecs[0].iov_base = &sversion;
     iovecs[0].iov_len = sizeof(sversion);
-    iovecs[1].iov_base = server_caps;
+    iovecs[1].iov_base = (void *)server_caps;
     /* Include the NUL. */
-    iovecs[1].iov_len = slen + 1;
+    iovecs[1].iov_len = strlen(server_caps) + 1;
 
     msg.hdr.cmd = VFIO_USER_VERSION;
     msg.hdr.msg_id = msg_id;
     msg.out_iovecs = iovecs;
     msg.nr_out_iovecs = 2;
 
-    return vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+    ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+    json_object_put(jo_caps);
+    return ret;
 }
 
 int
