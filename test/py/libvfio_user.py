@@ -32,6 +32,7 @@
 #
 
 from types import SimpleNamespace
+import collections.abc
 import ctypes as c
 import array
 import errno
@@ -685,25 +686,60 @@ def connect_sock():
     return sock
 
 
-def connect_client(ctx):
-    sock = connect_sock()
+class Client:
+    """Models a VFIO-user client connected to the server under test."""
 
-    json = b'{ "capabilities": { "max_msg_fds": 8 } }'
-    # struct vfio_user_version
-    payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                          LIBVFIO_USER_MINOR, json, b'\0')
-    hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_attach_ctx(ctx, expect=0)
-    payload = get_reply(sock, expect=0)
-    return sock
+    def __init__(self, sock=None):
+        self.sock = sock
+        self.client_cmd_socket = None
+
+    def connect(self, ctx, capabilities={}):
+        self.sock = connect_sock()
+
+        effective_caps = {
+            "capabilities": {
+                "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
+                "max_msg_fds": 8,
+                "twin_socket": False,
+            },
+        }
+
+        def update(target, overrides):
+            for k, v in overrides.items():
+                if isinstance(v, collections.abc.Mapping):
+                    target[k] = target.get(k, {})
+                    update(target[k], v)
+                else:
+                    target[k] = v
+
+        update(effective_caps, capabilities)
+        caps_json = json.dumps(effective_caps)
+
+        # struct vfio_user_version
+        payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, caps_json.encode(), b'\0')
+        hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
+        self.sock.send(hdr + payload)
+        vfu_attach_ctx(ctx, expect=0)
+        fds, payload = get_reply_fds(self.sock, expect=0)
+        self.client_cmd_socket = socket.socket(fileno=fds[0]) if fds else None
+        return self.sock
+
+    def disconnect(self, ctx):
+        self.sock.close()
+        self.sock = None
+        if self.client_cmd_socket is not None:
+            self.client_cmd_socket.close()
+            self.client_cmd_socket = None
+
+        # notice client closed connection
+        vfu_run_ctx(ctx, errno.ENOTCONN)
 
 
-def disconnect_client(ctx, sock):
-    sock.close()
-
-    # notice client closed connection
-    vfu_run_ctx(ctx, errno.ENOTCONN)
+def connect_client(*args, **kwargs):
+    client = Client()
+    client.connect(*args, **kwargs)
+    return client
 
 
 def get_reply(sock, expect=0):

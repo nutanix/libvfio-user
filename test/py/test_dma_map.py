@@ -42,31 +42,31 @@ ctx = None
 
 
 def setup_function(function):
-    global ctx, sock
+    global ctx, client
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def teardown_function(function):
-    global ctx, sock
-    disconnect_client(ctx, sock)
+    global ctx, client
+    client.disconnect(ctx)
     vfu_destroy_ctx(ctx)
 
 
 def test_dma_region_too_big():
-    global ctx, sock
+    global ctx, client
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10 << PAGE_SHIFT, size=MAX_DMA_SIZE + PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, expect=errno.ENOSPC)
 
 
 def test_dma_region_too_many():
-    global ctx, sock
+    global ctx, client
 
     for i in range(1, MAX_DMA_REGIONS + 2):
         payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
@@ -79,7 +79,7 @@ def test_dma_region_too_many():
         else:
             expect = 0
 
-        msg(ctx, sock, VFIO_USER_DMA_MAP, payload, expect=expect)
+        msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, expect=expect)
 
 
 @patch('libvfio_user.quiesce_cb', side_effect=fail_with_errno(errno.EBUSY))
@@ -90,14 +90,14 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     quiescing, and then eventually quiesces, the DMA map operation succeeds.
     """
 
-    global ctx, sock
+    global ctx, client
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ |
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, rsp=False,
         busy=True)
 
     assert mock_dma_register.call_count == 0
@@ -111,7 +111,7 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
                               mmap.PROT_READ | mmap.PROT_WRITE)
     mock_dma_register.assert_called_once_with(ctx, dma_info)
 
-    get_reply(sock)
+    get_reply(client.sock)
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
@@ -139,13 +139,13 @@ def test_dma_map_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     """Tests mapping a DMA region where the quiesce callback returns 0 and
     replying fails."""
 
-    global ctx, sock
+    global ctx, client
 
     # The only chance we have to allow the message to be received but for the
     # reply to fail is in the DMA map callback, where the message has been
     # received but reply hasn't been sent yet.
     def side_effect(ctx, info):
-        sock.close()
+        client.sock.close()
 
     mock_dma_register.side_effect = side_effect
 
@@ -156,13 +156,13 @@ def test_dma_map_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, rsp=False)
 
     vfu_run_ctx(ctx, errno.ENOTCONN)
 
     # TODO not sure whether the following is worth it?
     try:
-        get_reply(sock)
+        get_reply(client.sock)
     except OSError as e:
         assert e.errno == errno.EBADF
     else:
@@ -186,7 +186,7 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
     replying fails.
     """
 
-    global ctx, sock
+    global ctx, client
 
     # Send a DMA map command.
     payload = vfio_user_dma_map(
@@ -195,13 +195,13 @@ def test_dma_map_busy_reply_fail(mock_dma_register, mock_quiesce, mock_reset):
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, rsp=False,
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, rsp=False,
         busy=True)
 
     mock_quiesce.assert_called_once_with(ctx)
 
     # pretend there's a connection failure while the device is still quiescing
-    sock.close()
+    client.sock.close()
 
     mock_dma_register.assert_not_called()
     mock_reset.assert_not_called()

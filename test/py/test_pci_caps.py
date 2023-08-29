@@ -153,16 +153,16 @@ def test_add_caps(mock_pci_region_cb):
 
     __test_find_caps()
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
-    __test_pci_cap_write_hdr(sock)
-    __test_pci_cap_readonly(sock)
+    __test_pci_cap_write_hdr(client.sock)
+    __test_pci_cap_readonly(client.sock)
     # FIXME assignment to PCI config space from callback is ignored
     # Ideally we should ignore this test via pytest command line but this isn't
     # and individual test, and making it one requires a bit of effort.
     if not is_32bit():
-        __test_pci_cap_callback(sock)
-    __test_pci_cap_write_pmcs(sock)
+        __test_pci_cap_callback(client.sock)
+    __test_pci_cap_write_pmcs(client.sock)
 
 
 def __test_find_caps():
@@ -321,14 +321,14 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
     Tests function level reset.
     """
     setup_pci_dev(realize=True)
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     setup_flrc(ctx)
 
     # iflr
     offset = PCI_STD_HEADER_SIZEOF + 8
     data = b'\x00\x80'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
 
     mock_quiesce.assert_called_once_with(ctx)
@@ -337,14 +337,14 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
     # bad access
     for _off in (-1, +1):
         for _len in (-1, +1):
-            write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+            write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                          offset=offset+_off, count=len(data)+_len, data=data,
                          expect=errno.EINVAL)
 
 
 def test_pci_cap_write_msi():
     setup_pci_dev(realize=True)
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     # Set MMC to 100b (16 interrupt vectors)
     mmc = 0b00001000
@@ -366,20 +366,20 @@ def test_pci_cap_write_msi():
     # Test if write fails as expected
     # as MME is out of bounds, 111b is over the max of 101b (32 vectors)
     data = b'\xff\xff'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSI_FLAGS,
                  count=len(data), data=data, expect=errno.EINVAL)
 
     # Test if write fails as expected
     # as MME is over MMC, 101b (32 vectors) > 100b (16 vectors)
     data = to_bytes_le(mme_bad, 2)
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSI_FLAGS,
                  count=len(data), data=data, expect=errno.EINVAL)
 
     # Test good write, MSI Enable + good MME
     data = to_bytes_le(PCI_MSI_FLAGS_ENABLE | mme_good, 2)
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSI_FLAGS,
                  count=len(data), data=data)
 
@@ -388,21 +388,21 @@ def test_pci_cap_write_msi():
 
     # reset
     data = size_before_flags * b'\x00'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSI_FLAGS,
                  count=len(data), data=data)
 
     # Check if MMC is still present after reset (since it is RO)
     expected = (to_bytes_le(PCI_CAP_ID_MSI) + b'\x00' +
                 to_bytes_le(mmc, 2) + (size_after_flags * b'\x00'))
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(expected))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(expected))
     assert expected == payload
 
 
 def test_pci_cap_write_msix():
     setup_pci_dev(realize=True)
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     flags = PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0,
@@ -415,51 +415,51 @@ def test_pci_cap_write_msix():
 
     # write exactly to Message Control: mask all vectors and enable MSI-X
     data = b'\xff\xff'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS,
                  count=len(data), data=data)
     data = b'\xff\xff' + to_bytes_le(flags, 2)
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
     expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00' + \
         to_bytes_le(PCI_MSIX_FLAGS_MASKALL | PCI_MSIX_FLAGS_ENABLE, 2)
     assert expected == payload
 
     # reset
     data = b'\x00\x00'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS,
                  count=len(data), data=data)
     expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00\x00'
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(expected))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(expected))
     assert expected == payload
 
     # write 2 bytes to Message Control + 1: mask all vectors and enable MSI-X
     # This looks bizarre, but some versions of QEMU do this.
     data = to_bytes_le(flags >> 8) + b'\xff'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS + 1,
                  count=len(data), data=data)
     # read back entire MSI-X
     expected = to_bytes_le(PCI_CAP_ID_MSIX) + b'\x00' + \
         to_bytes_le(flags, 2) + b'\x00\x00\x00\x00' + b'\x00\x00\x00\x00'
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=PCI_CAP_MSIX_SIZEOF)
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=PCI_CAP_MSIX_SIZEOF)
     assert expected == payload
 
     # reset with MSI-X enabled
     data = to_bytes_le(PCI_MSIX_FLAGS_ENABLE, 2)
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_FLAGS,
                  count=len(data), data=data)
 
     # write 1 byte past Message Control, MSI-X should still be enabled
     data = b'\x00'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                  offset=offset + PCI_MSIX_TABLE,
                  count=len(data), data=data)
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX,
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
                           offset=offset + PCI_MSIX_FLAGS, count=2)
     assert payload == to_bytes_le(PCI_MSIX_FLAGS_ENABLE, 2)
 
@@ -467,34 +467,34 @@ def test_pci_cap_write_msix():
 def test_pci_cap_write_pxdc2():
 
     setup_pci_dev(realize=True)
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     setup_flrc(ctx)
 
     offset = (vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) +
               PCI_EXP_DEVCTL2)
     data = b'\xde\xad'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
     assert payload == data
 
 
 def test_pci_cap_write_pxlc2():
 
     setup_pci_dev(realize=True)
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     setup_flrc(ctx)
 
     offset = (vfu_pci_find_capability(ctx, False, PCI_CAP_ID_EXP) +
               PCI_EXP_LNKCTL2)
     data = b'\xbe\xef'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
     assert payload == data
 
 

@@ -31,13 +31,13 @@ from libvfio_user import *
 import errno
 
 ctx = None
-sock = None
+client = None
 
 argsz = len(vfio_irq_info())
 
 
 def test_device_get_irq_info_setup():
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -55,27 +55,27 @@ def test_device_get_irq_info_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def test_device_get_irq_info_bad_in():
     payload = struct.pack("II", 0, 0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
         expect=errno.EINVAL)
 
     # bad argsz
     payload = vfio_irq_info(argsz=8, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
         expect=errno.EINVAL)
 
     # bad index
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_NUM_IRQS,
                             count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload,
         expect=errno.EINVAL)
 
 
@@ -86,12 +86,12 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz + 16, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_REQ_IRQ,
                             count=0)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
@@ -103,7 +103,7 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_ERR_IRQ,
                             count=0)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
@@ -115,7 +115,7 @@ def test_device_get_irq_info():
     payload = vfio_irq_info(argsz=argsz, flags=0, index=VFU_DEV_MSIX_IRQ,
                             count=0)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_IRQ_INFO, payload)
 
     info, _ = vfio_irq_info.pop_from_buffer(result)
 
@@ -126,7 +126,7 @@ def test_device_get_irq_info():
 
 
 def test_device_get_irq_info_cleanup():
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
     vfu_destroy_ctx(ctx)
 

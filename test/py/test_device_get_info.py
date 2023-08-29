@@ -49,11 +49,11 @@ def test_device_get_info():
 
     # test short write
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     payload = struct.pack("II", 0, 0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_INFO, payload,
         expect=errno.EINVAL)
 
     # bad argsz
@@ -61,7 +61,7 @@ def test_device_get_info():
     payload = vfio_user_device_info(argsz=8, flags=0,
                                     num_regions=0, num_irqs=0)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload,
+    msg(ctx, client.sock, VFIO_USER_DEVICE_GET_INFO, payload,
         expect=errno.EINVAL)
 
     # valid with larger argsz
@@ -69,7 +69,7 @@ def test_device_get_info():
     payload = vfio_user_device_info(argsz=32, flags=0,
                                     num_regions=0, num_irqs=0)
 
-    result = msg(ctx, sock, VFIO_USER_DEVICE_GET_INFO, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_INFO, payload)
 
     (argsz, flags, num_regions, num_irqs) = struct.unpack("IIII", result)
 
@@ -78,7 +78,7 @@ def test_device_get_info():
     assert num_regions == VFU_PCI_DEV_NUM_REGIONS
     assert num_irqs == VFU_DEV_NUM_IRQS
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
     vfu_destroy_ctx(ctx)
 
