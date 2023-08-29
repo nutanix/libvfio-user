@@ -180,8 +180,11 @@ VFIO_USER_DEVICE_RESET = 13
 VFIO_USER_DIRTY_PAGES = 14
 VFIO_USER_MAX = 15
 
+VFIO_USER_F_TYPE = 0xf
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
+VFIO_USER_F_NO_REPLY = 0x10
+VFIO_USER_F_ERROR = 0x20
 
 SIZEOF_VFIO_USER_HEADER = 16
 
@@ -714,6 +717,23 @@ def get_reply(sock, expect=0):
     return buf[16:]
 
 
+def send_msg(sock, cmd, msg_type, payload=bytearray(), fds=None, msg_id=None,
+             error_no=0):
+    """
+    Sends a message on the given socket. Can be used on either end of the
+    socket to send commands and replies.
+    """
+    hdr = vfio_user_header(cmd, size=len(payload), msg_type=msg_type,
+                           msg_id=msg_id, error=error_no != 0,
+                           error_no=error_no)
+
+    if fds:
+        sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                        struct.pack("I" * len(fds), *fds))])
+    else:
+        sock.send(hdr + payload)
+
+
 def msg(ctx, sock, cmd, payload=bytearray(), expect=0, fds=None,
         rsp=True, busy=False):
     """
@@ -726,13 +746,7 @@ def msg(ctx, sock, cmd, payload=bytearray(), expect=0, fds=None,
     response: it can later be retrieved, post vfu_device_quiesced(), with
     get_reply().
     """
-    hdr = vfio_user_header(cmd, size=len(payload))
-
-    if fds:
-        sock.sendmsg([hdr + payload], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
-                                        struct.pack("I" * len(fds), *fds))])
-    else:
-        sock.send(hdr + payload)
+    send_msg(sock, cmd, VFIO_USER_F_TYPE_COMMAND, payload, fds)
 
     if busy:
         vfu_run_ctx(ctx, errno.EBUSY)
@@ -745,15 +759,17 @@ def msg(ctx, sock, cmd, payload=bytearray(), expect=0, fds=None,
     return get_reply(sock, expect=expect)
 
 
-def get_reply_fds(sock, expect=0):
-    """Receives a message from a socket and pulls the returned file descriptors
-       out of the message."""
+def get_msg_fds(sock, expect_msg_type, expect_errno=0):
+    """
+    Receives a message from a socket and pulls the returned file descriptors
+    out of the message.
+    """
     fds = array.array("i")
-    data, ancillary, flags, addr = sock.recvmsg(4096,
-                                            socket.CMSG_LEN(64 * fds.itemsize))
+    data, ancillary, flags, addr = sock.recvmsg(SERVER_MAX_MSG_SIZE,
+        socket.CMSG_LEN(64 * fds.itemsize))
     (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII",
                                                               data[0:16])
-    assert errno == expect
+    assert errno == expect_errno
 
     cmsg_level, cmsg_type, packed_fd = ancillary[0] if len(ancillary) != 0 \
                                                     else (0, 0, [])
@@ -762,8 +778,18 @@ def get_reply_fds(sock, expect=0):
         [unpacked_fd] = struct.unpack_from("i", packed_fd, offset=i)
         unpacked_fds.append(unpacked_fd)
     assert len(packed_fd)/4 == len(unpacked_fds)
-    assert (msg_flags & VFIO_USER_F_TYPE_REPLY) != 0
-    return (unpacked_fds, data[16:])
+    assert (msg_flags & VFIO_USER_F_TYPE) == expect_msg_type
+    return (unpacked_fds, msg_id, cmd, data[16:])
+
+
+def get_reply_fds(sock, expect=0):
+    """
+    Receives a reply from a socket and returns the included file descriptors
+    and message payload data.
+    """
+    (unpacked_fds, _, _, data) = get_msg_fds(sock, VFIO_USER_F_TYPE_REPLY,
+                                             expect)
+    return (unpacked_fds, data)
 
 
 def msg_fds(ctx, sock, cmd, payload, expect=0, fds=None):
@@ -962,7 +988,7 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
 #
 
 
-msg_id = 1
+next_msg_id = 1
 
 
 @c.CFUNCTYPE(None, c.c_void_p, c.c_int, c.c_char_p)
@@ -978,13 +1004,22 @@ def log(ctx, level, msg):
     print(lvl2str[level] + ": " + msg.decode("utf-8"))
 
 
-def vfio_user_header(cmd, size, no_reply=False, error=False, error_no=0):
-    global msg_id
+def vfio_user_header(cmd, size, msg_type=VFIO_USER_F_TYPE_COMMAND, msg_id=None,
+                     no_reply=False, error=False, error_no=0):
+    global next_msg_id
+
+    if msg_id is None:
+        msg_id = next_msg_id
+        next_msg_id += 1
+
+    flags = msg_type
+    if no_reply:
+        flags |= VFIO_USER_F_NO_REPLY
+    if error:
+        flags |= VFIO_USER_F_ERROR
 
     buf = struct.pack("HHIII", msg_id, cmd, SIZEOF_VFIO_USER_HEADER + size,
-                      VFIO_USER_F_TYPE_COMMAND, error_no)
-
-    msg_id += 1
+                      flags, error_no)
 
     return buf
 
