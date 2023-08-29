@@ -9,9 +9,9 @@ GPIO.
 Build QEMU
 ----------
 
-Use Oracle's QEMU d377d483f9 from https://github.com/oracle/qemu:
+Use Oracle's QEMU vfio-user-p3.1 from https://github.com/oracle/qemu:
 
-	git clone https://github.com/oracle/qemu qemu-orcl
+	git clone https://github.com/oracle/qemu qemu-orcl --branch vfio-user-p3.1
 	cd qemu-orcl
 	git submodule update --init --recursive
 	./configure --enable-multiprocess
@@ -47,7 +47,7 @@ Start the Guest
 
 Start the guest with e.g. 4 GB of RAM:
 
-	qemu-orcl/build/qemu-system-x86_64 ... \
+	qemu-orcl/build/qemu-system-x86_64 \
 		-m 4G -object memory-backend-file,id=mem0,size=4G,mem-path=/dev/hugepages,share=on,prealloc=yes -numa node,memdev=mem0 \
 		-device vfio-user-pci,socket=/var/run/cntrl
 
