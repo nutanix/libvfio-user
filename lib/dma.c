@@ -258,19 +258,6 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     return 0;
 }
 
-ssize_t
-get_bitmap_size(size_t region_size, size_t pgsize)
-{
-    if (pgsize == 0) {
-        return ERROR_INT(EINVAL);
-    }
-    if (region_size < pgsize) {
-        return ERROR_INT(EINVAL);
-    }
-
-    return _get_bitmap_size(region_size, pgsize);
-}
-
 static int
 dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 {
@@ -555,15 +542,10 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap)
 {
+    ssize_t converted_bitmap_size;
     dma_memory_region_t *region;
     ssize_t bitmap_size;
-    ssize_t converted_bitmap_size;
     dma_sg_t sg;
-    size_t i;
-    size_t j;
-    size_t bit;
-    bool extend;
-    size_t factor;
     int ret;
 
     assert(dma != NULL);
@@ -607,9 +589,6 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return converted_bitmap_size;
     }
 
-    extend = pgsize <= dma->dirty_pgsize;
-    factor = extend ? dma->dirty_pgsize / pgsize : pgsize / dma->dirty_pgsize;
-
     /*
      * They must be equal because this is how much data the client expects to
      * receive.
@@ -627,12 +606,65 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    bit = 0;
+    if (pgsize == dma->dirty_pgsize) {
+        dirty_page_get_simple(region, bitmap, bitmap_size);
+    } else {
+        dirty_page_get_complex(region, bitmap, bitmap_size,
+                               converted_bitmap_size, pgsize,
+                               dma->dirty_pgsize);
+    }
 
-    for (i = 0; i < (size_t)bitmap_size &&
-         bit / 8 < (size_t)converted_bitmap_size; i++) {
+#ifdef DEBUG
+    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, pgsize);
+#endif
+
+    return 0;
+}
+
+void
+dirty_page_get_simple(dma_memory_region_t *region, char *bitmap,
+                      size_t bitmap_size)
+{
+    for (size_t i = 0; i < bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
         uint8_t *outp = (uint8_t *)&bitmap[i];
+
+        /*
+         * If no bits are dirty, avoid the atomic exchange. This is obviously
+         * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
+         * the next time around.
+         *
+         * Otherwise, atomically exchange the dirty bits with zero: as we use
+         * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
+         * miss a bit being set after, but again, we'll catch that next time
+         * around.
+         */
+        if (val == 0) {
+            *outp = 0;
+        } else {
+            uint8_t zero = 0;
+            __atomic_exchange(&region->dirty_bitmap[i], &zero,
+                              outp, __ATOMIC_SEQ_CST);
+        }
+    }
+}
+
+void
+dirty_page_get_complex(dma_memory_region_t *region, char *bitmap,
+                      size_t bitmap_size, size_t converted_bitmap_size,
+                      size_t pgsize, size_t converted_pgsize)
+{
+    uint8_t bit = 0;
+    size_t i;
+    int j;
+
+    bool extend = pgsize <= converted_pgsize;
+    size_t factor = extend ?
+        converted_pgsize / pgsize : pgsize / converted_pgsize;
+
+    for (i = 0; i < bitmap_size &&
+         bit / 8 < (size_t)converted_bitmap_size; i++) {
+        uint8_t val = region->dirty_bitmap[i];
         uint8_t out = 0;
 
         /*
@@ -649,14 +681,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
             out = 0;
         } else {
             uint8_t zero = 0;
-            if (dma->dirty_pgsize == pgsize) {
-                __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                                  outp, __ATOMIC_SEQ_CST);
-                continue;
-            } else {
-                __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                                  &out, __ATOMIC_SEQ_CST);
-            }
+            __atomic_exchange(&region->dirty_bitmap[i], &zero,
+                                &out, __ATOMIC_SEQ_CST);
         }
 
         for (j = 0; j < 8; j++) {
@@ -682,12 +708,6 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
             }
         }
     }
-
-#ifdef DEBUG
-    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, pgsize);
-#endif
-
-    return 0;
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

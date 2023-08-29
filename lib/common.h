@@ -60,6 +60,20 @@
 
 typedef unsigned long long ull_t;
 
+static inline int
+ERROR_INT(int err)
+{
+    errno = err;
+    return -1;
+}
+
+static inline void *
+ERROR_PTR(int err)
+{
+    errno = err;
+    return NULL;
+}
+
 /* Saturating uint64_t addition. */
 static inline uint64_t
 satadd_u64(uint64_t a, uint64_t b)
@@ -77,6 +91,19 @@ _get_bitmap_size(size_t size, size_t pgsize)
 {
     size_t nr_pages = (size / pgsize) + (size % pgsize != 0);
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+}
+
+static inline ssize_t
+get_bitmap_size(size_t region_size, size_t pgsize)
+{
+    if (pgsize == 0) {
+        return ERROR_INT(EINVAL);
+    }
+    if (region_size < pgsize) {
+        return ERROR_INT(EINVAL);
+    }
+
+    return _get_bitmap_size(region_size, pgsize);
 }
 
 #ifdef UNIT_TEST

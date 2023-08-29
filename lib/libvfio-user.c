@@ -908,7 +908,15 @@ device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 }
 
 static uint32_t
-device_feature_flags_supported(uint32_t feature) {
+device_feature_flags_supported(vfu_ctx_t *vfu_ctx, uint32_t feature)
+{
+    if (vfu_ctx->migration == NULL) {
+        /*
+         * All of the current features require migration.
+         */
+        return 0;
+    }
+
     switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
         case VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT:
@@ -926,7 +934,8 @@ device_feature_flags_supported(uint32_t feature) {
 }
 
 static bool
-is_migration_feature(uint32_t feature) {
+is_migration_feature(uint32_t feature)
+{
     switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
@@ -937,7 +946,8 @@ is_migration_feature(uint32_t feature) {
 }
 
 static bool
-is_dma_feature(uint32_t feature) {
+is_dma_feature(uint32_t feature)
+{
     switch (feature) {
         case VFIO_DEVICE_FEATURE_DMA_LOGGING_START:
         case VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP:
@@ -972,9 +982,7 @@ handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             sizeof(struct vfio_user_device_feature));
 
     struct vfio_user_device_feature *res = msg->out.iov.iov_base;
-
-    res->argsz = sizeof(struct vfio_user_device_feature)
-            + sizeof(struct vfio_user_device_feature_migration);
+    res->argsz = msg->out.iov.iov_len;
 
     switch (req->flags & VFIO_DEVICE_FEATURE_MASK) {
         case VFIO_DEVICE_FEATURE_MIGRATION: {
@@ -1016,6 +1024,9 @@ static int
 handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                               struct vfio_user_device_feature *req)
 {
+    const size_t header_size = sizeof(struct vfio_user_device_feature)
+        + sizeof(struct vfio_user_device_feature_dma_logging_report);
+
     struct vfio_user_device_feature_dma_logging_report *rep =
         (void *)req->data;
 
@@ -1024,9 +1035,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return bitmap_size;
     }
 
-    msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
-        + sizeof(struct vfio_user_device_feature_dma_logging_report)
-        + bitmap_size;
+    msg->out.iov.iov_len = header_size + bitmap_size;
 
     if (req->argsz < msg->out.iov.iov_len) {
         msg->out.iov.iov_len = 0;
@@ -1039,9 +1048,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         return ERROR_INT(ENOMEM);
     }
 
-    memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-            sizeof(struct vfio_user_device_feature) +
-            sizeof(struct vfio_user_device_feature_dma_logging_report));
+    memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base, header_size);
 
     struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
@@ -1051,9 +1058,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     assert(dma != NULL);
 
-    char * bitmap = (char *) msg->out.iov.iov_base
-        + sizeof(struct vfio_user_device_feature)
-        + sizeof(struct vfio_user_device_feature_dma_logging_report);
+    char *bitmap = (char *)msg->out.iov.iov_base + header_size;
 
     int ret = dma_controller_dirty_page_get(dma,
                                             (vfu_dma_addr_t) rep->iova,
@@ -1096,8 +1101,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (vfu_ctx->migration == NULL ||
-        msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
         return ERROR_INT(EINVAL);
     }
 
@@ -1106,7 +1110,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     uint32_t operations = req->flags & ~VFIO_DEVICE_FEATURE_MASK;
     uint32_t feature = req->flags & VFIO_DEVICE_FEATURE_MASK;
 
-    uint32_t supported_ops = device_feature_flags_supported(feature);
+    uint32_t supported_ops = device_feature_flags_supported(vfu_ctx, feature);
 
     if ((req->flags & supported_ops) != operations || supported_ops == 0) {
         return ERROR_INT(EINVAL);
