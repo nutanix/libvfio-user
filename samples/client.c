@@ -563,7 +563,7 @@ set_migration_state(int sock, uint32_t state)
     return ret;
 }
 
-static int
+static ssize_t
 read_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x6904;
@@ -584,9 +584,9 @@ read_migr_data(int sock, void *buf, size_t len)
     }
 
     pthread_mutex_lock(&mutex);
-    int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
-                                  send_iovecs, 2, NULL, 0, NULL,
-                                  res, sizeof(req) + len, NULL, 0);
+    ssize_t ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
+                                      send_iovecs, 2, NULL, 0, NULL,
+                                      res, sizeof(req) + len, NULL, 0);
     pthread_mutex_unlock(&mutex);
 
     if (ret < 0) {
@@ -596,14 +596,14 @@ read_migr_data(int sock, void *buf, size_t len)
 
     memcpy(buf, res->data, res->size);
 
-    uint32_t size = res->size;
+    ssize_t size = res->size;
 
     free(res);
 
     return size;
 }
 
-static int
+static ssize_t
 write_migr_data(int sock, void *buf, size_t len)
 {
     static int msg_id = 0x2023;
@@ -623,9 +623,9 @@ write_migr_data(int sock, void *buf, size_t len)
     };
 
     pthread_mutex_lock(&mutex);
-    int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_WRITE,
-                                  send_iovecs, 3, NULL, 0, NULL,
-                                  &req, sizeof(req), NULL, 0);
+    ssize_t ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_WRITE,
+                                      send_iovecs, 3, NULL, 0, NULL,
+                                      &req, sizeof(req), NULL, 0);
     pthread_mutex_unlock(&mutex);
 
     return ret;
@@ -793,14 +793,13 @@ handle_dma_io(int sock, struct vfio_user_dma_map *dma_regions,
 static void
 get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
 {
-    uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
-                                            sysconf(_SC_PAGESIZE));
-
     struct vfio_user_device_feature *res;
     struct vfio_user_device_feature_dma_logging_report *report;
-    
     char *bitmap;
     int ret;
+
+    uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
+                                            sysconf(_SC_PAGESIZE));
 
     size_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
 
@@ -858,11 +857,10 @@ static size_t
 do_migrate(int sock, size_t nr_iters, size_t max_iter_size,
            struct iovec *migr_iter)
 {
-    int ret;
-    bool is_more = true;
+    ssize_t ret;
     size_t i = 0;
 
-    for (i = 0; i < nr_iters && is_more; i++) {
+    for (i = 0; i < nr_iters; i++) {
 
         migr_iter[i].iov_len = max_iter_size;
         migr_iter[i].iov_base = malloc(migr_iter[i].iov_len);
@@ -881,7 +879,7 @@ do_migrate(int sock, size_t nr_iters, size_t max_iter_size,
 
         // We know we've finished transferring data when we read 0 bytes.
         if (ret == 0) {
-            is_more = false;
+            break;
         }
     }
     return i;
@@ -932,6 +930,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
              uint32_t *crcp, size_t bar1_size, size_t max_iter_size)
 {
     uint32_t device_state;
+    size_t iters;
     int ret;
     pthread_t thread;
     struct fake_guest_data fake_guest_data = {
@@ -968,10 +967,8 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    ret = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to do migration in pre-copy state");
-    }
+    iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    assert(iters == 12);
 
     printf("client: stopping fake guest thread\n");
     fake_guest_data.done = true;
@@ -990,10 +987,8 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    size_t iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to do migration in stop-and-copy state");
-    }
+    iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    assert(iters == 13);
 
     /* XXX read device state, migration must have finished now */
     device_state = VFIO_USER_DEVICE_STATE_STOP;
@@ -1011,7 +1006,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
            struct iovec *migr_iters, char *path_to_server,
            uint32_t src_crc, size_t bar1_size)
 {
-    int ret, sock;
+    ssize_t ret;
+    int sock;
     char *sock_path;
     struct stat sb;
     uint32_t device_state = VFIO_USER_DEVICE_STATE_RESUMING;
