@@ -20,9 +20,9 @@ Use Oracle's QEMU d377d483f9 from https://github.com/oracle/qemu:
 Build SPDK
 ----------
 
-Use SPDK 72a5fa139:
+Use SPDK v23.05:
 
-	git clone https://github.com/spdk/spdk
+	git clone https://github.com/spdk/spdk --branch v23.05
 	cd spdk
 	git submodule update --init --recursive
 	./configure --with-vfio-user
