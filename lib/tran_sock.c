@@ -46,7 +46,7 @@
 typedef struct {
     int listen_fd;
     int conn_fd;
-    int reverse_cmd_socket_fd;
+    int client_cmd_socket_fd;
 } tran_sock_t;
 
 int
@@ -381,7 +381,7 @@ tran_sock_init(vfu_ctx_t *vfu_ctx)
 
     ts->listen_fd = -1;
     ts->conn_fd = -1;
-    ts->reverse_cmd_socket_fd = -1;
+    ts->client_cmd_socket_fd = -1;
 
     if ((ts->listen_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
         ret = errno;
@@ -466,7 +466,7 @@ tran_sock_attach(vfu_ctx_t *vfu_ctx)
         return -1;
     }
 
-    ret = tran_negotiate(vfu_ctx, &ts->reverse_cmd_socket_fd);
+    ret = tran_negotiate(vfu_ctx, &ts->client_cmd_socket_fd);
     if (ret < 0) {
         close_safely(&ts->conn_fd);
         return -1;
@@ -624,9 +624,9 @@ tran_sock_send_msg(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 
     ts = vfu_ctx->tran_data;
 
-    /* NB. use the reverse command socket file descriptor if available. */
-    fd = ts->reverse_cmd_socket_fd != -1 ? ts->reverse_cmd_socket_fd
-                                         : ts->conn_fd;
+    /* NB. use the client command socket file descriptor if available. */
+    fd = ts->client_cmd_socket_fd != -1 ? ts->client_cmd_socket_fd
+                                        : ts->conn_fd;
     return tran_sock_msg(fd, msg_id, cmd, send_data, send_len, hdr, recv_data,
                          recv_len);
 }
@@ -642,7 +642,7 @@ tran_sock_detach(vfu_ctx_t *vfu_ctx)
 
     if (ts != NULL) {
         close_safely(&ts->conn_fd);
-        close_safely(&ts->reverse_cmd_socket_fd);
+        close_safely(&ts->client_cmd_socket_fd);
     }
 }
 

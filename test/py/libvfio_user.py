@@ -32,6 +32,7 @@
 #
 
 from types import SimpleNamespace
+import collections.abc
 import ctypes as c
 import array
 import errno
@@ -482,6 +483,7 @@ class vfio_user_dma_unmap(Structure):
 
 
 class vfio_user_dma_region_access(Structure):
+    """Payload for VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE."""
     _pack_ = 1
     _fields_ = [
         ("addr", c.c_uint64),
@@ -702,38 +704,46 @@ class Client:
 
     def __init__(self, sock=None):
         self.sock = sock
-        self.reverse_cmd_sock = None
+        self.client_cmd_socket = None
 
-    def connect(self, ctx,
-                max_data_xfer_size=VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
-                reverse_cmd_socket=False):
+    def connect(self, ctx, capabilities={}):
         self.sock = connect_sock()
 
-        json = f'''
-        {{
-          "capabilities": {{
-            "max_data_xfer_size": {max_data_xfer_size},
-            "max_msg_fds": 8,
-            "reverse_cmd_socket": {str(reverse_cmd_socket).lower()}
-          }}
-        }}
-        '''
+        effective_caps = {
+            "capabilities": {
+                "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
+                "max_msg_fds": 8,
+                "twin_socket": False,
+            },
+        }
+
+        def update(target, overrides):
+            for k, v in overrides.items():
+                if isinstance(v, collections.abc.Mapping):
+                    target[k] = target.get(k, {})
+                    update(target[k], v)
+                else:
+                    target[k] = v
+
+        update(effective_caps, capabilities)
+        caps_json = json.dumps(effective_caps)
+
         # struct vfio_user_version
-        payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                              LIBVFIO_USER_MINOR, json.encode(), b'\0')
+        payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, caps_json.encode(), b'\0')
         hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
         fds, payload = get_reply_fds(self.sock, expect=0)
-        self.reverse_cmd_sock = socket.socket(fileno=fds[0]) if fds else None
+        self.client_cmd_socket = socket.socket(fileno=fds[0]) if fds else None
         return self.sock
 
     def disconnect(self, ctx):
         self.sock.close()
         self.sock = None
-        if self.reverse_cmd_sock is not None:
-            self.reverse_cmd_sock.close()
-            self.reverse_cmd_sock = None
+        if self.client_cmd_socket is not None:
+            self.client_cmd_socket.close()
+            self.client_cmd_socket = None
 
         # notice client closed connection
         vfu_run_ctx(ctx, errno.ENOTCONN)
@@ -795,7 +805,7 @@ def msg(ctx, sock, cmd, payload=bytearray(), expect=0, fds=None,
     return get_reply(sock, expect=expect)
 
 
-def get_msg_fds(sock, expect_type, expect=0):
+def get_msg_fds(sock, expect_msg_type, expect_errno=0):
     """
     Receives a message from a socket and pulls the returned file descriptors
     out of the message.
@@ -805,7 +815,7 @@ def get_msg_fds(sock, expect_type, expect=0):
         socket.CMSG_LEN(64 * fds.itemsize))
     (msg_id, cmd, msg_size, msg_flags, errno) = struct.unpack("HHIII",
                                                               data[0:16])
-    assert errno == expect
+    assert errno == expect_errno
 
     cmsg_level, cmsg_type, packed_fd = ancillary[0] if len(ancillary) != 0 \
                                                     else (0, 0, [])
@@ -814,7 +824,7 @@ def get_msg_fds(sock, expect_type, expect=0):
         [unpacked_fd] = struct.unpack_from("i", packed_fd, offset=i)
         unpacked_fds.append(unpacked_fd)
     assert len(packed_fd)/4 == len(unpacked_fds)
-    assert (msg_flags & 0xf) == expect_type
+    assert (msg_flags & 0xf) == expect_msg_type
     return (unpacked_fds, msg_id, cmd, data[16:])
 
 

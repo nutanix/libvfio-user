@@ -209,8 +209,8 @@ client/server connection. Commands in the client-to-server direction are
 handled on the main communication socket which the client connects to, and
 replies to these commands are passed on the same socket. Commands sent in the
 other direction from the server to the client as well as their corresponding
-replies, are exchanged on a separate socket, which is set up during negotiation
-(AF_UNIX servers just pass the file descriptor).
+replies can optionally be passed across a separate socket, which is set up
+during negotiation (AF_UNIX servers just pass the file descriptor).
 
 Using separate sockets for each command channel avoids introducing an
 artificial point of synchronization between the channels. This simplifies
@@ -524,15 +524,16 @@ Capabilities:
 |                    |         | then migration is not supported by the        |
 |                    |         | sender.                                       |
 +--------------------+---------+-----------------------------------------------+
-| reverse_cmd_socket | boolean | Indicates whether the client is capable of    |
-|                    |         | using a separate socket as the channel for    |
-|                    |         | server-to-client commands. If specified and   |
-|                    |         | the server supports it, it will pass a file   |
-|                    |         | descriptor along with its reply. This is      |
-|                    |         | enabled by request only for the benefit of    |
-|                    |         | clients that implement older drafts of this   |
-|                    |         | specification which did  not include          |
-|                    |         | independent sockets per channel.              |
+| twin_socket        | boolean | Indicates whether the client wants to use a   |
+|                    |         | separate channel for server-to-client         |
+|                    |         | commands. If specified and the server         |
+|                    |         | supports it, it will include the file         |
+|                    |         | descriptor for the client end of a separate   |
+|                    |         | socket pair along with its reply. Some server |
+|                    |         | implementations may not support this, but it  |
+|                    |         | is strongly recommended for servers which do  |
+|                    |         | send server-to-client commands to implement   |
+|                    |         | twin-socket support.                          |
 +--------------------+---------+-----------------------------------------------+
 
 The migration capability contains the following name/value pairs:
@@ -548,9 +549,11 @@ Reply
 ^^^^^
 
 The same message format is used in the server's reply with the semantics
-described above. In case the client specified ``reverse_cmd_socket`` in its
-capabilities, the server may pass a file descriptor to use for the
-server-to-client command channel.
+described above. In case the client set ``twin_socket`` to true in its
+capabilities, the server may include a file descriptor to use for the
+server-to-client command channel in the reply. The index of the file descriptor
+in the ancillary data of the reply is given by the ``twin_socket`` capability
+field in the reply.
 
 ``VFIO_USER_DMA_MAP``
 ---------------------

@@ -46,13 +46,13 @@ class DMARegionHandler:
     takes place on a separate thread so as to not block the test code.
     """
 
-    def handle_requests(sock, pipe, buf, lock, addr, error_no):
+    def __handle_requests(sock, pipe, buf, lock, addr, error_no):
         while True:
             (ready, _, _) = select.select([sock, pipe], [], [])
             if pipe in ready:
                 break
 
-            # Read a command from the socket and service it.
+# Read a command from the socket and service it.
             _, msg_id, cmd, payload = get_msg_fds(sock,
                                                   VFIO_USER_F_TYPE_COMMAND)
             assert cmd in [VFIO_USER_DMA_READ, VFIO_USER_DMA_WRITE]
@@ -88,7 +88,7 @@ class DMARegionHandler:
         # make sure it gets closed only when terminating the thread.
         sock = socket.socket(fileno=os.dup(sock.fileno()))
         thread = threading.Thread(
-            target=DMARegionHandler.handle_requests,
+            target=DMARegionHandler.__handle_requests,
             args=[sock, pipe_r, self.data, self.data_lock, addr, error_no])
         thread.start()
 
@@ -106,8 +106,13 @@ def setup_function(function):
     global ctx, client, dma_handler
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
-    client = connect_client(ctx, max_data_xfer_size=PAGE_SIZE,
-                            reverse_cmd_socket=True)
+    caps = {
+        "capabilities": {
+            "max_data_xfer_size": PAGE_SIZE,
+            "twin_socket": True,
+        }
+    }
+    client = connect_client(ctx, caps)
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
                                 flags=(VFIO_USER_F_DMA_REGION_READ
@@ -118,7 +123,7 @@ def setup_function(function):
 
     msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
 
-    dma_handler = DMARegionHandler(client.reverse_cmd_sock, payload.addr,
+    dma_handler = DMARegionHandler(client.client_cmd_socket, payload.addr,
                                    payload.size)
 
 
@@ -166,8 +171,8 @@ def test_dma_read_write_error():
     # Reinitialize the handler to return EIO.
     global dma_handler
     dma_handler.shutdown()
-    dma_handler = DMARegionHandler(client.reverse_cmd_sock, MAP_ADDR, MAP_SIZE,
-                                   error_no=errno.EIO)
+    dma_handler = DMARegionHandler(client.client_cmd_socket, MAP_ADDR,
+                                   MAP_SIZE, error_no=errno.EIO)
 
     ret, sg = vfu_addr_to_sgl(ctx,
                               dma_addr=MAP_ADDR + 0x1000,

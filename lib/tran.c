@@ -56,7 +56,7 @@
  *         "migration": {
  *             "pgsize": 4096
  *         }
- *         "reverse_cmd_socket": true,
+ *         "twin_socket": true,
  *     }
  * }
  *
@@ -66,7 +66,7 @@
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
                         size_t *client_max_data_xfer_sizep, size_t *pgsizep,
-                        bool *reverse_cmd_socket_supportedp)
+                        bool *twin_socket_supportedp)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -132,13 +132,13 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
         }
     }
 
-    if (json_object_object_get_ex(jo_caps, "reverse_cmd_socket", &jo)) {
+    if (json_object_object_get_ex(jo_caps, "twin_socket", &jo)) {
         if (json_object_get_type(jo) != json_type_boolean) {
             goto out;
         }
 
         errno = 0;
-        *reverse_cmd_socket_supportedp = json_object_get_boolean(jo);
+        *twin_socket_supportedp = json_object_get_boolean(jo);
 
         if (errno != 0) {
             goto out;
@@ -159,7 +159,7 @@ out:
 static int
 recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
              struct vfio_user_version **versionp,
-             bool *reverse_cmd_socket_supportedp)
+             bool *twin_socket_supportedp)
 {
     struct vfio_user_version *cversion = NULL;
     vfu_msg_t msg = { { 0 } };
@@ -224,7 +224,7 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
                                       &vfu_ctx->client_max_data_xfer_size,
-                                      &pgsize, reverse_cmd_socket_supportedp);
+                                      &pgsize, twin_socket_supportedp);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
@@ -284,14 +284,13 @@ out:
 
 static int
 send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
-             struct vfio_user_version *cversion, int reverse_cmd_socket_fd)
+             struct vfio_user_version *cversion, int client_cmd_socket_fd)
 {
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
     char server_caps[1024];
     vfu_msg_t msg = { { 0 } };
     int slen;
-    int ret;
 
     if (vfu_ctx->migration == NULL) {
         slen = snprintf(server_caps, sizeof(server_caps),
@@ -330,55 +329,54 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
     msg.hdr.msg_id = msg_id;
     msg.out_iovecs = iovecs;
     msg.nr_out_iovecs = 2;
-    if (reverse_cmd_socket_fd != -1) {
-        msg.out.fds = &reverse_cmd_socket_fd;
+    if (client_cmd_socket_fd != -1) {
+        msg.out.fds = &client_cmd_socket_fd;
         msg.out.nr_fds = 1;
     }
 
-    ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
-
-    return ret;
+    return vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
 }
 
 int
-tran_negotiate(vfu_ctx_t *vfu_ctx, int *reverse_cmd_socket_fdp)
+tran_negotiate(vfu_ctx_t *vfu_ctx, int *client_cmd_socket_fdp)
 {
     struct vfio_user_version *client_version = NULL;
-    int reverse_cmd_socket_fds[2] = { -1, -1 };
-    bool reverse_cmd_socket_supported = false;
+    int client_cmd_socket_fds[2] = { -1, -1 };
+    bool twin_socket_supported = false;
     uint16_t msg_id = 0x0bad;
     int ret;
 
     ret = recv_version(vfu_ctx, &msg_id, &client_version,
-                       &reverse_cmd_socket_supported);
+                       &twin_socket_supported);
 
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to recv version: %m");
         return ret;
     }
 
-    if (reverse_cmd_socket_supported && reverse_cmd_socket_fdp != NULL &&
+    if (twin_socket_supported && client_cmd_socket_fdp != NULL &&
         vfu_ctx->client_max_fds > 0) {
-        if (socketpair(AF_UNIX, SOCK_STREAM, 0, reverse_cmd_socket_fds) == -1) {
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, client_cmd_socket_fds) == -1) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to create cmd socket: %m");
             return -1;
         }
     }
 
     ret = send_version(vfu_ctx, msg_id, client_version,
-                       reverse_cmd_socket_fds[0]);
+                       client_cmd_socket_fds[0]);
 
     free(client_version);
 
     /*
-     * The remote end of the reverse cmd socket pair is no longer needed, the
-     * local one only if successful.
+     * The remote end of the client command socket pair is no longer needed.
+     * The local end is kept only if passed to the caller on successful return.
      */
-    close_safely(&reverse_cmd_socket_fds[0]);
+    close_safely(&client_cmd_socket_fds[0]);
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to send version: %m");
-        close_safely(&reverse_cmd_socket_fds[1]);
-    } else if (reverse_cmd_socket_fdp != NULL) {
-        *reverse_cmd_socket_fdp = reverse_cmd_socket_fds[1];
+        close_safely(&client_cmd_socket_fds[1]);
+    } else if (client_cmd_socket_fdp != NULL) {
+        *client_cmd_socket_fdp = client_cmd_socket_fds[1];
     }
 
     return ret;
