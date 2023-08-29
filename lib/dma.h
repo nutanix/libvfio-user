@@ -135,9 +135,6 @@ MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
 MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
              dma_memory_region_t *region);
 
-ssize_t
-get_bitmap_size(size_t region_size, size_t pgsize);
-
 // Helper for dma_addr_to_sgl() slow path.
 int
 _dma_addr_sg_split(const dma_controller_t *dma,
@@ -389,6 +386,15 @@ int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap);
+
+void
+dirty_page_get_simple(dma_memory_region_t *region, char *bitmap,
+                      size_t bitmap_size);
+void
+dirty_page_get_complex(dma_memory_region_t *region, char *bitmap,
+                      size_t bitmap_size, size_t converted_bitmap_size,
+                      size_t pgsize, size_t converted_pgsize);
+
 bool
 dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg);
 
