@@ -69,15 +69,15 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
     memset(&msg, 0, sizeof(msg));
 
     if (is_reply) {
-        hdr.flags.type = VFIO_USER_F_TYPE_REPLY;
+        hdr.flags |= VFIO_USER_F_TYPE_REPLY;
         hdr.cmd = cmd;
         if (err != 0) {
-            hdr.flags.error = 1U;
+            hdr.flags |= VFIO_USER_F_ERROR;
             hdr.error_no = err;
         }
     } else {
         hdr.cmd = cmd;
-        hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
+        hdr.flags |= VFIO_USER_F_TYPE_COMMAND;
     }
 
     iovecs[0].iov_base = &hdr;
@@ -211,18 +211,18 @@ tran_sock_recv_fds(int sock, struct vfio_user_header *hdr, bool is_reply,
             return ERROR_INT(EPROTO);
         }
 
-        if (hdr->flags.type != VFIO_USER_F_TYPE_REPLY) {
+        if ((hdr->flags & VFIO_USER_F_TYPE) != VFIO_USER_F_TYPE_REPLY) {
             return ERROR_INT(EINVAL);
         }
 
-        if (hdr->flags.error == 1U) {
+        if (hdr->flags & VFIO_USER_F_ERROR) {
             if (hdr->error_no <= 0) {
                 hdr->error_no = EINVAL;
             }
             return ERROR_INT(hdr->error_no);
         }
     } else {
-        if (hdr->flags.type != VFIO_USER_F_TYPE_COMMAND) {
+        if ((hdr->flags & VFIO_USER_F_TYPE) != VFIO_USER_F_TYPE_COMMAND) {
             return ERROR_INT(EINVAL);
         }
         if (msg_id != NULL) {
