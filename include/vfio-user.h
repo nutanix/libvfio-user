@@ -205,11 +205,13 @@ typedef struct vfio_user_region_io_fds_reply {
     } sub_regions[];
 } __attribute__((packed)) vfio_user_region_io_fds_reply_t;
 
+/* Analogous to struct vfio_device_feature_dma_logging_range */
 struct vfio_user_device_feature_dma_logging_range {
     uint64_t iova;
     uint64_t length;
 } __attribute__((packed));
 
+/* Analogous to struct vfio_device_feature_dma_logging_control */
 struct vfio_user_device_feature_dma_logging_control {
     uint64_t page_size;
     uint32_t num_ranges;
@@ -217,6 +219,7 @@ struct vfio_user_device_feature_dma_logging_control {
     struct vfio_user_device_feature_dma_logging_range ranges[];
 } __attribute__((packed));
 
+/* Analogous to struct vfio_device_feature_dma_logging_report */
 struct vfio_user_device_feature_dma_logging_report {
     uint64_t iova;
     uint64_t length;
@@ -230,7 +233,7 @@ struct vfio_user_device_feature_dma_logging_report {
 #define VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT 8
 #endif
 
-/* Analogous to vfio_device_feature */
+/* Analogous to struct vfio_device_feature */
 struct vfio_user_device_feature {
 	uint32_t	argsz;
 	uint32_t	flags;
@@ -243,13 +246,14 @@ struct vfio_user_device_feature {
 	uint8_t  	data[];
 } __attribute__((packed));
 
-/* Analogous to vfio_device_feature_migration */
+/* Analogous to struct vfio_device_feature_migration */
 struct vfio_user_device_feature_migration {
     uint64_t flags;
 #ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_MIGRATION_STOP_COPY    (1 << 0)
 #define VFIO_MIGRATION_P2P          (1 << 1)
 #endif
+/* PRE_COPY was added in a later kernel version */
 #ifndef VFIO_MIGRATION_PRE_COPY
 #define VFIO_MIGRATION_PRE_COPY     (1 << 2)
 #endif
@@ -260,7 +264,7 @@ struct vfio_user_device_feature_migration {
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_migration size");
 
-/* Analogous to vfio_device_feature_mig_state */
+/* Analogous to struct vfio_device_feature_mig_state */
 struct vfio_user_device_feature_mig_state {
     uint32_t    device_state;
     uint32_t    data_fd;
@@ -271,16 +275,16 @@ struct vfio_user_device_feature_mig_state {
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_mig_state size");
 
-/* Analogous to vfio_device_mig_state */
+/* Analogous to enum vfio_device_mig_state */
 enum vfio_user_device_mig_state {
-	VFIO_USER_DEVICE_STATE_ERROR = 0,
-	VFIO_USER_DEVICE_STATE_STOP = 1,
-	VFIO_USER_DEVICE_STATE_RUNNING = 2,
-	VFIO_USER_DEVICE_STATE_STOP_COPY = 3,
-	VFIO_USER_DEVICE_STATE_RESUMING = 4,
-	VFIO_USER_DEVICE_STATE_RUNNING_P2P = 5,
-	VFIO_USER_DEVICE_STATE_PRE_COPY = 6,
-	VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7,
+    VFIO_USER_DEVICE_STATE_ERROR = 0,
+    VFIO_USER_DEVICE_STATE_STOP = 1,
+    VFIO_USER_DEVICE_STATE_RUNNING = 2,
+    VFIO_USER_DEVICE_STATE_STOP_COPY = 3,
+    VFIO_USER_DEVICE_STATE_RESUMING = 4,
+    VFIO_USER_DEVICE_STATE_RUNNING_P2P = 5,
+    VFIO_USER_DEVICE_STATE_PRE_COPY = 6,
+    VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7,
     VFIO_USER_DEVICE_NUM_STATES = 8,
 };
 

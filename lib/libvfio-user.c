@@ -894,7 +894,7 @@ static int
 device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
-
+    
     ret = call_reset_cb(vfu_ctx, reason);
     if (ret < 0) {
         return ret;

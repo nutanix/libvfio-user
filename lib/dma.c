@@ -572,7 +572,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * If dirty page logging is not enabled, the requested page size is zero,
      * or the requested page size is not a power of two, return an error.
      */
-    if (dma->dirty_pgsize == 0 || pgsize == 0 || (pgsize & (pgsize - 1)) != 0) {
+    if (dma->dirty_pgsize == 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "dirty page logging not enabled");
+        return ERROR_INT(EINVAL);
+    }
+    if (pgsize == 0 || (pgsize & (pgsize - 1)) != 0) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
         return ERROR_INT(EINVAL);
     }
@@ -607,11 +611,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize == dma->dirty_pgsize) {
-        dirty_page_get_simple(region, bitmap, bitmap_size);
+        dirty_page_get_equal_pgsize(region, bitmap, bitmap_size);
     } else {
-        dirty_page_get_complex(region, bitmap, bitmap_size,
-                               converted_bitmap_size, pgsize,
-                               dma->dirty_pgsize);
+        dirty_page_get_change_pgsize(region, bitmap, bitmap_size,
+                                     converted_bitmap_size, pgsize,
+                                     dma->dirty_pgsize);
     }
 
 #ifdef DEBUG
@@ -622,7 +626,7 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 }
 
 void
-dirty_page_get_simple(dma_memory_region_t *region, char *bitmap,
+dirty_page_get_equal_pgsize(dma_memory_region_t *region, char *bitmap,
                       size_t bitmap_size)
 {
     for (size_t i = 0; i < bitmap_size; i++) {
@@ -650,9 +654,9 @@ dirty_page_get_simple(dma_memory_region_t *region, char *bitmap,
 }
 
 void
-dirty_page_get_complex(dma_memory_region_t *region, char *bitmap,
-                      size_t bitmap_size, size_t converted_bitmap_size,
-                      size_t pgsize, size_t converted_pgsize)
+dirty_page_get_change_pgsize(dma_memory_region_t *region, char *bitmap,
+                             size_t bitmap_size, size_t converted_bitmap_size,
+                             size_t pgsize, size_t converted_pgsize)
 {
     uint8_t bit = 0;
     size_t i;
@@ -663,7 +667,7 @@ dirty_page_get_complex(dma_memory_region_t *region, char *bitmap,
         converted_pgsize / pgsize : pgsize / converted_pgsize;
 
     for (i = 0; i < bitmap_size &&
-         bit / 8 < (size_t)converted_bitmap_size; i++) {
+         bit / CHAR_BIT < (size_t)converted_bitmap_size; i++) {
         uint8_t val = region->dirty_bitmap[i];
         uint8_t out = 0;
 
@@ -685,7 +689,11 @@ dirty_page_get_complex(dma_memory_region_t *region, char *bitmap,
                                 &out, __ATOMIC_SEQ_CST);
         }
 
-        for (j = 0; j < 8; j++) {
+        /*
+         * Iterate through the bits of the byte, repeating or combining bits
+         * to reach the desired page size.
+         */
+        for (j = 0; j < CHAR_BIT; j++) {
             uint8_t b = (out >> j) & 1;
 
             if (extend) {
