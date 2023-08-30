@@ -131,7 +131,7 @@ tran_pipe_recv(int fd, struct vfio_user_header *hdr, bool is_reply,
             return ERROR_INT(EPROTO);
         }
 
-        if ((hdr->flags & VFIO_USER_F_TYPE) != VFIO_USER_F_TYPE_REPLY) {
+        if ((hdr->flags & VFIO_USER_F_TYPE_MASK) != VFIO_USER_F_TYPE_REPLY) {
             return ERROR_INT(EINVAL);
         }
 
@@ -142,7 +142,7 @@ tran_pipe_recv(int fd, struct vfio_user_header *hdr, bool is_reply,
             return ERROR_INT(hdr->error_no);
         }
     } else {
-        if ((hdr->flags & VFIO_USER_F_TYPE) != VFIO_USER_F_TYPE_COMMAND) {
+        if ((hdr->flags & VFIO_USER_F_TYPE_MASK) != VFIO_USER_F_TYPE_COMMAND) {
             return ERROR_INT(EINVAL);
         }
         if (msg_id != NULL) {

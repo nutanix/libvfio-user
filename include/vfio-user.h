@@ -82,11 +82,11 @@ struct vfio_user_header {
     uint16_t    cmd;
     uint32_t    msg_size;
     uint32_t    flags;
-#define VFIO_USER_F_TYPE         0xf
-#define VFIO_USER_F_TYPE_COMMAND 0x0
-#define VFIO_USER_F_TYPE_REPLY   0x1
-#define VFIO_USER_F_NO_REPLY     0x10
-#define VFIO_USER_F_ERROR        0x20
+#define VFIO_USER_F_TYPE_MASK       (0xf)
+#define VFIO_USER_F_TYPE_COMMAND    (0x0)
+#define VFIO_USER_F_TYPE_REPLY      (0x1)
+#define VFIO_USER_F_NO_REPLY        (0x10)
+#define VFIO_USER_F_ERROR           (0x20)
     uint32_t    error_no;
 } __attribute__((packed));
 
