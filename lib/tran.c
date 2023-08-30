@@ -266,9 +266,9 @@ out:
 }
 
 /*
- * A json_object_object_add wrapper that takes ownership of *val unconditionally:
- * Resets *val to NULL and makes sure *val gets dropped, even when an error
- * occurs. Assumes key is new and a constant.
+ * A json_object_object_add wrapper that takes ownership of *val
+ * unconditionally: Resets *val to NULL and makes sure *val gets dropped, even
+ * when an error occurs. Assumes key is new and a constant.
  */
 static int
 json_add(struct json_object *jso, const char *key, struct json_object **val)
@@ -291,55 +291,72 @@ json_add(struct json_object *jso, const char *key, struct json_object **val)
     return ret;
 }
 
-static json_object* create_caps_object(vfu_ctx_t *vfu_ctx) {
+static int
+json_add_uint64(struct json_object *jso, const char *key, uint64_t value)
+{
+    struct json_object *jo_tmp = NULL;
+
+    /*
+     * Note that newer versions of the library have a json_object_new_uint64
+     * function, but the int64 one is available also in older versions that we
+     * support, and our values don't require the full range anyways.
+     */
+    jo_tmp = json_object_new_int64(value);
+    return json_add(jso, key, &jo_tmp);
+}
+
+/*
+ * Constructs the server's capabilities JSON string. The returned pointer must
+ * be freed by the caller.
+ */
+static char *
+format_server_capabilities(vfu_ctx_t *vfu_ctx)
+{
     struct json_object *jo_migration = NULL;
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
-    struct json_object *jo_tmp = NULL;
+    char *caps_str = NULL;
 
     if ((jo_caps = json_object_new_object()) == NULL) {
-        goto error;
+        goto out;
     }
 
-    if ((jo_tmp = json_object_new_int64(SERVER_MAX_FDS)) == NULL ||
-        json_add(jo_caps, "max_msg_fds", &jo_tmp)) {
-        goto error;
+    if (json_add_uint64(jo_caps, "max_msg_fds", SERVER_MAX_FDS) < 0) {
+        goto out;
     }
 
-    if ((jo_tmp = json_object_new_int64(SERVER_MAX_DATA_XFER_SIZE)) == NULL ||
-        json_add(jo_caps, "max_data_xfer_size", &jo_tmp) < 0) {
-        goto error;
+    if (json_add_uint64(jo_caps, "max_data_xfer_size",
+                        SERVER_MAX_DATA_XFER_SIZE) < 0) {
+        goto out;
     }
 
     if (vfu_ctx->migration != NULL) {
         if ((jo_migration = json_object_new_object()) == NULL) {
-            goto error;
+            goto out;
         }
 
-        int64_t pgsize = (int64_t)migration_get_pgsize(vfu_ctx->migration);
-        if ((jo_tmp = json_object_new_int64(pgsize)) == NULL ||
-            json_add(jo_migration, "pgsize", &jo_tmp) < 0) {
-            goto error;
+        size_t pgsize = migration_get_pgsize(vfu_ctx->migration);
+        if (json_add_uint64(jo_migration, "pgsize", pgsize) < 0) {
+            goto out;
         }
 
         if (json_add(jo_caps, "migration", &jo_migration) < 0) {
-            goto error;
+            goto out;
         }
     }
 
     if ((jo_top = json_object_new_object()) == NULL ||
         json_add(jo_top, "capabilities", &jo_caps) < 0) {
-        goto error;
+        goto out;
     }
 
-    return jo_top;
+    caps_str = strdup(json_object_to_json_string(jo_top));
 
-error:
-    json_object_put(jo_tmp);
+out:
     json_object_put(jo_migration);
     json_object_put(jo_caps);
     json_object_put(jo_top);
-    return NULL;
+    return caps_str;
 }
 
 static int
@@ -348,13 +365,11 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 {
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
-    struct json_object* jo_caps = NULL;
-    const char* server_caps = NULL;
     vfu_msg_t msg = { { 0 } };
+    char *server_caps = NULL;
     int ret;
 
-    if ((jo_caps = create_caps_object(vfu_ctx)) == NULL ||
-        (server_caps = json_object_to_json_string(jo_caps)) == NULL) {
+    if ((server_caps = format_server_capabilities(vfu_ctx)) == NULL) {
         errno = ENOMEM;
         return -1;
     }
@@ -366,7 +381,7 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
 
     iovecs[0].iov_base = &sversion;
     iovecs[0].iov_len = sizeof(sversion);
-    iovecs[1].iov_base = (void *)server_caps;
+    iovecs[1].iov_base = server_caps;
     /* Include the NUL. */
     iovecs[1].iov_len = strlen(server_caps) + 1;
 
@@ -376,7 +391,7 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
     msg.nr_out_iovecs = 2;
 
     ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
-    json_object_put(jo_caps);
+    free(server_caps);
     return ret;
 }
 
