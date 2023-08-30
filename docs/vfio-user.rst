@@ -508,33 +508,25 @@ format:
 
 Capabilities:
 
-+--------------------+---------+-----------------------------------------------+
-| Name               | Type    | Description                                   |
-+====================+=========+===============================================+
-| max_msg_fds        | number  | Maximum number of file descriptors that can   |
-|                    |         | be received by the sender in one message.     |
-|                    |         | Optional. If not specified then the receiver  |
-|                    |         | must assume a value of ``1``.                 |
-+--------------------+---------+-----------------------------------------------+
-| max_data_xfer_size | number  | Maximum ``count`` for data transfer messages; |
-|                    |         | see `Read and Write Operations`_. Optional,   |
-|                    |         | with a default value of 1048576 bytes.        |
-+--------------------+---------+-----------------------------------------------+
-| migration          | object  | Migration capability parameters. If missing   |
-|                    |         | then migration is not supported by the        |
-|                    |         | sender.                                       |
-+--------------------+---------+-----------------------------------------------+
-| twin_socket        | boolean | Indicates whether the client wants to use a   |
-|                    |         | separate channel for server-to-client         |
-|                    |         | commands. If specified and the server         |
-|                    |         | supports it, it will include the file         |
-|                    |         | descriptor for the client end of a separate   |
-|                    |         | socket pair along with its reply. Some server |
-|                    |         | implementations may not support this, but it  |
-|                    |         | is strongly recommended for servers which do  |
-|                    |         | send server-to-client commands to implement   |
-|                    |         | twin-socket support.                          |
-+--------------------+---------+-----------------------------------------------+
++--------------------+--------+------------------------------------------------+
+| Name               | Type   | Description                                    |
++====================+========+================================================+
+| max_msg_fds        | number | Maximum number of file descriptors that can be |
+|                    |        | received by the sender in one message.         |
+|                    |        | Optional. If not specified then the receiver   |
+|                    |        | must assume a value of ``1``.                  |
++--------------------+--------+------------------------------------------------+
+| max_data_xfer_size | number | Maximum ``count`` for data transfer messages;  |
+|                    |        | see `Read and Write Operations`_. Optional,    |
+|                    |        | with a default value of 1048576 bytes.         |
++--------------------+--------+------------------------------------------------+
+| migration          | object | Migration capability parameters. If missing    |
+|                    |        | then migration is not supported by the sender. |
++--------------------+--------+------------------------------------------------+
+| twin_socket        | object | Parameters for twin-socket mode, which handles |
+|                    |        | server-to-client commands and their replies on |
+|                    |        | a separate socket. Optional.                   |
++--------------------+--------+------------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
@@ -545,15 +537,43 @@ The migration capability contains the following name/value pairs:
 |        |        | between the client and the server is used.    |
 +--------+--------+-----------------------------------------------+
 
+The ``twin_socket`` capability object holds these name/value pairs:
+
++----------+---------+--------------------------------------------------------+
+| Name     | Type    | Description                                            |
++==========+=========+========================================================+
+| enable   | boolean | Indicates whether the client wants to enable           |
+|          |         | twin-socket mode. Optional, defaults to false, only    |
+|          |         | valid in the request message.                          |
++----------+---------+--------------------------------------------------------+
+| fd_index | number  | Specifies an index in the file descriptor array        |
+|          |         | included with the message. The designated file         |
+|          |         | descriptor is a socket which is to be used for the     |
+|          |         | server-to-client command channel. Optional, only valid |
+|          |         | in the reply message.                                  |
++----------+---------+--------------------------------------------------------+
+
 Reply
 ^^^^^
 
 The same message format is used in the server's reply with the semantics
-described above. In case the client set ``twin_socket`` to true in its
-capabilities, the server may include a file descriptor to use for the
-server-to-client command channel in the reply. The index of the file descriptor
-in the ancillary data of the reply is given by the ``twin_socket`` capability
-field in the reply.
+described above.
+
+If and only if the client has requested to enable twin-socket mode by setting
+``twin_socket.enable`` to true in its capabilities, the server may optionally
+set up a separate command channel for server-to-client commands and their
+replies. The server enables twin-socket mode as follows:
+
+* Create a fresh socket pair.
+* Keep the server end of the socket pair and pass the client end in the file
+  descriptor array included with the reply message.
+* Indicate the index in the file descriptor array by the
+  ``twin_socket.fd_index`` capability field in the reply, so the client can
+  identify the correct file descriptor to use.
+
+The twin-socket feature is optional, so some servers may not support it.
+However, for server implementations that do send server-to-client commands it is
+strongly recommended to implement twin-socket support.
 
 ``VFIO_USER_DMA_MAP``
 ---------------------
@@ -1436,7 +1456,8 @@ Reply
 
 If the client has not shared mappable memory, the server can use this message to
 read from guest memory. This message and its reply are passed over the separate
-server-to-client socket if negotiated at connection setup.
+server-to-client socket if twin-socket mode has been negotiated during
+connection setup.
 
 Request
 ^^^^^^^
@@ -1475,7 +1496,8 @@ Reply
 
 If the client has not shared mappable memory, the server can use this message to
 write to guest memory. This message and its reply are passed over the separate
-server-to-client socket if negotiated at connection setup.
+server-to-client socket if twin-socket mode has been negotiated during
+connection setup.
 
 Request
 ^^^^^^^
