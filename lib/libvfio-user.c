@@ -962,8 +962,10 @@ static int
 handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                     struct vfio_user_device_feature *req)
 {
-    // all supported outgoing data is currently the same size as 
-    //   vfio_user_device_feature_migration
+    /* 
+     * All supported outgoing data is currently the same size as 
+     * struct vfio_user_device_feature_migration.
+     */
     msg->out.iov.iov_len = sizeof(struct vfio_user_device_feature)
         + sizeof(struct vfio_user_device_feature_migration);
 
@@ -1005,7 +1007,10 @@ handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             return 0;
         }
         
-        default: return ERROR_INT(EINVAL);
+        default:
+            vfu_log(vfu_ctx, LOG_ERR, "invalid flags for migration GET (%d)",
+                    req->flags);
+            return ERROR_INT(EINVAL);
     }
 }
 
@@ -1030,6 +1035,12 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     struct vfio_user_device_feature_dma_logging_report *rep =
         (void *)req->data;
 
+    dma_controller_t *dma = vfu_ctx->dma;
+
+    if (dma == NULL) {
+        vfu_log(vfu_ctx, LOG_ERR, "DMA not enabled for DMA device feature");
+    }
+
     ssize_t bitmap_size = get_bitmap_size(rep->length, rep->page_size);
     if (bitmap_size < 0) {
         return bitmap_size;
@@ -1053,10 +1064,6 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     struct vfio_user_device_feature *res = msg->out.iov.iov_base;
 
     res->argsz = msg->out.iov.iov_len;
-
-    dma_controller_t *dma = vfu_ctx->dma;
-
-    assert(dma != NULL);
 
     char *bitmap = (char *)msg->out.iov.iov_base + header_size;
 
@@ -1087,12 +1094,12 @@ handle_dma_device_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature,
             (void *)res->data;
         return dma_controller_dirty_page_logging_start(dma,
                                                        ctl->page_size);
-    } else {
-        assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP);
-
-        dma_controller_dirty_page_logging_stop(dma);
-        return 0;
     }
+
+    assert(feature == VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP);
+
+    dma_controller_dirty_page_logging_stop(dma);
+    return 0;
 }
 
 static int
@@ -1102,6 +1109,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     if (msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
+        vfu_log(vfu_ctx, LOG_ERR, "message too short");
         return ERROR_INT(EINVAL);
     }
 
@@ -1113,65 +1121,90 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     uint32_t supported_ops = device_feature_flags_supported(vfu_ctx, feature);
 
     if ((req->flags & supported_ops) != operations || supported_ops == 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported operation(s)");
         return ERROR_INT(EINVAL);
     }
 
     ssize_t ret;
 
-    if (req->flags & VFIO_DEVICE_FEATURE_PROBE) {
-        msg->out.iov.iov_len = msg->in.iov.iov_len;
-
-        if (req->argsz < msg->out.iov.iov_len) {
-            msg->out.iov.iov_len = 0;
-            return ERROR_INT(EINVAL);
+    switch (operations) {
+        case VFIO_DEVICE_FEATURE_GET: {
+            if (is_migration_feature(feature)) {
+                ret = handle_migration_device_feature_get(vfu_ctx, msg, req);
+            } else if (is_dma_feature(feature)) {
+                ret = handle_dma_device_feature_get(vfu_ctx, msg, req);
+            } else {
+                vfu_log(vfu_ctx, LOG_ERR, "unsupported feature %d for GET",
+                        feature);
+                return ERROR_INT(EINVAL);
+            }
+            break;
         }
 
-        msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
+        case VFIO_DEVICE_FEATURE_SET: {
+            msg->out.iov.iov_len = msg->in.iov.iov_len;
 
-        if (msg->out.iov.iov_base == NULL) {
-            return ERROR_INT(ENOMEM);
+            if (req->argsz < msg->out.iov.iov_len) {
+                vfu_log(vfu_ctx, LOG_ERR, "bad argsz (%d<%ld)", req->argsz,
+                        msg->out.iov.iov_len);
+                msg->out.iov.iov_len = 0;
+                return ERROR_INT(EINVAL);
+            }
+
+            msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
+
+            if (msg->out.iov.iov_base == NULL) {
+                return ERROR_INT(ENOMEM);
+            }
+
+            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+                msg->out.iov.iov_len);
+
+            struct vfio_user_device_feature *res = msg->out.iov.iov_base;
+
+            if (is_migration_feature(feature)) {
+                ret = handle_migration_device_feature_set(vfu_ctx, feature, res);
+            } else if (is_dma_feature(feature)) {
+                ret = handle_dma_device_feature_set(vfu_ctx, feature, res);
+            } else {
+                vfu_log(vfu_ctx, LOG_ERR, "unsupported feature %d for SET",
+                        feature);
+                return ERROR_INT(EINVAL);
+            }
+            break;
         }
 
-        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-               msg->out.iov.iov_len);
+        default: {
+            /*
+             * PROBE allows GET/SET to also be set (to specify which operations
+             * we want to probe the feature for), so we only check that PROBE
+             * is set, not that it is the only operation flag set.
+             */
+            if (!(operations & VFIO_DEVICE_FEATURE_PROBE)) {
+                vfu_log(vfu_ctx, LOG_ERR, "no operation specified");
+                return ERROR_INT(EINVAL);
+            }
 
-        ret = 0;
-    } else if (req->flags & VFIO_DEVICE_FEATURE_GET) {
-        if (is_migration_feature(feature)) {
-            ret = handle_migration_device_feature_get(vfu_ctx, msg, req);
-        } else if (is_dma_feature(feature)) {
-            ret = handle_dma_device_feature_get(vfu_ctx, msg, req);
-        } else {
-            return ERROR_INT(EINVAL);
+            msg->out.iov.iov_len = msg->in.iov.iov_len;
+
+            if (req->argsz < msg->out.iov.iov_len) {
+                vfu_log(vfu_ctx, LOG_ERR, "bad argsz (%d<%ld)", req->argsz,
+                        msg->out.iov.iov_len);
+                msg->out.iov.iov_len = 0;
+                return ERROR_INT(EINVAL);
+            }
+
+            msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
+
+            if (msg->out.iov.iov_base == NULL) {
+                return ERROR_INT(ENOMEM);
+            }
+
+            memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
+                msg->out.iov.iov_len);
+
+            ret = 0;
         }
-    } else if (req->flags & VFIO_DEVICE_FEATURE_SET) {
-        msg->out.iov.iov_len = msg->in.iov.iov_len;
-
-        if (req->argsz < msg->out.iov.iov_len) {
-            msg->out.iov.iov_len = 0;
-            return ERROR_INT(EINVAL);
-        }
-
-        msg->out.iov.iov_base = malloc(msg->out.iov.iov_len);
-
-        if (msg->out.iov.iov_base == NULL) {
-            return ERROR_INT(ENOMEM);
-        }
-
-        memcpy(msg->out.iov.iov_base, msg->in.iov.iov_base,
-               msg->out.iov.iov_len);
-
-        struct vfio_user_device_feature *res = msg->out.iov.iov_base;
-
-        if (is_migration_feature(feature)) {
-            ret = handle_migration_device_feature_set(vfu_ctx, feature, res);
-        } else if (is_dma_feature(feature)) {
-            ret = handle_dma_device_feature_set(vfu_ctx, feature, res);
-        } else {
-            return ERROR_INT(EINVAL);
-        }
-    } else {
-        return ERROR_INT(EINVAL);
     }
 
     return ret;
