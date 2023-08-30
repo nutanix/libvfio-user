@@ -93,6 +93,13 @@ _get_bitmap_size(size_t size, size_t pgsize)
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
 }
 
+/*
+ * The size, in bytes, of the bitmap that represents the given range with the
+ * given page size.
+ * 
+ * Returns -1 and sets errno if the given page size is invalid for the given 
+ * range.
+ */
 static inline ssize_t
 get_bitmap_size(size_t region_size, size_t pgsize)
 {

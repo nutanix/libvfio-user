@@ -542,9 +542,9 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap)
 {
-    ssize_t converted_bitmap_size;
     dma_memory_region_t *region;
-    ssize_t bitmap_size;
+    ssize_t server_bitmap_size;
+    ssize_t client_bitmap_size;
     dma_sg_t sg;
     int ret;
 
@@ -581,25 +581,25 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    bitmap_size = get_bitmap_size(len, dma->dirty_pgsize);
-    if (bitmap_size < 0) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get bitmap size");
-        return bitmap_size;
+    server_bitmap_size = get_bitmap_size(len, dma->dirty_pgsize);
+    if (server_bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get server bitmap size");
+        return server_bitmap_size;
     }
 
-    converted_bitmap_size = get_bitmap_size(len, pgsize);
-    if (converted_bitmap_size < 0) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get bitmap size");
-        return converted_bitmap_size;
+    client_bitmap_size = get_bitmap_size(len, pgsize);
+    if (client_bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get client bitmap size");
+        return client_bitmap_size;
     }
 
     /*
      * They must be equal because this is how much data the client expects to
      * receive.
      */
-    if (size != (size_t)converted_bitmap_size) {
+    if (size != (size_t)client_bitmap_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
-                converted_bitmap_size);
+                client_bitmap_size);
         return ERROR_INT(EINVAL);
     }
 
@@ -611,10 +611,10 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize == dma->dirty_pgsize) {
-        dirty_page_get_same_pgsize(region, bitmap, bitmap_size);
+        dirty_page_get_same_pgsize(region, bitmap, server_bitmap_size);
     } else {
-        dirty_page_get_different_pgsize(region, bitmap, bitmap_size,
-                                        converted_bitmap_size, pgsize,
+        dirty_page_get_different_pgsize(region, bitmap, server_bitmap_size,
+                                        client_bitmap_size, pgsize,
                                         dma->dirty_pgsize);
     }
 
@@ -657,20 +657,20 @@ dirty_page_get_same_pgsize(dma_memory_region_t *region, char *bitmap,
 
 void
 dirty_page_get_different_pgsize(dma_memory_region_t *region, char *bitmap,
-                                size_t bitmap_size,
-                                size_t converted_bitmap_size, size_t pgsize,
-                                size_t converted_pgsize)
+                                size_t server_bitmap_size,
+                                size_t client_bitmap_size, size_t server_pgsize,
+                                size_t client_pgsize)
 {
     uint8_t bit = 0;
     size_t i;
     int j;
 
-    bool extend = pgsize <= converted_pgsize;
+    bool extend = server_pgsize <= client_pgsize;
     size_t factor = extend ?
-        converted_pgsize / pgsize : pgsize / converted_pgsize;
+        client_pgsize / server_pgsize : server_pgsize / client_pgsize;
 
-    for (i = 0; i < bitmap_size &&
-         bit / CHAR_BIT < (size_t)converted_bitmap_size; i++) {
+    for (i = 0; i < server_bitmap_size &&
+         bit / CHAR_BIT < (size_t)client_bitmap_size; i++) {
         uint8_t out = 0;
 
         dirty_page_exchange(&out, &region->dirty_bitmap[i]);

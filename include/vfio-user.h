@@ -253,7 +253,10 @@ struct vfio_user_device_feature_migration {
 #define VFIO_MIGRATION_STOP_COPY    (1 << 0)
 #define VFIO_MIGRATION_P2P          (1 << 1)
 #endif
-/* PRE_COPY was added in a later kernel version */
+/*
+ * PRE_COPY was added in a later kernel version, after
+ * VFIO_REGION_TYPE_MIGRATION_DEPRECATED had been introduced.
+ */
 #ifndef VFIO_MIGRATION_PRE_COPY
 #define VFIO_MIGRATION_PRE_COPY     (1 << 2)
 #endif
