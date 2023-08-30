@@ -606,8 +606,8 @@ typedef struct {
     /*
      * Function that is called to read `count` bytes of migration data into
      * `buf`. The function must return the amount of data read or -1 on error,
-     * setting errno.
-     * 
+     * setting errno. The function may return less data than requested.
+     *
      * If the function returns zero, this is interpreted to mean that there is
      * no more migration data to read.
      */
@@ -616,7 +616,8 @@ typedef struct {
     /*
      * Function that is called for writing previously stored device state. The
      * function must return the amount of data written or -1 on error, setting
-     * errno.
+     * errno. Partial writes are not supported, so any return value other than
+     * `count` is invalid.
      */
     ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 

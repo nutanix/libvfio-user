@@ -47,14 +47,18 @@
  * The indices of each state are those in the vfio_user_device_mig_state enum.
  */
 static const char transitions[VFIO_USER_DEVICE_NUM_STATES] = {
-    0b00000000, // ERROR        -> {}
-    0b00011100, // STOP         -> {RUNNING, STOP_COPY, RESUMING}
-    0b01000010, // RUNNING      -> {STOP, PRE_COPY}
-    0b00000010, // STOP_COPY    -> {STOP}
-    0b00000010, // RESUMING     -> {STOP}
-    0b00000000, // RUNNING_P2P  -> {}
-    0b00001100, // PRE_COPY     -> {RUNNING, STOP_COPY}
-    0b00000000  // PRE_COPY_P2P -> {}
+    [VFIO_USER_DEVICE_STATE_ERROR] = 0,
+    [VFIO_USER_DEVICE_STATE_STOP] = (1 << VFIO_USER_DEVICE_STATE_RUNNING) |
+                                    (1 << VFIO_USER_DEVICE_STATE_STOP_COPY) |
+                                    (1 << VFIO_USER_DEVICE_STATE_RESUMING),
+    [VFIO_USER_DEVICE_STATE_RUNNING] = (1 << VFIO_USER_DEVICE_STATE_STOP) |
+                                       (1 << VFIO_USER_DEVICE_STATE_PRE_COPY),
+    [VFIO_USER_DEVICE_STATE_STOP_COPY] = 1 << VFIO_USER_DEVICE_STATE_STOP,
+    [VFIO_USER_DEVICE_STATE_RESUMING] = 1 << VFIO_USER_DEVICE_STATE_STOP,
+    [VFIO_USER_DEVICE_STATE_RUNNING_P2P] = 0,
+    [VFIO_USER_DEVICE_STATE_PRE_COPY] = (1 << VFIO_USER_DEVICE_STATE_RUNNING) |
+                                        (1 << VFIO_USER_DEVICE_STATE_STOP_COPY),
+    [VFIO_USER_DEVICE_STATE_PRE_COPY_P2P] = 0
 };
 
 /*
@@ -378,6 +382,9 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (ret < 0) {
         return ret;
+    } else if (ret != req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "migration data partial write");
+        return ERROR_INT(EINVAL);
     }
 
     return 0;
