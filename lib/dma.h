@@ -392,9 +392,9 @@ dirty_page_get_same_pgsize(dma_memory_region_t *region, char *bitmap,
                            size_t bitmap_size);
 void
 dirty_page_get_different_pgsize(dma_memory_region_t *region, char *bitmap,
-                                size_t bitmap_size,
-                                size_t converted_bitmap_size, size_t pgsize,
-                                size_t converted_pgsize);
+                                size_t server_bitmap_size, size_t server_pgsize,
+                                size_t client_bitmap_size,
+                                size_t client_pgsize);
 
 bool
 dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg);

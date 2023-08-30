@@ -611,11 +611,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize == dma->dirty_pgsize) {
-        dirty_page_get_same_pgsize(region, bitmap, server_bitmap_size);
+        dirty_page_get_same_pgsize(region, bitmap, client_bitmap_size);
     } else {
         dirty_page_get_different_pgsize(region, bitmap, server_bitmap_size,
-                                        client_bitmap_size, pgsize,
-                                        dma->dirty_pgsize);
+                                        dma->dirty_pgsize, client_bitmap_size,
+                                        pgsize);
     }
 
 #ifdef DEBUG
@@ -657,47 +657,92 @@ dirty_page_get_same_pgsize(dma_memory_region_t *region, char *bitmap,
 
 void
 dirty_page_get_different_pgsize(dma_memory_region_t *region, char *bitmap,
-                                size_t server_bitmap_size,
-                                size_t client_bitmap_size, size_t server_pgsize,
-                                size_t client_pgsize)
+                                size_t server_bitmap_size, size_t server_pgsize,
+                                size_t client_bitmap_size, size_t client_pgsize)
 {
-    uint8_t bit = 0;
-    size_t i;
-    int j;
+    /*
+     * The index of the bit in the client bitmap that we are currently
+     * considering. By keeping track of this separately to the for loops, we
+     * allow for one server bit to be repeated for multiple client bytes, or
+     * multiple bytes' worth of server bits to be OR'd together to calculate one
+     * client bit.
+     */
+    uint8_t client_bit_idx = 0;
+    /*
+     * The index of the byte in the server bitmap that we are currently
+     * considering.
+     */
+    size_t server_byte_idx;
+    /*
+     * The index of the bit in the currently considered byte of the server
+     * bitmap that we are currently considering.
+     */
+    int server_bit_idx_into_byte;
 
-    bool extend = server_pgsize <= client_pgsize;
+    /*
+     * Whether we are extending the server bitmap (repeating bits to
+     * generate a larger client bitmap) or not (combining bits with OR to
+     * generate a smaller client bitmap).
+     * 
+     * If the server page size is greater than the client's requested page size,
+     * we will be extending.
+     */
+    bool extend = server_pgsize >= client_pgsize;
+    /*
+     * If extending, the number of times to repeat each bit of the server
+     * bitmap. If not, the number of bits of the server bitmap to OR together to
+     * calculate one bit of the client bitmap.
+     */
     size_t factor = extend ?
-        client_pgsize / server_pgsize : server_pgsize / client_pgsize;
+        server_pgsize / client_pgsize : client_pgsize / server_pgsize;
 
-    for (i = 0; i < server_bitmap_size &&
-         bit / CHAR_BIT < (size_t)client_bitmap_size; i++) {
+    /*
+     * Iterate through the bytes of the server bitmap.
+     */
+    for (server_byte_idx = 0; server_byte_idx < server_bitmap_size &&
+         client_bit_idx / CHAR_BIT < client_bitmap_size; server_byte_idx++) {
         uint8_t out = 0;
 
-        dirty_page_exchange(&out, &region->dirty_bitmap[i]);
+        dirty_page_exchange(&out, &region->dirty_bitmap[server_byte_idx]);
 
         /*
-         * Iterate through the bits of the byte, repeating or combining bits
-         * to reach the desired page size.
+         * Iterate through the bits of the server byte, repeating or combining
+         * bits to reach the desired page size.
          */
-        for (j = 0; j < CHAR_BIT; j++) {
-            uint8_t b = (out >> j) & 1;
+        for (server_bit_idx_into_byte = 0;
+             server_bit_idx_into_byte < CHAR_BIT;
+             server_bit_idx_into_byte++) {
+            uint8_t server_bit = (out >> server_bit_idx_into_byte) & 1;
 
             if (extend) {
                 /*
                  * Repeat `factor` times the bit at index `j` of `out`.
+                 *
+                 * OR the same bit from the server bitmap (`server_bit`) with
+                 * `factor` bits in the client bitmap, from `client_bit_idx` to
+                 * `end_client_bit_idx`.
                  */
-                size_t new_bit = bit + factor;
-                while (bit < new_bit) {
-                    bitmap[bit / 8] |= b << (bit % 8);
-                    bit++;
+                size_t end_client_bit_idx = client_bit_idx + factor;
+                while (client_bit_idx < end_client_bit_idx) {
+                    bitmap[client_bit_idx / CHAR_BIT] |=
+                        server_bit << (client_bit_idx % CHAR_BIT);
+                    client_bit_idx++;
                 }
             } else {
                 /*
-                 * OR the same bit with `factor` bits of the raw bitmap.
+                 * OR `factor` bits of the server bitmap with the same bit at
+                 * index `client_bit_idx` in the client bitmap.
                  */
-                bitmap[bit / 8] |= b << (bit % 8);
-                if (((i * 8) + j) % factor == factor - 1) {
-                    bit++;
+                bitmap[client_bit_idx / CHAR_BIT] |=
+                    server_bit << (client_bit_idx % CHAR_BIT);
+
+                /*
+                 * Only move onto the next bit in the client bitmap once we've
+                 * OR'd `factor` bits.
+                 */
+                if (((server_byte_idx * CHAR_BIT) + server_bit_idx_into_byte)
+                        % factor == factor - 1) {
+                    client_bit_idx++;
                 }
             }
         }
