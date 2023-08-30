@@ -324,35 +324,27 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
     }
 
     uint32_t read_start = server_data->migration.bytes_transferred;
-    uint32_t read_end = MIN(read_start + size, total_read); // exclusive
+    uint32_t read_end = MIN(read_start + size, total_read);
     assert(read_end > read_start);
 
     uint32_t bytes_read = read_end - read_start;
 
-    if (read_end <= server_data->bar1_size) {
-        // case 1: entire read lies within bar1
-        // TODO check the following is always allowed
+    uint32_t length_in_bar1 = 0;
+    uint32_t length_in_bar0 = 0;
 
-        memcpy(buf, server_data->bar1 + read_start, bytes_read);
-    } else if (read_start < server_data->bar1_size // starts in bar1
-               && read_end > server_data->bar1_size) { // ends in bar0
-        // case 2: part of the read in bar1 and part of the read in bar0
-        // TODO check the following is always allowed
-
-        uint32_t length_in_bar1 = server_data->bar1_size - read_start;
-        uint32_t length_in_bar0 = read_end - server_data->bar1_size;
-        assert(length_in_bar1 + length_in_bar0 == bytes_read);
-        
+    /* read bar1, if any */
+    if (read_start < server_data->bar1_size) {
+        length_in_bar1 = MIN(bytes_read, server_data->bar1_size - read_start);
         memcpy(buf, server_data->bar1 + read_start, length_in_bar1);
-        memcpy(buf + length_in_bar1, &server_data->bar0, length_in_bar0);
-    } else if (read_start >= server_data->bar1_size) {
-        // case 3: entire read lies within bar0
-        // TODO check the following is always allowed
+        read_start += length_in_bar1;
+    }
 
+    /* read bar0, if any */
+    if (read_end > server_data->bar1_size) {
+        length_in_bar0 = read_end - read_start;
         read_start -= server_data->bar1_size;
-        read_end -= server_data->bar1_size;
-
-        memcpy(buf, &server_data->bar0 + read_start, bytes_read);
+        memcpy(buf + length_in_bar1, &server_data->bar0 + read_start,
+               length_in_bar0);
     }
 
     server_data->migration.bytes_transferred += bytes_read;
@@ -381,26 +373,22 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
 
     uint32_t bytes_written = write_end - write_start;
 
-    if (write_end <= server_data->bar1_size) {
-        // case 1: entire write lies within bar1
+    uint32_t length_in_bar1 = 0;
+    uint32_t length_in_bar0 = 0;
 
-        memcpy(server_data->bar1 + write_start, buf, bytes_written);
-    } else if (write_start >= server_data->bar1_size) {
-        // case 2: entire write lies within bar0
-
-        write_start -= server_data->bar1_size;
-        write_end -= server_data->bar1_size;
-
-        memcpy(&server_data->bar0 + write_start, buf, bytes_written);
-    } else {
-        // case 3: part of the write in bar1 and part of the write in bar0
-
-        uint32_t length_in_bar1 = server_data->bar1_size - write_start;
-        uint32_t length_in_bar0 = write_end - server_data->bar1_size;
-        assert(length_in_bar1 + length_in_bar0 == bytes_written);
-        
+    /* write to bar1, if any */
+    if (write_start < server_data->bar1_size) {
+        length_in_bar1 = MIN(bytes_written, server_data->bar1_size - write_start);
         memcpy(server_data->bar1 + write_start, buf, length_in_bar1);
-        memcpy(&server_data->bar0, buf + length_in_bar1, length_in_bar0);
+        write_start += length_in_bar1;
+    }
+
+    /* write to bar0, if any */
+    if (write_end > server_data->bar1_size) {
+        length_in_bar0 = write_end - write_start;
+        write_start -= server_data->bar1_size;
+        memcpy(&server_data->bar0 + write_start, buf + length_in_bar1,
+               length_in_bar0);
     }
 
     server_data->migration.bytes_transferred += bytes_written;
