@@ -611,11 +611,11 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     }
 
     if (pgsize == dma->dirty_pgsize) {
-        dirty_page_get_equal_pgsize(region, bitmap, bitmap_size);
+        dirty_page_get_same_pgsize(region, bitmap, bitmap_size);
     } else {
-        dirty_page_get_change_pgsize(region, bitmap, bitmap_size,
-                                     converted_bitmap_size, pgsize,
-                                     dma->dirty_pgsize);
+        dirty_page_get_different_pgsize(region, bitmap, bitmap_size,
+                                        converted_bitmap_size, pgsize,
+                                        dma->dirty_pgsize);
     }
 
 #ifdef DEBUG
@@ -625,38 +625,41 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     return 0;
 }
 
-void
-dirty_page_get_equal_pgsize(dma_memory_region_t *region, char *bitmap,
-                      size_t bitmap_size)
+static void
+dirty_page_exchange(uint8_t *outp, uint8_t *bitmap)
 {
-    for (size_t i = 0; i < bitmap_size; i++) {
-        uint8_t val = region->dirty_bitmap[i];
-        uint8_t *outp = (uint8_t *)&bitmap[i];
-
-        /*
-         * If no bits are dirty, avoid the atomic exchange. This is obviously
-         * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
-         * the next time around.
-         *
-         * Otherwise, atomically exchange the dirty bits with zero: as we use
-         * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
-         * miss a bit being set after, but again, we'll catch that next time
-         * around.
-         */
-        if (val == 0) {
-            *outp = 0;
-        } else {
-            uint8_t zero = 0;
-            __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                              outp, __ATOMIC_SEQ_CST);
-        }
+    /*
+     * If no bits are dirty, avoid the atomic exchange. This is obviously
+     * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
+     * the next time around.
+     *
+     * Otherwise, atomically exchange the dirty bits with zero: as we use
+     * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
+     * miss a bit being set after, but again, we'll catch that next time
+     * around.
+     */
+    if (*bitmap == 0) {
+        *outp = 0;
+    } else {
+        uint8_t zero = 0;
+        __atomic_exchange(bitmap, &zero, outp, __ATOMIC_SEQ_CST);
     }
 }
 
 void
-dirty_page_get_change_pgsize(dma_memory_region_t *region, char *bitmap,
-                             size_t bitmap_size, size_t converted_bitmap_size,
-                             size_t pgsize, size_t converted_pgsize)
+dirty_page_get_same_pgsize(dma_memory_region_t *region, char *bitmap,
+                           size_t bitmap_size)
+{
+    for (size_t i = 0; i < bitmap_size; i++) {
+        dirty_page_exchange((uint8_t *)&bitmap[i], &region->dirty_bitmap[i]);
+    }
+}
+
+void
+dirty_page_get_different_pgsize(dma_memory_region_t *region, char *bitmap,
+                                size_t bitmap_size,
+                                size_t converted_bitmap_size, size_t pgsize,
+                                size_t converted_pgsize)
 {
     uint8_t bit = 0;
     size_t i;
@@ -668,26 +671,9 @@ dirty_page_get_change_pgsize(dma_memory_region_t *region, char *bitmap,
 
     for (i = 0; i < bitmap_size &&
          bit / CHAR_BIT < (size_t)converted_bitmap_size; i++) {
-        uint8_t val = region->dirty_bitmap[i];
         uint8_t out = 0;
 
-        /*
-         * If no bits are dirty, avoid the atomic exchange. This is obviously
-         * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
-         * the next time around.
-         *
-         * Otherwise, atomically exchange the dirty bits with zero: as we use
-         * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
-         * miss a bit being set after, but again, we'll catch that next time
-         * around.
-         */
-        if (val == 0) {
-            out = 0;
-        } else {
-            uint8_t zero = 0;
-            __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                                &out, __ATOMIC_SEQ_CST);
-        }
+        dirty_page_exchange(&out, &region->dirty_bitmap[i]);
 
         /*
          * Iterate through the bits of the byte, repeating or combining bits
