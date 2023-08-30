@@ -108,6 +108,9 @@ branches:
           - ubuntu-20
           - ubuntu-22
           - fedora-35
+          - debian-11
+          - debian-12
+          - arch-202307
       # Required. Enforce all configured restrictions for administrators. Set to true to enforce required status checks for repository administrators. Set to null to disable.
       enforce_admins: true
       # Required. Restrict who can push to this branch. Team and user restrictions are only available for organization-owned repositories. Set to null to disable.
