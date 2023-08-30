@@ -292,7 +292,8 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data)) {
-        vfu_log(vfu_ctx, LOG_ERR, "message too short");
+        vfu_log(vfu_ctx, LOG_ERR, "message too short (%ld)",
+                msg->in.iov.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -335,7 +336,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ssize_t ret = migr->callbacks.read_data(vfu_ctx, &res->data, req->size);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "read_data callback failed");
+        vfu_log(vfu_ctx, LOG_ERR, "read_data callback failed, errno=%d", errno);
         msg->out.iov.iov_len = 0;
         return ret;
     }
@@ -353,7 +354,8 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data)) {
-        vfu_log(vfu_ctx, LOG_ERR, "message too short");
+        vfu_log(vfu_ctx, LOG_ERR, "message too short (%ld)",
+                msg->in.iov.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -386,10 +388,12 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
 
     if (ret < 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "write_data callback failed");
+        vfu_log(vfu_ctx, LOG_ERR, "write_data callback failed, errno=%d",
+                errno);
         return ret;
     } else if (ret != req->size) {
-        vfu_log(vfu_ctx, LOG_ERR, "migration data partial write");
+        vfu_log(vfu_ctx, LOG_ERR, "migration data partial write of size=%ld",
+                ret);
         return ERROR_INT(EINVAL);
     }
 

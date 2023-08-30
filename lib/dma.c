@@ -579,7 +579,7 @@ dirty_page_get_extend(dma_memory_region_t *region, char *bitmap,
      */
     uint8_t client_bit_idx = 0;
     size_t server_byte_idx;
-    int server_bit_idx_into_byte;
+    int server_bit_idx;
     size_t factor = server_pgsize / client_pgsize;
 
     /*
@@ -587,6 +587,7 @@ dirty_page_get_extend(dma_memory_region_t *region, char *bitmap,
      */
     for (server_byte_idx = 0; server_byte_idx < server_bitmap_size;
          server_byte_idx++) {
+
         if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
             break;
         }
@@ -599,10 +600,8 @@ dirty_page_get_extend(dma_memory_region_t *region, char *bitmap,
          * Iterate through the bits of the server byte, repeating bits to reach
          * the desired page size.
          */
-        for (server_bit_idx_into_byte = 0;
-             server_bit_idx_into_byte < CHAR_BIT;
-             server_bit_idx_into_byte++) {
-            uint8_t server_bit = (out >> server_bit_idx_into_byte) & 1;
+        for (server_bit_idx = 0; server_bit_idx < CHAR_BIT; server_bit_idx++) {
+            uint8_t server_bit = (out >> server_bit_idx) & 1;
 
             /*
              * Repeat `factor` times the bit at index `j` of `out`.
@@ -611,11 +610,12 @@ dirty_page_get_extend(dma_memory_region_t *region, char *bitmap,
              * `factor` bits in the client bitmap, from `client_bit_idx` to
              * `end_client_bit_idx`.
              */
-            size_t end_client_bit_idx = client_bit_idx + factor;
-            while (client_bit_idx < end_client_bit_idx) {
+            for (size_t end_client_bit_idx = client_bit_idx + factor;
+                 client_bit_idx < end_client_bit_idx;
+                 client_bit_idx++) {
+
                 bitmap[client_bit_idx / CHAR_BIT] |=
                     server_bit << (client_bit_idx % CHAR_BIT);
-                client_bit_idx++;
             }
         }
     }
@@ -634,7 +634,7 @@ dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
      */
     uint8_t client_bit_idx = 0;
     size_t server_byte_idx;
-    int server_bit_idx_into_byte;
+    int server_bit_idx;
     size_t factor = client_pgsize / server_pgsize;
 
     /*
@@ -642,6 +642,7 @@ dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
      */
     for (server_byte_idx = 0; server_byte_idx < server_bitmap_size;
          server_byte_idx++) {
+
         if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
             break;
         }
@@ -654,10 +655,8 @@ dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
          * Iterate through the bits of the server byte, combining bits to reach
          * the desired page size.
          */
-        for (server_bit_idx_into_byte = 0;
-             server_bit_idx_into_byte < CHAR_BIT;
-             server_bit_idx_into_byte++) {
-            uint8_t server_bit = (out >> server_bit_idx_into_byte) & 1;
+        for (server_bit_idx = 0; server_bit_idx < CHAR_BIT; server_bit_idx++) {
+            uint8_t server_bit = (out >> server_bit_idx) & 1;
 
             /*
              * OR `factor` bits of the server bitmap with the same bit at
@@ -670,9 +669,13 @@ dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
              * Only move onto the next bit in the client bitmap once we've
              * OR'd `factor` bits.
              */
-            if (((server_byte_idx * CHAR_BIT) + server_bit_idx_into_byte)
-                    % factor == factor - 1) {
+            if (((server_byte_idx * CHAR_BIT) + server_bit_idx) % factor
+                    == factor - 1) {
                 client_bit_idx++;
+                
+                if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
+                    return;
+                }
             }
         }
     }
