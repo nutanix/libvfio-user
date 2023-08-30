@@ -32,7 +32,6 @@
 #
 
 from types import SimpleNamespace
-import collections.abc
 import ctypes as c
 import array
 import errno
@@ -693,31 +692,13 @@ class Client:
         self.sock = sock
         self.client_cmd_socket = None
 
-    def connect(self, ctx, capabilities={}):
+    def connect(self, ctx):
         self.sock = connect_sock()
 
-        effective_caps = {
-            "capabilities": {
-                "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
-                "max_msg_fds": 8,
-                "twin_socket": False,
-            },
-        }
-
-        def update(target, overrides):
-            for k, v in overrides.items():
-                if isinstance(v, collections.abc.Mapping):
-                    target[k] = target.get(k, {})
-                    update(target[k], v)
-                else:
-                    target[k] = v
-
-        update(effective_caps, capabilities)
-        caps_json = json.dumps(effective_caps)
-
+        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
         # struct vfio_user_version
-        payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
-                              LIBVFIO_USER_MINOR, caps_json.encode(), b'\0')
+        payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, json, b'\0')
         hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
