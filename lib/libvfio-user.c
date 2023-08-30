@@ -1039,6 +1039,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if (dma == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "DMA not enabled for DMA device feature");
+        return ERROR_INT(EINVAL);
     }
 
     ssize_t bitmap_size = get_bitmap_size(rep->length, rep->page_size);
@@ -1109,7 +1110,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     assert(msg != NULL);
 
     if (msg->in.iov.iov_len < sizeof(struct vfio_user_device_feature)) {
-        vfu_log(vfu_ctx, LOG_ERR, "message too short");
+        vfu_log(vfu_ctx, LOG_ERR, "message too short (%ld)",
+                msg->in.iov.iov_len);
         return ERROR_INT(EINVAL);
     }
 
@@ -1121,7 +1123,8 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     uint32_t supported_ops = device_feature_flags_supported(vfu_ctx, feature);
 
     if ((req->flags & supported_ops) != operations || supported_ops == 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "unsupported operation(s)");
+        vfu_log(vfu_ctx, LOG_ERR, "unsupported operation(s), flags=%d",
+                req->flags);
         return ERROR_INT(EINVAL);
     }
 
