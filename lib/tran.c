@@ -30,6 +30,7 @@
  *
  */
 
+#include <assert.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -301,6 +302,7 @@ json_add_uint64(struct json_object *jso, const char *key, uint64_t value)
      * function, but the int64 one is available also in older versions that we
      * support, and our values don't require the full range anyways.
      */
+    assert(value <= INT64_MAX);
     jo_tmp = json_object_new_int64(value);
     return json_add(jso, key, &jo_tmp);
 }
