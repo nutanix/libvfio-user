@@ -168,7 +168,6 @@ struct vfu_ctx {
 
     int                     client_max_fds;
     size_t                  client_max_data_xfer_size;
-    bool                    enable_cmd_conn;
 
     struct vfu_ctx_pending_info pending;
     bool                    quiesced;
