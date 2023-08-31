@@ -224,37 +224,37 @@ def test_find_ext_caps():
 
 
 def test_pci_ext_cap_write_hdr():
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     # struct pcie_ext_cap_hdr
     offset = cap_offsets[0]
     data = b'\x01'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
     # struct pcie_ext_cap_vsc_hdr also
     offset = cap_offsets[1] + 4
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
 
 def test_pci_ext_cap_readonly():
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     # start of vendor payload
     offset = cap_offsets[1] + 8
     data = b'\x01'
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
     offset = cap_offsets[1] + 8
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=5)
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=5)
     assert payload == b'abcde'
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
 
 def test_pci_ext_cap_callback():
@@ -262,42 +262,42 @@ def test_pci_ext_cap_callback():
     # FIXME assignment to PCI config space from callback is ignored
     if is_32bit():
         return
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     # start of vendor payload
     offset = cap_offsets[2] + 8
     data = b"Hello world."
 
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
     assert payload == data
 
     data = b"Bye world."
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
 
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
     assert payload == data
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
 
 def test_pci_ext_cap_write_dsn():
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     data = struct.pack("II", 1, 2)
     offset = cap_offsets[0] + 4
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data, expect=errno.EPERM)
 
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
 
     # unchanged!
     assert payload == struct.pack("II", 4, 8)
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
 
 def test_pci_ext_cap_write_vendor():
@@ -306,20 +306,20 @@ def test_pci_ext_cap_write_vendor():
     if is_32bit():
         return
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     data = struct.pack("II", 0x1, 0x2)
     # start of vendor payload
     offset = cap_offsets[2] + 8
-    write_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
                  count=len(data), data=data)
 
-    payload = read_region(ctx, sock, VFU_PCI_DEV_CFG_REGION_IDX, offset=offset,
-                          count=len(data))
+    payload = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                          offset=offset, count=len(data))
 
     assert payload == data
 
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
 
 
 def test_pci_ext_cap_cleanup():

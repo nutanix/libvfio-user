@@ -32,11 +32,11 @@ import ctypes as c
 import errno
 
 ctx = None
-sock = None
+client = None
 
 
 def test_irq_trigger_setup():
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -50,7 +50,7 @@ def test_irq_trigger_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def test_irq_trigger_bad_subindex():
@@ -76,7 +76,7 @@ def test_irq_trigger():
 
     fd = eventfd(initval=4)
 
-    msg(ctx, sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
+    msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=[fd])
 
     vfu_irq_trigger(ctx, 8)
 

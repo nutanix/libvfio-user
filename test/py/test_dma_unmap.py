@@ -33,40 +33,40 @@ from unittest.mock import patch
 from libvfio_user import *
 
 ctx = None
-sock = None
+client = None
 
 
 def setup_function(function):
-    global ctx, sock
+    global ctx, client
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def teardown_function(function):
-    global ctx, sock
-    disconnect_client(ctx, sock)
+    global ctx, client
+    client.disconnect(ctx)
     vfu_destroy_ctx(ctx)
 
 
 def setup_dma_regions(dma_regions=[(0x0, PAGE_SIZE)]):
-    global ctx, sock
+    global ctx, client
     for dma_region in dma_regions:
         payload = struct.pack("II", 0, 0)
         payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
             flags=(VFIO_USER_F_DMA_REGION_READ |
                    VFIO_USER_F_DMA_REGION_WRITE),
             offset=0, addr=dma_region[0], size=dma_region[1])
-        msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+        msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
 
 
 def test_dma_unmap_short_write():
     payload = struct.pack("II", 0, 0)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -74,7 +74,7 @@ def test_dma_unmap_bad_argsz():
 
     payload = vfio_user_dma_unmap(argsz=8, flags=0, addr=PAGE_SIZE,
                                   size=PAGE_SIZE)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -82,7 +82,7 @@ def test_dma_unmap_bad_argsz2():
 
     payload = vfio_user_dma_unmap(argsz=SERVER_MAX_DATA_XFER_SIZE + 8, flags=0,
                                   addr=PAGE_SIZE, size=PAGE_SIZE)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -95,7 +95,7 @@ def test_dma_unmap_dirty_bad_argsz():
     bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=(UINT64_MAX - argsz) + 8)
     payload = bytes(unmap) + bytes(bitmap)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -109,7 +109,7 @@ def test_dma_unmap_dirty_not_tracking():
     bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
     payload = bytes(unmap) + bytes(bitmap) + bytes(8)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -120,7 +120,7 @@ def test_dma_unmap_dirty_not_mapped():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
     argsz = len(vfio_user_dma_unmap()) + len(vfio_user_bitmap()) + 8
     unmap = vfio_user_dma_unmap(argsz=argsz,
@@ -129,7 +129,7 @@ def test_dma_unmap_dirty_not_mapped():
     bitmap = vfio_user_bitmap(pgsize=PAGE_SIZE, size=8)
     payload = bytes(unmap) + bytes(bitmap) + bytes(8)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -138,7 +138,7 @@ def test_dma_unmap_invalid_flags():
     setup_dma_regions()
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0x4, addr=PAGE_SIZE, size=PAGE_SIZE)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -147,7 +147,7 @@ def test_dma_unmap():
     setup_dma_regions()
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x0, size=PAGE_SIZE)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
 
 
 def test_dma_unmap_invalid_addr():
@@ -156,7 +156,7 @@ def test_dma_unmap_invalid_addr():
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.ENOENT)
 
 
@@ -167,13 +167,13 @@ def test_dma_unmap_async(mock_quiesce):
     mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
                                   flags=0, addr=0x0, size=PAGE_SIZE)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload, rsp=False,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload, rsp=False,
         busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
 
-    get_reply(sock)
+    get_reply(client.sock)
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
@@ -185,7 +185,7 @@ def test_dma_unmap_all():
     setup_dma_regions(dma_regions)
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0, size=0)
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload)
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
 
 
 def test_dma_unmap_all_invalid_addr():
@@ -193,7 +193,7 @@ def test_dma_unmap_all_invalid_addr():
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0x10 << PAGE_SHIFT, size=PAGE_SIZE)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 
@@ -203,7 +203,7 @@ def test_dma_unmap_all_invalid_flags():
         flags=(VFIO_DMA_UNMAP_FLAG_ALL | VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP),
                addr=0, size=0)
 
-    msg(ctx, sock, VFIO_USER_DMA_UNMAP, payload,
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload,
         expect=errno.EINVAL)
 
 # FIXME need to add unit tests that test errors in get_request_header,
