@@ -559,7 +559,7 @@ Reply
 The same message format is used in the server's reply with the semantics
 described above.
 
-If and only if the client has requested to enable twin-socket mode by setting
+If and only if the client has requested twin-socket mode by setting
 ``twin_socket.enable`` to true in its capabilities, the server may optionally
 set up a separate command channel for server-to-client commands and their
 replies. The server enables twin-socket mode as follows:
@@ -570,6 +570,19 @@ replies. The server enables twin-socket mode as follows:
 * Indicate the index in the file descriptor array by the
   ``twin_socket.fd_index`` capability field in the reply, so the client can
   identify the correct file descriptor to use.
+
+A client requesting twin-socket mode must examine the capabilities in the reply
+to check for the ``twin_socket.fd_index`` field:
+
+* If the field or the entire ``twin_socket`` object is missing, the server does
+  not support twin-socket mode or decided not to enable it. The client can
+  choose whether it wants to proceed without twin-socket mode, or close the
+  connection if not.
+* If ``twin_socket.fd_index`` is present, the client obtains the designated file
+  descriptor from the reply and monitors it for commands from the server.
+* If ``twin_socket.fd_index`` is present, but its value is not a valid index in
+  the file descriptor array, the client must abort and close the connection since
+  it would not be able to receive command from the server.
 
 The twin-socket feature is optional, so some servers may not support it.
 However, for server implementations that do send server-to-client commands it is
