@@ -683,7 +683,7 @@ dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
 
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
-                              uint64_t len, size_t pgsize, size_t size,
+                              uint64_t len, size_t client_pgsize, size_t size,
                               char *bitmap)
 {
     dma_memory_region_t *region;
@@ -720,8 +720,9 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         vfu_log(dma->vfu_ctx, LOG_ERR, "dirty page logging not enabled");
         return ERROR_INT(EINVAL);
     }
-    if (pgsize == 0 || (pgsize & (pgsize - 1)) != 0) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
+    if (client_pgsize == 0 || (client_pgsize & (client_pgsize - 1)) != 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client page size %zu",
+                client_pgsize);
         return ERROR_INT(EINVAL);
     }
 
@@ -731,9 +732,10 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return server_bitmap_size;
     }
 
-    client_bitmap_size = get_bitmap_size(len, pgsize);
+    client_bitmap_size = get_bitmap_size(len, client_pgsize);
     if (client_bitmap_size < 0) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad requested page size %ld", pgsize);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client page size %zu",
+                client_pgsize);
         return client_bitmap_size;
     }
 
@@ -742,8 +744,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      * receive.
      */
     if (size != (size_t)client_bitmap_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
-                client_bitmap_size);
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client bitmap size %zu != %zu",
+                size, client_bitmap_size);
         return ERROR_INT(EINVAL);
     }
 
@@ -754,15 +756,16 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    if (pgsize == dma->dirty_pgsize) {
+    if (client_pgsize == dma->dirty_pgsize) {
         dirty_page_get_same_pgsize(region, bitmap, client_bitmap_size);
-    } else if (pgsize < dma->dirty_pgsize) {
+    } else if (client_pgsize < dma->dirty_pgsize) {
         /*
          * If the requested page size is less than that used for logging by
          * the server, the bitmap will need to be extended, repeating bits.
          */
         dirty_page_get_extend(region, bitmap, server_bitmap_size,
-                              dma->dirty_pgsize, client_bitmap_size, pgsize);
+                              dma->dirty_pgsize, client_bitmap_size,
+                              client_pgsize);
     } else {
         /*
          * If the requested page size is larger than that used for logging by
@@ -770,11 +773,12 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
          * accuracy.
          */
         dirty_page_get_combine(region, bitmap, server_bitmap_size,
-                               dma->dirty_pgsize, client_bitmap_size, pgsize);
+                               dma->dirty_pgsize, client_bitmap_size,
+                               client_pgsize);
     }
 
 #ifdef DEBUG
-    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, pgsize);
+    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, client_pgsize);
 #endif
 
     return 0;
