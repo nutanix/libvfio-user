@@ -794,8 +794,8 @@ get_dirty_bitmap(int sock, struct vfio_user_dma_map *dma_region)
     char *bitmap;
     int ret;
 
-    uint64_t bitmap_size = _get_bitmap_size(dma_region->size,
-                                            sysconf(_SC_PAGESIZE));
+    uint64_t bitmap_size = get_bitmap_size(dma_region->size,
+                                           sysconf(_SC_PAGESIZE));
 
     size_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
 
