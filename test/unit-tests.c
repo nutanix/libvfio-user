@@ -105,7 +105,7 @@ setup(void **state UNUSED)
 
     memset(&msg, 0, sizeof(msg));
 
-    msg.hdr.flags.type = VFIO_USER_F_TYPE_COMMAND;
+    msg.hdr.flags |= VFIO_USER_F_TYPE_COMMAND;
     msg.hdr.msg_size = sizeof(msg.hdr);
 
     fds[0] = fds[1] = -1;

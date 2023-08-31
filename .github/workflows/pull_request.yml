@@ -5,7 +5,7 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: pre-push
         run: |
           sudo apt-get update
@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: pre-push
         run: |
           sudo apt-get update
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:7
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: pre-push
         run: |
           # NB: no working flake8
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:35
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: pre-push
         run: |
           dnf -y install --releasever=35 \
@@ -51,10 +51,51 @@ jobs:
               diffutils valgrind python3-pytest python3-flake8 which \
               meson ninja-build
           ./.github/workflows/pull_request.sh
+  debian-11:
+    timeout-minutes: 10
+    runs-on: ubuntu-20.04
+    container: debian:11
+    steps:
+      - uses: actions/checkout@v3
+      - name: pre-push
+        run: |
+          apt-get update
+          apt-get -y install build-essential cmake pkg-config libjson-c-dev \
+            libcmocka-dev clang clang-tools valgrind python3-pytest \
+            debianutils flake8 meson ninja-build
+          ./.github/workflows/pull_request.sh
+  debian-12:
+    timeout-minutes: 10
+    runs-on: ubuntu-22.04
+    container: debian:12
+    steps:
+      - uses: actions/checkout@v3
+      - name: pre-push
+        run: |
+          apt-get update
+          apt-get -y install build-essential cmake pkg-config libjson-c-dev \
+            libcmocka-dev clang clang-tools valgrind python3-pytest \
+            debianutils flake8 meson ninja-build
+          ./.github/workflows/pull_request.sh
+  arch-202307:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    container: archlinux:base-20230723.0.166908
+    steps:
+      - uses: actions/checkout@v3
+      - name: pre-push
+        run: |
+          # clang expects a newer glibc
+          pacman -Sy --noconfirm \
+            base-devel glibc clang json-c cmocka pciutils diffutils valgrind \
+            python-pytest flake8 meson ninja
+          # this fixes debuginfod not automatically updating the url
+          export DEBUGINFOD_URLS="https://debuginfod.archlinux.org"
+          ./.github/workflows/pull_request.sh
   spelling:
     runs-on: ubuntu-latest
     container: vlajos/misspell-fixer
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: run misspell-fixer
         run: /misspell-fixer/misspell-fixer -sv .

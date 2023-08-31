@@ -181,8 +181,11 @@ VFIO_USER_DEVICE_RESET = 13
 VFIO_USER_DIRTY_PAGES = 14
 VFIO_USER_MAX = 15
 
+VFIO_USER_F_TYPE = 0xf
 VFIO_USER_F_TYPE_COMMAND = 0
 VFIO_USER_F_TYPE_REPLY = 1
+VFIO_USER_F_NO_REPLY = 0x10
+VFIO_USER_F_ERROR = 0x20
 
 SIZEOF_VFIO_USER_HEADER = 16
 
@@ -316,7 +319,7 @@ class iovec_t(Structure):
     ]
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         return self.iov_base == other.iov_base \
             and self.iov_len == other.iov_len
@@ -501,7 +504,7 @@ class vfu_dma_info_t(Structure):
     ]
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         return self.iova == other.iova \
             and self.vaddr == other.vaddr \
@@ -824,7 +827,7 @@ def get_msg_fds(sock, expect_msg_type, expect_errno=0):
         [unpacked_fd] = struct.unpack_from("i", packed_fd, offset=i)
         unpacked_fds.append(unpacked_fd)
     assert len(packed_fd)/4 == len(unpacked_fds)
-    assert (msg_flags & 0xf) == expect_msg_type
+    assert (msg_flags & VFIO_USER_F_TYPE) == expect_msg_type
     return (unpacked_fds, msg_id, cmd, data[16:])
 
 
@@ -1050,21 +1053,22 @@ def log(ctx, level, msg):
     print(lvl2str[level] + ": " + msg.decode("utf-8"))
 
 
-def vfio_user_header(cmd,
-                     size,
-                     msg_type=VFIO_USER_F_TYPE_COMMAND,
-                     msg_id=None,
-                     no_reply=False,
-                     error=False,
-                     error_no=0):
+def vfio_user_header(cmd, size, msg_type=VFIO_USER_F_TYPE_COMMAND, msg_id=None,
+                     no_reply=False, error=False, error_no=0):
     global next_msg_id
 
     if msg_id is None:
         msg_id = next_msg_id
         next_msg_id += 1
 
+    flags = msg_type
+    if no_reply:
+        flags |= VFIO_USER_F_NO_REPLY
+    if error:
+        flags |= VFIO_USER_F_ERROR
+
     buf = struct.pack("HHIII", msg_id, cmd, SIZEOF_VFIO_USER_HEADER + size,
-                      msg_type | (no_reply << 4) | (error << 5), error_no)
+                      flags, error_no)
 
     return buf
 

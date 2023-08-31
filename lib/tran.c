@@ -30,6 +30,7 @@
  *
  */
 
+#include <assert.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -282,36 +283,114 @@ out:
     return 0;
 }
 
+/*
+ * A json_object_object_add wrapper that takes ownership of *val
+ * unconditionally: Resets *val to NULL and makes sure *val gets dropped, even
+ * when an error occurs. Assumes key is new and a constant.
+ */
+static int
+json_add(struct json_object *jso, const char *key, struct json_object **val)
+{
+    int ret = 0;
+
+#if JSON_C_MAJOR_VERSION > 0 || JSON_C_MINOR_VERSION >= 13
+    ret = json_object_object_add_ex(jso, key, *val,
+                                    JSON_C_OBJECT_ADD_KEY_IS_NEW |
+                                    JSON_C_OBJECT_KEY_IS_CONSTANT);
+#else
+    /* Earlier versions will abort() on allocation failure. */
+    json_object_object_add(jso, key, *val);
+#endif
+
+    if (ret < 0) {
+        json_object_put(*val);
+    }
+    *val = NULL;
+    return ret;
+}
+
+static int
+json_add_uint64(struct json_object *jso, const char *key, uint64_t value)
+{
+    struct json_object *jo_tmp = NULL;
+
+    /*
+     * Note that newer versions of the library have a json_object_new_uint64
+     * function, but the int64 one is available also in older versions that we
+     * support, and our values don't require the full range anyways.
+     */
+    assert(value <= INT64_MAX);
+    jo_tmp = json_object_new_int64(value);
+    return json_add(jso, key, &jo_tmp);
+}
+
+/*
+ * Constructs the server's capabilities JSON string. The returned pointer must
+ * be freed by the caller.
+ */
+static char *
+format_server_capabilities(vfu_ctx_t *vfu_ctx)
+{
+    struct json_object *jo_migration = NULL;
+    struct json_object *jo_caps = NULL;
+    struct json_object *jo_top = NULL;
+    char *caps_str = NULL;
+
+    if ((jo_caps = json_object_new_object()) == NULL) {
+        goto out;
+    }
+
+    if (json_add_uint64(jo_caps, "max_msg_fds", SERVER_MAX_FDS) < 0) {
+        goto out;
+    }
+
+    if (json_add_uint64(jo_caps, "max_data_xfer_size",
+                        SERVER_MAX_DATA_XFER_SIZE) < 0) {
+        goto out;
+    }
+
+    if (vfu_ctx->migration != NULL) {
+        if ((jo_migration = json_object_new_object()) == NULL) {
+            goto out;
+        }
+
+        size_t pgsize = migration_get_pgsize(vfu_ctx->migration);
+        if (json_add_uint64(jo_migration, "pgsize", pgsize) < 0) {
+            goto out;
+        }
+
+        if (json_add(jo_caps, "migration", &jo_migration) < 0) {
+            goto out;
+        }
+    }
+
+    if ((jo_top = json_object_new_object()) == NULL ||
+        json_add(jo_top, "capabilities", &jo_caps) < 0) {
+        goto out;
+    }
+
+    caps_str = strdup(json_object_to_json_string(jo_top));
+
+out:
+    json_object_put(jo_migration);
+    json_object_put(jo_caps);
+    json_object_put(jo_top);
+    return caps_str;
+}
+
 static int
 send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
              struct vfio_user_version *cversion, int client_cmd_socket_fd)
 {
     struct vfio_user_version sversion = { 0 };
     struct iovec iovecs[2] = { { 0 } };
-    char server_caps[1024];
     vfu_msg_t msg = { { 0 } };
-    int slen;
+    char *server_caps = NULL;
+    int ret;
 
-    if (vfu_ctx->migration == NULL) {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE);
-    } else {
-        slen = snprintf(server_caps, sizeof(server_caps),
-            "{"
-                "\"capabilities\":{"
-                    "\"max_msg_fds\":%u,"
-                    "\"max_data_xfer_size\":%u,"
-                    "\"migration\":{"
-                        "\"pgsize\":%zu"
-                    "}"
-                "}"
-             "}", SERVER_MAX_FDS, SERVER_MAX_DATA_XFER_SIZE,
-                  migration_get_pgsize(vfu_ctx->migration));
+    if ((server_caps = format_server_capabilities(vfu_ctx)) == NULL) {
+        errno = ENOMEM;
+        return -1;
     }
 
     // FIXME: we should save the client minor here, and check that before trying
@@ -323,7 +402,7 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
     iovecs[0].iov_len = sizeof(sversion);
     iovecs[1].iov_base = server_caps;
     /* Include the NUL. */
-    iovecs[1].iov_len = slen + 1;
+    iovecs[1].iov_len = strlen(server_caps) + 1;
 
     msg.hdr.cmd = VFIO_USER_VERSION;
     msg.hdr.msg_id = msg_id;
@@ -334,7 +413,9 @@ send_version(vfu_ctx_t *vfu_ctx, uint16_t msg_id,
         msg.out.nr_fds = 1;
     }
 
-    return vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+    ret = vfu_ctx->tran->reply(vfu_ctx, &msg, 0);
+    free(server_caps);
+    return ret;
 }
 
 int
