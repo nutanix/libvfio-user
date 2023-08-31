@@ -56,7 +56,7 @@ def quiesce_cb(ctx):
 
 
 def test_dirty_pages_setup():
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -82,7 +82,7 @@ def test_dirty_pages_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
     f = tempfile.TemporaryFile()
     f.truncate(0x10 << PAGE_SHIFT)
@@ -91,19 +91,19 @@ def test_dirty_pages_setup():
         flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x10 << PAGE_SHIFT, size=0x20 << PAGE_SHIFT)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, fds=[f.fileno()])
 
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
         flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x40 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
 
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
 
 
 def test_dirty_pages_short_write():
     payload = struct.pack("I", 8)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -111,7 +111,7 @@ def test_dirty_pages_bad_argsz():
     payload = vfio_user_dirty_pages(argsz=4,
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -119,7 +119,7 @@ def test_dirty_pages_start_no_migration():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.ENOTSUP)
 
 
@@ -137,14 +137,14 @@ def test_dirty_pages_start_bad_flags():
         flags=(VFIO_IOMMU_DIRTY_PAGES_FLAG_START |
                VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP))
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=(VFIO_IOMMU_DIRTY_PAGES_FLAG_START |
                VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP))
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -152,7 +152,7 @@ def start_logging():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
 
 def test_dirty_pages_start():
@@ -165,7 +165,7 @@ def test_dirty_pages_get_short_read():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
         flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -182,7 +182,7 @@ def test_dirty_pages_get_sub_range():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.ENOTSUP)
 
 
@@ -196,7 +196,7 @@ def test_dirty_pages_get_bad_page_size():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -210,7 +210,7 @@ def test_dirty_pages_get_bad_bitmap_size():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -224,7 +224,7 @@ def test_dirty_pages_get_bad_argsz():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -237,7 +237,7 @@ def test_dirty_pages_get_short_reply():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    result = msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
     assert len(result) == len(vfio_user_dirty_pages())
 
@@ -260,7 +260,7 @@ def test_get_dirty_page_bitmap_unmapped():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload,
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload,
         expect=errno.EINVAL)
 
 
@@ -275,7 +275,7 @@ def test_dirty_pages_get_unmodified():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    result = msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
     assert len(result) == argsz
 
@@ -304,7 +304,7 @@ def get_dirty_page_bitmap():
 
     payload = bytes(dirty_pages) + bytes(br)
 
-    result = msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    result = msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
     _, result = vfio_user_dirty_pages.pop_from_buffer(result)
     _, result = vfio_user_bitmap_range.pop_from_buffer(result)
@@ -433,7 +433,7 @@ def test_dirty_pages_stop():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload)
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload)
 
 
 def test_dirty_pages_start_with_quiesce():
@@ -444,13 +444,13 @@ def test_dirty_pages_start_with_quiesce():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_START)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
 
     # now should be able to get the reply
-    get_reply(sock, expect=0)
+    get_reply(client.sock, expect=0)
 
     quiesce_errno = 0
 
@@ -480,19 +480,19 @@ def test_dirty_pages_stop_with_quiesce():
     payload = vfio_user_dirty_pages(argsz=len(vfio_user_dirty_pages()),
                                     flags=VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP)
 
-    msg(ctx, sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
+    msg(ctx, client.sock, VFIO_USER_DIRTY_PAGES, payload, rsp=False, busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
 
     # now should be able to get the reply
-    get_reply(sock, expect=0)
+    get_reply(client.sock, expect=0)
 
     quiesce_errno = 0
 
 
 def test_dirty_pages_cleanup():
-    disconnect_client(ctx, sock)
+    client.disconnect(ctx)
     vfu_destroy_ctx(ctx)
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

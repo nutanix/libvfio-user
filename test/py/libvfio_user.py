@@ -688,25 +688,38 @@ def connect_sock():
     return sock
 
 
-def connect_client(ctx):
-    sock = connect_sock()
+class Client:
+    """Models a VFIO-user client connected to the server under test."""
 
-    json = b'{ "capabilities": { "max_msg_fds": 8 } }'
-    # struct vfio_user_version
-    payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                          LIBVFIO_USER_MINOR, json, b'\0')
-    hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
-    sock.send(hdr + payload)
-    vfu_attach_ctx(ctx, expect=0)
-    payload = get_reply(sock, expect=0)
-    return sock
+    def __init__(self, sock=None):
+        self.sock = sock
+        self.client_cmd_socket = None
+
+    def connect(self, ctx):
+        self.sock = connect_sock()
+
+        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
+        # struct vfio_user_version
+        payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, json, b'\0')
+        hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
+        self.sock.send(hdr + payload)
+        vfu_attach_ctx(ctx, expect=0)
+        payload = get_reply(self.sock, expect=0)
+        return self.sock
+
+    def disconnect(self, ctx):
+        self.sock.close()
+        self.sock = None
+
+        # notice client closed connection
+        vfu_run_ctx(ctx, errno.ENOTCONN)
 
 
-def disconnect_client(ctx, sock):
-    sock.close()
-
-    # notice client closed connection
-    vfu_run_ctx(ctx, errno.ENOTCONN)
+def connect_client(*args, **kwargs):
+    client = Client()
+    client.connect(*args, **kwargs)
+    return client
 
 
 def get_reply(sock, expect=0):

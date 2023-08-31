@@ -30,13 +30,13 @@
 from libvfio_user import *
 
 ctx = None
-sock = None
+client = None
 
 argsz = len(vfio_region_info())
 
 
 def test_device_get_region_info_setup():
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -44,13 +44,13 @@ def test_device_get_region_info_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def test_device_get_region_info_zero_sized_region():
     """Tests that a zero-sized region has no caps."""
 
-    global sock
+    global client
 
     for index in [VFU_PCI_DEV_BAR1_REGION_IDX, VFU_PCI_DEV_MIGR_REGION_IDX]:
         payload = vfio_region_info(argsz=argsz, flags=0,
@@ -59,9 +59,9 @@ def test_device_get_region_info_zero_sized_region():
 
         hdr = vfio_user_header(VFIO_USER_DEVICE_GET_REGION_INFO,
                                size=len(payload))
-        sock.send(hdr + payload)
+        client.sock.send(hdr + payload)
         vfu_run_ctx(ctx)
-        result = get_reply(sock)
+        result = get_reply(client.sock)
 
         assert len(result) == argsz
 
