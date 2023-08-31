@@ -702,16 +702,12 @@ class Client:
         hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
-        fds, payload = get_reply_fds(self.sock, expect=0)
-        self.client_cmd_socket = socket.socket(fileno=fds[0]) if fds else None
+        payload = get_reply(self.sock, expect=0)
         return self.sock
 
     def disconnect(self, ctx):
         self.sock.close()
         self.sock = None
-        if self.client_cmd_socket is not None:
-            self.client_cmd_socket.close()
-            self.client_cmd_socket = None
 
         # notice client closed connection
         vfu_run_ctx(ctx, errno.ENOTCONN)
