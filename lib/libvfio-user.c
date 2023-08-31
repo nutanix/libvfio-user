@@ -1127,7 +1127,7 @@ do_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int reply_errno)
     assert(vfu_ctx != NULL);
     assert(msg != NULL);
 
-    if (msg->hdr.flags.no_reply) {
+    if (msg->hdr.flags & VFIO_USER_F_NO_REPLY) {
         /*
          * A failed client request is not a failure of handle_request() itself.
          */
@@ -1283,7 +1283,7 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
 static bool
 is_valid_header(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
-    if (msg->hdr.flags.type != VFIO_USER_F_TYPE_COMMAND) {
+    if ((msg->hdr.flags & VFIO_USER_F_TYPE_MASK) != VFIO_USER_F_TYPE_COMMAND) {
         vfu_log(vfu_ctx, LOG_ERR, "msg%#hx: not a command req",
                 msg->hdr.msg_id);
         return false;
