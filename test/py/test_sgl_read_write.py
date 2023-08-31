@@ -52,7 +52,7 @@ class DMARegionHandler:
             if pipe in ready:
                 break
 
-# Read a command from the socket and service it.
+            # Read a command from the socket and service it.
             _, msg_id, cmd, payload = get_msg_fds(sock,
                                                   VFIO_USER_F_TYPE_COMMAND)
             assert cmd in [VFIO_USER_DMA_READ, VFIO_USER_DMA_WRITE]
