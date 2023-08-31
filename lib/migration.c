@@ -337,7 +337,7 @@ handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     if (ret < 0) {
         vfu_log(vfu_ctx, LOG_ERR, "read_data callback failed, errno=%d", errno);
-        msg->out.iov.iov_len = 0;
+        iov_free(&msg->out.iov);
         return ret;
     }
 

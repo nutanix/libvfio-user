@@ -39,6 +39,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <sys/uio.h>
 
 #define UNUSED __attribute__((unused))
 #define EXPORT __attribute__((visibility("default")))
@@ -101,6 +102,16 @@ get_bitmap_size(size_t region_size, size_t pgsize)
 
     size_t nr_pages = (region_size / pgsize) + (region_size % pgsize != 0);
     return ROUND_UP(nr_pages, sizeof(uint64_t) * CHAR_BIT) / CHAR_BIT;
+}
+
+static inline void
+iov_free(struct iovec *iov)
+{
+    if (iov->iov_base != NULL) {
+        free(iov->iov_base);
+        iov->iov_base = NULL;
+    }
+    iov->iov_len = 0;
 }
 
 #ifdef UNIT_TEST
