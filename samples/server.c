@@ -312,19 +312,19 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
      * more complex state tracking which exceeds the scope of this sample.
      */
 
-    uint32_t total_read = server_data->bar1_size;
+    uint32_t total_to_read = server_data->bar1_size;
 
     if (server_data->migration.state == VFU_MIGR_STATE_STOP_AND_COPY) {
-        total_read += sizeof(server_data->bar0);
+        total_to_read += sizeof(server_data->bar0);
     }
 
-    if (server_data->migration.bytes_transferred == total_read || size == 0) {
+    if (server_data->migration.bytes_transferred == total_to_read || size == 0) {
         vfu_log(vfu_ctx, LOG_DEBUG, "no data left to read");
         return 0;
     }
 
     uint32_t read_start = server_data->migration.bytes_transferred;
-    uint32_t read_end = MIN(read_start + size, total_read);
+    uint32_t read_end = MIN(read_start + size, total_to_read);
     assert(read_end > read_start);
 
     uint32_t bytes_read = read_end - read_start;
@@ -361,14 +361,14 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
     assert(server_data != NULL);
     assert(data != NULL);
 
-    uint32_t total_write = server_data->bar1_size + sizeof(server_data->bar0);
+    uint32_t total_to_write = server_data->bar1_size + sizeof(server_data->bar0);
 
-    if (server_data->migration.bytes_transferred == total_write || size == 0) {
+    if (server_data->migration.bytes_transferred == total_to_write || size == 0) {
         return 0;
     }
 
     uint32_t write_start = server_data->migration.bytes_transferred;
-    uint32_t write_end = MIN(write_start + size, total_write); // exclusive
+    uint32_t write_end = MIN(write_start + size, total_to_write); // exclusive
     assert(write_end > write_start);
 
     uint32_t bytes_written = write_end - write_start;
