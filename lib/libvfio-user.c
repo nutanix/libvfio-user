@@ -970,7 +970,7 @@ handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         + sizeof(struct vfio_user_device_feature_migration);
 
     if (req->argsz < msg->out.iov.iov_len) {
-        msg->out.iov.iov_len = 0;
+        iov_free(&msg->out.iov);
         return ERROR_INT(EINVAL);
     }
 
@@ -1050,7 +1050,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
     msg->out.iov.iov_len = header_size + bitmap_size;
 
     if (req->argsz < msg->out.iov.iov_len) {
-        msg->out.iov.iov_len = 0;
+        iov_free(&msg->out.iov);
         return ERROR_INT(EINVAL);
     }
 
@@ -1076,7 +1076,7 @@ handle_dma_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                                             bitmap);
 
     if (ret < 0) {
-        msg->out.iov.iov_len = 0;
+        iov_free(&msg->out.iov);
     }
 
     return ret;
@@ -1150,7 +1150,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             if (req->argsz < msg->out.iov.iov_len) {
                 vfu_log(vfu_ctx, LOG_ERR, "bad argsz (%d<%ld)", req->argsz,
                         msg->out.iov.iov_len);
-                msg->out.iov.iov_len = 0;
+                iov_free(&msg->out.iov);
                 return ERROR_INT(EINVAL);
             }
 
@@ -1193,7 +1193,7 @@ handle_device_feature(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
             if (req->argsz < msg->out.iov.iov_len) {
                 vfu_log(vfu_ctx, LOG_ERR, "bad argsz (%d<%ld)", req->argsz,
                         msg->out.iov.iov_len);
-                msg->out.iov.iov_len = 0;
+                iov_free(&msg->out.iov);
                 return ERROR_INT(EINVAL);
             }
 
