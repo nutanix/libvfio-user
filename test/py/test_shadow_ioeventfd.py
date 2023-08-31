@@ -60,12 +60,12 @@ def test_shadow_ioeventfd():
     assert ret == 0
 
     # client queries I/O region FDs
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
     payload = vfio_user_region_io_fds_request(
                 argsz=len(vfio_user_region_io_fds_reply()) +
                 len(vfio_user_sub_region_ioeventfd()), flags=0,
                 index=VFU_PCI_DEV_BAR0_REGION_IDX, count=0)
-    newfds, ret = msg_fds(ctx, sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
                           payload, expect=0)
     reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
     assert reply.count == 1  # 1 eventfd

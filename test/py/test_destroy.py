@@ -35,10 +35,10 @@ ctx = None
 
 
 def setup_function(function):
-    global ctx, sock
+    global ctx, client
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def teardown_function(function):

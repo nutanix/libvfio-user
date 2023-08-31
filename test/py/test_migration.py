@@ -33,11 +33,11 @@ import errno
 from unittest.mock import patch
 
 ctx = None
-sock = 0
+client = None
 
 
 def setup_function(function):
-    global ctx, sock
+    global ctx, client
 
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
@@ -54,7 +54,7 @@ def setup_function(function):
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    sock = connect_client(ctx)
+    client = connect_client(ctx)
 
 
 def teardown_function(function):
@@ -73,10 +73,10 @@ def test_migration_bad_access(mock_trans, mock_quiesce):
     checking for a register-sized access, otherwise we'll change migration
     state without having quiesced.
     """
-    global ctx, sock
+    global ctx, client
 
     data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data)-1, data=data, expect=errno.EINVAL)
 
     mock_trans.assert_not_called()
@@ -89,10 +89,10 @@ def test_migration_trans_sync(mock_trans, mock_quiesce):
     Tests transitioning to the saving state.
     """
 
-    global ctx, sock
+    global ctx, client
 
     data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data)
 
     ret = vfu_run_ctx(ctx)
@@ -105,10 +105,10 @@ def test_migration_trans_sync_err(mock_trans):
     Tests the device returning an error when the migration state is written to.
     """
 
-    global ctx, sock
+    global ctx, client
 
     data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, expect=errno.EPERM)
 
     ret = vfu_run_ctx(ctx)
@@ -123,18 +123,18 @@ def test_migration_trans_async(mock_trans, mock_quiesce):
     quiescing.
     """
 
-    global ctx, sock
+    global ctx, client
     mock_quiesce
 
     data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
                  busy=True)
 
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
 
-    get_reply(sock)
+    get_reply(client.sock)
 
     ret = vfu_run_ctx(ctx)
     assert ret == 0
@@ -149,10 +149,10 @@ def test_migration_trans_async_err(mock_trans, mock_quiesce):
     the new migration state.
     """
 
-    global ctx, sock
+    global ctx, client
 
     data = VFIO_DEVICE_STATE_V1_RUNNING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
+    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
                  count=len(data), data=data, rsp=False,
                  busy=True)
 
@@ -160,7 +160,7 @@ def test_migration_trans_async_err(mock_trans, mock_quiesce):
     assert ret == 0
 
     print("waiting for reply")
-    get_reply(sock, errno.ENOTTY)
+    get_reply(client.sock, errno.ENOTTY)
     print("received reply")
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
