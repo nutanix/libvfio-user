@@ -582,7 +582,7 @@ to check for the ``twin_socket.fd_index`` field:
   descriptor from the reply and monitors it for commands from the server.
 * If ``twin_socket.fd_index`` is present, but its value is not a valid index in
   the file descriptor array, the client must abort and close the connection since
-  it would not be able to receive command from the server.
+  it would not be able to receive commands from the server.
 
 The twin-socket feature is optional, so some servers may not support it.
 However, for server implementations that do send server-to-client commands it is
