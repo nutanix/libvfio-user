@@ -1758,7 +1758,8 @@ The data field of the response is identical, except with the bitmap added on
 the end at offset 24.
 
 The bitmap is an array of u64s that holds the output bitmap, with 1 bit
-reporting a *page_size* unit of IOVA.
+reporting a *page_size* unit of IOVA. The bits outside of the requested range
+must be zero.
 
 The mapping of IOVA to bits is given by:
 
