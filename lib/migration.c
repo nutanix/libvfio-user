@@ -385,6 +385,12 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         return ERROR_INT(EINVAL);
     }
 
+    if (msg->in.iov.iov_len < sizeof(struct vfio_user_mig_data) + req->size) {
+        vfu_log(vfu_ctx, LOG_ERR, "short write (%d < %ld)",
+                req->argsz, sizeof(struct vfio_user_mig_data) + req->size);
+        return ERROR_INT(EINVAL);
+    }
+
     ssize_t ret = migr->callbacks.write_data(vfu_ctx, &req->data, req->size);
 
     if (ret < 0) {
@@ -432,6 +438,14 @@ migration_set_pgsize(struct migration *migr, size_t pgsize)
 
     migr->pgsize = pgsize;
     return 0;
+}
+
+bool
+migration_feature_needs_quiesce(struct vfio_user_device_feature *feature)
+{
+    return ((feature->flags &
+        (VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE)) != 0)
+        && !(feature->flags & VFIO_DEVICE_FEATURE_PROBE);
 }
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

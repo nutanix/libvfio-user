@@ -85,8 +85,7 @@ MOCK_DECLARE(ssize_t, handle_device_state, vfu_ctx_t *vfu_ctx,
              struct migration *migr, uint32_t device_state, bool notify);
 
 bool
-access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                              uint64_t offset);
+migration_feature_needs_quiesce(struct vfio_user_device_feature *feature);
 
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 
