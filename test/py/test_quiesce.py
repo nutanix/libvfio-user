@@ -195,6 +195,31 @@ def test_allowed_funcs_in_quiesced_dma_unregister_busy(mock_quiesce,
     mock_dma_unregister.assert_called_once_with(ctx, mock.ANY)
 
 
+@patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
+@patch('libvfio_user.quiesce_cb')
+def test_allowed_funcs_in_quiesed_migration(mock_quiesce,
+                                            mock_trans):
+
+    global ctx, sock
+    _map_dma_region(ctx, sock)
+    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_STOP)
+    mock_trans.assert_called_once_with(ctx, VFU_MIGR_STATE_STOP)
+
+
+@patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
+@patch('libvfio_user.quiesce_cb')
+def test_allowed_funcs_in_quiesed_migration_busy(mock_quiesce,
+                                                 mock_trans):
+
+    global ctx, sock
+    _map_dma_region(ctx, sock)
+    mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
+    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_STOP, busy=True)
+    ret = vfu_device_quiesced(ctx, 0)
+    assert ret == 0
+    mock_trans.assert_called_once_with(ctx, VFU_MIGR_STATE_STOP)
+
+
 @patch('libvfio_user.reset_cb', side_effect=_side_effect)
 @patch('libvfio_user.quiesce_cb')
 def test_allowed_funcs_in_quiesced_reset(mock_quiesce, mock_reset):

@@ -198,16 +198,8 @@ def test_reply_fail_quiesce_busy(mock_migr_trans_cb, mock_quiesce,
     mock_migr_trans_cb.side_effect = migr_trans_cb_side_effect
 
     # change the state, it should close the socket causing the reply to fail
-    feature = vfio_user_device_feature(
-        argsz=len(vfio_user_device_feature()) +
-            len(vfio_user_device_feature_mig_state()),
-        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
-    )
-    payload = vfio_user_device_feature_mig_state(
-        device_state=VFIO_USER_DEVICE_STATE_STOP_COPY
-    )
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
-        rsp=False, busy=True)
+    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_STOP_COPY, rsp=False,
+                        busy=True)
 
     # vfu_run_ctx will try to reset the context and to do that it needs to
     # quiesce the device first

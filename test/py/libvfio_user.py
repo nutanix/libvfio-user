@@ -570,6 +570,13 @@ class vfio_user_device_feature(Structure):
     ]
 
 
+class vfio_user_device_feature_migration(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("flags", c.c_uint64)
+    ]
+
+
 class vfio_user_device_feature_mig_state(Structure):
     _pack_ = 1
     _fields_ = [
@@ -727,15 +734,20 @@ def connect_sock():
 def connect_client(ctx, max_data_xfer_size=None):
     sock = connect_sock()
 
-    if max_data_xfer_size is None:
-        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
-    else:
-        json = b'{ "capabilities": { "max_msg_fds": 8, "max_data_xfer_size": '\
-            + str(max_data_xfer_size).encode("utf-8") + b' } }'
+    caps = {
+        "capabilities": {
+            "max_msg_fds": 8
+        }
+    }
+
+    if max_data_xfer_size is not None:
+        caps["capabilities"]["max_data_xfer_size"] = max_data_xfer_size
+
+    caps_json = json.dumps(caps).encode("utf-8")
 
     # struct vfio_user_version
-    payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                          LIBVFIO_USER_MINOR, json, b'\0')
+    payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
+                          LIBVFIO_USER_MINOR, caps_json, b'\0')
     hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
     sock.send(hdr + payload)
     vfu_attach_ctx(ctx, expect=0)
@@ -988,6 +1000,18 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     assert ret == 0
 
     return ctx
+
+
+def transition_to_state(ctx, sock, state, expect=0, rsp=True, busy=False):
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(device_state=state)
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        expect=expect, rsp=rsp, busy=busy)
+
 
 #
 # Library wrappers
@@ -1254,6 +1278,11 @@ def fds_are_same(fd1: int, fd2: int) -> bool:
 
 
 def get_bitmap_size(size: int, pgsize: int) -> int:
+    """
+    Returns the size, in bytes, of the bitmap that represents the given range
+    with the given page size.
+    """
+
     nr_pages = (size // pgsize) + (1 if size % pgsize != 0 else 0)
     return ((nr_pages + 63) & ~63) // 8
 

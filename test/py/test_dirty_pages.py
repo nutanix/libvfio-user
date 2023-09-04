@@ -69,9 +69,6 @@ def test_dirty_pages_setup():
     ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
     assert ret == 0
 
-    f = tempfile.TemporaryFile()
-    f.truncate(2 << PAGE_SHIFT)
-
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -92,15 +89,6 @@ def test_dirty_pages_setup():
 
     msg(ctx, sock, VFIO_USER_DMA_MAP, payload)
 
-    f2 = tempfile.TemporaryFile()
-    f2.truncate(0x10 << PAGE_SHIFT)
-
-    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
-        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
-        offset=0, addr=0x60 << PAGE_SHIFT, size=0x20 << PAGE_SHIFT)
-
-    msg(ctx, sock, VFIO_USER_DMA_MAP, payload, fds=[f2.fileno()])
-
 
 def test_setup_migration():
     ret = vfu_setup_device_migration_callbacks(ctx)
@@ -108,13 +96,27 @@ def test_setup_migration():
 
 
 def start_logging(addr=None, length=None, page_size=PAGE_SIZE, expect=0):
+    """
+    Start logging dirty writes.
+
+    If a region and page size are specified, they will be sent to the server to
+    start logging. Otherwise, all regions will be logged and the default page
+    size will be used.
+
+    Note: in the current implementation, all regions are logged whether or not
+    you specify a region, as the additional constraint of only logging a
+    certain region is considered an optimisation and is not yet implemented.
+    """
+
     if addr is not None:
         ranges = vfio_user_device_feature_dma_logging_range(
             iova=addr,
             length=length
         )
+        num_ranges = 1
     else:
-        ranges = []
+        ranges = bytearray()
+        num_ranges = 0
 
     feature = vfio_user_device_feature(
         argsz=len(vfio_user_device_feature()) +
@@ -124,11 +126,15 @@ def start_logging(addr=None, length=None, page_size=PAGE_SIZE, expect=0):
 
     payload = vfio_user_device_feature_dma_logging_control(
         page_size=page_size,
-        num_ranges=(1 if addr is not None else 0),
+        num_ranges=num_ranges,
         reserved=0)
 
     msg(ctx, sock, VFIO_USER_DEVICE_FEATURE,
         bytes(feature) + bytes(payload) + bytes(ranges), expect=expect)
+
+
+def test_dirty_pages_start_zero_pgsize():
+    start_logging(page_size=0, expect=errno.EINVAL)
 
 
 def test_dirty_pages_start():
@@ -138,54 +144,26 @@ def test_dirty_pages_start():
 
 
 def test_dirty_pages_start_different_pgsize():
-    start_logging(page_size=0, expect=errno.EINVAL)
+    """
+    Once we've started logging with page size PAGE_SIZE, any request to start
+    logging at a different page size should be rejected.
+    """
+
     start_logging(page_size=PAGE_SIZE >> 1, expect=errno.EINVAL)
-
-
-def test_dirty_pages_get_unmodified():
-    argsz = len(vfio_user_device_feature()) + \
-            len(vfio_user_device_feature_dma_logging_report()) + \
-            8  # size of bitmap
-
-    feature = vfio_user_device_feature(
-        argsz=argsz,
-        flags=VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT | VFIO_DEVICE_FEATURE_GET
-    )
-
-    report = vfio_user_device_feature_dma_logging_report(
-        iova=0x10 << PAGE_SHIFT,
-        length=0x10 << PAGE_SHIFT,
-        page_size=PAGE_SIZE
-    )
-
-    payload = bytes(feature) + bytes(report)
-
-    result = msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload)
-
-    assert len(result) == argsz
-
-    feature, result = vfio_user_device_feature.pop_from_buffer(result)
-
-    assert feature.argsz == argsz
-    assert feature.flags == VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT \
-        | VFIO_DEVICE_FEATURE_GET
-
-    report, bitmap = \
-        vfio_user_device_feature_dma_logging_report.pop_from_buffer(result)
-
-    assert report.iova == 0x10 << PAGE_SHIFT
-    assert report.length == 0x10 << PAGE_SHIFT
-    assert report.page_size == PAGE_SIZE
-
-    assert len(bitmap) == 8
-
-    for b in bitmap:
-        assert b == 0
+    start_logging(page_size=PAGE_SIZE << 1, expect=errno.EINVAL)
 
 
 def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
                           page_size=PAGE_SIZE, expect=0):
+    """
+    Get the dirty page bitmap from the server for the given region and page
+    size as a 64-bit integer. This only works for bitmaps that fit within a
+    64-bit integer.
+    """
+
     bitmap_size = get_bitmap_size(length, page_size)
+
+    assert bitmap_size == 8
 
     argsz = len(vfio_user_device_feature()) + \
             len(vfio_user_device_feature_dma_logging_report()) + \
@@ -218,6 +196,11 @@ def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
     assert len(result) == bitmap_size
 
     return struct.unpack("Q", result)[0]
+
+
+def test_dirty_pages_get_unmodified():
+    bitmap = get_dirty_page_bitmap()
+    assert bitmap == 0
 
 
 sg3 = None
@@ -354,11 +337,11 @@ def test_dirty_pages_get_modified():
     assert bitmap == 0b010000000000000000001100
 
 
-def test_dirty_pages_invalid_address():
+def test_dirty_pages_invalid_arguments():
     # Failed to translate
     get_dirty_page_bitmap(addr=0xdeadbeef, expect=errno.ENOENT)
 
-    # Does not exactly match a region
+    # Does not exactly match a region (libvfio-user limitation)
     get_dirty_page_bitmap(addr=(0x10 << PAGE_SHIFT) + 1,
                           length=(0x20 << PAGE_SHIFT) - 1,
                           expect=errno.ENOTSUP)
@@ -400,6 +383,30 @@ def test_dirty_pages_stop():
 
 def test_dirty_pages_cleanup():
     disconnect_client(ctx, sock)
+    vfu_destroy_ctx(ctx)
+
+
+def test_dirty_pages_uninitialised_dma():
+    global ctx, sock
+
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    ret = vfu_pci_init(ctx)
+    assert ret == 0
+
+    vfu_setup_device_quiesce_cb(ctx, quiesce_cb=quiesce_cb)
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    sock = connect_client(ctx)
+
+    start_logging(expect=errno.EINVAL)
+    get_dirty_page_bitmap(expect=errno.EINVAL)
+
+    disconnect_client(ctx, sock)
+
     vfu_destroy_ctx(ctx)
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:

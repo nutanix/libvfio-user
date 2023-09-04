@@ -407,7 +407,7 @@ test_device_is_stopped_and_copying(UNUSED void **state)
     size_t i;
     struct migration migration;
     vfu_ctx.migration = &migration;
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < VFIO_USER_DEVICE_NUM_STATES; i++) {
         migration.state = i;
         bool r = device_is_stopped_and_copying(vfu_ctx.migration);
         if (i == VFIO_USER_DEVICE_STATE_STOP_COPY) {
