@@ -1757,6 +1757,9 @@ The data field of the request is structured as follows:
 The data field of the response is identical, except with the bitmap added on
 the end at offset 24.
 
+The bitmap is an array of u64s that holds the output bitmap, with 1 bit
+reporting a *page_size* unit of IOVA.
+
 The mapping of IOVA to bits is given by:
 
 ``bitmap[(addr - iova)/page_size] & (1ULL << (addr % 64))``
