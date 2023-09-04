@@ -1522,6 +1522,7 @@ static bool
 command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
 {
     struct vfio_user_region_access *reg;
+    struct vfio_user_device_feature *feature;
 
     if (vfu_ctx->quiesce == NULL) {
         return false;
@@ -1540,7 +1541,6 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
             /*
              * bad request, it will be eventually failed by
              * handle_region_access
-             *
              */
             return false;
         }
@@ -1549,7 +1549,22 @@ command_needs_quiesce(vfu_ctx_t *vfu_ctx, const vfu_msg_t *msg)
             return true;
         }
         break;
+
+    case VFIO_USER_DEVICE_FEATURE:
+        if (msg->in.iov.iov_len < sizeof(*feature)) {
+            /*
+             * bad request, it will be eventually failed by
+             * handle_region_access
+             */
+            return false;
+        }
+        feature = msg->in.iov.iov_base;
+        if (migration_feature_needs_quiesce(feature)) {
+            return true;
+        }
+        break;
     }
+
 
     return false;
 }
