@@ -539,19 +539,18 @@ The migration capability contains the following name/value pairs:
 
 The ``twin_socket`` capability object holds these name/value pairs:
 
-+----------+---------+--------------------------------------------------------+
-| Name     | Type    | Description                                            |
-+==========+=========+========================================================+
-| enable   | boolean | Indicates whether the client wants to enable           |
-|          |         | twin-socket mode. Optional, defaults to false, only    |
-|          |         | valid in the request message.                          |
-+----------+---------+--------------------------------------------------------+
-| fd_index | number  | Specifies an index in the file descriptor array        |
-|          |         | included with the message. The designated file         |
-|          |         | descriptor is a socket which is to be used for the     |
-|          |         | server-to-client command channel. Optional, only valid |
-|          |         | in the reply message.                                  |
-+----------+---------+--------------------------------------------------------+
++-----------+---------+--------------------------------------------------------+
+| Name      | Type    | Description                                            |
++===========+=========+========================================================+
+| supported | boolean | Indicates whether the sender supports twin-socket      |
+|           |         | mode. Optional, defaults to false.                     |
++-----------+---------+--------------------------------------------------------+
+| fd_index  | number  | Specifies an index in the file descriptor array        |
+|           |         | included with the message. The designated file         |
+|           |         | descriptor is a socket which is to be used for the     |
+|           |         | server-to-client command channel. Optional, only valid |
+|           |         | in the reply message.                                  |
++-----------+---------+--------------------------------------------------------+
 
 Reply
 ^^^^^
@@ -559,30 +558,33 @@ Reply
 The same message format is used in the server's reply with the semantics
 described above.
 
-If and only if the client has requested twin-socket mode by setting
-``twin_socket.enable`` to true in its capabilities, the server may optionally
+If and only if the client has indicated support for twin-socket mode by setting
+``twin_socket.supported`` to true in its capabilities, the server may optionally
 set up a separate command channel for server-to-client commands and their
 replies. The server enables twin-socket mode as follows:
 
 * Create a fresh socket pair.
 * Keep the server end of the socket pair and pass the client end in the file
   descriptor array included with the reply message.
+* Set ``twin_socket.supported`` to true in the reply.
 * Indicate the index in the file descriptor array by the
   ``twin_socket.fd_index`` capability field in the reply, so the client can
   identify the correct file descriptor to use.
 
-A client requesting twin-socket mode must examine the capabilities in the reply
-to check for the ``twin_socket.fd_index`` field:
+A client requesting twin-socket mode must examine the ``twin_socket`` capability
+in the reply:
 
-* If the field or the entire ``twin_socket`` object is missing, the server does
-  not support twin-socket mode or decided not to enable it. The client can
-  choose whether it wants to proceed without twin-socket mode, or close the
-  connection if not.
-* If ``twin_socket.fd_index`` is present, the client obtains the designated file
-  descriptor from the reply and monitors it for commands from the server.
-* If ``twin_socket.fd_index`` is present, but its value is not a valid index in
-  the file descriptor array, the client must abort and close the connection since
-  it would not be able to receive commands from the server.
+* If ``twin_socket.supported`` is false, the field is missing, or the entire
+  ``twin_socket`` object is absent, the server does not support twin-socket mode
+  or decided not to enable it. The client can choose whether it wants to proceed
+  without twin-socket mode, or close the connection if not.
+* If ``twin_socket.supported`` is true and ``twin_socket.fd_index`` is present
+  and refers to a valid file descriptor, twin-socket mode negotiation has
+  succeeded. The client monitors the provided file descriptor for commands from
+  the server.
+* Otherwise, the reply from the server is inconsistent. The client must abort
+  and close the connection since it is potentially unable to receive commands
+  from the server.
 
 The twin-socket feature is optional, so some servers may not support it.
 However, for server implementations that do send server-to-client commands it is
