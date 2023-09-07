@@ -58,7 +58,7 @@
  *             "pgsize": 4096
  *         },
  *         "twin_socket": {
- *             "enable": true,
+ *             "supported": true,
  *             "fd_index": 0
  *         }
  *     }
@@ -143,7 +143,7 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
             goto out;
         }
 
-        if (json_object_object_get_ex(jo, "enable", &jo2)) {
+        if (json_object_object_get_ex(jo, "supported", &jo2)) {
             if (json_object_get_type(jo2) != json_type_boolean) {
                 goto out;
             }
@@ -376,11 +376,15 @@ format_server_capabilities(vfu_ctx_t *vfu_ctx, int twin_socket_fd_index)
     }
 
     if (twin_socket_fd_index >= 0) {
+        struct json_object *jo_supported = NULL;
+
         if ((jo_twin_socket = json_object_new_object()) == NULL) {
             goto out;
         }
 
-        if (json_add_uint64(jo_twin_socket, "fd_index",
+        if ((jo_supported = json_object_new_boolean(true)) == NULL ||
+            json_add(jo_twin_socket, "supported", &jo_supported) < 0 ||
+            json_add_uint64(jo_twin_socket, "fd_index",
                             twin_socket_fd_index) < 0) {
             goto out;
         }

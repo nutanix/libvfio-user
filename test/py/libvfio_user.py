@@ -740,7 +740,8 @@ class Client:
 
         server_caps = json.loads(payload[struct.calcsize("HH"):-1].decode())
         try:
-            if client_caps["capabilities"]["twin_socket"]["enable"]:
+            if (client_caps["capabilities"]["twin_socket"]["supported"] and
+               server_caps["capabilities"]["twin_socket"]["supported"]):
                 index = server_caps["capabilities"]["twin_socket"]["fd_index"]
                 self.client_cmd_socket = socket.socket(fileno=fds[index])
         except KeyError:

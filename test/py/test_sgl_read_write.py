@@ -110,7 +110,7 @@ def setup_function(function):
         "capabilities": {
             "max_data_xfer_size": PAGE_SIZE,
             "twin_socket": {
-                "enable": True,
+                "supported": True,
             },
         }
     }
