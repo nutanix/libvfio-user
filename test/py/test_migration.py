@@ -391,7 +391,7 @@ def test_handle_mig_data_read_short_write():
     payload = bytes(mig_data_payload(data))
 
     # don't send the last byte
-    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload[0:len(payload) - 1],
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload[:-1],
         expect=errno.EINVAL)
 
 
@@ -474,7 +474,7 @@ def test_device_feature_short_write():
     payload = bytes(payload)
 
     # don't send the last byte
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload[0:len(payload) - 1],
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload[:-1],
         expect=errno.EINVAL)
 
 
