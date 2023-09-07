@@ -619,8 +619,6 @@ static void maybe_print_cmd_collision_warning(vfu_ctx_t *vfu_ctx) {
         "https://github.com/nutanix/libvfio-user/issues/279 for details.";
 
     if (!warning_printed) {
-        /* Print to log and stderr. */
-        fprintf(stderr, "WARNING: %s\n", warning_msg);
         vfu_log(vfu_ctx, LOG_WARNING, "%s", warning_msg);
         warning_printed = true;
     }
