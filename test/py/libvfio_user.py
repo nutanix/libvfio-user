@@ -1287,4 +1287,20 @@ def get_bitmap_size(size: int, pgsize: int) -> int:
     return ((nr_pages + 63) & ~63) // 8
 
 
+get_errno_loc = libc.__errno_location
+get_errno_loc.restype = c.POINTER(c.c_int)
+
+
+def set_real_errno(errno: int):
+    """
+    ctypes's errno is an internal value that only updates the real value when
+    the foreign function call returns. In callbacks, however, this doesn't
+    happen, so `c.set_errno` doesn't propagate in time. In this case we need to
+    manually set the real errno.
+    """
+
+    c.set_errno(errno)  # set internal errno so `c.get_errno` gives right value
+    get_errno_loc()[0] = errno  # set real errno
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

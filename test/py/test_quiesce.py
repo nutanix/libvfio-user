@@ -197,7 +197,7 @@ def test_allowed_funcs_in_quiesced_dma_unregister_busy(mock_quiesce,
 
 @patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
 @patch('libvfio_user.quiesce_cb')
-def test_allowed_funcs_in_quiesed_migration(mock_quiesce,
+def test_allowed_funcs_in_quiesced_migration(mock_quiesce,
                                             mock_trans):
 
     global ctx, sock
@@ -208,7 +208,7 @@ def test_allowed_funcs_in_quiesed_migration(mock_quiesce,
 
 @patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
 @patch('libvfio_user.quiesce_cb')
-def test_allowed_funcs_in_quiesed_migration_busy(mock_quiesce,
+def test_allowed_funcs_in_quiesced_migration_busy(mock_quiesce,
                                                  mock_trans):
 
     global ctx, sock

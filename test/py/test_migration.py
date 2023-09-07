@@ -35,12 +35,13 @@ import errno
 
 ctx = None
 sock = None
-current_state = None
-path = []
+
+current_state = None  # the current migration state on the server
+path = []  # the server transition path (each transition appends the new state)
+
 read_data = None
 write_data = None
-fail_callbacks = False
-fail_callbacks_errno = None
+callbacks_errno = 0
 
 
 STATES = {
@@ -68,12 +69,16 @@ VFU_TO_VFIO_MIGR_STATE = {
 }
 
 
+# Set a very small maximum transfer size for later tests.
+MAX_DATA_XFER_SIZE = 4
+
+
 @transition_cb_t
 def migr_trans_cb(_ctx, state):
     global current_state, path
 
-    if fail_callbacks:
-        c.set_errno(fail_callbacks_errno)
+    if callbacks_errno != 0:
+        set_real_errno(callbacks_errno)
         return -1
 
     if state in VFU_TO_VFIO_MIGR_STATE:
@@ -92,7 +97,8 @@ def migr_trans_cb(_ctx, state):
 def migr_read_data_cb(_ctx, buf, count):
     global read_data
 
-    if fail_callbacks:
+    if callbacks_errno != 0:
+        set_real_errno(callbacks_errno)
         return -1
 
     length = min(count, len(read_data))
@@ -106,7 +112,8 @@ def migr_read_data_cb(_ctx, buf, count):
 def migr_write_data_cb(_ctx, buf, count):
     global write_data
 
-    if fail_callbacks:
+    if callbacks_errno != 0:
+        set_real_errno(callbacks_errno)
         return -1
 
     write_data = bytes(count)
@@ -115,17 +122,31 @@ def migr_write_data_cb(_ctx, buf, count):
     return count
 
 
-def setup_fail_callbacks(errno=errno.EINVAL):
-    global fail_callbacks, fail_callbacks_errno
-    fail_callbacks = True
-    fail_callbacks_errno = errno
+def setup_fail_callbacks(errno):
+    global callbacks_errno
+    callbacks_errno = errno
 
 
 def teardown_fail_callbacks():
-    global fail_callbacks, fail_callbacks_errno
-    fail_callbacks = False
-    fail_callbacks_errno = None
+    global callbacks_errno
+    callbacks_errno = 0
     c.set_errno(0)
+
+
+def teardown_function(function):
+    teardown_fail_callbacks()
+
+
+def transition_to_migr_state(state, expect=0, rsp=True, busy=False):
+    return transition_to_state(ctx, sock, state, expect, rsp, busy)
+
+
+def mig_data_payload(data):
+    argsz = len(vfio_user_mig_data()) + len(data)
+    return vfio_user_mig_data(
+        argsz=argsz,
+        size=len(data)
+    )
 
 
 def test_migration_setup():
@@ -152,11 +173,10 @@ def test_migration_setup():
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
-    max_data_xfer_size = 4  # for later tests
-    sock = connect_client(ctx, max_data_xfer_size)
+    sock = connect_client(ctx, MAX_DATA_XFER_SIZE)
 
 
-def get_server_shortest_path(a, b, expectA=0, expectB=0):
+def server_transition_track_path(a, b, expectA=0, expectB=0):
     """
     Carry out the state transition from a to b on the server, keeping track of
     and returning the transition path taken.
@@ -168,16 +188,16 @@ def get_server_shortest_path(a, b, expectA=0, expectB=0):
             a == VFIO_USER_DEVICE_STATE_PRE_COPY:
         # The transition STOP_COPY -> PRE_COPY is explicitly blocked so we
         # advance one state to get around this in order to set up the test.
-        transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_STOP)
+        transition_to_migr_state(VFIO_USER_DEVICE_STATE_STOP)
 
-    transition_to_state(ctx, sock, a, expect=expectA)
+    transition_to_migr_state(a, expect=expectA)
 
     if expectA != 0:
         return None
 
     path = []
 
-    transition_to_state(ctx, sock, b, expect=expectB)
+    transition_to_migr_state(b, expect=expectB)
 
     return path.copy()
 
@@ -228,6 +248,8 @@ def test_migration_shortest_state_transition_paths():
     # Consider each vertex in turn to be the start state, that is, the state
     # we are transitioning from.
     for source in V:
+        # The previous node in the shortest path for each node, e.g. for
+        # shortest path `source -> node -> target`, `back[node] == source`.
         back = {v: None for v in V}
         queue = deque([(source, None)])
 
@@ -259,7 +281,7 @@ def test_migration_shortest_state_transition_paths():
                     seq.appendleft(curr)
                     curr = back[curr]
 
-                server_seq = get_server_shortest_path(source, target)
+                server_seq = server_transition_track_path(source, target)
 
                 assert len(seq) == len(server_seq)
                 assert all(seq[i] == server_seq[i] for i in range(len(seq)))
@@ -274,30 +296,29 @@ def test_migration_shortest_state_transition_paths():
 
                 # No matter what, we expect transitioning to the target state
                 # to fail.
-                get_server_shortest_path(source, target, expectA=expectA,
-                                         expectB=errno.EINVAL)
+                server_transition_track_path(source, target, expectA=expectA,
+                                             expectB=errno.EINVAL)
 
 
 def test_migration_stop_copy_to_pre_copy_rejected():
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_STOP_COPY)
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_PRE_COPY,
-                        expect=errno.EINVAL)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_STOP_COPY)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_PRE_COPY,
+                             expect=errno.EINVAL)
 
 
 def test_migration_nonexistent_state():
-    transition_to_state(ctx, sock, 0xabcd, expect=errno.EINVAL)
+    transition_to_migr_state(0xabcd, expect=errno.EINVAL)
 
 
 def test_migration_failed_callback():
-    setup_fail_callbacks()
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RUNNING,
-                        expect=errno.EINVAL)
-    assert c.get_errno() == errno.EINVAL
+    setup_fail_callbacks(0xbeef)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING, expect=0xbeef)
+    assert c.get_errno() == 0xbeef
     teardown_fail_callbacks()
 
 
 def test_migration_get_state():
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RUNNING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING)
 
     feature = vfio_user_device_feature(
         argsz=len(vfio_user_device_feature()) +
@@ -314,107 +335,80 @@ def test_migration_get_state():
 def test_handle_mig_data_read():
     global read_data
 
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RUNNING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING)
 
     data = bytes([0, 1, 2, 3])
-    argsz = len(vfio_user_mig_data()) + len(data)
-    payload = vfio_user_mig_data(
-        argsz=argsz,
-        size=len(data)
-    )
+    payload = mig_data_payload(data)
 
     VALID_STATES = {VFIO_USER_DEVICE_STATE_PRE_COPY,
                     VFIO_USER_DEVICE_STATE_STOP_COPY}
 
     for state in STATES:
-        transition_to_state(ctx, sock, state)
+        transition_to_migr_state(state)
         read_data = data
         expect = 0 if state in VALID_STATES else errno.EINVAL
         result = msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload,
                      expect=expect)
 
         if state in VALID_STATES:
-            assert len(result) == argsz
+            assert len(result) == len(payload) + len(data)
             assert result[len(vfio_user_mig_data()):] == data
 
 
 def test_handle_mig_data_read_too_long():
     """
     When we set up the tests at the top of this file we specify that the max
-    data transfer size is 4 bytes. Here we test to check that a transfer of 8
-    bytes fails.
+    data transfer size is 4 bytes. Here we test to check that a transfer of too
+    many bytes fails.
     """
 
     global read_data
 
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RUNNING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
 
-    read_data = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    # Create a payload reading with length 1 byte longer than the max.
+    read_data = bytes([i for i in range(MAX_DATA_XFER_SIZE + 1)])
+    payload = mig_data_payload(read_data)
 
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(read_data),
-        size=len(read_data)
-    )
-
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_PRE_COPY)
     msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
 
 
 def test_handle_mig_data_read_failed_callback():
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_PRE_COPY)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_PRE_COPY)
 
     read_data = bytes([1, 2, 3, 4])
+    payload = mig_data_payload(read_data)
 
-    setup_fail_callbacks()
+    setup_fail_callbacks(0xbeef)
 
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(read_data),
-        size=len(read_data)
-    )
-
-    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=errno.EINVAL)
-    assert c.get_errno() == errno.EINVAL
-
-    teardown_fail_callbacks()
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload, expect=0xbeef)
+    assert c.get_errno() == 0xbeef
 
 
 def test_handle_mig_data_read_short_write():
     data = bytes([1, 2, 3, 4])
-
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
-
-    payload = bytes(payload)
-    assert len(payload) == 8
+    payload = bytes(mig_data_payload(data))
 
     # don't send the last byte
-    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload[0:7], expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_MIG_DATA_READ, payload[0:len(payload) - 1],
+        expect=errno.EINVAL)
 
 
 def test_handle_mig_data_write():
     data = bytes([1, 2, 3, 4])
+    payload = mig_data_payload(data)
 
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
-
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RESUMING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RESUMING)
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data)
     assert write_data == data
 
 
 def test_handle_mig_data_write_invalid_state():
     data = bytes([1, 2, 3, 4])
+    payload = mig_data_payload(data)
 
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
-
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RUNNING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING)
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
         expect=errno.EINVAL)
 
@@ -422,48 +416,35 @@ def test_handle_mig_data_write_invalid_state():
 def test_handle_mig_data_write_too_long():
     """
     When we set up the tests at the top of this file we specify that the max
-    data transfer size is 4 bytes. Here we test to check that a transfer of 8
-    bytes fails.
+    data transfer size is 4 bytes. Here we test to check that a transfer of too
+    many bytes fails.
     """
 
-    data = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    # Create a payload writing with length 1 byte longer than the max.
+    data = bytes([i for i in range(MAX_DATA_XFER_SIZE + 1)])
+    payload = mig_data_payload(data)
 
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
-
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RESUMING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RESUMING)
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
         expect=errno.EINVAL)
 
 
 def test_handle_mig_data_write_failed_callback():
-    transition_to_state(ctx, sock, VFIO_USER_DEVICE_STATE_RESUMING)
+    transition_to_migr_state(VFIO_USER_DEVICE_STATE_RESUMING)
 
     data = bytes([1, 2, 3, 4])
+    payload = mig_data_payload(data)
 
-    setup_fail_callbacks()
-
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
+    setup_fail_callbacks(0xbeef)
 
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, bytes(payload) + data,
-        expect=errno.EINVAL)
-    assert c.get_errno() == errno.EINVAL
-
-    teardown_fail_callbacks()
+        expect=0xbeef)
+    assert c.get_errno() == 0xbeef
 
 
 def test_handle_mig_data_write_short_write():
     data = bytes([1, 2, 3, 4])
-
-    payload = vfio_user_mig_data(
-        argsz=len(vfio_user_mig_data()) + len(data),
-        size=len(data)
-    )
+    payload = mig_data_payload(data)
 
     msg(ctx, sock, VFIO_USER_MIG_DATA_WRITE, payload, expect=errno.EINVAL)
 
@@ -491,10 +472,10 @@ def test_device_feature_short_write():
     )
 
     payload = bytes(payload)
-    assert len(payload) == 8
 
     # don't send the last byte
-    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload[0:7], expect=errno.EINVAL)
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, payload[0:len(payload) - 1],
+        expect=errno.EINVAL)
 
 
 def test_device_feature_unsupported_operation():

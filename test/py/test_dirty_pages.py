@@ -157,8 +157,8 @@ def get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT, length=0x10 << PAGE_SHIFT,
                           page_size=PAGE_SIZE, expect=0):
     """
     Get the dirty page bitmap from the server for the given region and page
-    size as a 64-bit integer. This only works for bitmaps that fit within a
-    64-bit integer.
+    size as a 64-bit integer. This function only works for bitmaps that fit
+    within a 64-bit integer because that's what it returns.
     """
 
     bitmap_size = get_bitmap_size(length, page_size)
