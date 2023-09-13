@@ -259,9 +259,15 @@ def test_migration_shortest_state_transition_paths():
         while len(queue) > 0:
             (curr, prev) = queue.popleft()
             back[curr] = prev
+
+            # Intermediate states cannot be saving states, so if our current
+            # node is not the start state and it is a saving state, it is only
+            # allowed to be an end state so we don't explore its neighbours.
+            if curr != source and curr in saving_states:
+                continue
+
             for nxt in E[curr]:
-                if back[nxt] is None \
-                        and (curr == source or curr not in saving_states):
+                if back[nxt] is None:
                     queue.append((nxt, curr))
 
         # Iterate over the states
