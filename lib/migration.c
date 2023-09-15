@@ -182,7 +182,7 @@ MOCK_DEFINE(migr_state_transition)(struct migration *migr,
 }
 
 vfu_migr_state_t
-MOCK_DEFINE(migr_state_vfio_to_vfu)(enum vfio_user_device_mig_state state)
+MOCK_DEFINE(migr_state_vfio_to_vfu)(uint32_t state)
 {
     switch (state) {
         case VFIO_USER_DEVICE_STATE_STOP:
