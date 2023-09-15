@@ -255,19 +255,6 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     return 0;
 }
 
-static ssize_t
-get_bitmap_size(size_t region_size, size_t pgsize)
-{
-    if (pgsize == 0) {
-        return ERROR_INT(EINVAL);
-    }
-    if (region_size < pgsize) {
-        return ERROR_INT(EINVAL);
-    }
-
-    return _get_bitmap_size(region_size, pgsize);
-}
-
 static int
 dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 {
@@ -530,28 +517,173 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 #ifdef DEBUG
 static void
 log_dirty_bitmap(vfu_ctx_t *vfu_ctx, dma_memory_region_t *region,
-                 char *bitmap, size_t size)
+                 char *bitmap, size_t size, size_t pgsize)
 {
     size_t i;
     size_t count;
     for (i = 0, count = 0; i < size; i++) {
         count += __builtin_popcount((uint8_t)bitmap[i]);
     }
-    vfu_log(vfu_ctx, LOG_DEBUG, "dirty pages: get [%p, %p), %zu dirty pages",
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "dirty pages: get [%p, %p), %zu dirty pages of size %zu",
             region->info.iova.iov_base, iov_end(&region->info.iova),
-            count);
+            count, pgsize);
 }
 #endif
 
+static void
+dirty_page_exchange(uint8_t *outp, uint8_t *bitmap)
+{
+    /*
+     * If no bits are dirty, avoid the atomic exchange. This is obviously
+     * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
+     * the next time around.
+     *
+     * Otherwise, atomically exchange the dirty bits with zero: as we use
+     * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
+     * miss a bit being set after, but again, we'll catch that next time
+     * around.
+     */
+    if (*bitmap == 0) {
+        *outp = 0;
+    } else {
+        uint8_t zero = 0;
+        __atomic_exchange(bitmap, &zero, outp, __ATOMIC_SEQ_CST);
+    }
+}
+
+static void
+dirty_page_get_same_pgsize(dma_memory_region_t *region, char *bitmap,
+                           size_t bitmap_size)
+{
+    for (size_t i = 0; i < bitmap_size; i++) {
+        dirty_page_exchange((uint8_t *)&bitmap[i], &region->dirty_bitmap[i]);
+    }
+}
+
+static void
+dirty_page_get_extend(dma_memory_region_t *region, char *bitmap,
+                      size_t server_bitmap_size, size_t server_pgsize,
+                      size_t client_bitmap_size, size_t client_pgsize)
+{
+    /*
+     * The index of the bit in the client bitmap that we are currently
+     * considering. By keeping track of this separately to the for loop, we
+     * allow for one server bit to be repeated for multiple client bytes.
+     */
+    uint8_t client_bit_idx = 0;
+    size_t server_byte_idx;
+    int server_bit_idx;
+    size_t factor = server_pgsize / client_pgsize;
+
+    /*
+     * Iterate through the bytes of the server bitmap.
+     */
+    for (server_byte_idx = 0; server_byte_idx < server_bitmap_size;
+         server_byte_idx++) {
+
+        if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
+            break;
+        }
+
+        uint8_t out = 0;
+
+        dirty_page_exchange(&out, &region->dirty_bitmap[server_byte_idx]);
+
+        /*
+         * Iterate through the bits of the server byte, repeating bits to reach
+         * the desired page size.
+         */
+        for (server_bit_idx = 0; server_bit_idx < CHAR_BIT; server_bit_idx++) {
+            uint8_t server_bit = (out >> server_bit_idx) & 1;
+
+            /*
+             * Repeat `factor` times the bit at index `j` of `out`.
+             *
+             * OR the same bit from the server bitmap (`server_bit`) with
+             * `factor` bits in the client bitmap, from `client_bit_idx` to
+             * `end_client_bit_idx`.
+             */
+            for (size_t end_client_bit_idx = client_bit_idx + factor;
+                 client_bit_idx < end_client_bit_idx;
+                 client_bit_idx++) {
+
+                bitmap[client_bit_idx / CHAR_BIT] |=
+                    server_bit << (client_bit_idx % CHAR_BIT);
+            }
+        }
+    }
+}
+
+static void
+dirty_page_get_combine(dma_memory_region_t *region, char *bitmap,
+                       size_t server_bitmap_size, size_t server_pgsize,
+                       size_t client_bitmap_size, size_t client_pgsize)
+{
+    /*
+     * The index of the bit in the client bitmap that we are currently
+     * considering. By keeping track of this separately to the for loop, we
+     * allow multiple bytes' worth of server bits to be OR'd together to
+     * calculate one client bit.
+     */
+    uint8_t client_bit_idx = 0;
+    size_t server_byte_idx;
+    int server_bit_idx;
+    size_t factor = client_pgsize / server_pgsize;
+
+    /*
+     * Iterate through the bytes of the server bitmap.
+     */
+    for (server_byte_idx = 0; server_byte_idx < server_bitmap_size;
+         server_byte_idx++) {
+
+        if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
+            break;
+        }
+            
+        uint8_t out = 0;
+
+        dirty_page_exchange(&out, &region->dirty_bitmap[server_byte_idx]);
+
+        /*
+         * Iterate through the bits of the server byte, combining bits to reach
+         * the desired page size.
+         */
+        for (server_bit_idx = 0; server_bit_idx < CHAR_BIT; server_bit_idx++) {
+            uint8_t server_bit = (out >> server_bit_idx) & 1;
+
+            /*
+             * OR `factor` bits of the server bitmap with the same bit at
+             * index `client_bit_idx` in the client bitmap.
+             */
+            bitmap[client_bit_idx / CHAR_BIT] |=
+                server_bit << (client_bit_idx % CHAR_BIT);
+
+            /*
+             * Only move onto the next bit in the client bitmap once we've
+             * OR'd `factor` bits.
+             */
+            if (((server_byte_idx * CHAR_BIT) + server_bit_idx) % factor
+                    == factor - 1) {
+                client_bit_idx++;
+                
+                if (client_bit_idx / CHAR_BIT >= client_bitmap_size) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
 int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
-                              uint64_t len, size_t pgsize, size_t size,
+                              uint64_t len, size_t client_pgsize, size_t size,
                               char *bitmap)
 {
     dma_memory_region_t *region;
-    ssize_t bitmap_size;
+    ssize_t server_bitmap_size;
+    ssize_t client_bitmap_size;
     dma_sg_t sg;
-    size_t i;
     int ret;
 
     assert(dma != NULL);
@@ -574,24 +706,40 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(ENOTSUP);
     }
 
-    if (pgsize != dma->dirty_pgsize) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %zu", pgsize);
+    /*
+     * If dirty page logging is not enabled, the requested page size is zero,
+     * or the requested page size is not a power of two, return an error.
+     */
+    if (dma->dirty_pgsize == 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "dirty page logging not enabled");
+        return ERROR_INT(EINVAL);
+    }
+    if (client_pgsize == 0 || (client_pgsize & (client_pgsize - 1)) != 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client page size %zu",
+                client_pgsize);
         return ERROR_INT(EINVAL);
     }
 
-    bitmap_size = get_bitmap_size(len, pgsize);
-    if (bitmap_size < 0) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get bitmap size");
-        return bitmap_size;
+    server_bitmap_size = get_bitmap_size(len, dma->dirty_pgsize);
+    if (server_bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to get server bitmap size");
+        return server_bitmap_size;
+    }
+
+    client_bitmap_size = get_bitmap_size(len, client_pgsize);
+    if (client_bitmap_size < 0) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client page size %zu",
+                client_pgsize);
+        return client_bitmap_size;
     }
 
     /*
      * They must be equal because this is how much data the client expects to
      * receive.
      */
-    if (size != (size_t)bitmap_size) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "bad bitmap size %zu != %zu", size,
-                bitmap_size);
+    if (size != (size_t)client_bitmap_size) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "bad client bitmap size %zu != %zu",
+                size, client_bitmap_size);
         return ERROR_INT(EINVAL);
     }
 
@@ -602,31 +750,29 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
         return ERROR_INT(EINVAL);
     }
 
-    for (i = 0; i < (size_t)bitmap_size; i++) {
-        uint8_t val = region->dirty_bitmap[i];
-        uint8_t *outp = (uint8_t *)&bitmap[i];
-
+    if (client_pgsize == dma->dirty_pgsize) {
+        dirty_page_get_same_pgsize(region, bitmap, client_bitmap_size);
+    } else if (client_pgsize < dma->dirty_pgsize) {
         /*
-         * If no bits are dirty, avoid the atomic exchange. This is obviously
-         * racy, but it's OK: if we miss a dirty bit being set, we'll catch it
-         * the next time around.
-         *
-         * Otherwise, atomically exchange the dirty bits with zero: as we use
-         * atomic or in _dma_mark_dirty(), this cannot lose set bits - we might
-         * miss a bit being set after, but again, we'll catch that next time
-         * around.
+         * If the requested page size is less than that used for logging by
+         * the server, the bitmap will need to be extended, repeating bits.
          */
-        if (val == 0) {
-            *outp = 0;
-        } else {
-            uint8_t zero = 0;
-            __atomic_exchange(&region->dirty_bitmap[i], &zero,
-                              outp, __ATOMIC_SEQ_CST);
-        }
+        dirty_page_get_extend(region, bitmap, server_bitmap_size,
+                              dma->dirty_pgsize, client_bitmap_size,
+                              client_pgsize);
+    } else {
+        /*
+         * If the requested page size is larger than that used for logging by
+         * the server, the bitmap will need to combine bits with OR, losing
+         * accuracy.
+         */
+        dirty_page_get_combine(region, bitmap, server_bitmap_size,
+                               dma->dirty_pgsize, client_bitmap_size,
+                               client_pgsize);
     }
 
 #ifdef DEBUG
-    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size);
+    log_dirty_bitmap(dma->vfu_ctx, region, bitmap, size, client_pgsize);
 #endif
 
     return 0;
