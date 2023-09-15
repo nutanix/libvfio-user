@@ -204,12 +204,32 @@ A server can serve:
 1) one or more clients, and/or
 2) one or more virtual devices, belonging to one or more clients.
 
-The current protocol specification requires a dedicated socket per
-client/server connection. It is a server-side implementation detail whether a
-single server handles multiple virtual devices from the same or multiple
-clients. The location of the socket is implementation-specific. Multiplexing
-clients, devices, and servers over the same socket is not supported in this
-version of the protocol.
+The current protocol specification requires dedicated sockets per
+client/server connection. Commands in the client-to-server direction are
+handled on the main communication socket which the client connects to, and
+replies to these commands are passed on the same socket. Commands sent in the
+other direction from the server to the client as well as their corresponding
+replies can optionally be passed across a separate socket, which is set up
+during negotiation (AF_UNIX servers just pass the file descriptor).
+
+Using separate sockets for each command channel avoids introducing an
+artificial point of synchronization between the channels. This simplifies
+implementations since it obviates the need to demultiplex incoming messages
+into commands and replies and interleave command handling and reply processing.
+Note that it is still illegal for implementations to stall command or reply
+processing indefinitely while waiting for replies on the other channel, as this
+may lead to deadlocks. However, since incoming commands and requests arrive on
+different sockets, it's possible to meet this requirement e.g. by running two
+independent request processing threads that can internally operate
+synchronously. It is expected that this is simpler to implement than fully
+asynchronous message handling code. Implementations may still choose a fully
+asynchronous, event-based design for other reasons, and the protocol fully
+supports it.
+
+It is a server-side implementation detail whether a single server handles
+multiple virtual devices from the same or multiple clients. The location of the
+socket is implementation-specific. Multiplexing clients, devices, and servers
+over the same socket is not supported in this version of the protocol.
 
 Authentication
 --------------
@@ -503,6 +523,10 @@ Capabilities:
 | migration          | object | Migration capability parameters. If missing    |
 |                    |        | then migration is not supported by the sender. |
 +--------------------+--------+------------------------------------------------+
+| twin_socket        | object | Parameters for twin-socket mode, which handles |
+|                    |        | server-to-client commands and their replies on |
+|                    |        | a separate socket. Optional.                   |
++--------------------+--------+------------------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
@@ -513,11 +537,58 @@ The migration capability contains the following name/value pairs:
 |        |        | between the client and the server is used.    |
 +--------+--------+-----------------------------------------------+
 
+The ``twin_socket`` capability object holds these name/value pairs:
+
++-----------+---------+--------------------------------------------------------+
+| Name      | Type    | Description                                            |
++===========+=========+========================================================+
+| supported | boolean | Indicates whether the sender supports twin-socket      |
+|           |         | mode. Optional, defaults to false.                     |
++-----------+---------+--------------------------------------------------------+
+| fd_index  | number  | Specifies an index in the file descriptor array        |
+|           |         | included with the message. The designated file         |
+|           |         | descriptor is a socket which is to be used for the     |
+|           |         | server-to-client command channel. Optional, only valid |
+|           |         | in the reply message.                                  |
++-----------+---------+--------------------------------------------------------+
+
 Reply
 ^^^^^
 
 The same message format is used in the server's reply with the semantics
 described above.
+
+If and only if the client has indicated support for twin-socket mode by setting
+``twin_socket.supported`` to true in its capabilities, the server may optionally
+set up a separate command channel for server-to-client commands and their
+replies. The server enables twin-socket mode as follows:
+
+* Create a fresh socket pair.
+* Keep the server end of the socket pair and pass the client end in the file
+  descriptor array included with the reply message.
+* Set ``twin_socket.supported`` to true in the reply.
+* Indicate the index in the file descriptor array by the
+  ``twin_socket.fd_index`` capability field in the reply, so the client can
+  identify the correct file descriptor to use.
+
+A client requesting twin-socket mode must examine the ``twin_socket`` capability
+in the reply:
+
+* If ``twin_socket.supported`` is false, the field is missing, or the entire
+  ``twin_socket`` object is absent, the server does not support twin-socket mode
+  or decided not to enable it. The client can choose whether it wants to proceed
+  without twin-socket mode, or close the connection if not.
+* If ``twin_socket.supported`` is true and ``twin_socket.fd_index`` is present
+  and refers to a valid file descriptor, twin-socket mode negotiation has
+  succeeded. The client monitors the provided file descriptor for commands from
+  the server.
+* Otherwise, the reply from the server is inconsistent. The client must abort
+  and close the connection since it is potentially unable to receive commands
+  from the server.
+
+The twin-socket feature is optional, so some servers may not support it.
+However, for server implementations that do send server-to-client commands it is
+strongly recommended to implement twin-socket support.
 
 ``VFIO_USER_DMA_MAP``
 ---------------------
@@ -1399,7 +1470,9 @@ Reply
 -----------------------
 
 If the client has not shared mappable memory, the server can use this message to
-read from guest memory.
+read from guest memory. This message and its reply are passed over the separate
+server-to-client socket if twin-socket mode has been negotiated during
+connection setup.
 
 Request
 ^^^^^^^
@@ -1437,7 +1510,9 @@ Reply
 -----------------------
 
 If the client has not shared mappable memory, the server can use this message to
-write to guest memory.
+write to guest memory. This message and its reply are passed over the separate
+server-to-client socket if twin-socket mode has been negotiated during
+connection setup.
 
 Request
 ^^^^^^^
