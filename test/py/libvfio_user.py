@@ -32,6 +32,7 @@
 #
 
 from types import SimpleNamespace
+import collections.abc
 import ctypes as c
 import array
 import errno
@@ -484,6 +485,15 @@ class vfio_user_dma_unmap(Structure):
     ]
 
 
+class vfio_user_dma_region_access(Structure):
+    """Payload for VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE."""
+    _pack_ = 1
+    _fields_ = [
+        ("addr", c.c_uint64),
+        ("count", c.c_uint64),
+    ]
+
+
 class vfu_dma_info_t(Structure):
     _fields_ = [
         ("iova", iovec_t),
@@ -642,6 +652,10 @@ lib.vfu_sgl_get.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                             c.POINTER(iovec_t), c.c_size_t, c.c_int)
 lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                             c.POINTER(iovec_t), c.c_size_t)
+lib.vfu_sgl_read.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
+                             c.c_void_p)
+lib.vfu_sgl_write.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
+                              c.c_void_p)
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
@@ -695,22 +709,52 @@ class Client:
         self.sock = sock
         self.client_cmd_socket = None
 
-    def connect(self, ctx):
+    def connect(self, ctx, capabilities={}):
         self.sock = connect_sock()
 
-        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
+        client_caps = {
+            "capabilities": {
+                "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
+                "max_msg_fds": 8,
+            },
+        }
+
+        def update(target, overrides):
+            for k, v in overrides.items():
+                if isinstance(v, collections.abc.Mapping):
+                    target[k] = target.get(k, {})
+                    update(target[k], v)
+                else:
+                    target[k] = v
+
+        update(client_caps, capabilities)
+        caps_json = json.dumps(client_caps)
+
         # struct vfio_user_version
-        payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                              LIBVFIO_USER_MINOR, json, b'\0')
+        payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, caps_json.encode(), b'\0')
         hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
-        payload = get_reply(self.sock, expect=0)
+        fds, payload = get_reply_fds(self.sock, expect=0)
+
+        server_caps = json.loads(payload[struct.calcsize("HH"):-1].decode())
+        try:
+            if (client_caps["capabilities"]["twin_socket"]["supported"] and
+               server_caps["capabilities"]["twin_socket"]["supported"]):
+                index = server_caps["capabilities"]["twin_socket"]["fd_index"]
+                self.client_cmd_socket = socket.socket(fileno=fds[index])
+        except KeyError:
+            pass
+
         return self.sock
 
     def disconnect(self, ctx):
         self.sock.close()
         self.sock = None
+        if self.client_cmd_socket is not None:
+            self.client_cmd_socket.close()
+            self.client_cmd_socket = None
 
         # notice client closed connection
         vfu_run_ctx(ctx, errno.ENOTCONN)
@@ -1272,6 +1316,18 @@ def vfu_sgl_get(ctx, sg, iovec, cnt=1, flags=0):
 
 def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
+
+
+def vfu_sgl_read(ctx, sg, cnt=1):
+    data = bytearray(sum([sge.length for sge in sg]))
+    buf = (c.c_byte * len(data)).from_buffer(data)
+    return lib.vfu_sgl_read(ctx, sg, cnt, buf), data
+
+
+def vfu_sgl_write(ctx, sg, cnt=1, data=bytearray()):
+    assert len(data) == sum([sge.length for sge in sg])
+    buf = (c.c_byte * len(data)).from_buffer(data)
+    return lib.vfu_sgl_write(ctx, sg, cnt, buf)
 
 
 def vfu_create_ioeventfd(ctx, region_idx, fd, gpa_offset, size, flags,

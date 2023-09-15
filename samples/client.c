@@ -197,7 +197,7 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
         }
 
         ret = tran_parse_version_json(json_str, server_max_fds,
-                                      server_max_data_xfer_size, pgsize);
+                                      server_max_data_xfer_size, pgsize, NULL);
 
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
