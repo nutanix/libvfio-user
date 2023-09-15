@@ -1,3 +1,10 @@
+migration-v1 branch
+===================
+
+NB: this was branched off from the `master` branch as a reference point for the
+older implementation of live migration used by some downstream projects such as
+`SPDK`.
+
 libvfio-user
 ============
 
