@@ -117,7 +117,7 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg,
     if (vfu_reg->mmap_areas != NULL) {
         int i, nr_mmap_areas = vfu_reg->nr_mmap_areas;
         vfio_reg->cap_offset = sizeof(struct vfio_region_info);
-        sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
+        sparse = (struct vfio_region_info_cap_sparse_mmap *)header;
 
         *fds = malloc(nr_mmap_areas * sizeof(int));
         if (*fds == NULL) {
