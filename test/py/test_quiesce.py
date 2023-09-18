@@ -31,9 +31,10 @@ from libvfio_user import *
 import errno
 from unittest import mock
 from unittest.mock import patch
-
+import tempfile
 
 ctx = None
+client = None
 
 
 def setup_function(function):
@@ -197,32 +198,28 @@ def test_allowed_funcs_in_quiesced_dma_unregister_busy(mock_quiesce,
 
 @patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
 @patch('libvfio_user.quiesce_cb')
-def test_allowed_funcs_in_quiesed_migration(mock_quiesce,
+def test_allowed_funcs_in_quiesced_migration(mock_quiesce,
                                             mock_trans):
 
     global ctx, client
     _map_dma_region(ctx, client.sock)
-    data = VFIO_DEVICE_STATE_V1_SAVING.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
-                 count=len(data), data=data)
-    mock_trans.assert_called_once_with(ctx, VFIO_DEVICE_STATE_V1_SAVING)
+    transition_to_state(ctx, client.sock, VFIO_USER_DEVICE_STATE_STOP)
+    mock_trans.assert_called_once_with(ctx, VFU_MIGR_STATE_STOP)
 
 
 @patch('libvfio_user.migr_trans_cb', side_effect=_side_effect)
 @patch('libvfio_user.quiesce_cb')
-def test_allowed_funcs_in_quiesed_migration_busy(mock_quiesce,
+def test_allowed_funcs_in_quiesced_migration_busy(mock_quiesce,
                                                  mock_trans):
 
     global ctx, client
     _map_dma_region(ctx, client.sock)
     mock_quiesce.side_effect = fail_with_errno(errno.EBUSY)
-    data = VFIO_DEVICE_STATE_V1_STOP.to_bytes(c.sizeof(c.c_int), 'little')
-    write_region(ctx, client.sock, VFU_PCI_DEV_MIGR_REGION_IDX, offset=0,
-                 count=len(data), data=data, rsp=False,
-                 busy=True)
+    transition_to_state(ctx, client.sock, VFIO_USER_DEVICE_STATE_STOP,
+                        busy=True)
     ret = vfu_device_quiesced(ctx, 0)
     assert ret == 0
-    mock_trans.assert_called_once_with(ctx, VFIO_DEVICE_STATE_V1_STOP)
+    mock_trans.assert_called_once_with(ctx, VFU_MIGR_STATE_STOP)
 
 
 @patch('libvfio_user.reset_cb', side_effect=_side_effect)

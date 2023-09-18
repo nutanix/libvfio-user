@@ -96,6 +96,11 @@ Finally, type `q` in the source QEMU monitor to exit source QEMU.
 For more information in live migration see
 https://www.linux-kvm.org/page/Migration.
 
+Note that the above live migration code in `qemu` and `SPDK` relies on the older
+live migration format, this is kept in the
+[https://github.com/nutanix/libvfio-user/tree/migration-v1](migration-v1)
+branch of `libvfio-user`.
+
 libvirt
 -------
 

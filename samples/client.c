@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/eventfd.h>
+#include <sys/param.h>
 #include <time.h>
 #include <err.h>
 #include <assert.h>
@@ -62,6 +63,8 @@ static char const *irq_to_str[] = {
     [VFU_DEV_ERR_IRQ] = "ERR",
     [VFU_DEV_REQ_IRQ] = "REQ"
 };
+
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct client_dma_region {
 /*
@@ -121,12 +124,9 @@ send_version(int sock)
         "{"
             "\"capabilities\":{"
                 "\"max_msg_fds\":%u,"
-                "\"max_data_xfer_size\":%u,"
-                "\"migration\":{"
-                    "\"pgsize\":%ld"
-                "}"
+                "\"max_data_xfer_size\":%u"
             "}"
-         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE, sysconf(_SC_PAGESIZE));
+         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE);
 
     cversion.major = LIB_VFIO_USER_MAJOR;
     cversion.minor = LIB_VFIO_USER_MINOR;
@@ -197,7 +197,7 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
         }
 
         ret = tran_parse_version_json(json_str, server_max_fds,
-                                      server_max_data_xfer_size, pgsize);
+                                      server_max_data_xfer_size, pgsize, NULL);
 
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
@@ -225,14 +225,11 @@ send_device_reset(int sock)
     }
 }
 
-/* returns whether a VFIO migration capability is found */
-static bool
+static void
 get_region_vfio_caps(struct vfio_info_cap_header *header,
                      struct vfio_region_info_cap_sparse_mmap **sparse)
 {
-    struct vfio_region_info_cap_type *type;
     unsigned int i;
-    bool migr = false;
 
     while (true) {
         switch (header->id) {
@@ -247,16 +244,6 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
                            (ull_t)(*sparse)->areas[i].size);
                 }
                 break;
-            case VFIO_REGION_INFO_CAP_TYPE:
-                type = (struct vfio_region_info_cap_type*)header;
-                if (type->type != VFIO_REGION_TYPE_MIGRATION ||
-                    type->subtype != VFIO_REGION_SUBTYPE_MIGRATION) {
-                    errx(EXIT_FAILURE, "bad region type %d/%d", type->type,
-                         type->subtype);
-                }
-                migr = true;
-                printf("client: migration region\n");
-                break;
             default:
                 errx(EXIT_FAILURE, "bad VFIO cap ID %#x", header->id);
         }
@@ -265,7 +252,6 @@ get_region_vfio_caps(struct vfio_info_cap_header *header,
         }
         header = (struct vfio_info_cap_header*)((char*)header + header->next - sizeof(struct vfio_region_info));
     }
-    return migr;
 }
 
 static void
@@ -281,7 +267,7 @@ do_get_device_region_info(int sock, struct vfio_region_info *region_info,
 }
 
 static void
-mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
+mmap_sparse_areas(int fd, struct vfio_region_info *region_info,
                   struct vfio_region_info_cap_sparse_mmap *sparse)
 {
     size_t i;
@@ -293,14 +279,14 @@ mmap_sparse_areas(int *fds, struct vfio_region_info *region_info,
         char pathname[PATH_MAX];
         char buf[PATH_MAX] = "";
 
-        ret = snprintf(pathname, sizeof(pathname), "/proc/self/fd/%d", fds[i]);
+        ret = snprintf(pathname, sizeof(pathname), "/proc/self/fd/%d", fd);
         assert(ret != -1 && (size_t)ret < sizeof(pathname));
         ret = readlink(pathname, buf, sizeof(buf) - 1);
         if (ret == -1) {
-            err(EXIT_FAILURE, "failed to resolve file descriptor %d", fds[i]);
+            err(EXIT_FAILURE, "failed to resolve file descriptor %d", fd);
         }
         addr = mmap(NULL, sparse->areas[i].size, PROT_READ | PROT_WRITE,
-                    MAP_SHARED, fds[i], region_info->offset +
+                    MAP_SHARED, fd, region_info->offset +
                     sparse->areas[i].offset);
         if (addr == MAP_FAILED) {
             err(EXIT_FAILURE,
@@ -357,16 +343,15 @@ get_device_region_info(int sock, uint32_t index)
            nr_fds);
     if (cap_sz) {
         struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
-        if (get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
-                                 &sparse)) {
-            if (sparse != NULL) {
-                assert((index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 2) ||
-                       (index == VFU_PCI_DEV_MIGR_REGION_IDX && nr_fds == 1));
-                assert(nr_fds == sparse->nr_areas);
-                mmap_sparse_areas(fds, region_info, sparse);
-            }
-        }
+        get_region_vfio_caps((struct vfio_info_cap_header*)(region_info + 1),
+                             &sparse);
 
+        if (sparse != NULL) {
+            assert(index == VFU_PCI_DEV_BAR1_REGION_IDX && nr_fds == 1);
+            mmap_sparse_areas(fds[0], region_info, sparse);
+        } else {
+            assert(index != VFU_PCI_DEV_BAR1_REGION_IDX);
+        }
     }
     free(region_info);
 }
@@ -399,7 +384,7 @@ get_device_info(int sock, struct vfio_user_device_info *dev_info)
         err(EXIT_FAILURE, "failed to get device info");
     }
 
-    if (dev_info->num_regions != 10) {
+    if (dev_info->num_regions != 9) {
         errx(EXIT_FAILURE, "bad number of device regions %d",
              dev_info->num_regions);
     }
@@ -484,7 +469,6 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
             .iov_len = data_len
         }
     };
-    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     struct vfio_user_region_access *recv_data;
     size_t nr_send_iovecs, recv_data_len;
     int op, ret;
@@ -537,6 +521,123 @@ access_region(int sock, int region, bool is_write, uint64_t offset,
     }
     free(recv_data);
     return 0;
+}
+
+static int
+set_migration_state(int sock, uint32_t state)
+{
+    static int msg_id = 0xfab1;
+    struct vfio_user_device_feature req = {
+        .argsz = sizeof(struct vfio_user_device_feature)
+                 + sizeof(struct vfio_user_device_feature_mig_state),
+        .flags = VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    };
+    struct vfio_user_device_feature_mig_state change_state = {
+        .device_state = state,
+        .data_fd = -1
+    };
+    struct iovec send_iovecs[3] = {
+        [1] = {
+            .iov_base = &req,
+            .iov_len = sizeof(req)
+        },
+        [2] = {
+            .iov_base = &change_state,
+            .iov_len = sizeof(change_state)
+        }
+    };
+    void *response = alloca(sizeof(req) + sizeof(change_state));
+
+    if (response == NULL) {
+        return -1;
+    }
+    
+    pthread_mutex_lock(&mutex);
+    int ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_DEVICE_FEATURE,
+                                  send_iovecs, 3, NULL, 0, NULL,
+                                  response, sizeof(req) + sizeof(change_state),
+                                  NULL, 0);
+    pthread_mutex_unlock(&mutex);
+
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to set state: %d", ret);
+    }
+
+    if (memcmp(&req, response, sizeof(req)) != 0) {
+        err(EXIT_FAILURE, "invalid response to set_migration_state (header)");
+    }
+
+    if (memcmp(&change_state, response + sizeof(req),
+               sizeof(change_state)) != 0) {
+        err(EXIT_FAILURE, "invalid response to set_migration_state (payload)");
+    }
+
+    return ret;
+}
+
+static ssize_t
+read_migr_data(int sock, void *buf, size_t len)
+{
+    static int msg_id = 0x6904;
+    struct vfio_user_mig_data req = {
+        .argsz = sizeof(struct vfio_user_mig_data) + len,
+        .size = len
+    };
+    struct iovec send_iovecs[2] = {
+        [1] = {
+            .iov_base = &req,
+            .iov_len = sizeof(req)
+        }
+    };
+    struct vfio_user_mig_data *res = calloc(1, sizeof(req) + len);
+
+    assert(res != NULL);
+
+    pthread_mutex_lock(&mutex);
+    ssize_t ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_READ,
+                                      send_iovecs, 2, NULL, 0, NULL,
+                                      res, sizeof(req) + len, NULL, 0);
+    pthread_mutex_unlock(&mutex);
+
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to read migration data: %ld", ret);
+    }
+
+    memcpy(buf, res->data, res->size);
+
+    ssize_t size = res->size;
+
+    free(res);
+
+    return size;
+}
+
+static ssize_t
+write_migr_data(int sock, void *buf, size_t len)
+{
+    static int msg_id = 0x2023;
+    struct vfio_user_mig_data req = {
+        .argsz = sizeof(struct vfio_user_mig_data) + len,
+        .size = len
+    };
+    struct iovec send_iovecs[3] = {
+        [1] = {
+            .iov_base = &req,
+            .iov_len = sizeof(req)
+        },
+        [2] = {
+            .iov_base = buf,
+            .iov_len = len
+        }
+    };
+
+    pthread_mutex_lock(&mutex);
+    ssize_t ret = tran_sock_msg_iovec(sock, msg_id--, VFIO_USER_MIG_DATA_WRITE,
+                                      send_iovecs, 3, NULL, 0, NULL,
+                                      &req, sizeof(req), NULL, 0);
+    pthread_mutex_unlock(&mutex);
+
+    return ret;
 }
 
 static void
@@ -712,34 +813,33 @@ static void
 get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
                  bool expect_dirty)
 {
-    uint64_t bitmap_size = _get_bitmap_size(dma_region->map.size,
-                                            sysconf(_SC_PAGESIZE));
-    struct vfio_user_dirty_pages *dirty_pages;
-    struct vfio_user_bitmap_range *range;
+    struct vfio_user_device_feature *res;
+    struct vfio_user_device_feature_dma_logging_report *report;
     char *bitmap;
-    size_t size;
-    void *data;
     int ret;
 
-    size = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
+    uint64_t bitmap_size = get_bitmap_size(dma_region->map.size,
+                                           sysconf(_SC_PAGESIZE));
 
-    data = calloc(1, size);
+    size_t size = sizeof(*res) + sizeof(*report) + bitmap_size;
+
+    void *data = calloc(1, size);
     assert(data != NULL);
 
-    dirty_pages = data;
-    dirty_pages->flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP;
-    dirty_pages->argsz = sizeof(*dirty_pages) + sizeof(*range) + bitmap_size;
+    res = data;
+    res->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT
+               | VFIO_DEVICE_FEATURE_GET;
+    res->argsz = size;
 
-    range = data + sizeof(*dirty_pages);
-    range->iova = dma_region->map.addr;
-    range->size = dma_region->map.size;
-    range->bitmap.size = bitmap_size;
-    range->bitmap.pgsize = sysconf(_SC_PAGESIZE);
+    report = (struct vfio_user_device_feature_dma_logging_report *)(res + 1);
+    report->iova = dma_region->map.addr;
+    report->length = dma_region->map.size;
+    report->page_size = sysconf(_SC_PAGESIZE);
 
-    bitmap = data + sizeof(*dirty_pages) + sizeof(*range);
+    bitmap = data + sizeof(*res) + sizeof(*report);
 
-    ret = tran_sock_msg(sock, 0x99, VFIO_USER_DIRTY_PAGES,
-                        data, sizeof(*dirty_pages) + sizeof(*range),
+    ret = tran_sock_msg(sock, 0x99, VFIO_USER_DEVICE_FEATURE,
+                        data, sizeof(*res) + sizeof(*report),
                         NULL, data, size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to get dirty page bitmap");
@@ -749,13 +849,13 @@ get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
     char dirtied_by_client = (dma_region->flags & CLIENT_DIRTY_DMA_REGION) != 0;
     char dirtied = dirtied_by_server | dirtied_by_client;
 
-    printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
-           (ull_t)range->iova,
-           (ull_t)(range->iova + range->size - 1), dirtied);
-
     if (expect_dirty) {
         assert(dirtied);
     }
+
+    printf("client: %s: %#llx-%#llx\t%#x\n", __func__,
+           (ull_t)report->iova,
+           (ull_t)(report->iova + report->length - 1), dirtied);
 
     free(data);
 }
@@ -782,64 +882,32 @@ usage(char *argv0)
  * @returns the number of iterations performed
  */
 static size_t
-do_migrate(int sock, size_t nr_iters, struct iovec *migr_iter)
+do_migrate(int sock, size_t nr_iters, size_t max_iter_size,
+           struct iovec *migr_iter)
 {
-    int ret;
-    uint64_t pending_bytes, data_offset, data_size;
+    ssize_t ret;
     size_t i = 0;
 
-    assert(nr_iters > 0);
+    for (i = 0; i < nr_iters; i++) {
 
-    /* XXX read pending_bytes */
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                        offsetof(struct vfio_user_migration_info, pending_bytes),
-                        &pending_bytes, sizeof(pending_bytes));
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to read pending_bytes");
-    }
+        migr_iter[i].iov_len = max_iter_size;
+        migr_iter[i].iov_base = malloc(migr_iter[i].iov_len);
 
-    for (i = 0; i < nr_iters && pending_bytes > 0; i++) {
-
-        /* XXX read data_offset and data_size */
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_user_migration_info, data_offset),
-                            &data_offset, sizeof(data_offset));
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to read data_offset");
-        }
-
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_user_migration_info, data_size),
-                            &data_size, sizeof(data_size));
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to read data_size");
-        }
-
-        migr_iter[i].iov_len = data_size;
-        migr_iter[i].iov_base = malloc(data_size);
         if (migr_iter[i].iov_base == NULL) {
             err(EXIT_FAILURE, "failed to allocate migration buffer");
         }
 
         /* XXX read migration data */
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            data_offset,
-                            (char *)migr_iter[i].iov_base, data_size);
+        ret = read_migr_data(sock, migr_iter[i].iov_base, migr_iter[i].iov_len);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to read migration data");
         }
 
-        /* FIXME send migration data to the destination client process */
+        migr_iter[i].iov_len = ret;
 
-        /*
-         * XXX read pending_bytes again to indicate to the server that the
-         * migration data have been consumed.
-         */
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_user_migration_info, pending_bytes),
-                            &pending_bytes, sizeof(pending_bytes));
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to read pending_bytes");
+        // We know we've finished transferring data when we read 0 bytes.
+        if (ret == 0) {
+            break;
         }
     }
     return i;
@@ -883,11 +951,12 @@ fake_guest(void *arg)
 
 static size_t
 migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
-             uint32_t *crcp, size_t bar1_size)
+             uint32_t *crcp, size_t bar1_size, size_t max_iter_size)
 {
+    size_t expected_data;
     uint32_t device_state;
+    size_t iters;
     int ret;
-    size_t _nr_iters;
     pthread_t thread;
     struct fake_guest_data fake_guest_data = {
         .sock = sock,
@@ -902,7 +971,9 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
         err(EXIT_FAILURE, "failed to create pthread");
     }
 
-    *nr_iters = 2;
+    expected_data = bar1_size;
+    *nr_iters = (expected_data + max_iter_size - 1) / max_iter_size;
+    assert(*nr_iters == 12);
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -912,16 +983,15 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
      * XXX set device state to pre-copy. This is technically optional but any
      * VMM that cares about performance needs this.
      */
-    device_state = VFIO_DEVICE_STATE_V1_SAVING | VFIO_DEVICE_STATE_V1_RUNNING;
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+    device_state = VFIO_USER_DEVICE_STATE_PRE_COPY;
+    ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    _nr_iters = do_migrate(sock, 1, *migr_iters);
-    assert(_nr_iters == 1);
+    iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    assert(iters == *nr_iters);
+
     printf("client: stopping fake guest thread\n");
     fake_guest_data.done = true;
     __sync_synchronize();
@@ -933,31 +1003,32 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     printf("client: setting device state to stop-and-copy\n");
 
-    device_state = VFIO_DEVICE_STATE_V1_SAVING;
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+    device_state = VFIO_USER_DEVICE_STATE_STOP_COPY;
+    ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    _nr_iters += do_migrate(sock, 1, (*migr_iters) + _nr_iters);
-    if (_nr_iters != 2) {
-        errx(EXIT_FAILURE,
-             "expected 2 iterations instead of %zu while in stop-and-copy state",
-             _nr_iters);
+    expected_data = bar1_size + sizeof(time_t);
+    *nr_iters = (expected_data + max_iter_size - 1) / max_iter_size;
+    assert(*nr_iters == 13);
+    free(*migr_iters);
+    *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
+    if (*migr_iters == NULL) {
+        err(EXIT_FAILURE, NULL);
     }
+
+    iters = do_migrate(sock, *nr_iters, max_iter_size, *migr_iters);
+    assert(iters == *nr_iters);
 
     /* XXX read device state, migration must have finished now */
-    device_state = VFIO_DEVICE_STATE_V1_STOP;
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                              offsetof(struct vfio_user_migration_info, device_state),
-                              &device_state, sizeof(device_state));
+    device_state = VFIO_USER_DEVICE_STATE_STOP;
+    ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to write to device state");
     }
 
-    return _nr_iters;
+    return iters;
 }
 
 static int
@@ -966,11 +1037,11 @@ migrate_to(char *old_sock_path, int *server_max_fds,
            struct iovec *migr_iters, char *path_to_server,
            uint32_t src_crc, size_t bar1_size)
 {
-    int ret, sock;
+    ssize_t ret;
+    int sock;
     char *sock_path;
     struct stat sb;
-    uint32_t device_state = VFIO_DEVICE_STATE_V1_RESUMING;
-    uint64_t data_offset, data_len;
+    uint32_t device_state = VFIO_USER_DEVICE_STATE_RESUMING;
     size_t i;
     uint32_t dst_crc;
     char buf[bar1_size];
@@ -1020,57 +1091,26 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 
     negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
 
-    /* XXX set device state to resuming */
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                        offsetof(struct vfio_user_migration_info, device_state),
-                        &device_state, sizeof(device_state));
+    device_state = VFIO_USER_DEVICE_STATE_RESUMING;
+    ret = set_migration_state(sock, device_state);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to set device state to resuming");
     }
 
     for (i = 0; i < nr_iters; i++) {
-
-        /* XXX read data offset */
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, false,
-                            offsetof(struct vfio_user_migration_info, data_offset),
-                            &data_offset, sizeof(data_offset));
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to read migration data offset");
-        }
-
         /* XXX write migration data */
-
-        /*
-         * TODO write half of migration data via regular write and other half via
-         * memopy map.
-         */
-        printf("client: writing migration device data %#llx-%#llx\n",
-               (ull_t)data_offset,
-               (ull_t)(data_offset + migr_iters[i].iov_len - 1));
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                            data_offset, migr_iters[i].iov_base,
-                            migr_iters[i].iov_len);
+        ret = write_migr_data(sock, migr_iters[i].iov_base,
+                              migr_iters[i].iov_len);
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to write device migration data");
         }
-
-        /* XXX write data_size */
-        data_len = migr_iters[i].iov_len;
-        ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                            offsetof(struct vfio_user_migration_info, data_size),
-                            &data_len, sizeof(data_len));
-        if (ret < 0) {
-            err(EXIT_FAILURE, "failed to write migration data size");
-        }
     }
 
-    /* XXX set device state to running */
-    device_state = VFIO_DEVICE_STATE_V1_RUNNING;
-    ret = access_region(sock, VFU_PCI_DEV_MIGR_REGION_IDX, true,
-                            offsetof(struct vfio_user_migration_info, device_state),
-                            &device_state, sizeof(device_state));
+    /* XXX set device state to stop to finish the transfer */
+    device_state = VFIO_USER_DEVICE_STATE_STOP;
+    ret = set_migration_state(sock, device_state);
     if (ret < 0) {
-        err(EXIT_FAILURE, "failed to set device state to running");
+        err(EXIT_FAILURE, "failed to set device state to stop");
     }
 
     /* validate contents of BAR1 */
@@ -1084,6 +1124,13 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     if (dst_crc != src_crc) {
         fprintf(stderr, "client: CRC mismatch: %u != %u\n", src_crc, dst_crc);
         abort();
+    }
+
+    /* XXX set device state to running */
+    device_state = VFIO_USER_DEVICE_STATE_RUNNING;
+    ret = set_migration_state(sock, device_state);
+    if (ret < 0) {
+        err(EXIT_FAILURE, "failed to set device state to running");
     }
 
     return sock;
@@ -1125,7 +1172,6 @@ int main(int argc, char *argv[])
     size_t server_max_data_xfer_size;
     size_t pgsize;
     int nr_dma_regions;
-    struct vfio_user_dirty_pages dirty_pages = {0};
     int opt;
     time_t t;
     char *path_to_server = NULL;
@@ -1134,6 +1180,14 @@ int main(int argc, char *argv[])
     size_t nr_iters;
     uint32_t crc;
     size_t bar1_size = 0x3000; /* FIXME get this value from region info */
+
+    struct vfio_user_device_feature *dirty_pages_feature;
+    struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
+    size_t dirty_pages_size = sizeof(*dirty_pages_feature) +
+                               sizeof(*dirty_pages_control);
+    void *dirty_pages = malloc(dirty_pages_size);
+    dirty_pages_feature = dirty_pages;
+    dirty_pages_control = (void *)(dirty_pages_feature + 1);
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
@@ -1229,11 +1283,16 @@ int main(int argc, char *argv[])
      */
     irq_fd = configure_irqs(sock);
 
-    dirty_pages.argsz = sizeof(dirty_pages);
-    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_START;
-    ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_pages, sizeof(dirty_pages),
-                        NULL, NULL, 0);
+    /* start dirty pages logging */
+    dirty_pages_feature->argsz = sizeof(*dirty_pages_feature) +
+                                 sizeof(*dirty_pages_control);
+    dirty_pages_feature->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_START |
+                                 VFIO_DEVICE_FEATURE_SET;
+    dirty_pages_control->num_ranges = 0;
+    dirty_pages_control->page_size = sysconf(_SC_PAGESIZE);
+
+    ret = tran_sock_msg(sock, 0, VFIO_USER_DEVICE_FEATURE, dirty_pages,
+                        dirty_pages_size, NULL, dirty_pages, dirty_pages_size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to start dirty page logging");
     }
@@ -1270,11 +1329,16 @@ int main(int argc, char *argv[])
         get_dirty_bitmap(sock, &dma_regions[i], i < 2);
     }
 
-    dirty_pages.argsz = sizeof(dirty_pages);
-    dirty_pages.flags = VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP;
-    ret = tran_sock_msg(sock, 0, VFIO_USER_DIRTY_PAGES,
-                        &dirty_pages, sizeof(dirty_pages),
-                        NULL, NULL, 0);
+    /* stop logging dirty pages */
+    dirty_pages_feature->argsz = sizeof(*dirty_pages_feature) +
+                                 sizeof(*dirty_pages_control);
+    dirty_pages_feature->flags = VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP |
+                                 VFIO_DEVICE_FEATURE_SET;
+    dirty_pages_control->num_ranges = 0;
+    dirty_pages_control->page_size = sysconf(_SC_PAGESIZE);
+
+    ret = tran_sock_msg(sock, 0, VFIO_USER_DEVICE_FEATURE, dirty_pages,
+                        dirty_pages_size, NULL, dirty_pages, dirty_pages_size);
     if (ret != 0) {
         err(EXIT_FAILURE, "failed to stop dirty page logging");
     }
@@ -1316,7 +1380,8 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to write to BAR0");
     }
 
-    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, &crc, bar1_size);
+    nr_iters = migrate_from(sock, &nr_iters, &migr_iters, &crc, bar1_size,
+        MIN(server_max_data_xfer_size, CLIENT_MAX_DATA_XFER_SIZE));
 
     /*
      * Normally the client would now send the device state to the destination
@@ -1374,6 +1439,7 @@ int main(int argc, char *argv[])
     }
 
     free(dma_regions);
+    free(dirty_pages);
 
     return 0;
 }

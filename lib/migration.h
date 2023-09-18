@@ -45,12 +45,19 @@
 #include "private.h"
 
 struct migration *
-init_migration(const vfu_migration_callbacks_t *callbacks,
-               uint64_t data_offset, int *err);
+init_migration(const vfu_migration_callbacks_t *callbacks, int *err);
+
+size_t
+migration_get_state(vfu_ctx_t *vfu_ctx);
 
 ssize_t
-migration_region_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
-                        loff_t pos, bool is_write);
+migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state);
+
+ssize_t
+handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+
+ssize_t
+handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 bool
 migration_available(vfu_ctx_t *vfu_ctx);
@@ -65,6 +72,12 @@ migration_get_pgsize(struct migration *migr);
 int
 migration_set_pgsize(struct migration *migr, size_t pgsize);
 
+uint64_t
+migration_get_flags(struct migration *migr);
+
+MOCK_DECLARE(void, migr_state_transition, struct migration *migr,
+             enum vfio_user_device_mig_state state);
+
 MOCK_DECLARE(bool, vfio_migr_state_transition_is_valid, uint32_t from,
              uint32_t to);
 
@@ -72,8 +85,7 @@ MOCK_DECLARE(ssize_t, handle_device_state, vfu_ctx_t *vfu_ctx,
              struct migration *migr, uint32_t device_state, bool notify);
 
 bool
-access_migration_needs_quiesce(const vfu_ctx_t *vfu_ctx, size_t region_index,
-                              uint64_t offset);
+migration_feature_needs_quiesce(struct vfio_user_device_feature *feature);
 
 #endif /* LIB_VFIO_USER_MIGRATION_H */
 

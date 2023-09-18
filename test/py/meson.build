@@ -45,6 +45,7 @@ python_tests = [
     'test_request_errors.py',
     'test_setup_region.py',
     'test_sgl_get_put.py',
+    'test_sgl_read_write.py',
     'test_vfu_create_ctx.py',
     'test_vfu_realize_ctx.py',
 ]

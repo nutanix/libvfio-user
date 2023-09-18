@@ -32,6 +32,7 @@
 #
 
 from types import SimpleNamespace
+import collections.abc
 import ctypes as c
 import array
 import errno
@@ -42,7 +43,6 @@ import socket
 import struct
 import syslog
 import copy
-import tempfile
 import sys
 from resource import getpagesize
 from math import log2
@@ -125,12 +125,6 @@ VFIO_IRQ_SET_ACTION_TRIGGER = (1 << 5)
 
 VFIO_DMA_UNMAP_FLAG_ALL = (1 << 1)
 
-VFIO_DEVICE_STATE_V1_STOP = (0)
-VFIO_DEVICE_STATE_V1_RUNNING = (1 << 0)
-VFIO_DEVICE_STATE_V1_SAVING = (1 << 1)
-VFIO_DEVICE_STATE_V1_RESUMING = (1 << 2)
-VFIO_DEVICE_STATE_MASK = ((1 << 3) - 1)
-
 
 # libvfio-user defines
 
@@ -177,8 +171,11 @@ VFIO_USER_REGION_WRITE = 10
 VFIO_USER_DMA_READ = 11
 VFIO_USER_DMA_WRITE = 12
 VFIO_USER_DEVICE_RESET = 13
-VFIO_USER_DIRTY_PAGES = 14
-VFIO_USER_MAX = 15
+VFIO_USER_REGION_WRITE_MULTI = 15
+VFIO_USER_DEVICE_FEATURE = 16
+VFIO_USER_MIG_DATA_READ = 17
+VFIO_USER_MIG_DATA_WRITE = 18
+VFIO_USER_MAX = 19
 
 VFIO_USER_F_TYPE = 0xf
 VFIO_USER_F_TYPE_COMMAND = 0
@@ -197,8 +194,7 @@ VFU_PCI_DEV_BAR5_REGION_IDX = 5
 VFU_PCI_DEV_ROM_REGION_IDX = 6
 VFU_PCI_DEV_CFG_REGION_IDX = 7
 VFU_PCI_DEV_VGA_REGION_IDX = 8
-VFU_PCI_DEV_MIGR_REGION_IDX = 9
-VFU_PCI_DEV_NUM_REGIONS = 10
+VFU_PCI_DEV_NUM_REGIONS = 9
 
 VFU_REGION_FLAG_READ = 1
 VFU_REGION_FLAG_WRITE = 2
@@ -211,13 +207,41 @@ VFIO_USER_F_DMA_REGION_WRITE = (1 << 1)
 
 VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP = (1 << 0)
 
-VFIO_IOMMU_DIRTY_PAGES_FLAG_START = (1 << 0)
-VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP = (1 << 1)
-VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP = (1 << 2)
+# enum vfio_user_device_mig_state
+VFIO_USER_DEVICE_STATE_ERROR = 0
+VFIO_USER_DEVICE_STATE_STOP = 1
+VFIO_USER_DEVICE_STATE_RUNNING = 2
+VFIO_USER_DEVICE_STATE_STOP_COPY = 3
+VFIO_USER_DEVICE_STATE_RESUMING = 4
+VFIO_USER_DEVICE_STATE_RUNNING_P2P = 5
+VFIO_USER_DEVICE_STATE_PRE_COPY = 6
+VFIO_USER_DEVICE_STATE_PRE_COPY_P2P = 7
+
+VFIO_DEVICE_FEATURE_MASK = 0xffff
+VFIO_DEVICE_FEATURE_GET = (1 << 16)
+VFIO_DEVICE_FEATURE_SET = (1 << 17)
+VFIO_DEVICE_FEATURE_PROBE = (1 << 18)
+
+VFIO_DEVICE_FEATURE_MIGRATION = 1
+VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE = 2
+VFIO_DEVICE_FEATURE_DMA_LOGGING_START = 6
+VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP = 7
+VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT = 8
+
+VFIO_MIGRATION_STOP_COPY = (1 << 0)
+VFIO_MIGRATION_P2P = (1 << 1)
+VFIO_MIGRATION_PRE_COPY = (1 << 2)
 
 VFIO_USER_IO_FD_TYPE_IOEVENTFD = 0
 VFIO_USER_IO_FD_TYPE_IOREGIONFD = 1
 VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW = 2
+
+# enum vfu_migr_state_t
+VFU_MIGR_STATE_STOP = 0
+VFU_MIGR_STATE_RUNNING = 1
+VFU_MIGR_STATE_STOP_AND_COPY = 2
+VFU_MIGR_STATE_PRE_COPY = 3
+VFU_MIGR_STATE_RESUME = 4
 
 
 # enum vfu_dev_irq_type
@@ -243,7 +267,7 @@ VFU_CAP_FLAG_EXTENDED = (1 << 0)
 VFU_CAP_FLAG_CALLBACK = (1 << 1)
 VFU_CAP_FLAG_READONLY = (1 << 2)
 
-VFU_MIGR_CALLBACKS_VERS = 1
+VFU_MIGR_CALLBACKS_VERS = 2
 
 SOCK_PATH = b"/tmp/vfio-user.sock.%d" % os.getpid()
 
@@ -484,6 +508,15 @@ class vfio_user_dma_unmap(Structure):
     ]
 
 
+class vfio_user_dma_region_access(Structure):
+    """Payload for VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE."""
+    _pack_ = 1
+    _fields_ = [
+        ("addr", c.c_uint64),
+        ("count", c.c_uint64),
+    ]
+
+
 class vfu_dma_info_t(Structure):
     _fields_ = [
         ("iova", iovec_t),
@@ -518,14 +551,6 @@ class vfu_dma_info_t(Structure):
         return result
 
 
-class vfio_user_dirty_pages(Structure):
-    _pack_ = 1
-    _fields_ = [
-        ("argsz", c.c_uint32),
-        ("flags", c.c_uint32)
-    ]
-
-
 class vfio_user_bitmap(Structure):
     _pack_ = 1
     _fields_ = [
@@ -544,24 +569,73 @@ class vfio_user_bitmap_range(Structure):
 
 
 transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
-get_pending_bytes_cb_t = c.CFUNCTYPE(c.c_uint64, c.c_void_p)
-prepare_data_cb_t = c.CFUNCTYPE(c.c_void_p, c.POINTER(c.c_uint64),
-                                c.POINTER(c.c_uint64))
-read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p,
-                             c.c_uint64, c.c_uint64)
-write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_uint64)
-data_written_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_uint64)
+read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
+write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
 
 
 class vfu_migration_callbacks_t(Structure):
     _fields_ = [
         ("version", c.c_int),
         ("transition", transition_cb_t),
-        ("get_pending_bytes", get_pending_bytes_cb_t),
-        ("prepare_data", prepare_data_cb_t),
         ("read_data", read_data_cb_t),
         ("write_data", write_data_cb_t),
-        ("data_written", data_written_cb_t),
+    ]
+
+
+class vfio_user_device_feature(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("flags", c.c_uint32)
+    ]
+
+
+class vfio_user_device_feature_migration(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("flags", c.c_uint64)
+    ]
+
+
+class vfio_user_device_feature_mig_state(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("device_state", c.c_uint32),
+        ("data_fd", c.c_uint32),
+    ]
+
+
+class vfio_user_device_feature_dma_logging_control(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("page_size", c.c_uint64),
+        ("num_ranges", c.c_uint32),
+        ("reserved", c.c_uint32),
+    ]
+
+
+class vfio_user_device_feature_dma_logging_range(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("iova", c.c_uint64),
+        ("length", c.c_uint64),
+    ]
+
+
+class vfio_user_device_feature_dma_logging_report(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("iova", c.c_uint64),
+        ("length", c.c_uint64),
+        ("page_size", c.c_uint64)
+    ]
+
+
+class vfio_user_mig_data(Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("argsz", c.c_uint32),
+        ("size", c.c_uint32)
     ]
 
 
@@ -578,17 +652,6 @@ class dma_sg_t(Structure):
         return "DMA addr=%s, region index=%s, length=%s, offset=%s, RW=%s" % \
             (hex(self.dma_addr), self.region, hex(self.length),
                 hex(self.offset), self.writeable)
-
-
-class vfio_user_migration_info(Structure):
-    _pack_ = 1
-    _fields_ = [
-        ("device_state", c.c_uint32),
-        ("reserved", c.c_uint32),
-        ("pending_bytes", c.c_uint64),
-        ("data_offset", c.c_uint64),
-        ("data_size", c.c_uint64),
-    ]
 
 
 #
@@ -634,7 +697,7 @@ vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
 lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
-    c.POINTER(vfu_migration_callbacks_t), c.c_uint64)
+    c.POINTER(vfu_migration_callbacks_t))
 lib.dma_sg_size.restype = (c.c_size_t)
 lib.vfu_addr_to_sgl.argtypes = (c.c_void_p, c.c_void_p, c.c_size_t,
                                 c.POINTER(dma_sg_t), c.c_size_t, c.c_int)
@@ -642,6 +705,10 @@ lib.vfu_sgl_get.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                             c.POINTER(iovec_t), c.c_size_t, c.c_int)
 lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                             c.POINTER(iovec_t), c.c_size_t)
+lib.vfu_sgl_read.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
+                             c.c_void_p)
+lib.vfu_sgl_write.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
+                              c.c_void_p)
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
@@ -695,22 +762,52 @@ class Client:
         self.sock = sock
         self.client_cmd_socket = None
 
-    def connect(self, ctx):
+    def connect(self, ctx, capabilities={}):
         self.sock = connect_sock()
 
-        json = b'{ "capabilities": { "max_msg_fds": 8 } }'
+        client_caps = {
+            "capabilities": {
+                "max_data_xfer_size": VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE,
+                "max_msg_fds": 8,
+            },
+        }
+
+        def update(target, overrides):
+            for k, v in overrides.items():
+                if isinstance(v, collections.abc.Mapping):
+                    target[k] = target.get(k, {})
+                    update(target[k], v)
+                else:
+                    target[k] = v
+
+        update(client_caps, capabilities)
+        caps_json = json.dumps(client_caps)
+
         # struct vfio_user_version
-        payload = struct.pack("HH%dsc" % len(json), LIBVFIO_USER_MAJOR,
-                              LIBVFIO_USER_MINOR, json, b'\0')
+        payload = struct.pack("HH%dsc" % len(caps_json), LIBVFIO_USER_MAJOR,
+                              LIBVFIO_USER_MINOR, caps_json.encode(), b'\0')
         hdr = vfio_user_header(VFIO_USER_VERSION, size=len(payload))
         self.sock.send(hdr + payload)
         vfu_attach_ctx(ctx, expect=0)
-        payload = get_reply(self.sock, expect=0)
+        fds, payload = get_reply_fds(self.sock, expect=0)
+
+        server_caps = json.loads(payload[struct.calcsize("HH"):-1].decode())
+        try:
+            if (client_caps["capabilities"]["twin_socket"]["supported"] and
+               server_caps["capabilities"]["twin_socket"]["supported"]):
+                index = server_caps["capabilities"]["twin_socket"]["fd_index"]
+                self.client_cmd_socket = socket.socket(fileno=fds[index])
+        except KeyError:
+            pass
+
         return self.sock
 
     def disconnect(self, ctx):
         self.sock.close()
         self.sock = None
+        if self.client_cmd_socket is not None:
+            self.client_cmd_socket.close()
+            self.client_cmd_socket = None
 
         # notice client closed connection
         vfu_run_ctx(ctx, errno.ENOTCONN)
@@ -975,18 +1072,6 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
         ret = vfu_setup_device_reset_cb(ctx, reset)
         assert ret == 0
 
-    f = tempfile.TemporaryFile()
-    migr_region_size = 2 << PAGE_SHIFT
-    f.truncate(migr_region_size)
-
-    mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
-
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=migr_region_size,
-                           flags=VFU_REGION_FLAG_RW, mmap_areas=mmap_areas,
-                           fd=f.fileno())
-    assert ret == 0
-
     if migration_callbacks:
         ret = vfu_setup_device_migration_callbacks(ctx)
         assert ret == 0
@@ -995,6 +1080,18 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     assert ret == 0
 
     return ctx
+
+
+def transition_to_state(ctx, sock, state, expect=0, rsp=True, busy=False):
+    feature = vfio_user_device_feature(
+        argsz=len(vfio_user_device_feature()) +
+            len(vfio_user_device_feature_mig_state()),
+        flags=VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
+    )
+    payload = vfio_user_device_feature_mig_state(device_state=state)
+    msg(ctx, sock, VFIO_USER_DEVICE_FEATURE, bytes(feature) + bytes(payload),
+        expect=expect, rsp=rsp, busy=busy)
+
 
 #
 # Library wrappers
@@ -1191,24 +1288,6 @@ def __migr_trans_cb(ctx, state):
     return migr_trans_cb(ctx, state)
 
 
-def migr_get_pending_bytes_cb(ctx):
-    pass
-
-
-@get_pending_bytes_cb_t
-def __migr_get_pending_bytes_cb(ctx):
-    return migr_get_pending_bytes_cb(ctx)
-
-
-def migr_prepare_data_cb(ctx, offset, size):
-    pass
-
-
-@prepare_data_cb_t
-def __migr_prepare_data_cb(ctx, offset, size):
-    return migr_prepare_data_cb(ctx, offset, size)
-
-
 def migr_read_data_cb(ctx, buf, count, offset):
     pass
 
@@ -1227,29 +1306,17 @@ def __migr_write_data_cb(ctx, buf, count, offset):
     return migr_write_data_cb(ctx, buf, count, offset)
 
 
-def migr_data_written_cb(ctx, count):
-    pass
-
-
-@data_written_cb_t
-def __migr_data_written_cb(ctx, count):
-    return migr_data_written_cb(ctx, count)
-
-
-def vfu_setup_device_migration_callbacks(ctx, cbs=None, offset=PAGE_SIZE):
+def vfu_setup_device_migration_callbacks(ctx, cbs=None):
     assert ctx is not None
 
     if not cbs:
         cbs = vfu_migration_callbacks_t()
         cbs.version = VFU_MIGR_CALLBACKS_VERS
         cbs.transition = __migr_trans_cb
-        cbs.get_pending_bytes = __migr_get_pending_bytes_cb
-        cbs.prepare_data = __migr_prepare_data_cb
         cbs.read_data = __migr_read_data_cb
         cbs.write_data = __migr_write_data_cb
-        cbs.data_written = __migr_data_written_cb
 
-    return lib.vfu_setup_device_migration_callbacks(ctx, cbs, offset)
+    return lib.vfu_setup_device_migration_callbacks(ctx, cbs)
 
 
 def dma_sg_size():
@@ -1272,6 +1339,18 @@ def vfu_sgl_get(ctx, sg, iovec, cnt=1, flags=0):
 
 def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
+
+
+def vfu_sgl_read(ctx, sg, cnt=1):
+    data = bytearray(sum([sge.length for sge in sg]))
+    buf = (c.c_byte * len(data)).from_buffer(data)
+    return lib.vfu_sgl_read(ctx, sg, cnt, buf), data
+
+
+def vfu_sgl_write(ctx, sg, cnt=1, data=bytearray()):
+    assert len(data) == sum([sge.length for sge in sg])
+    buf = (c.c_byte * len(data)).from_buffer(data)
+    return lib.vfu_sgl_write(ctx, sg, cnt, buf)
 
 
 def vfu_create_ioeventfd(ctx, region_idx, fd, gpa_offset, size, flags,
@@ -1297,6 +1376,32 @@ def fds_are_same(fd1: int, fd2: int) -> bool:
     s1 = os.stat(fd1)
     s2 = os.stat(fd2)
     return s1.st_dev == s2.st_dev and s1.st_ino == s2.st_ino
+
+
+def get_bitmap_size(size: int, pgsize: int) -> int:
+    """
+    Returns the size, in bytes, of the bitmap that represents the given range
+    with the given page size.
+    """
+
+    nr_pages = (size // pgsize) + (1 if size % pgsize != 0 else 0)
+    return ((nr_pages + 63) & ~63) // 8
+
+
+get_errno_loc = libc.__errno_location
+get_errno_loc.restype = c.POINTER(c.c_int)
+
+
+def set_real_errno(errno: int):
+    """
+    ctypes's errno is an internal value that only updates the real value when
+    the foreign function call returns. In callbacks, however, this doesn't
+    happen, so `c.set_errno` doesn't propagate in time. In this case we need to
+    manually set the real errno.
+    """
+
+    c.set_errno(errno)  # set internal errno so `c.get_errno` gives right value
+    get_errno_loc()[0] = errno  # set real errno
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #

@@ -195,20 +195,6 @@ typedef struct ioeventfd {
     LIST_ENTRY(ioeventfd) entry;
 } ioeventfd_t;
 
-static inline int
-ERROR_INT(int err)
-{
-    errno = err;
-    return -1;
-}
-
-static inline void *
-ERROR_PTR(int err)
-{
-    errno = err;
-    return NULL;
-}
-
 int
 consume_fd(int *fds, size_t nr_fds, size_t index);
 

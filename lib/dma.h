@@ -386,6 +386,7 @@ int
 dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
                               uint64_t len, size_t pgsize, size_t size,
                               char *bitmap);
+
 bool
 dma_sg_is_mappable(const dma_controller_t *dma, const dma_sg_t *sg);
 
