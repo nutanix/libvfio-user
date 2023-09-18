@@ -391,7 +391,7 @@ migration_read_data(vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
     if (read_end > server_data->bar1_size) {
         length_in_bar0 = read_end - read_start;
         read_start -= server_data->bar1_size;
-        memcpy(buf + length_in_bar1, &server_data->bar0 + read_start,
+        memcpy(buf + length_in_bar1, (char *)&server_data->bar0 + read_start,
                length_in_bar0);
     }
 
@@ -435,7 +435,7 @@ migration_write_data(vfu_ctx_t *vfu_ctx, void *data, uint64_t size)
     if (write_end > server_data->bar1_size) {
         length_in_bar0 = write_end - write_start;
         write_start -= server_data->bar1_size;
-        memcpy(&server_data->bar0 + write_start, buf + length_in_bar1,
+        memcpy((char *)&server_data->bar0 + write_start, buf + length_in_bar1,
                length_in_bar0);
     }
 

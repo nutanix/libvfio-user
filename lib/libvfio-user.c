@@ -105,7 +105,6 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg,
              struct vfio_region_info *vfio_reg, int **fds, size_t *nr_fds)
 {
     struct vfio_info_cap_header *header;
-    struct vfio_region_info_cap_type *type = NULL;
     struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
 
     assert(vfu_ctx != NULL);
@@ -117,13 +116,8 @@ dev_get_caps(vfu_ctx_t *vfu_ctx, vfu_reg_info_t *vfu_reg,
 
     if (vfu_reg->mmap_areas != NULL) {
         int i, nr_mmap_areas = vfu_reg->nr_mmap_areas;
-        if (type != NULL) {
-            type->header.next = vfio_reg->cap_offset + sizeof(struct vfio_region_info_cap_type);
-            sparse = (struct vfio_region_info_cap_sparse_mmap*)(type + 1);
-        } else {
-            vfio_reg->cap_offset = sizeof(struct vfio_region_info);
-            sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
-        }
+        vfio_reg->cap_offset = sizeof(struct vfio_region_info);
+        sparse = (struct vfio_region_info_cap_sparse_mmap*)header;
 
         *fds = malloc(nr_mmap_areas * sizeof(int));
         if (*fds == NULL) {
