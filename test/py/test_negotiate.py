@@ -55,10 +55,6 @@ def test_server_setup():
     ctx = vfu_create_ctx()
     assert ctx is not None
 
-    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_MIGR_REGION_IDX,
-                           size=2 << PAGE_SHIFT, flags=VFU_REGION_FLAG_RW)
-    assert ret == 0
-
     ret = vfu_setup_device_migration_callbacks(ctx)
     assert ret == 0
 
