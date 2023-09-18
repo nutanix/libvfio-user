@@ -55,6 +55,9 @@ def test_server_setup():
     ctx = vfu_create_ctx()
     assert ctx is not None
 
+    ret = vfu_setup_device_migration_callbacks(ctx)
+    assert ret == 0
+
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
@@ -150,14 +153,9 @@ def test_invalid_json_bad_pgsize():
                         b'{ "migration": { "pgsize": "foo" } } }')
 
 
-#
-# FIXME: need vfu_setup_device_migration_callbacks() to be able to test this
-# failure mode.
-#
 def test_invalid_json_bad_pgsize2():
-    if False:
-        client_version_json(errno.EINVAL,
-            b'{ "capabilities": { "migration": { "pgsize": 4095 } } }')
+    client_version_json(errno.EINVAL,
+        b'{ "capabilities": { "migration": { "pgsize": 4095 } } }')
 
 
 def test_valid_negotiate_no_json():
@@ -177,7 +175,7 @@ def test_valid_negotiate_no_json():
     json = parse_json(json_str)
     assert json.capabilities.max_msg_fds == SERVER_MAX_FDS
     assert json.capabilities.max_data_xfer_size == SERVER_MAX_DATA_XFER_SIZE
-    # FIXME: migration object checks
+    assert json.capabilities.migration.pgsize == PAGE_SIZE
 
     client.disconnect(ctx)
 
