@@ -241,6 +241,15 @@ demonstrate the benefits of shadow ioeventfd, see
 Other usage notes
 =================
 
+Live migration
+--------------
+
+The `master` branch of `libvfio-user` implements live migration with a protocol
+based on vfio's v2 protocol. Currently, there is no support for this in any qemu
+client. For current use cases that support live migration, such as SPDK, you
+should refer to the [https://github.com/nutanix/libvfio-user/tree/migration-v1]
+(migration-v1 branch).
+
 qemu
 ----
 
