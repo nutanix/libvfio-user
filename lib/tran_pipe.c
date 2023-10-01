@@ -34,6 +34,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 
 #include "tran_pipe.h"
@@ -397,8 +398,8 @@ tran_pipe_reply(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg, int err)
     }
 
     if (msg->out_iovecs != NULL) {
-        bcopy(msg->out_iovecs, iovecs + 1,
-              msg->nr_out_iovecs * sizeof(*iovecs));
+        memcpy(iovecs + 1, msg->out_iovecs,
+               msg->nr_out_iovecs * sizeof(*iovecs));
     } else {
         iovecs[1].iov_base = msg->out.iov.iov_base;
         iovecs[1].iov_len = msg->out.iov.iov_len;
