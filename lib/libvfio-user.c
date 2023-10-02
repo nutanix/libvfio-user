@@ -654,7 +654,8 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                           sizeof(vfio_user_sub_region_ioeventfd_t);
 
     msg->out.nr_fds = 0;
-    if (req->argsz >= reply->argsz) {
+
+    if (max_sent_sub_regions > 0 && req->argsz >= reply->argsz) {
         msg->out.fds = calloc(sizeof(int),
                               max_sent_sub_regions + nr_shadow_reg);
         if (msg->out.fds == NULL) {
@@ -662,18 +663,22 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         }
 
         sub_reg = LIST_FIRST(&vfu_reg->subregions);
+
         for (i = 0; i < max_sent_sub_regions; i++) {
+            int fdi;
 
             ioefd = &reply->sub_regions[i].ioeventfd;
             ioefd->gpa_offset = sub_reg->gpa_offset;
             ioefd->size = sub_reg->size;
-            ioefd->fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds,
-                                        sub_reg->fd);
+            fdi = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->fd);
+            ioefd->fd_index = fdi;
             if (sub_reg->shadow_fd == -1) {
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD;
             } else {
                 ioefd->type = VFIO_USER_IO_FD_TYPE_IOEVENTFD_SHADOW;
-                ioefd->shadow_mem_fd_index = add_fd_index(msg->out.fds, &msg->out.nr_fds, sub_reg->shadow_fd);
+                fdi = add_fd_index(msg->out.fds, &msg->out.nr_fds,
+                                   sub_reg->shadow_fd);
+                ioefd->shadow_mem_fd_index = fdi;
             }
             ioefd->flags = sub_reg->flags;
             ioefd->datamatch = sub_reg->datamatch;

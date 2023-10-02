@@ -33,6 +33,34 @@ import mmap
 import errno
 
 
+def test_shadow_ioeventfd_none():
+    """Test VFIO_USER_DEVICE_GET_REGION_IO_FDS when none are set up."""
+
+    # server setup
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR0_REGION_IDX, size=0x1000,
+                           flags=VFU_REGION_FLAG_RW)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    # client
+    client = connect_client(ctx)
+    payload = vfio_user_region_io_fds_request(
+                argsz=len(vfio_user_region_io_fds_reply()) +
+                len(vfio_user_sub_region_ioeventfd()), flags=0,
+                index=VFU_PCI_DEV_BAR0_REGION_IDX, count=0)
+    newfds, ret = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          payload, expect=0)
+    assert len(newfds) == 0
+    reply, ret = vfio_user_region_io_fds_reply.pop_from_buffer(ret)
+    assert reply.count == 0
+
+    vfu_destroy_ctx(ctx)
+
+
 def test_shadow_ioeventfd():
     """Configure a shadow ioeventfd, have the client trigger it, confirm that
     the server receives the notification and can see the value."""
