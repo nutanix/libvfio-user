@@ -156,7 +156,7 @@ def test_dma_read_write():
 def test_dma_read_write_large():
     ret, sg = vfu_addr_to_sgl(ctx,
                               dma_addr=MAP_ADDR + 0x1000,
-                              length=2 * PAGE_SIZE,
+                              length=2 * PAGE_SIZE + 42,
                               max_nr_sgs=1,
                               prot=mmap.PROT_READ | mmap.PROT_WRITE)
     assert ret == 1

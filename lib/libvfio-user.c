@@ -2312,13 +2312,14 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
         if (cmd == VFIO_USER_DMA_WRITE) {
             memcpy(rbuf + sizeof(*dma_req), data + count, dma_req->count);
 
-            ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id++, VFIO_USER_DMA_WRITE,
-                                          rbuf, rlen, NULL,
+            ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id++,
+                                          VFIO_USER_DMA_WRITE, rbuf,
+                                          dma_req->count + sizeof(*dma_req), NULL,
                                           dma_reply, sizeof(*dma_reply));
         } else {
             ret = vfu_ctx->tran->send_msg(vfu_ctx, msg_id++, VFIO_USER_DMA_READ,
-                                          dma_req, sizeof(*dma_req), NULL,
-                                          rbuf, rlen);
+                                          dma_req, sizeof(*dma_req), NULL, rbuf,
+                                          dma_req->count + sizeof(*dma_reply));
         }
 
         if (ret < 0) {
