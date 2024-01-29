@@ -238,8 +238,11 @@ typedef ssize_t (vfu_region_access_cb_t)(vfu_ctx_t *vfu_ctx, char *buf,
 /* If unset, this is an IO region. */
 #define VFU_REGION_FLAG_MEM       (1 << 2)
 #define VFU_REGION_FLAG_ALWAYS_CB (1 << 3)
+#define VFU_REGION_FLAG_64_BITS   (1 << 4)
+#define VFU_REGION_FLAG_PREFETCH  (1 << 5)
 #define VFU_REGION_FLAG_MASK      (VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM | \
-                                   VFU_REGION_FLAG_ALWAYS_CB)
+                                   VFU_REGION_FLAG_ALWAYS_CB | VFU_REGION_FLAG_64_BITS | \
+                                   VFU_REGION_FLAG_PREFETCH)
 
 /**
  * Set up a device region.

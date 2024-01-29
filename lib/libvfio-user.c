@@ -1729,6 +1729,12 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         if (!(vfu_ctx->reg_info[i].flags & VFU_REGION_FLAG_MEM)) {
             vfu_ctx->pci.config_space->hdr.bars[i].io.region_type |= 0x1;
         }
+        if ((vfu_ctx->reg_info[i].flags & VFU_REGION_FLAG_64_BITS)) {
+                vfu_ctx->pci.config_space->hdr.bars[i].raw |= PCI_BASE_ADDRESS_MEM_TYPE_64;
+        }
+        if ((vfu_ctx->reg_info[i].flags & VFU_REGION_FLAG_PREFETCH)) {
+                vfu_ctx->pci.config_space->hdr.bars[i].mem.prefetchable = 1;
+        }
     }
 
     if (vfu_ctx->irqs == NULL) {
