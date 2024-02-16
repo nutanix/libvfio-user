@@ -165,14 +165,43 @@ bit_to_u8off(size_t val)
 }
 
 static inline void
+u8_set_all_bits(uint8_t *bm)
+{
+    *bm = ~0;
+}
+
+static inline void
+mask_any_lower_bits(uint8_t *byte, size_t u8off)
+{
+    if (bit_to_u8off(u8off) != 0) {
+        *byte &= ~((1 << bit_to_u8off(u8off)) - 1);
+    }
+}
+
+static inline void
+mask_any_higher_bits(uint8_t *byte, size_t u8off)
+{
+    if (bit_to_u8off(u8off) != 0) {
+        *byte &= ((1 << bit_to_u8off(u8off)) - 1);
+    }
+}
+
+static inline void
+u8_atomic_or(uint8_t *bitmap, uint8_t byte_mask)
+{
+    __atomic_or_fetch(bitmap, byte_mask, __ATOMIC_RELAXED);
+}
+
+static inline void
 _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
                 dma_sg_t *sg)
 {
-    size_t index;
-    size_t end;
+    size_t bm_start_byte;
+    size_t bm_end_byte;
+    size_t middle_bytes;
     size_t pgstart;
     size_t pgend;
-    size_t i;
+    uint8_t bm;
 
     assert(dma != NULL);
     assert(region != NULL);
@@ -182,24 +211,47 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
     range_to_pages(sg->offset, sg->length, dma->dirty_pgsize,
                    &pgstart, &pgend);
 
-    index = bit_to_u8(pgstart);
-    end = bit_to_u8(pgend) + !!(bit_to_u8off(pgend));
+    bm_start_byte = bit_to_u8(pgstart);
+    bm_end_byte = bit_to_u8(pgend) + !!(bit_to_u8off(pgend));
 
-    for (i = index; i < end; i++) {
-        uint8_t bm = ~0;
+    assert(bm_start_byte <= bm_end_byte);
 
-        /* Mask off any pages in the first u8 that aren't in the range. */
-        if (i == index && bit_to_u8off(pgstart) != 0) {
-            bm &= ~((1 << bit_to_u8off(pgstart)) - 1);
-        }
-
-        /* Mask off any pages in the last u8 that aren't in the range. */
-        if (i == end - 1 && bit_to_u8off(pgend) != 0) {
-            bm &= ((1 << bit_to_u8off(pgend)) - 1);
-        }
-
-        __atomic_or_fetch(&region->dirty_bitmap[i], bm, __ATOMIC_SEQ_CST);
+    u8_set_all_bits(&bm);
+    /* If only one byte of the bitmap has dirty pages, mark them and return. */
+    if (bm_start_byte >= bm_end_byte - 1) {
+        mask_any_lower_bits(&bm, pgstart);
+        mask_any_higher_bits(&bm, pgend);
+        u8_atomic_or(&region->dirty_bitmap[bm_start_byte], bm);
+        /*
+         * Since we are using relaxed consistency when marking the bitmap, we
+         * add a write barrier to ensure all writes complete before returning.
+         *
+         * This protects us from missing pages on the final dirty bitmap read
+         * before proceeding to 'stop-and-copy'.
+         */
+        vfu_smp_wmb();
+        return;
     }
+
+    /* Mask off any pages in the first u8 that aren't in the range. */
+    mask_any_lower_bits(&bm, pgstart);
+    u8_atomic_or(&region->dirty_bitmap[bm_start_byte], bm);
+
+    /* Set 1s for all of the pages in the middle u8s of the range. */
+    u8_set_all_bits(&bm);
+    middle_bytes = bm_end_byte - bm_start_byte - 2;
+    memset(&region->dirty_bitmap[bm_start_byte + 1], (int)bm, middle_bytes);
+
+    /* Mask off any pages in the last u8 that aren't in the range. */
+    mask_any_higher_bits(&bm, pgend);
+    u8_atomic_or(&region->dirty_bitmap[bm_end_byte - 1], bm);
+
+    /*
+     * Like the prior vfu_smp_wmb(), we add one here to ensure that on the
+     * final iteration all of the writes to the bitmap persist before returning
+     * from _dma_mark_dirty().
+     */
+    vfu_smp_wmb();
 }
 
 static inline int
