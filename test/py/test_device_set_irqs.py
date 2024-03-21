@@ -133,6 +133,15 @@ def test_device_set_irqs_bad_start_count_range2():
         expect=errno.EINVAL)
 
 
+def test_device_set_irqs_bad_start_count_range3():
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=284, count=0xffffffff)
+
+    msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload,
+        expect=errno.EINVAL)
+
+
 def test_device_set_irqs_bad_action_for_err_irq():
     payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_MASK |
                            VFIO_IRQ_SET_DATA_NONE, index=VFU_DEV_ERR_IRQ,
