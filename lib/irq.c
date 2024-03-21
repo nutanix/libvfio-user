@@ -309,12 +309,20 @@ device_set_irqs_validate(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         line = __LINE__;
         goto invalid;
     }
-    // Ensure irq_set's start and count are within bounds.
-    if ((irq_set->start >= vfu_ctx->irq_count[irq_set->index]) ||
-        (irq_set->start + irq_set->count > vfu_ctx->irq_count[irq_set->index])) {
+
+    // Ensure irq_set's start is within bounds.
+    if (irq_set->start >= vfu_ctx->irq_count[irq_set->index]) {
         line = __LINE__;
         goto invalid;
     }
+
+    // Ensure irq_set's start+count is within bounds.
+    if (satadd_u32(irq_set->start, irq_set->count) >
+        vfu_ctx->irq_count[irq_set->index]) {
+        line = __LINE__;
+        goto invalid;
+    }
+
     // Only TRIGGER is valid for ERR/REQ.
     if (((irq_set->index == VFIO_PCI_ERR_IRQ_INDEX) ||
          (irq_set->index == VFIO_PCI_REQ_IRQ_INDEX)) &&

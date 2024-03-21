@@ -60,6 +60,14 @@
 
 typedef unsigned long long ull_t;
 
+/* Saturating uint32_t addition. */
+static inline uint32_t
+satadd_u32(uint32_t a, uint32_t b)
+{
+    uint64_t res = a + b;
+    return (res < a) ? UINT32_MAX : res;
+}
+
 /* Saturating uint64_t addition. */
 static inline uint64_t
 satadd_u64(uint64_t a, uint64_t b)
