@@ -48,6 +48,10 @@ extern "C" {
  * instead?
  */
 
+#define PCI_BASE_ADDRESS_MEM_TYPE_LOCATABLE_32 (PCI_BASE_ADDRESS_MEM_TYPE_32 >> 1)
+#define PCI_BASE_ADDRESS_MEM_TYPE_LOCATABLE_1M (PCI_BASE_ADDRESS_MEM_TYPE_1M >> 1)
+#define PCI_BASE_ADDRESS_MEM_TYPE_LOCATABLE_64 (PCI_BASE_ADDRESS_MEM_TYPE_64 >> 1)
+
 typedef union {
     uint32_t raw;
     struct {

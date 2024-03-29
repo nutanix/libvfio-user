@@ -73,14 +73,30 @@ def test_vfu_realize_ctx_pci_bars():
     ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR1_REGION_IDX, size=4096,
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
     assert ret == 0
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX,
+                           size=1048576,
+                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                  | VFU_REGION_FLAG_64_BITS))
+    assert ret == 0
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR4_REGION_IDX,
+                           size=1073741824,
+                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                  | VFU_REGION_FLAG_64_BITS
+                                  | VFU_REGION_FLAG_PREFETCH))
+    assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0
 
     # region_type should be set non-MEM BAR, unset otherwise
     hdr = get_pci_header(ctx)
-    assert hdr.bars[0].io == 0x1
-    assert hdr.bars[1].io == 0
+    assert hdr.bars[0].io == PCI_BASE_ADDRESS_SPACE_IO
+    assert hdr.bars[1].mem == PCI_BASE_ADDRESS_SPACE_MEMORY
+    assert hdr.bars[2].mem == (PCI_BASE_ADDRESS_SPACE_MEMORY
+                               | PCI_BASE_ADDRESS_MEM_TYPE_64)
+    assert hdr.bars[4].mem == (PCI_BASE_ADDRESS_SPACE_MEMORY
+                               | PCI_BASE_ADDRESS_MEM_TYPE_64
+                               | PCI_BASE_ADDRESS_MEM_PREFETCH)
 
     vfu_destroy_ctx(ctx)
 
