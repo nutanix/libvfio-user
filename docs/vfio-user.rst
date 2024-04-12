@@ -78,7 +78,7 @@ structures used in the ``ioctl()`` implementation. Messages derived from the
 ``ioctl()`` will have a name derived from the ``ioctl()`` command name.  E.g., the
 ``VFIO_DEVICE_GET_INFO`` ``ioctl()`` command becomes a
 ``VFIO_USER_DEVICE_GET_INFO`` message.  The purpose of this reuse is to share as
-much code as feasible with the ``ioctl()`` implementation``.
+much code as feasible with the ``ioctl()`` implementation.
 
 Connection Initiation
 ^^^^^^^^^^^^^^^^^^^^^
