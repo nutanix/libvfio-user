@@ -28,6 +28,8 @@ Use SPDK v23.05:
 	./configure --with-vfio-user
 	make
 
+Note that SPDK only works with the `spdk` branch of `libvfio-user` currently,
+due to live-migration-related changes in the library's `master` branch.
 
 Start SPDK:
 
