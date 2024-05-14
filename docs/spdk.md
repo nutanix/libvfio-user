@@ -100,7 +100,7 @@ https://www.linux-kvm.org/page/Migration.
 
 Note that the above live migration code in `qemu` and `SPDK` relies on the older
 live migration format, this is kept in the
-[https://github.com/nutanix/libvfio-user/tree/migration-v1](migration-v1)
+[migration-v1](https://github.com/nutanix/libvfio-user/tree/migration-v1)
 branch of `libvfio-user`.
 
 libvirt
