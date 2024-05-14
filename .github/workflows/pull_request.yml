@@ -77,21 +77,6 @@ jobs:
             libcmocka-dev clang clang-tools valgrind python3-pytest \
             debianutils flake8 meson ninja-build
           ./.github/workflows/pull_request.sh
-  arch-202307:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    container: archlinux:base-20230723.0.166908
-    steps:
-      - uses: actions/checkout@v3
-      - name: pre-push
-        run: |
-          # clang expects a newer glibc
-          pacman -Sy --noconfirm \
-            base-devel glibc clang json-c cmocka pciutils diffutils valgrind \
-            python-pytest flake8 meson ninja
-          # this fixes debuginfod not automatically updating the url
-          export DEBUGINFOD_URLS="https://debuginfod.archlinux.org"
-          ./.github/workflows/pull_request.sh
   spelling:
     runs-on: ubuntu-latest
     container: vlajos/misspell-fixer
