@@ -69,6 +69,7 @@ $ imgpath=/path/to/bionic-server-cloudimg-amd64.img
 $ sudo ~/src/build/qemu-system-x86_64 \
    -machine accel=kvm,type=q35 -cpu host -m 2G \
    -mem-prealloc -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=/dev/hugepages/gpio,share=yes,size=2G \
+   -numa node,memdev=ram-node0 \
    -nographic \
    -device virtio-net-pci,netdev=net0 \
    -netdev user,id=net0,hostfwd=tcp::2222-:22 \
