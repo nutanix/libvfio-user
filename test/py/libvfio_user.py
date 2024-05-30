@@ -160,7 +160,7 @@ def is_32bit():
     return (1 << 31) - 1 == sys.maxsize
 
 
-MAX_DMA_REGIONS = 16
+MAX_DMA_REGIONS = 64
 # FIXME get from libvfio-user.h
 MAX_DMA_SIZE = sys.maxsize << 1 if is_32bit() else (8 * ONE_TB)
 
