@@ -656,8 +656,7 @@ handle_device_get_region_io_fds(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
     msg->out.nr_fds = 0;
 
     if (max_sent_sub_regions > 0 && req->argsz >= reply->argsz) {
-        msg->out.fds = calloc(sizeof(int),
-                              max_sent_sub_regions + nr_shadow_reg);
+        msg->out.fds = calloc(max_sent_sub_regions + nr_shadow_reg, sizeof(int));
         if (msg->out.fds == NULL) {
             return -1;
         }
