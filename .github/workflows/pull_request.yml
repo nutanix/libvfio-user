@@ -1,11 +1,12 @@
 name: pull_request
 on: pull_request
+
 jobs:
   ubuntu-20:
     timeout-minutes: 10
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: pre-push
         run: |
           sudo apt-get update
@@ -17,7 +18,7 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: pre-push
         run: |
           sudo apt-get update
@@ -30,9 +31,16 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:7
     steps:
-      - uses: actions/checkout@v3
       - name: pre-push
         run: |
+          # Sigh.
+          sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/*.repo
+          sed -i s/^#.*baseurl=http/baseurl=http/g /etc/yum.repos.d/*.repo
+          sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/*.repo
+          # Avoid https://github.com/actions/checkout/issues/1590
+          curl -L -o libvfio-user.tar.gz https://github.com/${GITHUB_REPOSITORY}/archive/${GITHUB_SHA}.tar.gz
+          tar xvf libvfio-user.tar.gz
+          cd libvfio-user-${GITHUB_SHA}
           # NB: no working flake8
           yum -y install make gcc-4.8.5 epel-release pciutils
           yum -y install clang clang-analyzer json-c-devel libcmocka-devel \
@@ -43,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:35
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: pre-push
         run: |
           dnf -y install --releasever=35 \
@@ -56,7 +64,7 @@ jobs:
     runs-on: ubuntu-20.04
     container: debian:11
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: pre-push
         run: |
           apt-get update
@@ -69,7 +77,7 @@ jobs:
     runs-on: ubuntu-22.04
     container: debian:12
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: pre-push
         run: |
           apt-get update
@@ -81,6 +89,6 @@ jobs:
     runs-on: ubuntu-latest
     container: vlajos/misspell-fixer
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: run misspell-fixer
         run: /misspell-fixer/misspell-fixer -sv .
