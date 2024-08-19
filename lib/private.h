@@ -62,6 +62,12 @@
                              sizeof(struct vfio_user_region_access))
 
 /*
+ * Maximum value we are prepared to accept in hdr->error_no. Somewhat arbitrary
+ * value low enough to avoid any signed conversion issues.
+ */
+#define SERVER_MAX_ERROR_NO (4096)
+
+/*
  * Structure used to hold an in-flight request+reply.
  *
  * Incoming request body and fds are stored in in.*.

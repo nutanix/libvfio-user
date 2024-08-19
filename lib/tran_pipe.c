@@ -137,7 +137,7 @@ tran_pipe_recv(int fd, struct vfio_user_header *hdr, bool is_reply,
         }
 
         if (hdr->flags & VFIO_USER_F_ERROR) {
-            if (hdr->error_no <= 0) {
+            if (hdr->error_no <= 0 || hdr->error_no > SERVER_MAX_ERROR_NO) {
                 hdr->error_no = EINVAL;
             }
             return ERROR_INT(hdr->error_no);
