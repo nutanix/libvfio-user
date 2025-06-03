@@ -1,46 +1,22 @@
 qemu usage walkthrough
 ======================
 
-In this walk-through, we'll use an Ubuntu cloudimg along with the
+In this walk-through, we'll use a buildroot image VM along with the
 [gpio sample server](../samples/gpio-pci-idio-16.c) to emulate a very simple GPIO
 device.
 
 Building qemu
 -------------
 
-`vfio-user` client support is not yet merged into `qemu`. Instead, download and
-build [jlevon's master.vfio-user branch of
-qemu](https://github.com/jlevon/qemu/tree/master.vfio-user); for example:
+You will need QEMU 10.1 plus a small fix. Let's build it:
 
 ```
-git clone -b master.vfio-user git@github.com:jlevon/qemu.git
-cd qemu
-
-./configure --prefix=/usr --enable-kvm --enable-vnc --target-list=x86_64-softmmu --enable-debug  --enable-vfio-user-client
+cd ~/src/qemu
+git clone https://github.com/jlevon/qemu.git -b fix-class-code .
+./configure --enable-kvm --enable-vnc --target-list=x86_64-softmmu --enable-trace-backends=log --enable-debug
 make -j
 ```
 
-Configuring the cloudimg
-------------------------
-
-Set up the necessary metadata files:
-
-```
-sudo apt install cloud-image-utils
-
-$ cat metadata.yaml
-instance-id: iid-local01
-local-hostname: cloudimg
-
-$ cat user-data.yaml
-#cloud-config
-ssh_import_id:
-  - gh:jlevon
-
-cloud-localds seed.img user-data.yaml metadata.yaml
-```
-
-don't forget to replace `jlevon` with *your* github user name.
 
 Starting the server
 -------------------
@@ -52,62 +28,46 @@ rm -f /tmp/vfio-user.sock
 ./build/samples/gpio-pci-idio-16 -v /tmp/vfio-user.sock &
 ```
 
-Booting the guest OS
---------------------
+Starting the client
+-------------------
 
-Make sure your system has hugepages available:
-
-```
-$ cat /proc/sys/vm/nr_hugepages
-1024
-```
-
-Now you should be able to start qemu:
+Our client in this case will be a Linux image with the pci-idio-16 kernel
+driver. Let's grab the images:
 
 ```
-$ imgpath=/path/to/bionic-server-cloudimg-amd64.img
-$ sudo ~/src/build/qemu-system-x86_64 \
-   -machine accel=kvm,type=q35 -cpu host -m 2G \
-   -mem-prealloc -object memory-backend-file,id=ram-node0,prealloc=yes,mem-path=/dev/hugepages/gpio,share=yes,size=2G \
-   -numa node,memdev=ram-node0 \
-   -nographic \
-   -device virtio-net-pci,netdev=net0 \
-   -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-   -drive if=virtio,format=qcow2,file=$imgpath \
-   -drive if=virtio,format=raw,file=seed.img \
-   -device vfio-user-pci,socket=/tmp/vfio-user.sock
+curl https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/bzImage
+curl https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/rootfs.ext2
 ```
 
-Log in to your VM and load the kernel driver:
+Now use the qemu you've built to start the VM as follows:
 
 ```
-$ ssh -p 2222 ubuntu@localhost
-...
-$ sudo apt install linux-modules-extra-$(uname -r)
-$ sudo modprobe gpio-pci-idio-16
+~/src/qemu/build/qemu-system-x86_64 \
+    -accel kvm \
+    -nographic \
+    -display none \
+    -m 1G \
+    -net none \
+    -kernel ./bzImage \
+    -hda ./rootfs.ext2 \
+    -append "console=ttyS0 root=/dev/sda" \
+    -device vfio-user-pci,socket=/tmp/vfio-user.sock
 ```
 
-Now we should be able to observe the emulated GPIO device's pins:
+Log in to this VM as root (no password). We should be able to interact with the
+device:
 
 ```
-$ sudo su -
-# cat /sys/class/gpio/gpiochip480/base > /sys/class/gpio/export
-# for ((i=0;i<12;i++)); do cat /sys/class/gpio/OUT0/value; done
+lspci -k # confirm the pci-idio-16 driver is loaded
+gpioinfo
+gpioset -c gpiochip0 -t 0 OUT0=1
+gpioget -c gpiochip0 --numeric OUT0
 ```
 
 and the server should output something like:
 
 ```
 gpio: region2: read 0 from (0:1)
+gpio: region2: wrote 0x1 to (0:1)
 gpio: region2: read 0 from (0:1)
-gpio: region2: read 0 from (0:1)
-gpio: region2: read 0x1 from (0:1)
-gpio: region2: read 0x1 from (0:1)
-gpio: region2: read 0x1 from (0:1)
-gpio: region2: read 0x2 from (0:1)
-gpio: region2: read 0x2 from (0:1)
-gpio: region2: read 0x2 from (0:1)
-gpio: region2: read 0x3 from (0:1)
-gpio: region2: read 0x3 from (0:1)
-gpio: region2: read 0x3 from (0:1)
 ```
