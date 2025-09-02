@@ -1,110 +1,92 @@
 SPDK and libvfio-user
 =====================
 
-[SPDK v21.01](https://github.com/spdk/spdk/releases/tag/v21.01) added
-experimental support for a virtual NVMe controller called nvmf/vfio-user. The
-controller can be used with the same QEMU command line as the one used for
-GPIO.
+[SPDK v21.01](https://github.com/spdk/) has support for a virtual NVMe
+controller called nvmf/vfio-user. These are instructions on how to use it with
+the QEMU `vfio-user` client.
 
 Build QEMU
 ----------
 
-Use Oracle's QEMU vfio-user-p3.1 from https://github.com/oracle/qemu:
+You will need QEMU 10.1 plus a [small fix](https://lore.kernel.org/qemu-devel/20250827190810.1645340-1-john.levon@nutanix.com/).
+Let's build it:
 
-	git clone https://github.com/oracle/qemu qemu-orcl --branch vfio-user-p3.1
-	cd qemu-orcl
-	git submodule update --init --recursive
-	./configure --enable-multiprocess
-	make
+```
+cd ~/src/qemu
+git clone https://github.com/jlevon/qemu.git -b fix-class-code .
+./configure --enable-kvm --enable-vnc --target-list=x86_64-softmmu --enable-trace-backends=log --enable-debug
+make -j
+```
 
 Build SPDK
 ----------
 
-Use SPDK v23.05:
+Here we'll use SPDK v25.05:
 
-	git clone https://github.com/spdk/spdk --branch v23.05
-	cd spdk
-	git submodule update --init --recursive
-	./configure --with-vfio-user
-	make
+```
+git clone https://github.com/spdk/spdk --recursive  --branch v25.05 spdk-v25.05
+cd spdk-25.05
+./configure --with-vfio-user
+make -j
+```
 
-Note that SPDK only works with the `spdk` branch of `libvfio-user` currently,
-due to live-migration-related changes in the library's `master` branch.
+Note that SPDK includes `libvfio-user` as a submodule (it only works with the
+`spdk` branch of `libvfio-user` currently, due to live-migration-related changes
+in the library's `master` branch).
 
-Start SPDK:
+Start SPDK
+----------
 
-	LD_LIBRARY_PATH=build/lib:dpdk/build/lib build/bin/nvmf_tgt &
+```
+./build/bin/nvmf_tgt --no-huge -s 1024 &
+```
 
-Create an NVMe controller with a 512MB RAM-based namespace:
+Now let's create an NVMe controller with a 512MB RAM-based namespace:
 
-	rm -f /var/run/{cntrl,bar0}
-	scripts/rpc.py nvmf_create_transport -t VFIOUSER && \
-		scripts/rpc.py bdev_malloc_create 512 512 -b Malloc0 && \
-		scripts/rpc.py nvmf_create_subsystem nqn.2019-07.io.spdk:cnode0 -a -s SPDK0 && \
-		scripts/rpc.py nvmf_subsystem_add_ns nqn.2019-07.io.spdk:cnode0 Malloc0 && \
-		scripts/rpc.py nvmf_subsystem_add_listener nqn.2019-07.io.spdk:cnode0 -t VFIOUSER -a /var/run -s 0
+```
+mkdir /tmp/spdk
+scripts/rpc.py bdev_malloc_create 512 512 -b Malloc0
+scripts/rpc.py nvmf_create_subsystem nqn.2019-07.io.spdk:cnode0 -a -s SPDK0
+scripts/rpc.py nvmf_subsystem_add_ns nqn.2019-07.io.spdk:cnode0 Malloc0
+scripts/rpc.py nvmf_create_transport -t VFIOUSER
+scripts/rpc.py nvmf_subsystem_add_listener nqn.2019-07.io.spdk:cnode0 -t VFIOUSER -a /tmp/spdk -s 0
+```
 
-Start the Guest
----------------
+Start the VM
+------------
 
-Start the guest with e.g. 4 GB of RAM:
+Now let's start our guest VM. We'll create a 2GB VM booting from an Ubuntu cloud
+image, with a NIC so we can ssh in, and our virtual NVMe PCI device:
 
-	qemu-orcl/build/qemu-system-x86_64 \
-		-m 4G -object memory-backend-file,id=mem0,size=4G,mem-path=/dev/hugepages,share=on,prealloc=yes -numa node,memdev=mem0 \
-		-device vfio-user-pci,socket=/var/run/cntrl
+```
+cd ~/src/qemu
+./build/qemu-system-x86_64 \
+  -monitor stdio \
+  -machine accel=kvm,type=q35 \
+  -m 2G \
+  -object memory-backend-file,id=mem,size=2G,mem-path=/dev/shm/qemu-mem,share=on \
+  -numa node,memdev=mem \
+  -drive if=virtio,format=qcow2,file=/home/jlevon/bionic-server-cloudimg-amd64.img \
+  -device virtio-net-pci,netdev=net0 \
+  -netdev user,id=net0,hostfwd=tcp::2222-:22
+  -device '{"driver":"vfio-user-pci","socket":{"path": "/tmp/spdk/cntrl", "type": "unix"}}'
+```
 
+And in the VM we should be able to see our NVMe device:
 
-Live Migration
---------------
+```
+ssh -p 2222 ubuntu@localhost
 
-[SPDK v22.01](https://github.com/spdk/spdk/releases/tag/v22.01) has
-[experimental support for live migration](https://spdk.io/release/2022/01/27/22.01_release/).
-[This CR](https://review.spdk.io/gerrit/c/spdk/spdk/+/11745/11) contains
-additional fixes that make live migration more reliable. Check it out and build
-SPDK as explained in [Build SPDK](), both on the source and on the destination
-hosts.
+ubuntu@cloudimg:~$ sudo nvme list
+Node             SN                   Model                                    Namespace Usage                      Format           FW Rev  
+---------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
+/dev/nvme0n1     SPDK0                SPDK bdev Controller                     1         536.87  MB / 536.87  MB    512   B +  0 B   25.05   
+```
 
-Then build QEMU as explained in [Build QEMU]() using the following version:
+For generating a cloud image, see below.
 
-    https://github.com/oracle/qemu/tree/vfio-user-dbfix
-
-Start the guest at the source host as explained in
-[Start the Guest](), appending the `x-enable-migration=on` argument to the
-`vfio-user-pci` option.
-
-Then, at the destination host, start the nvmf/vfio-user target and QEMU,
-passing the `-incoming` option to QEMU:
-
-    -incoming tcp:0:4444
-
-QEMU will block at the destination waiting for the guest to be migrated.
-
-Bear in mind that if the guest's disk don't reside in shared storage you'll get
-I/O errors soon after migration. The easiest way around this is to put the
-guest's disk on some NFS mount and share between the source and destination
-hosts.
-
-Finally, migrate the guest by issuing the `migrate` command on the QEMU
-monitor (enter CTRL-A + C to enter the monitor):
-
-    migrate -d tcp:<destination host IP address>:4444
-
-Migration should happen almost instantaneously, there's no message to show that
-migration finished neither in the source nor on the destination hosts. Simply
-hitting ENTER at the destination is enough to tell that migration finished.
-
-Finally, type `q` in the source QEMU monitor to exit source QEMU.
-
-For more information in live migration see
-https://www.linux-kvm.org/page/Migration.
-
-Note that the above live migration code in `qemu` and `SPDK` relies on the older
-live migration format, this is kept in the
-[migration-v1](https://github.com/nutanix/libvfio-user/tree/migration-v1)
-branch of `libvfio-user`.
-
-libvirt
--------
+Using libvirt
+-------------
 
 To use the nvmf/vfio-user target with a libvirt quest, in addition to the
 libvirtd configuration documented in the [README](../README.md) the guest RAM must
@@ -120,3 +102,33 @@ be backed by hugepages:
 
 Because SPDK must be run as root, either fix the vfio-user socket permissions
 or configure libvirt to run QEMU as root.
+
+Live Migration
+--------------
+
+Live migration with SPDK is currently non-functional, although code exists in
+both SPDK and `libvfio-user`. If you are interested in helping, please let us
+know!
+
+Generating an Ubuntu cloud image
+--------------------------------
+
+Set up the necessary metadata files:
+
+```
+sudo apt install cloud-image-utils
+
+$ cat metadata.yaml
+instance-id: iid-local01
+local-hostname: cloudimg
+
+$ cat user-data.yaml
+#cloud-config
+ssh_import_id:
+  - gh:jlevon
+
+cloud-localds seed.img user-data.yaml metadata.yaml
+```
+
+Replace `jlevon` with *your* github username; this will pull your public key
+from github, so you can subsequently ssh into the VM.
