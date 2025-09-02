@@ -2,18 +2,6 @@ name: pull_request
 on: pull_request
 
 jobs:
-  ubuntu-20:
-    timeout-minutes: 10
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: pre-push
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libjson-c-dev libcmocka-dev clang \
-            clang-tools valgrind python3-pytest debianutils flake8 meson \
-            ninja-build
-          ./.github/workflows/pull_request.sh
   ubuntu-22:
     timeout-minutes: 10
     runs-on: ubuntu-22.04
@@ -61,7 +49,7 @@ jobs:
           ./.github/workflows/pull_request.sh
   debian-11:
     timeout-minutes: 10
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container: debian:11
     steps:
       - uses: actions/checkout@v4
