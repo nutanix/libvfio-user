@@ -1,19 +1,20 @@
 SPDK and libvfio-user
 =====================
 
-[SPDK v21.01](https://github.com/spdk/) has support for a virtual NVMe
-controller called nvmf/vfio-user. These are instructions on how to use it with
-the QEMU `vfio-user` client.
+[SPDK](https://github.com/spdk/) has support for a virtual NVMe controller
+called nvmf/vfio-user. These are instructions on how to use it with the QEMU
+`vfio-user` client.
 
 Build QEMU
 ----------
 
-You will need QEMU 10.1 plus a [small fix](https://lore.kernel.org/qemu-devel/20250827190810.1645340-1-john.levon@nutanix.com/).
-Let's build it:
+You will need QEMU 10.1.1 or later. Let's build it:
 
 ```
-cd ~/src/qemu
-git clone https://github.com/jlevon/qemu.git -b fix-class-code .
+cd ~/src/
+curl -L https://download.qemu.org/qemu-10.1.1.tar.xz | tar xJf -
+cd ~/src/qemu-10.1.1
+
 ./configure --enable-kvm --enable-vnc --target-list=x86_64-softmmu --enable-trace-backends=log --enable-debug
 make -j
 ```
@@ -59,7 +60,7 @@ Now let's start our guest VM. We'll create a 2GB VM booting from an Ubuntu cloud
 image, with a NIC so we can ssh in, and our virtual NVMe PCI device:
 
 ```
-cd ~/src/qemu
+cd ~/src/qemu-10.1.1
 ./build/qemu-system-x86_64 \
   -monitor stdio \
   -machine accel=kvm,type=q35 \
