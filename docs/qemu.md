@@ -8,15 +8,16 @@ device.
 Building qemu
 -------------
 
-You will need QEMU 10.1 plus a small fix. Let's build it:
+You will need QEMU 10.1.1 or later. Let's build it:
 
 ```
-cd ~/src/qemu
-git clone https://github.com/jlevon/qemu.git -b fix-class-code .
+cd ~/src/
+curl -L https://download.qemu.org/qemu-10.1.1.tar.xz | tar xJf -
+cd ~/src/qemu-10.1.1
+
 ./configure --enable-kvm --enable-vnc --target-list=x86_64-softmmu --enable-trace-backends=log --enable-debug
 make -j
 ```
-
 
 Starting the server
 -------------------
@@ -51,7 +52,7 @@ Now use the qemu you've built to start the VM as follows:
     -kernel ./bzImage \
     -hda ./rootfs.ext2 \
     -append "console=ttyS0 root=/dev/sda" \
-    -device vfio-user-pci,socket=/tmp/vfio-user.sock
+    -device '{"driver":"vfio-user-pci","socket":{"path": "/tmp/vfio-user.sock", "type": "unix"}'
 ```
 
 Log in to this VM as root (no password). We should be able to interact with the
