@@ -51,17 +51,62 @@ _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
     fprintf(stderr, "gpio: %s\n", msg);
 }
 
-static int pin;
+static int pin[16];
 bool dirty = true;
 
 static ssize_t
 bar2_access(vfu_ctx_t *vfu_ctx UNUSED, char * const buf,
             size_t count, loff_t offset, const bool is_write)
 {
-    if (offset == 0 && !is_write)
-        buf[0] = pin++ / 3;
+    int i;
 
-    dirty = true;
+    if (is_write) {
+        /* Output registers are 0x0 and 0x4 */
+        switch (offset) {
+        case 0x0:
+            /* Output pins 0-7 */
+            for (i = 0; i < 8; i++) {
+                if (buf[0] & (1 << i)) {
+                    pin[i]++;
+                }
+            }
+            break;
+
+        case 0x4:
+            /* Output pins 8-15 */
+            for (i = 0; i < 8; i++) {
+                if (buf[0] & (1 << i)) {
+                    pin[i + 8]++;
+                }
+            }
+            break;
+        }
+
+        dirty = true;
+    } else {
+        /* Input registers are 0x1 and 0x5 */
+        switch (offset) {
+        case 0x1:
+            /* Input pins 0-7 */
+            buf[0] = 0;
+            for (i = 0; i < 8; i++) {
+                if ((pin[i] % 3) == 0) {
+                    buf[0] |= (1 << i);
+                }
+            }
+            break;
+
+        case 0x5:
+            /* Input pins 8-15 */
+            buf[0] = 0;
+            for (i = 0; i < 8; i++) {
+                if ((pin[i + 8] % 3) == 0) {
+                    buf[0] |= (1 << i);
+                }
+            }
+            break;
+        }
+    }
 
     return count;
 }
