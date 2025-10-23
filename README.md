@@ -53,17 +53,20 @@ Building libvfio-user
 
 Build requirements:
 
- * `meson` (v0.53.0 or above)
+ * `meson` (v0.57.0 or above)
  * `apt install libjson-c-dev libcmocka-dev` or
  * `yum install json-c-devel libcmocka-devel`
 
 The kernel headers are necessary because VFIO structs and defines are reused.
 
-To build:
-
+To build the vfio-user library and examples:
 ```
-meson build
+meson setup build
 ninja -C build
+```
+To install libvfio-user dynamic library and header files:
+```
+sudo ninja -C build install
 ```
 
 Finally build your program and link with `libvfio-user.so`.
