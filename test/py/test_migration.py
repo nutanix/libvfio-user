@@ -122,6 +122,19 @@ def migr_write_data_cb(_ctx, buf, count):
     return count
 
 
+@get_data_size_cb_t
+def migr_get_data_size(_ctx):
+    global read_data
+
+    return len(read_data) if read_data else 0;
+
+
+@get_precopy_info_cb_t
+def migr_get_precopy_info(_ctx, init, dirty):
+    # TODO implement this for tests
+    return 0
+
+
 def setup_fail_callbacks(errno):
     global callbacks_errno
     callbacks_errno = errno
@@ -160,6 +173,8 @@ def test_migration_setup():
     cbs.transition = migr_trans_cb
     cbs.read_data = migr_read_data_cb
     cbs.write_data = migr_write_data_cb
+    cbs.get_data_size = migr_get_data_size
+    cbs.get_precopy_info = migr_get_precopy_info
 
     ret = vfu_setup_device_migration_callbacks(ctx, cbs)
     assert ret < 0, "do not allow old callbacks version"
