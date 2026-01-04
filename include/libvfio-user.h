@@ -393,7 +393,7 @@ typedef enum vfu_reset_type {
  * returns. In this callback the device is allowed to call functions such as
  * vfu_sgl_get()
  *
- *     void (dma_register_cb(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info) {
+ *     void dma_register_cb(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info) {
  *         vfu_sgl_get(ctx, ...);
  *     }
  *
