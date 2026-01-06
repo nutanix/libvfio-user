@@ -70,6 +70,7 @@ enum vfio_user_command {
     VFIO_USER_DEVICE_FEATURE            = 16,
     VFIO_USER_MIG_DATA_READ             = 17,
     VFIO_USER_MIG_DATA_WRITE            = 18,
+    VFIO_USER_MIG_GET_PRECOPY_INFO      = 19,
     VFIO_USER_MAX,
 };
 
@@ -265,6 +266,16 @@ struct vfio_user_device_feature_migration {
 _Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_migration size");
 
+/* Analogous to struct vfio_device_feature_mig_data_size */
+struct vfio_user_device_feature_mig_data_size {
+        uint64_t stop_copy_length;
+} __attribute__((packed));
+#ifndef VFIO_DEVICE_FEATURE_MIG_DATA_SIZE
+#define VFIO_DEVICE_FEATURE_MIG_DATA_SIZE 9
+#endif
+_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+               "bad vfio_user_device_feature_mig_state size");
+
 /* Analogous to struct vfio_device_feature_mig_state */
 struct vfio_user_device_feature_mig_state {
     uint32_t    device_state;
@@ -273,7 +284,7 @@ struct vfio_user_device_feature_mig_state {
 #ifndef VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
 #define VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE 2
 #endif
-_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+_Static_assert(sizeof(struct vfio_user_device_feature_mig_state) == 8,
                "bad vfio_user_device_feature_mig_state size");
 
 /* Analogous to enum vfio_device_mig_state */
@@ -293,6 +304,14 @@ struct vfio_user_mig_data {
     uint32_t    argsz;
     uint32_t    size;
     uint8_t     data[];
+} __attribute__((packed));
+
+/* Analogous to struct vfio_precopy_info */
+struct vfio_user_precopy_info {
+        uint32_t argsz;
+        uint32_t flags;
+        uint64_t initial_bytes;
+        uint64_t dirty_bytes;
 } __attribute__((packed));
 
 #ifdef __cplusplus

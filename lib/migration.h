@@ -54,10 +54,16 @@ ssize_t
 migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state);
 
 ssize_t
+migration_get_data_size(vfu_ctx_t *vfu_ctx);
+
+ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 ssize_t
 handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+
+int
+handle_mig_get_precopy_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 bool
 migration_available(vfu_ctx_t *vfu_ctx);
