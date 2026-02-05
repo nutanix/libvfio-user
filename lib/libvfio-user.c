@@ -48,9 +48,11 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <sys/eventfd.h>
 
 #include "dma.h"
+#include "iommufd.h"
 #include "irq.h"
 #include "libvfio-user.h"
 #include "migration.h"
@@ -61,6 +63,15 @@
 
 static int
 vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason);
+
+/* iommufd command handlers */
+static int handle_iommufd_alloc_ioas(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_destroy_ioas(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_bind(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_attach_pt(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_detach_pt(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_ioas_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
+static int handle_iommufd_ioas_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
 EXPORT void
 vfu_log(vfu_ctx_t *vfu_ctx, int level, const char *fmt, ...)
@@ -1378,6 +1389,34 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
         ret = handle_mig_data_write(vfu_ctx, msg);
         break;
 
+    case VFIO_USER_IOMMUFD_ALLOC_IOAS:
+        ret = handle_iommufd_alloc_ioas(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_DESTROY_IOAS:
+        ret = handle_iommufd_destroy_ioas(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_BIND:
+        ret = handle_iommufd_bind(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_ATTACH_PT:
+        ret = handle_iommufd_attach_pt(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_DETACH_PT:
+        ret = handle_iommufd_detach_pt(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_IOAS_MAP:
+        ret = handle_iommufd_ioas_map(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_IOMMUFD_IOAS_UNMAP:
+        ret = handle_iommufd_ioas_unmap(vfu_ctx, msg);
+        break;
+
     default:
         msg->processed_cmd = false;
         vfu_log(vfu_ctx, LOG_ERR, "bad command %d", msg->hdr.cmd);
@@ -1861,6 +1900,9 @@ vfu_destroy_ctx(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->dma != NULL) {
         dma_controller_destroy(vfu_ctx->dma);
     }
+    if (vfu_ctx->iommufd != NULL) {
+        iommufd_controller_destroy(vfu_ctx->iommufd);
+    }
     free_sparse_mmap_areas(vfu_ctx);
     free_regions(vfu_ctx);
     free(vfu_ctx->migration);
@@ -1955,6 +1997,12 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
         if (err < 0) {
             goto err_out;
         }
+    }
+
+    /* Create iommufd controller */
+    vfu_ctx->iommufd = iommufd_controller_create(vfu_ctx);
+    if (vfu_ctx->iommufd == NULL) {
+        goto err_out;
     }
 
     return vfu_ctx;
@@ -2215,6 +2263,8 @@ EXPORT int
 vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
                 size_t len, dma_sg_t *sgl, size_t max_nr_sgs, int prot)
 {
+    iommufd_mapping_t *mapping;
+
 #ifdef DEBUG
     assert(vfu_ctx != NULL);
 
@@ -2225,6 +2275,29 @@ vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr,
     quiesce_check_allowed(vfu_ctx, __func__);
 #endif
 
+    /* Check iommufd mappings first if iommufd is enabled */
+    if (vfu_ctx->iommufd != NULL && iommufd_is_enabled(vfu_ctx->iommufd)) {
+        /* Validate that the IOVA is registered (for security) */
+        mapping = iommufd_find_mapping(vfu_ctx->iommufd, (uint64_t)(uintptr_t)dma_addr, len);
+        if (mapping != NULL) {
+            /* Found in iommufd - create SGL entry with special region index */
+            if (max_nr_sgs < 1) {
+                return ERROR_INT(ERANGE) - 1; /* Need at least 1 SG entry */
+            }
+
+            /* Use INT_MAX as special region index to mark iommufd mapping */
+            /* In iommufd mode, IOVA equals the server's virtual address, so we can use it directly */
+            sgl[0].dma_addr = dma_addr;
+            sgl[0].region = INT_MAX;
+            sgl[0].length = len;
+            sgl[0].offset = 0; /* Not used in iommufd mode since IOVA = vaddr */
+            sgl[0].writeable = (prot & PROT_WRITE) != 0;
+
+            return 1;
+        }
+    }
+
+    /* Fall back to legacy DMA controller */
     return dma_addr_to_sgl(vfu_ctx->dma, dma_addr, len, sgl, max_nr_sgs, prot);
 }
 
@@ -2232,6 +2305,9 @@ EXPORT int
 vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
             int flags UNUSED)
 {
+    dma_sg_t *sg;
+    size_t i;
+
 #ifdef DEBUG
     if (unlikely(vfu_ctx->dma_unregister == NULL) || flags != 0) {
         return ERROR_INT(EINVAL);
@@ -2240,7 +2316,35 @@ vfu_sgl_get(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt,
     quiesce_check_allowed(vfu_ctx, __func__);
 #endif
 
-    return dma_sgl_get(vfu_ctx->dma, sgl, iov, cnt);
+    /* Check if any SGL entries are iommufd mappings (region == INT_MAX) */
+    sg = sgl;
+    for (i = 0; i < cnt; i++, sg++) {
+        if (sg->region == INT_MAX) {
+            /* This is an iommufd mapping - IOVA equals the server's virtual address */
+            if (vfu_ctx->iommufd == NULL || !iommufd_is_enabled(vfu_ctx->iommufd)) {
+                return ERROR_INT(EINVAL);
+            }
+
+            /* In iommufd mode, IOVA equals the server's virtual address, so use it directly */
+            iov[i].iov_base = sg->dma_addr;
+            iov[i].iov_len = sg->length;
+        } else {
+            /* Legacy DMA mapping - use existing dma_sgl_get logic */
+            if (sg->region >= vfu_ctx->dma->nregions) {
+                return ERROR_INT(EINVAL);
+            }
+
+            dma_memory_region_t *region = &vfu_ctx->dma->regions[sg->region];
+            if (region->info.vaddr == NULL) {
+                return ERROR_INT(EFAULT);
+            }
+
+            iov[i].iov_base = (uint8_t *)region->info.vaddr + sg->offset;
+            iov[i].iov_len = sg->length;
+        }
+    }
+
+    return 0;
 }
 
 EXPORT void
@@ -2399,6 +2503,223 @@ EXPORT bool
 vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
 {
     return dma_sg_is_mappable(vfu_ctx->dma, sg);
+}
+
+/* iommufd command handler implementations */
+
+static int
+handle_iommufd_alloc_ioas(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_alloc_ioas *req, reply;
+    uint32_t ioas_id;
+    int ret;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_ALLOC_IOAS: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_ALLOC_IOAS: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    ret = iommufd_alloc_ioas(vfu_ctx->iommufd, &ioas_id);
+    if (ret < 0) {
+        return ret;
+    }
+
+    memset(&reply, 0, sizeof(reply));
+    reply.out_ioas_id = ioas_id;
+
+    msg->out.iov.iov_base = &reply;
+    msg->out.iov.iov_len = sizeof(reply);
+
+    return 0;
+}
+
+static int
+handle_iommufd_destroy_ioas(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_destroy_ioas *req;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_DESTROY_IOAS: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_DESTROY_IOAS: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    return iommufd_destroy_ioas(vfu_ctx->iommufd, req->ioas_id);
+}
+
+static int
+handle_iommufd_bind(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_bind *req, reply;
+    int ret;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_BIND: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_BIND: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    ret = iommufd_bind_device(vfu_ctx->iommufd);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* Return a dummy device ID (not used in vfio-user) */
+    memset(&reply, 0, sizeof(reply));
+    reply.out_devid = 1;
+
+    msg->out.iov.iov_base = &reply;
+    msg->out.iov.iov_len = sizeof(reply);
+
+    return 0;
+}
+
+static int
+handle_iommufd_attach_pt(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_attach_pt *req;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_ATTACH_PT: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_ATTACH_PT: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    return iommufd_attach_ioas(vfu_ctx->iommufd, req->pt_id);
+}
+
+static int
+handle_iommufd_detach_pt(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_DETACH_PT: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    return iommufd_detach_ioas(vfu_ctx->iommufd);
+}
+
+static int
+handle_iommufd_ioas_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_ioas_map *req, reply;
+    uint64_t iova;
+    int fd = -1;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_MAP: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_MAP: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    /* Expect exactly one fd */
+    if (msg->in.nr_fds != 1) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_MAP: expected 1 fd, got %zu",
+                msg->in.nr_fds);
+        return ERROR_INT(EINVAL);
+    }
+
+    fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
+    if (fd < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_MAP: failed to consume fd");
+        return ERROR_INT(EINVAL);
+    }
+
+    /* Map the memory and get back the IOVA (server's vaddr) */
+    iova = iommufd_map_iova(vfu_ctx->iommufd, req->ioas_id, req->user_va,
+                            req->length, req->offset, req->flags, fd);
+    if (iova == 0) {
+        close(fd);
+        return ERROR_INT(errno);
+    }
+
+    /* Reply with the allocated IOVA */
+    memcpy(&reply, req, sizeof(reply));
+    reply.iova = iova;
+
+    msg->out.iov.iov_base = &reply;
+    msg->out.iov.iov_len = sizeof(reply);
+
+    return 0;
+}
+
+static int
+handle_iommufd_ioas_unmap(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct vfio_user_iommufd_ioas_unmap *req;
+
+    assert(vfu_ctx != NULL);
+    assert(msg != NULL);
+
+    if (msg->in.iov.iov_len < sizeof(*req)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_UNMAP: bad size %zu",
+                msg->in.iov.iov_len);
+        return ERROR_INT(EINVAL);
+    }
+
+    req = msg->in.iov.iov_base;
+
+    if (!iommufd_is_enabled(vfu_ctx->iommufd)) {
+        vfu_log(vfu_ctx, LOG_ERR, "IOMMUFD_IOAS_UNMAP: iommufd not enabled");
+        return ERROR_INT(EINVAL);
+    }
+
+    return iommufd_unmap_iova(vfu_ctx->iommufd, req->ioas_id, req->iova,
+                              req->length);
 }
 
 EXPORT int

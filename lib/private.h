@@ -128,6 +128,7 @@ struct pci_dev {
 };
 
 struct dma_controller;
+struct iommufd_controller;
 
 enum vfu_ctx_pending_state {
     VFU_CTX_PENDING_NONE,
@@ -156,6 +157,7 @@ enum cb_type {
 struct vfu_ctx {
     void                    *pvt;
     struct dma_controller   *dma;
+    struct iommufd_controller *iommufd;
     int                     log_level;
     vfu_log_fn_t            *log;
     size_t                  nr_regions;
