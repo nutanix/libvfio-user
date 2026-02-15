@@ -34,6 +34,20 @@ import tempfile
 
 ctx = None
 
+# BAR region indices for testing
+EVEN_BARS = [VFU_PCI_DEV_BAR0_REGION_IDX,
+             VFU_PCI_DEV_BAR2_REGION_IDX,
+             VFU_PCI_DEV_BAR4_REGION_IDX]
+ODD_BARS = [VFU_PCI_DEV_BAR1_REGION_IDX,
+            VFU_PCI_DEV_BAR3_REGION_IDX,
+            VFU_PCI_DEV_BAR5_REGION_IDX]
+
+
+def clear_bar_regions(ctx, bar_indices):
+    """Helper function to clear BAR regions by setting size=0 and flags=0."""
+    for idx in bar_indices:
+        vfu_setup_region(ctx, index=idx, size=0, flags=VFU_REGION_FLAG_RW)
+
 
 def test_setup_region_setup():
     global ctx
@@ -109,6 +123,68 @@ def test_setup_region_bad_pci():
                            flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM))
     assert ret == -1
     assert c.get_errno() == errno.EINVAL
+
+
+def test_setup_region_64bit_bar_odd_indices():
+    """Test that odd BARs (1, 3, 5) cannot be configured as 64-bit."""
+    global ctx
+
+    clear_bar_regions(ctx, EVEN_BARS + ODD_BARS)
+
+    for bar_idx in ODD_BARS:
+        ret = vfu_setup_region(ctx, index=bar_idx, size=0x1000,
+                               flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                      | VFU_REGION_FLAG_64_BITS))
+        assert ret == -1
+        assert c.get_errno() == errno.EINVAL
+
+
+def test_setup_region_64bit_even_then_odd_fails():
+    """Test that configuring even BARs (0, 2, 4) as 64-bit prevents odd BARs
+    (1, 3, 5) from being configured."""
+    global ctx
+
+    # Clear all BAR regions
+    clear_bar_regions(ctx, EVEN_BARS + ODD_BARS)
+
+    # Configure even BARs (0, 2, 4) as 64-bit
+    for bar_idx in EVEN_BARS:
+        ret = vfu_setup_region(ctx, index=bar_idx, size=0x1000,
+                               flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                      | VFU_REGION_FLAG_64_BITS))
+        assert ret == 0
+
+    # Try to configure odd BARs (1, 3, 5) - all should fail
+    for bar_idx in ODD_BARS:
+        flags = (VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM)
+        ret = vfu_setup_region(ctx, index=bar_idx, size=0x1000,
+                               flags=flags)
+        assert ret == -1
+        assert c.get_errno() == errno.EINVAL
+
+
+def test_setup_region_64bit_odd_then_even_fails():
+    """Test that configuring odd BARs (1, 3, 5) prevents even BARs (0, 2, 4)
+    from being configured as 64-bit."""
+    global ctx
+
+    # Clear all BAR regions
+    clear_bar_regions(ctx, ODD_BARS + EVEN_BARS)
+
+    # Configure odd BARs (1, 3, 5) as 32-bit
+    for bar_idx in ODD_BARS:
+        flags = (VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM)
+        ret = vfu_setup_region(ctx, index=bar_idx, size=0x1000,
+                               flags=flags)
+        assert ret == 0
+
+    # Try to configure even BARs (0, 2, 4) as 64-bit - all should fail
+    for bar_idx in EVEN_BARS:
+        ret = vfu_setup_region(ctx, index=bar_idx, size=0x1000,
+                               flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                      | VFU_REGION_FLAG_64_BITS))
+        assert ret == -1
+        assert c.get_errno() == errno.EINVAL
 
 
 def test_setup_region_cfg_always_cb_nocb():
@@ -211,6 +287,67 @@ def test_region_offset_too_short():
 
     msg(ctx, client.sock, VFIO_USER_REGION_WRITE, payload,
         expect=errno.EINVAL)
+
+    client.disconnect(ctx)
+
+
+def test_setup_region_large_64bit_bar_sizes():
+    global ctx
+
+    clear_bar_regions(ctx, [VFU_PCI_DEV_BAR2_REGION_IDX,
+                            VFU_PCI_DEV_BAR3_REGION_IDX,
+                            VFU_PCI_DEV_BAR4_REGION_IDX,
+                            VFU_PCI_DEV_BAR5_REGION_IDX])
+
+    size_4gb = 0x100000000
+    size_8gb = 0x200000000
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR2_REGION_IDX,
+                           size=size_4gb,
+                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                  | VFU_REGION_FLAG_64_BITS))
+    assert ret == 0
+
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_BAR4_REGION_IDX,
+                           size=size_8gb,
+                           flags=(VFU_REGION_FLAG_RW | VFU_REGION_FLAG_MEM
+                                  | VFU_REGION_FLAG_64_BITS))
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    client = connect_client(ctx)
+
+    argsz = len(vfio_region_info())
+
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
+                                index=VFU_PCI_DEV_BAR2_REGION_IDX,
+                                cap_offset=0, size=0, offset=0)
+
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+
+    assert len(result) == argsz
+
+    info, _ = vfio_region_info.pop_from_buffer(result)
+
+    assert info.argsz == argsz
+    assert info.index == VFU_PCI_DEV_BAR2_REGION_IDX
+    assert info.size == size_4gb
+
+    payload = vfio_region_info(argsz=argsz + 8, flags=0,
+                                index=VFU_PCI_DEV_BAR4_REGION_IDX,
+                                cap_offset=0, size=0, offset=0)
+
+    result = msg(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_INFO, payload)
+
+    assert len(result) == argsz
+
+    info, _ = vfio_region_info.pop_from_buffer(result)
+
+    assert info.argsz == argsz
+    assert info.index == VFU_PCI_DEV_BAR4_REGION_IDX
+    assert info.size == size_8gb
 
     client.disconnect(ctx)
 
