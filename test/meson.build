@@ -26,6 +26,7 @@ endif
 unit_tests_sources = [
     'unit-tests.c',
     'mocks.c',
+    '../lib/btree.c',
     '../lib/dma.c',
     '../lib/irq.c',
     '../lib/libvfio-user.c',
@@ -59,6 +60,26 @@ unit_tests = executable(
 test(
     'unit_tests',
     unit_tests,
+    suite: 'unit',
+)
+
+btree_unit_tests = executable(
+    'btree_unit_tests',
+    sources: [
+      'btree_unit_tests.c',
+      '../lib/btree.c',
+    ],
+    c_args: common_cflags,
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    install: false,
+)
+
+test(
+    'btree_unit_tests',
+    btree_unit_tests,
     suite: 'unit',
 )
 
