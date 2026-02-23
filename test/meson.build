@@ -83,6 +83,36 @@ test(
     suite: 'unit',
 )
 
+cc = meson.get_compiler('c')
+if cc.get_id() == 'clang' and cc.version().version_compare('>=6.0.0')
+  btree_fuzz_test = executable(
+    'btree_fuzz_test',
+    sources: [
+      'btree_fuzz_test.c',
+      '../lib/btree.c',
+    ],
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    c_args: [
+      common_cflags,
+      '-fsanitize=fuzzer,address',
+    ],
+    link_args: [
+      '-fsanitize=fuzzer,address',
+    ],
+    install: false,
+  )
+
+  test('btree_fuzz_test',
+    btree_fuzz_test,
+    args: [
+      '-max_total_time=20',
+    ],
+  )
+endif
+
 test(
     'test-lspci',
     find_program('test-lspci.sh'),
