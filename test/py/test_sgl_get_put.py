@@ -61,9 +61,11 @@ def test_sgl_get_without_fd():
                VFIO_USER_F_DMA_REGION_WRITE),
         offset=0, addr=0x1000, size=4096)
     msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
-    sg = dma_sg_t()
+
+    ret, sg = vfu_addr_to_sgl(ctx, dma_addr=0x1000, length=4096,
+                              max_nr_sgs=1, prot=mmap.PROT_READ)
+    assert ret == 1
     iovec = iovec_t()
-    sg.region = 0
     ret = vfu_sgl_get(ctx, sg, iovec)
     assert ret == -1
     assert ctypes.get_errno() == errno.EFAULT
