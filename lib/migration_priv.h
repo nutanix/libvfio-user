@@ -31,7 +31,13 @@
 #ifndef LIB_VFIO_USER_MIGRATION_PRIV_H
 #define LIB_VFIO_USER_MIGRATION_PRIV_H
 
+#include <stddef.h>
+
 #include <linux/vfio.h>
+
+#include "common.h"
+#include "libvfio-user.h"
+#include "vfio-user.h"
 
 struct migration {
     enum vfio_user_device_mig_state state;
