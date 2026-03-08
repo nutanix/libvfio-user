@@ -43,40 +43,82 @@
 #include "pci.h"
 #include "private.h"
 
+
+/*
+ * Return "effective" size of the bar.
+ * For even-indexed BARs (0, 2, 4), return the size of the bar and flag.
+ * For odd-indexed BARs (1, 3, 5), if lower bar is configured as 64-bit,
+ * return the upper 32 bits of the 64b bar size and 0.
+ * Otherwise, return the size of the bar and flag.
+ */
+static inline uint64_t
+get_bar_eff_size(vfu_ctx_t *vfu_ctx, uint16_t bar_index)
+{
+    assert(vfu_ctx != NULL);
+    if (bar_index % 2 == 1) {
+        if (vfu_ctx->reg_info[bar_index - 1].flags & VFU_REGION_FLAG_64_BITS) {
+            return vfu_ctx->reg_info[bar_index - 1].size >> 32;
+        }
+    }
+    return vfu_ctx->reg_info[bar_index].size;
+}
+
+/*
+ * Return flag bits mask of the bar. 
+ * Flags are read-only bits in the bar config register.
+ * The flag bits mask is used to keep the flag bits unchanged when
+ * reconstructing the bar config register value.
+ * For even-indexed BARs (0, 2, 4), return the flag bits mask of the bar.
+ * For odd-indexed BARs (1, 3, 5), if lower bar is configured as 64-bit,
+ * return 0 - there is no flag bits for the upper 32 bits of the 64b bar.
+ * Otherwise, return the flag bits mask of the bar.
+ */
+static inline uint32_t
+get_bar_flag_mask(vfu_ctx_t *vfu_ctx, uint16_t bar_index)
+{
+    assert(vfu_ctx != NULL);
+    if (bar_index % 2 == 1) {
+        if (vfu_ctx->reg_info[bar_index - 1].flags & VFU_REGION_FLAG_64_BITS) {
+            return 0;
+        }
+    }
+    return vfu_ctx->reg_info[bar_index].flags & VFU_REGION_FLAG_MEM ?
+        ~PCI_BASE_ADDRESS_MEM_MASK : ~PCI_BASE_ADDRESS_IO_MASK;
+}
+
 static inline void
 pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 {
     uint32_t cfg_addr;
-    unsigned long mask;
+    uint32_t mask;
+    uint32_t flag_mask;
     vfu_pci_hdr_t *hdr;
+    uint64_t effective_size;
 
     assert(vfu_ctx != NULL);
-
-    if (vfu_ctx->reg_info[bar_index].size == 0) {
-        return;
-    }
 
     hdr = &vfu_pci_get_config_space(vfu_ctx)->hdr;
 
     cfg_addr = *(uint32_t *) buf;
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "BAR%d addr 0x%x", bar_index, cfg_addr);
+    effective_size = get_bar_eff_size(vfu_ctx, bar_index);
+    flag_mask = get_bar_flag_mask(vfu_ctx, bar_index);
 
-    if (cfg_addr == 0xffffffff) {
-        cfg_addr = ~(vfu_ctx->reg_info[bar_index].size) + 1;
+    mask = 0;
+    if (effective_size > 0) {
+        mask = (uint32_t)(~(effective_size - 1));
     }
 
-    if ((vfu_ctx->reg_info[bar_index].flags & VFU_REGION_FLAG_MEM)) {
-        mask = PCI_BASE_ADDRESS_MEM_MASK;
-    } else {
-        mask = PCI_BASE_ADDRESS_IO_MASK;
-    }
-    cfg_addr |= (hdr->bars[bar_index].raw & ~mask);
+    // reconstruct the bar config register value by applying the mask and flag bits.
+    cfg_addr = (cfg_addr & mask) | (flag_mask & hdr->bars[bar_index].raw);
 
+    vfu_log(vfu_ctx, LOG_DEBUG,
+            "Write BAR%d: size 0x%lx, mask=0x%x, flag_mask=0x%x, value=0x%x",
+            bar_index, effective_size, mask, flag_mask, cfg_addr);
+    
     hdr->bars[bar_index].raw = htole32(cfg_addr);
 }
 
-#define BAR_INDEX(offset) ((offset - PCI_BASE_ADDRESS_0) >> 2)
 
 static int
 handle_command_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
