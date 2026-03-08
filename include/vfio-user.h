@@ -52,6 +52,13 @@ extern "C" {
 
 #define VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE (1024 * 1024)
 
+/*
+ * vfio-user protocol commands
+ *
+ * Commands 1-18 are part of the base protocol. Commands 19+ implement
+ * optional protocol extensions that must be negotiated via capabilities
+ * during VFIO_USER_VERSION exchange.
+ */
 enum vfio_user_command {
     VFIO_USER_VERSION                   = 1,
     VFIO_USER_DMA_MAP                   = 2,
@@ -70,6 +77,22 @@ enum vfio_user_command {
     VFIO_USER_DEVICE_FEATURE            = 16,
     VFIO_USER_MIG_DATA_READ             = 17,
     VFIO_USER_MIG_DATA_WRITE            = 18,
+    /*
+     * iommufd protocol extension
+     *
+     * These commands require negotiating "iommufd": {"supported": true}
+     * capability during VFIO_USER_VERSION. They provide an alternative to
+     * the legacy VFIO_USER_DMA_MAP/UNMAP commands, mirroring the Linux
+     * kernel's iommufd API.
+     */
+    VFIO_USER_IOMMUFD_ALLOC_IOAS        = 19,
+    VFIO_USER_IOMMUFD_DESTROY_IOAS      = 20,
+    VFIO_USER_IOMMUFD_IOAS_MAP          = 21,
+    VFIO_USER_IOMMUFD_IOAS_UNMAP        = 22,
+    VFIO_USER_IOMMUFD_IOAS_COPY         = 23,
+    VFIO_USER_IOMMUFD_BIND              = 24,
+    VFIO_USER_IOMMUFD_ATTACH_PT         = 25,
+    VFIO_USER_IOMMUFD_DETACH_PT         = 26,
     VFIO_USER_MAX,
 };
 
@@ -142,6 +165,90 @@ struct vfio_user_dma_unmap {
     uint64_t size;
     struct vfio_user_bitmap bitmap[];
 };
+
+/*
+ * iommufd protocol structures
+ * These are used when VFIO_USER_CAP_IOMMUFD is negotiated
+ */
+
+/* VFIO_USER_IOMMUFD_ALLOC_IOAS */
+struct vfio_user_iommufd_alloc_ioas {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t out_ioas_id;  /* Server allocates and returns IOAS ID */
+    uint32_t __reserved;
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_DESTROY_IOAS */
+struct vfio_user_iommufd_destroy_ioas {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t ioas_id;
+    uint32_t __reserved;
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_IOAS_MAP */
+struct vfio_user_iommufd_ioas_map {
+    uint32_t argsz;
+    uint32_t flags;
+#define VFIO_USER_IOMMUFD_MAP_WRITEABLE     (1 << 0)
+#define VFIO_USER_IOMMUFD_MAP_READABLE      (1 << 1)
+    uint32_t ioas_id;      /* Target IOAS */
+    uint32_t __reserved;
+    uint64_t user_va;      /* Userspace virtual address (for tracking) */
+    uint64_t length;
+    uint64_t iova;         /* Output: server-allocated IOVA */
+    uint64_t offset;       /* Offset in passed fd */
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_IOAS_UNMAP */
+struct vfio_user_iommufd_ioas_unmap {
+    uint32_t argsz;
+    uint32_t flags;
+#define VFIO_USER_IOMMUFD_UNMAP_ALL  (1 << 0)
+    uint32_t ioas_id;
+    uint32_t __reserved;
+    uint64_t iova;
+    uint64_t length;
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_IOAS_COPY */
+struct vfio_user_iommufd_ioas_copy {
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t src_ioas_id;
+    uint32_t dst_ioas_id;
+    uint64_t src_iova;
+    uint64_t dst_iova;
+    uint64_t length;
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_BIND */
+struct vfio_user_iommufd_bind {
+    uint32_t argsz;
+    uint32_t flags;
+    int32_t  iommufd;      /* Server's iommufd fd (opaque to client) */
+    uint32_t out_devid;    /* Server returns devid */
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_ATTACH_PT */
+struct vfio_user_iommufd_attach_pt {
+    uint32_t argsz;
+    uint32_t flags;
+#define VFIO_USER_IOMMUFD_ATTACH_PASID  (1 << 0)
+    uint32_t pt_id;        /* Input: IOAS or HWPT id
+                            * Output: attached HWPT id */
+    uint32_t pasid;        /* For devices with PASID support */
+} __attribute__((packed));
+
+/* VFIO_USER_IOMMUFD_DETACH_PT */
+struct vfio_user_iommufd_detach_pt {
+    uint32_t argsz;
+    uint32_t flags;
+#define VFIO_USER_IOMMUFD_DETACH_PASID  (1 << 0)
+    uint32_t pasid;
+    uint32_t __reserved;
+} __attribute__((packed));
 
 struct vfio_user_region_access {
     uint64_t    offset;
