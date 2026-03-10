@@ -580,6 +580,8 @@ class vfio_user_bitmap_range(Structure):
 transition_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_int, use_errno=True)
 read_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
 write_data_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p, c.c_void_p, c.c_uint64)
+get_precopy_info_cb_t = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_void_p, c.c_void_p)
+get_data_size_cb_t = c.CFUNCTYPE(c.c_ssize_t, c.c_void_p)
 
 
 class vfu_migration_callbacks_t(Structure):
@@ -588,6 +590,8 @@ class vfu_migration_callbacks_t(Structure):
         ("transition", transition_cb_t),
         ("read_data", read_data_cb_t),
         ("write_data", write_data_cb_t),
+        ("get_data_size", get_data_size_cb_t),
+        ("get_precopy_info", get_precopy_info_cb_t),
     ]
 
 

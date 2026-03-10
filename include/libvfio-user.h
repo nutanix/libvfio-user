@@ -624,6 +624,39 @@ typedef struct {
      */
     ssize_t (*write_data)(vfu_ctx_t *vfu_ctx, void *buf, uint64_t count);
 
+    /*
+     * Function that is called for retrieving the estimated data length that
+     * needs to be read out to complete stop copy.
+     *
+     * The function must return the estimated amount of data, or -1 on error,
+     * setting errno.
+     */
+    ssize_t (*get_data_size)(vfu_ctx_t *vfu_ctx);
+
+    /*
+     * Function that is called to retrieve an estimate of the current data
+     * sizes remaining to be transfered. The estimate is split into two
+     * categories. The callback should fill in both of these values with device
+     * specific information.
+     *
+     * initial_bytes indicates the amount of initial precopy data available
+     * from the device. This value should be non-zero after a transition to
+     * PRE_COPY and decrease as migration data is read out from the server. It
+     * is recommended for clients to only transition from PRE_COPY to STOP_COPY
+     * after this field has reached zero.
+     *
+     * dirty_bytes tracks the state changes relative to data previously
+     * retrieved. This field should start at zero on after a transition to
+     * PRE_COPY, and may increase or decrease as migration state is read or as
+     * internal device state changes.
+     *
+     * This callback is guaranteed to only be called when the device is in
+     * PRE_COPY.
+     *
+     * The callback should return -1 on error, setting errno.
+     */
+    int (*get_precopy_info)(vfu_ctx_t *vfu_ctx, uint64_t *initial_bytes,
+                            uint64_t *dirty_bytes);
 } vfu_migration_callbacks_t;
 
 int
