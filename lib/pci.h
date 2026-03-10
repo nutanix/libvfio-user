@@ -33,6 +33,8 @@
 #ifndef LIB_VFIO_USER_PCI_H
 #define LIB_VFIO_USER_PCI_H
 
+#include <assert.h>
+
 #include "libvfio-user.h"
 #include "private.h"
 
