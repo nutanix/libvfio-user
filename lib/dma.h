@@ -135,6 +135,12 @@ MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
 MOCK_DECLARE(void, dma_controller_unmap_region, dma_controller_t *dma,
              dma_memory_region_t *region);
 
+// Helper for dma_addr_to_sgl() slow path.
+int
+_dma_addr_sg_split(const dma_controller_t *dma,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
+                   dma_sg_t *sg, int max_nr_sgs, int prot);
+
 /* Convert a start address and length to its containing page numbers. */
 static inline void
 range_to_pages(size_t start, size_t len, size_t pgsize,
@@ -198,7 +204,7 @@ _dma_mark_dirty(const dma_controller_t *dma, const dma_memory_region_t *region,
 
 static inline int
 dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
-            uint64_t len, int prot, dma_memory_region_t *const region)
+            uint64_t len, int prot, const dma_memory_region_t *region)
 {
     if ((prot & PROT_WRITE) && !(region->info.prot & PROT_WRITE)) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "read-only region");
@@ -227,10 +233,44 @@ dma_init_sg(const dma_controller_t *dma, dma_sg_t *sg, vfu_dma_addr_t dma_addr,
  *     (-x - 1) if @max_nr_sgs is too small, where x is the number of sg entries
  *     necessary to complete this request.
  */
-int
+static inline int
 dma_addr_to_sgl(const dma_controller_t *dma,
                 vfu_dma_addr_t dma_addr, size_t len,
-                dma_sg_t *sgl, size_t max_nr_sgs, int prot);
+                dma_sg_t *sgl, size_t max_nr_sgs, int prot)
+{
+    static __thread const dma_memory_region_t *region_hint;
+    static __thread uint64_t regions_generation;
+    extern uint64_t dma_regions_generation;
+    int cnt, ret;
+
+    /*
+     * Fast path: Access into same single target region as last call.
+     *
+     * This bypasses region lookup entirely for the case where there is only a
+     * single DMA region representing all memory in the client. It has been
+     * measured to provide up to 10% CPU performance gain for a CPU-bound SPDK
+     * nvme workload at 512b block size.
+     */
+    if (likely(dma_regions_generation == regions_generation &&
+               max_nr_sgs > 0 && len > 0 &&
+               dma_addr >= region_hint->info.iova.iov_base &&
+               dma_addr + len <= iov_end(&region_hint->info.iova))) {
+        ret = dma_init_sg(dma, sgl, dma_addr, len, prot, region_hint);
+        if (ret < 0) {
+            return ret;
+        }
+
+        return 1;
+    }
+
+    /* Slow path: Lookup by address. */
+    cnt = _dma_addr_sg_split(dma, dma_addr, len, sgl, max_nr_sgs, prot);
+    if (likely(cnt > 0)) {
+        region_hint = sgl[0].region;
+        regions_generation = dma_regions_generation;
+    }
+    return cnt;
+}
 
 static inline int
 dma_sgl_get(dma_controller_t *dma, dma_sg_t *sgl, struct iovec *iov, size_t cnt)

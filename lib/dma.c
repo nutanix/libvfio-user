@@ -43,6 +43,14 @@
 #include "dma.h"
 #include "private.h"
 
+/*
+ * DMA region generation identifier: Incremented whenever the shape of the DMA
+ * address space (i.e. the regions tree in a DMA controller) changes due to the
+ * client adding or removing target regions. This is used to invalidate cached
+ * region pointers belonging to previous generations.
+ */
+uint64_t dma_regions_generation = 1;
+
 EXPORT size_t
 dma_sg_size(void)
 {
@@ -97,6 +105,21 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
     dma->dirty_pgsize = 0;
 
     return dma;
+}
+
+static inline void
+dma_controller_increment_regions_generation()
+{
+    /*
+     * The generations counter is wide enough such that it will not overflow in
+     * practice: Even if we were to perform 2^32 region updates per second
+     * (which is completely unrealistic given that updates are performed via
+     * IPC), it would still take more than 136 years to burn through the
+     * higher-order 32 bits.
+     */
+    assert(dma_regions_generation < UINT64_MAX);
+
+    ++dma_regions_generation;
 }
 
 void
@@ -157,6 +180,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
     }
 
     btree_iter_remove(&iter);
+    dma_controller_increment_regions_generation();
     free(region);
 
     return 0;
@@ -376,6 +400,8 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         goto rollback;
     }
 
+    dma_controller_increment_regions_generation();
+
     return region;
 
 rollback:
@@ -390,8 +416,10 @@ rollback:
     return ERROR_PTR(ret);
 }
 
-int dma_addr_to_sgl(const dma_controller_t *dma, vfu_dma_addr_t dma_addr,
-                    size_t len, dma_sg_t *sg, size_t max_nr_sgs, int prot)
+int
+_dma_addr_sg_split(const dma_controller_t *dma,
+                   vfu_dma_addr_t dma_addr, uint64_t len,
+                   dma_sg_t *sg, int max_nr_sgs, int prot)
 {
     dma_memory_region_t *region;
     btree_iter_t iter;
@@ -409,7 +437,7 @@ int dma_addr_to_sgl(const dma_controller_t *dma, vfu_dma_addr_t dma_addr,
 
         size_t region_len = MIN((uint64_t)(region_end - dma_addr), len);
 
-        if ((size_t)cnt < max_nr_sgs) {
+        if (cnt < max_nr_sgs) {
             ret =
                 dma_init_sg(dma, &sg[cnt], dma_addr, region_len, prot, region);
             if (ret < 0) {
@@ -425,7 +453,7 @@ int dma_addr_to_sgl(const dma_controller_t *dma, vfu_dma_addr_t dma_addr,
 
     if (len > 0) {
         return ERROR_INT(ENOENT);
-    } else if ((size_t)cnt > max_nr_sgs) {
+    } else if (cnt > max_nr_sgs) {
         cnt = -cnt - 1;
     }
     errno = 0;
