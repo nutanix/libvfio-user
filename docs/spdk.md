@@ -22,18 +22,17 @@ make -j
 Build SPDK
 ----------
 
-Here we'll use SPDK v25.05:
+Here we'll use SPDK v25.09:
 
 ```
-git clone https://github.com/spdk/spdk --recursive  --branch v25.05 spdk-v25.05
-cd spdk-25.05
+git clone https://github.com/spdk/spdk --recursive  --branch v25.09 spdk-v25.09
+cd spdk-v25.09
 ./configure --with-vfio-user
 make -j
 ```
 
-Note that SPDK includes `libvfio-user` as a submodule (it only works with the
-`spdk` branch of `libvfio-user` currently, due to live-migration-related changes
-in the library's `master` branch).
+NB: SPDK includes `libvfio-user` as a submodule: some older versions of SPDK
+require a particular branch of libvfio-user.
 
 Start SPDK
 ----------
@@ -108,8 +107,7 @@ Live Migration
 --------------
 
 Live migration with SPDK is currently non-functional, although code exists in
-both SPDK and `libvfio-user`. If you are interested in helping, please let us
-know!
+`libvfio-user`. If you are interested in helping, please let us know!
 
 Generating an Ubuntu cloud image
 --------------------------------
