@@ -104,7 +104,7 @@ typedef struct  {
     /* Region flags, see VFU_REGION_FLAG_READ and friends. */
     uint32_t            flags;
     /* Size of the region. */
-    uint32_t            size;
+    uint64_t            size;
     /* Callback that is called when the region is read or written. */
     vfu_region_access_cb_t  *cb;
     /* Sparse mmap areas if set. */

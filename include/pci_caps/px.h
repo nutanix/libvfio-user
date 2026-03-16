@@ -152,6 +152,13 @@ struct pxrs {
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxrs) == 0x4, "bad PXRS size");
 
+/*
+ * Device Capabilities 2 Register
+ *
+ * This structure has fields from multiple versions of the PCI express spec,
+ * and is a superset. (e.g. ln field is deprecated and marked as undefined
+ * in PCIe 6.0)
+*/
 struct pxdcap2 {
     uint32_t ctrs:4;
     uint32_t ctds:1;
@@ -163,11 +170,19 @@ struct pxdcap2 {
     uint32_t nprpr:1;
     uint32_t ltrs:1;
     uint32_t tphcs:2;
+    uint32_t ln:2;
+    uint32_t tcs:1;
+    uint32_t trs:1;
     uint32_t obffs:2;
     uint32_t effs:1;
     uint32_t eetps:1;
     uint32_t meetp:2;
-    uint32_t res1:8;
+    uint32_t eprs:2;
+    uint32_t eprir:1;
+    uint32_t res1:1;
+    uint32_t dmwcs:1;
+    uint32_t dmwls:2;
+    uint32_t frss:1;
 } __attribute__((packed));
 _Static_assert(sizeof(struct pxdcap2) == 0x4, "bad PXDCAP2 size");
 

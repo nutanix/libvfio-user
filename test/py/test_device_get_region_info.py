@@ -30,6 +30,7 @@
 from libvfio_user import *
 import errno
 import tempfile
+import struct
 
 ctx = None
 client = None
@@ -37,6 +38,42 @@ client = None
 argsz = len(vfio_region_info())
 migr_region_size = 2 << PAGE_SHIFT
 migr_mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
+
+# PCI_BASE_ADDRESS offsets (from linux/pci_regs.h)
+PCI_BASE_ADDRESS_0 = 0x10
+PCI_BASE_ADDRESS_1 = 0x14
+PCI_BASE_ADDRESS_2 = 0x18
+PCI_BASE_ADDRESS_3 = 0x1C
+PCI_BASE_ADDRESS_4 = 0x20
+PCI_BASE_ADDRESS_5 = 0x24
+
+# PCI_BASE_ADDRESS masks (from linux/pci_regs.h)
+# Memory space: lower 4 bits are type/prefetch
+PCI_BASE_ADDRESS_MEM_MASK = 0xFFFFFFF0
+# I/O space: lower 2 bits are type/reserved
+PCI_BASE_ADDRESS_IO_MASK = 0xFFFFFFFC
+
+
+def setup_bar_region(ctx, bar_idx, size, is_io=False, is_64b=False):
+    """Helper function to setup a BAR region.
+
+    Args:
+        ctx: vfu context
+        bar_idx: BAR region index (VFU_PCI_DEV_BAR0_REGION_IDX, etc.)
+        size: Size of the BAR region
+        is_io: True for I/O space, False for memory space (default)
+        is_64b: True for 64-bit BAR, False for 32-bit BAR (default)
+
+    Returns:
+        Return value from vfu_setup_region()
+    """
+    flags = VFU_REGION_FLAG_RW
+    if not is_io:
+        flags |= VFU_REGION_FLAG_MEM
+    if is_64b:
+        flags |= VFU_REGION_FLAG_64_BITS
+
+    return vfu_setup_region(ctx, index=bar_idx, size=size, flags=flags)
 
 
 def test_device_get_region_info_setup():
@@ -272,6 +309,161 @@ def test_device_get_pci_config_space_info_implicit_no_pci_init():
 
     client.disconnect(ctx)
 
+    vfu_destroy_ctx(ctx)
+
+
+def detect_bar_sizes(ctx, client):
+    """Mockup version of PCIe probe protocol - references:
+    https://github.com/torvalds/linux/blob/master/drivers/pci/probe.c
+    1. read config
+    2. write 0xFFFFFFFF to BAR and read it back (don't care of rom case)
+    3. calculate the size from the number of bits that return 0
+       (return 0: size is 0 (not configured))
+    """
+
+    # collect sizes: reference Linux kernel probe.c
+    # https://github.com/torvalds/linux/blob/8dfce8991b95d8625d0a1d2896e42f93b9d7f68d/drivers/pci/probe.c#L198
+    offsets = [PCI_BASE_ADDRESS_0, PCI_BASE_ADDRESS_1,
+               PCI_BASE_ADDRESS_2, PCI_BASE_ADDRESS_3,
+               PCI_BASE_ADDRESS_4, PCI_BASE_ADDRESS_5]
+    detected_szs = []
+    sizes = []
+
+    probe_mask = 0xffffffff
+    count = 4
+
+    for offset in offsets:
+        orig = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                           offset=offset, count=count)
+
+        write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                     offset=offset, count=count,
+                     data=struct.pack("<I", probe_mask))
+        data = read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                           offset=offset, count=count)
+        value = struct.unpack("<I", data)[0]
+        detected_szs.append(value)
+
+        write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                     offset=offset, count=count,
+                     data=orig)
+
+    # pci_read_bases & __pci_read_base -> pci_size
+    pos = 0
+    while pos < len(offsets):
+        if detected_szs[pos] == 0:
+            sizes.append(0)
+            pos += 1
+            continue
+
+        is_64b = False
+        detected_sz = detected_szs[pos]
+
+        if detected_sz & PCI_BASE_ADDRESS_SPACE_IO:
+            detected_sz = detected_sz & PCI_BASE_ADDRESS_IO_MASK
+        else:
+            if detected_sz & PCI_BASE_ADDRESS_MEM_TYPE_64:
+                if pos % 2 == 1:  # error
+                    raise ValueError("64-bit BAR is configured as upper bar")
+                detected_sz = ((detected_szs[pos+1] << 32) |
+                                (detected_sz & PCI_BASE_ADDRESS_MEM_MASK))
+                is_64b = True
+            else:
+                detected_sz = detected_sz & PCI_BASE_ADDRESS_MEM_MASK
+
+        mask = UINT64_MAX if is_64b else UINT32_MAX
+        size = (~detected_sz + 1) & mask
+
+        sizes.append(size)
+        pos += 1
+
+        if is_64b:
+            sizes.append(0)
+            pos += 1
+
+    return sizes
+
+
+def test_device_get_region_info_32bit_bar_size_detection():
+    """Test PCI BAR size detection protocol for 32-bit BARs.
+
+    According to PCI spec, software writes 0xFFFFFFFF to BAR and reads it
+    back. The number of bits that return 0 indicates the size.
+    For 32-bit BARs, this process is performed on a single 32-bit register.
+    """
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    # Setup BARs: BAR1=4KB, BAR2=8KB, BAR3=16KB, others=0
+    bar_sizes = [0, 4096, 8192, 16384, 0, 0]
+
+    for bar_idx, size in enumerate(bar_sizes):
+        if size > 0:
+            ret = setup_bar_region(ctx, bar_idx, size)
+            assert ret == 0
+
+    # Initialize PCI device and config space
+    vfu_pci_init(ctx)
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                           size=PCI_CFG_SPACE_EXP_SIZE,
+                           flags=VFU_REGION_FLAG_RW)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    client = connect_client(ctx)
+
+    sizes = detect_bar_sizes(ctx, client)
+    for i, expected_size in enumerate(bar_sizes):
+        assert sizes[i] == expected_size
+
+    client.disconnect(ctx)
+    vfu_destroy_ctx(ctx)
+
+
+def test_64bit_bar_size_detection_protocol():
+    """Test PCI BAR size detection protocol for 64-bit BARs.
+
+    According to PCI spec, software writes 0xFFFFFFFF to BAR and reads it back.
+    The number of bits that return 0 indicates the size (with the correct mask
+    applied). For 64-bit BARs, this process is performed on both lower and
+    upper 32 bits.
+    """
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    # Setup BARs: BAR0=4GB, BAR2=8GB, BAR4=16GB (all 64-bit), others=0
+    bar_sizes = [0x100000000, 0, 0x200000000, 0, 0x400000000, 0]
+
+    for bar_idx, size in enumerate(bar_sizes):
+        if size > 0:
+            ret = setup_bar_region(ctx, bar_idx, size, is_64b=True)
+            assert ret == 0
+
+    # Initialize PCI device and config space
+    vfu_pci_init(ctx)
+    ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                           size=PCI_CFG_SPACE_EXP_SIZE,
+                           flags=VFU_REGION_FLAG_RW)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    client = connect_client(ctx)
+
+    sizes = detect_bar_sizes(ctx, client)
+    success = True
+    for i, expected_size in enumerate(bar_sizes):
+        if sizes[i] != expected_size:
+            success = False
+            msg = (f"Expected size {expected_size} for bar {i}, "
+                   f"but got {sizes[i]}")
+            print(msg)
+    assert success
+
+    client.disconnect(ctx)
     vfu_destroy_ctx(ctx)
 
 

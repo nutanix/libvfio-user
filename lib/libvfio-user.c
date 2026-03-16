@@ -256,10 +256,10 @@ is_valid_region_access(vfu_ctx_t *vfu_ctx, size_t size, uint16_t cmd,
     if (unlikely(satadd_u64(ra->offset, ra->count)
                  > vfu_ctx->reg_info[index].size)) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "out of bounds region access %#llx-%#llx (size %u)",
+                "out of bounds region access %#llx-%#llx (size %llx)",
                 (ull_t)ra->offset,
                 (ull_t)(ra->offset + ra->count),
-                vfu_ctx->reg_info[index].size);
+                (ull_t)vfu_ctx->reg_info[index].size);
 
         return false;
     }
@@ -2020,6 +2020,106 @@ copyin_mmap_areas(vfu_reg_info_t *reg_info,
     return 0;
 }
 
+/*
+ * Check if region_idx is a PCIe BAR region (BAR0~BAR5).
+ */
+static inline bool
+is_pcie_bar_region(int region_idx)
+{
+    return region_idx >= VFU_PCI_DEV_BAR0_REGION_IDX &&
+           region_idx <= VFU_PCI_DEV_BAR5_REGION_IDX;
+}
+
+/*
+ * Validate BAR region configuration.
+ * Returns true if valid, false otherwise.
+ */
+static bool
+bar_region_valid(vfu_ctx_t *vfu_ctx, int region_idx, size_t size, int flags)
+{
+    /* If not a BAR region, validation passes */
+    if (!is_pcie_bar_region(region_idx)) {
+        return true;
+    }
+
+    int bar_idx = region_idx - VFU_PCI_DEV_BAR0_REGION_IDX;
+
+    /*
+     * Check size validation for BAR regions:
+     * - Size must be a power of 2 (required by PCIe spec)
+     * - Size must meet minimum requirements:
+     *   * IO space: minimum 4 bytes
+     *   * Memory space: minimum 16 bytes
+     * Size 0 is allowed for clearing a region.
+     */
+    if (size > 0) {
+        if ((size & (size - 1)) != 0) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "BAR region size %zu must be a power of 2", size);
+            return false;
+        }
+
+        size_t min_size = (flags & VFU_REGION_FLAG_MEM) ? 16 : 4;
+        if (size < min_size) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "region size %zu is below minimum (%zu bytes for %s space)",
+                    size, min_size,
+                    (flags & VFU_REGION_FLAG_MEM) ? "memory" : "I/O");
+            return false;
+        }
+    }
+
+    /*
+     * Check mutual exclusion for BAR pairs (0/1, 2/3, 4/5) BEFORE applying
+     * configuration.
+     * 64-bit BAR and 32-bit BAR cannot coexist in the same pair.
+     * If the lower BAR (0, 2, 4) is configured as 64-bit, the upper BAR
+     * (1, 3, 5) cannot be configured independently.
+     * If the upper BAR (1, 3, 5) is configured first, the lower BAR cannot
+     * be configured as 64-bit.
+     */
+    if (bar_idx % 2 == 1) {
+        /* Odd-indexed BAR (BAR1, BAR3, BAR5) */
+        if (flags & VFU_REGION_FLAG_64_BITS) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "BAR%d cannot be configured as 64-bit, even bar is only "
+                    "allowed to be set as 64-bit", bar_idx);
+            return false;
+        }
+
+        /* If upper BAR is being configured, check if lower BAR is already
+         * 64-bit */
+        int lower_bar_region_idx = region_idx - 1;
+        vfu_reg_info_t *lower_reg = &vfu_ctx->reg_info[lower_bar_region_idx];
+
+        if (lower_reg->flags & VFU_REGION_FLAG_64_BITS) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "BAR%d cannot be configured: BAR%d is already configured "
+                    "as 64-bit",
+                    bar_idx, bar_idx - 1);
+            return false;
+        }
+    } else {
+        /* Even-indexed BAR (BAR0, BAR2, BAR4) */
+        if (flags & VFU_REGION_FLAG_64_BITS) {
+            int upper_bar_region_idx = region_idx + 1;
+            vfu_reg_info_t *upper_reg = &vfu_ctx->reg_info[upper_bar_region_idx];
+
+            /* If trying to set lower BAR as 64-bit, check if upper BAR is
+             * already configured */
+            if (upper_reg->size > 0) {
+                vfu_log(vfu_ctx, LOG_ERR,
+                        "BAR%d cannot be configured as 64-bit: BAR%d is already "
+                        "configured",
+                        bar_idx, bar_idx + 1);
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 EXPORT int
 vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
                  vfu_region_access_cb_t *cb, int flags,
@@ -2053,6 +2153,10 @@ vfu_setup_region(vfu_ctx_t *vfu_ctx, int region_idx, size_t size,
     if (region_idx < VFU_PCI_DEV_BAR0_REGION_IDX ||
         region_idx >= VFU_PCI_DEV_NUM_REGIONS) {
         vfu_log(vfu_ctx, LOG_ERR, "invalid region index %d", region_idx);
+        return ERROR_INT(EINVAL);
+    }
+
+    if (!bar_region_valid(vfu_ctx, region_idx, size, flags)) {
         return ERROR_INT(EINVAL);
     }
 

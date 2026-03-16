@@ -33,7 +33,11 @@
 #ifndef LIB_VFIO_USER_PCI_CAPS_MSIX_H
 #define LIB_VFIO_USER_PCI_CAPS_MSIX_H
 
+#include <stdint.h>
+
 #include <linux/pci_regs.h>
+
+#include "pci_caps/common.h"
 
 #ifdef __cplusplus
 extern "C" {

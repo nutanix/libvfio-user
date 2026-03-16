@@ -33,6 +33,7 @@
 
 #include <linux/pci_regs.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

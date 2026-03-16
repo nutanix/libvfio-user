@@ -33,8 +33,12 @@
 #ifndef LIB_VFIO_USER_PCI_H
 #define LIB_VFIO_USER_PCI_H
 
+#include <assert.h>
+
 #include "libvfio-user.h"
 #include "private.h"
+
+#define BAR_INDEX(offset) ((offset - PCI_BASE_ADDRESS_0) >> 2)
 
 ssize_t
 pci_nonstd_access(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
