@@ -27,6 +27,7 @@ unit_tests_sources = [
     'unit-tests.c',
     'mocks.c',
     '../lib/dma.c',
+    '../lib/iommufd.c',
     '../lib/irq.c',
     '../lib/libvfio-user.c',
     '../lib/migration.c',
