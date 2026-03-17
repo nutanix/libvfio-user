@@ -914,6 +914,7 @@ device_feature_flags_supported(vfu_ctx_t *vfu_ctx, uint32_t feature)
 
     switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
+        case VFIO_DEVICE_FEATURE_MIG_DATA_SIZE:
         case VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT:
             return VFIO_DEVICE_FEATURE_GET | VFIO_DEVICE_FEATURE_PROBE;
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
@@ -934,6 +935,7 @@ is_migration_feature(uint32_t feature)
     switch (feature) {
         case VFIO_DEVICE_FEATURE_MIGRATION:
         case VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE:
+        case VFIO_DEVICE_FEATURE_MIG_DATA_SIZE:
             return true;
     }
 
@@ -999,6 +1001,17 @@ handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             struct vfio_user_device_feature_mig_state *state =
                 (void *)res->data;
             state->device_state = migration_get_state(vfu_ctx);
+            return 0;
+        }
+
+        case VFIO_DEVICE_FEATURE_MIG_DATA_SIZE: {
+            struct vfio_user_device_feature_mig_data_size *data_size =
+                (void *)res->data;
+            ssize_t ret = migration_get_data_size(vfu_ctx);
+            if (ret < 0) {
+                return ret;
+            }
+            data_size->stop_copy_length = ret;
             return 0;
         }
         
@@ -1376,6 +1389,10 @@ handle_request(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 
     case VFIO_USER_MIG_DATA_WRITE:
         ret = handle_mig_data_write(vfu_ctx, msg);
+        break;
+
+    case VFIO_USER_MIG_GET_PRECOPY_INFO:
+        ret = handle_mig_get_precopy_info(vfu_ctx, msg);
         break;
 
     default:
