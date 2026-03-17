@@ -54,8 +54,7 @@
  * Node alignment. Chosen such that there are enough unused low-order bits to
  * hold the node index in a cursor.
  */
-#define BTREE_NODE_ALIGNMENT \
-    (1 << (sizeof(int) * 8 - __builtin_clz(BTREE_NODE_NUM_ENTRIES | 1)))
+#define BTREE_NODE_ALIGNMENT NEXT_POWER_OF_2(BTREE_NODE_NUM_ENTRIES)
 
 /*
  * Cursor mask, used for extracting the pointer and index fields from a cursor
