@@ -238,7 +238,7 @@ main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to setup irq counts");
     }
 
-    ret = vfu_setup_device_dma(vfu_ctx, dma_register, dma_unregister);
+    ret = vfu_setup_device_dma(vfu_ctx, 0, dma_register, dma_unregister);
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to setup DMA");
     }

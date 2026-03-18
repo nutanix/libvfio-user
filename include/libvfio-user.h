@@ -524,13 +524,21 @@ typedef void (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
  * To directly access this DMA memory via a local mapping with vfu_sgl_get(), at
  * least @dma_unregister must be provided.
  *
+ * The max_regions parameter sets an upper limit on the number of DMA regions
+ * clients can register. The number of DMA regions will vary heavily depending
+ * on client characteristics and workload. Setting a reasonable limit will
+ * protect the server from OOM situations due to rogue clients. Passing 0 will
+ * result in a default to be used instead (currently 1 million).
+ *
  * @vfu_ctx: the libvfio-user context
+ * @max_regions: Maximum number of regions a client can register.
  * @dma_register: DMA region registration callback (optional)
  * @dma_unregister: DMA region unregistration callback (optional)
  */
 
 int
-vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
+vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
+                     vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister);
 
 enum vfu_dev_irq_type {

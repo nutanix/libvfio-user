@@ -160,6 +160,7 @@ def is_32bit():
     return (1 << 31) - 1 == sys.maxsize
 
 
+# Use a lower default for number of regions so we can test the limit.
 MAX_DMA_REGIONS = 64
 # FIXME get from libvfio-user.h
 MAX_DMA_SIZE = sys.maxsize << 1 if is_32bit() else (8 * ONE_TB)
@@ -703,7 +704,8 @@ vfu_dma_register_cb_t = c.CFUNCTYPE(None, c.c_void_p,
 vfu_dma_unregister_cb_t = c.CFUNCTYPE(None, c.c_void_p,
                                       c.POINTER(vfu_dma_info_t),
                                       use_errno=True)
-lib.vfu_setup_device_dma.argtypes = (c.c_void_p, vfu_dma_register_cb_t,
+lib.vfu_setup_device_dma.argtypes = (c.c_void_p, c.c_size_t,
+                                     vfu_dma_register_cb_t,
                                      vfu_dma_unregister_cb_t)
 lib.vfu_setup_device_migration_callbacks.argtypes = (c.c_void_p,
     c.POINTER(vfu_migration_callbacks_t))
@@ -1071,7 +1073,8 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     ret = vfu_pci_init(ctx)
     assert ret == 0
 
-    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    ret = vfu_setup_device_dma(ctx, MAX_DMA_REGIONS, dma_register,
+                               dma_unregister)
     assert ret == 0
 
     if quiesce is not None:
@@ -1276,10 +1279,12 @@ def vfu_irq_trigger(ctx, subindex):
     return lib.vfu_irq_trigger(ctx, subindex)
 
 
-def vfu_setup_device_dma(ctx, register_cb=None, unregister_cb=None):
+def vfu_setup_device_dma(ctx, max_regions=0, register_cb=None,
+                         unregister_cb=None):
     assert ctx is not None
 
-    return lib.vfu_setup_device_dma(ctx, c.cast(register_cb,
+    return lib.vfu_setup_device_dma(ctx, max_regions,
+                                         c.cast(register_cb,
                                                 vfu_dma_register_cb_t),
                                          c.cast(unregister_cb,
                                                 vfu_dma_unregister_cb_t))

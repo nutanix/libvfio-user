@@ -2224,15 +2224,15 @@ vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx, vfu_device_quiesce_cb_t *quiesce
 }
 
 EXPORT int
-vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
+vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
+                     vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister)
 {
-
     assert(vfu_ctx != NULL);
 
     // Create the internal DMA controller.
-    vfu_ctx->dma = dma_controller_create(vfu_ctx, MAX_DMA_REGIONS,
-                                         MAX_DMA_SIZE);
+    max_regions = max_regions == 0 ? MAX_DMA_REGIONS : max_regions;
+    vfu_ctx->dma = dma_controller_create(vfu_ctx, max_regions, MAX_DMA_SIZE);
     if (vfu_ctx->dma == NULL) {
         return ERROR_INT(errno);
     }
