@@ -39,6 +39,7 @@
 
 #undef NDEBUG /* so assert() works in release builds */
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -121,9 +122,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         }
         case FUZZ_ACTION_NEXT: {
             /* Advance the iterator. */
-            bool has_next = btree_iter_next(&iter);
-            assert(has_next == (iter_pos_key(pos) < 256));
+            void *val = btree_iter_next(&iter);
             pos = next(count, pos + 1);
+            if (iter_pos_key(pos) < 256) {
+                assert(val == to_value(iter_pos_key(pos)));
+            } else {
+                assert(val == NULL);
+            }
             break;
         }
         case FUZZ_ACTION_GET: {

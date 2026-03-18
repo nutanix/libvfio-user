@@ -252,11 +252,11 @@ void *btree_iter_get(btree_iter_t *iter, uintptr_t *key)
     return node->values[pos];
 }
 
-bool btree_iter_next(btree_iter_t *iter)
+void *btree_iter_next(btree_iter_t *iter)
 {
     int level = btree_iter_right_side_level(iter);
     if (level >= iter->tree->height) {
-        return false;
+        return NULL;
     }
 
     /*
@@ -276,7 +276,7 @@ bool btree_iter_next(btree_iter_t *iter)
         iter->cursors[level] = btree_cursor(node, 0);
     }
 
-    return true;
+    return btree_iter_get(iter, NULL);
 }
 
 /*

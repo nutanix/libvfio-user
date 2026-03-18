@@ -30,6 +30,7 @@
 
 #undef NDEBUG /* so assert() works in release builds */
 #include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include "btree.h"
@@ -54,7 +55,7 @@ static void test_empty()
     uintptr_t key;
     assert(btree_iter_get(&iter, &key) == NULL);
 
-    assert(!btree_iter_next(&iter));
+    assert(btree_iter_next(&iter) == NULL);
 
     btree_destroy(&tree);
 }
@@ -84,7 +85,7 @@ static void test_insert_front()
     }
     assert(expectation == N + 1);
 
-    assert(!btree_iter_next(&iter));
+    assert(btree_iter_next(&iter) == NULL);
 
     btree_destroy(&tree);
 }

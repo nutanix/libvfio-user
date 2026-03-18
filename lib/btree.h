@@ -45,7 +45,6 @@
 #ifndef LIB_VFIO_USER_BTREE_H
 #define LIB_VFIO_USER_BTREE_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -136,10 +135,10 @@ void btree_iterate(btree_t *tree, uintptr_t key, btree_iter_t *iter);
 void *btree_iter_get(btree_iter_t *iter, uintptr_t *key);
 
 /*
- * Advances the iterator. Returns true if successful and false when the
- * iterator has reached the end of the tree.
+ * Advances the iterator. Returns the value that the iterator has advanced to,
+ * or NULL if we have reached the end of the tree.
  */
-bool btree_iter_next(btree_iter_t *iter);
+void *btree_iter_next(btree_iter_t *iter);
 
 /*
  * Insert a value into the tree at the position indicated by the iterator. The
