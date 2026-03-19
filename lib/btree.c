@@ -38,8 +38,11 @@
 #include "btree.h"
 #include "common.h"
 
-/* The allocation size for nodes. */
-#define BTREE_PAGE_SIZE 4096
+/*
+ * The allocation size for nodes. This parameter determines fan-out and thus
+ * balances cost of scanning a node vs. allocation overhead tree height.
+ */
+#define BTREE_NODE_SIZE 4096
 
 /*
  * Number of entries within a node. This calculates the number of entries based
@@ -47,7 +50,7 @@
  * fixed-size items with array entries.
  */
 #define BTREE_NODE_NUM_ENTRIES                                            \
-    ((BTREE_PAGE_SIZE - (sizeof(size_t) + sizeof(struct btree_node *))) / \
+    ((BTREE_NODE_SIZE - (sizeof(size_t) + sizeof(struct btree_node *))) / \
      (sizeof(uintptr_t) + sizeof(void *) + sizeof(struct btree_node *)))
 
 /*
@@ -95,18 +98,19 @@ struct btree_node {
     void *values[BTREE_NODE_NUM_ENTRIES];
 
     /*
-     * Child node pointers. These are conceptually `between` entries. The
-     * subtree at the child left to an entry contains keys that are less than
-     * or equal to the entry, the right subtree contains larger or equal
-     * entries.
+     * Child node pointers. These are conceptually on each side of a node's
+     * entry, hence we number of children of a node is one more than its
+     * entries. The subtree at the child left to an entry contains keys that
+     * are less than or equal to the entry, the right subtree contains larger
+     * or equal entries.
      */
     struct btree_node *children[BTREE_NODE_NUM_ENTRIES + 1];
 };
 
-_Static_assert(sizeof(struct btree_node) <= BTREE_PAGE_SIZE,
-               "btree node size exceeds page size");
-_Static_assert(BTREE_PAGE_SIZE % BTREE_NODE_ALIGNMENT == 0,
-               "page size must be a multiple of alignment");
+_Static_assert(sizeof(struct btree_node) <= BTREE_NODE_SIZE,
+               "btree node size exceeds allocation size");
+_Static_assert(BTREE_NODE_SIZE % BTREE_NODE_ALIGNMENT == 0,
+               "allocation size must be a multiple of alignment");
 
 /* Make a cursor from a node pointer and entry index. */
 static inline btree_cursor_t btree_cursor(struct btree_node *node, size_t pos)
@@ -140,7 +144,7 @@ static inline size_t btree_cursor_pos(btree_iter_t *iter, int level)
 static struct btree_node *node_alloc(void)
 {
     void *node = NULL;
-    if (posix_memalign(&node, BTREE_NODE_ALIGNMENT, BTREE_PAGE_SIZE) != 0) {
+    if (posix_memalign(&node, BTREE_NODE_ALIGNMENT, BTREE_NODE_SIZE) != 0) {
         return NULL;
     }
 
