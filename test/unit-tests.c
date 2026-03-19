@@ -119,7 +119,7 @@ teardown(void **state UNUSED)
     dma_memory_region_t *region;
     btree_iter_t iter;
 
-    btree_iterate(&vfu_ctx.dma->regions, 0, &iter);
+    btree_iter_init(&vfu_ctx.dma->regions, 0, &iter);
     while ((region = btree_iter_remove(&iter)) != NULL) {
         free(region);
     }
@@ -204,7 +204,7 @@ stage_dma_region(dma_controller_t *dma, dma_memory_region_t* region)
     dma_memory_region_t* value = calloc(1, sizeof(*value));
     assert_non_null(value);
     *value = *region;
-    btree_iterate(&dma->regions, key, &iter);
+    btree_iter_init(&dma->regions, key, &iter);
     assert_int_equal(0, btree_iter_insert(&iter, key, value));
     return value;
 }
@@ -215,7 +215,7 @@ verify_dma_region(dma_controller_t *dma, dma_memory_region_t* region)
     dma_memory_region_t* entry;
     btree_iter_t iter;
 
-    btree_iterate(&dma->regions, (uintptr_t)region->info.iova.iov_base, &iter);
+    btree_iter_init(&dma->regions, (uintptr_t)region->info.iova.iov_base, &iter);
     entry = btree_iter_get(&iter, NULL);
     assert_non_null(entry);
 

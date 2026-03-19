@@ -101,7 +101,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     btree_init(&tree);
 
     btree_iter_t iter;
-    btree_iterate(&tree, 0, &iter);
+    btree_iter_init(&tree, 0, &iter);
 
     /* Tracks how many copies of each uint8_t value are present. */
     uint16_t count[256] = { 0 };
@@ -116,7 +116,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         switch (action) {
         case FUZZ_ACTION_SEEK: {
             /* Reposition the iterator. */
-            btree_iterate(&tree, param, &iter);
+            btree_iter_init(&tree, param, &iter);
             pos = next(count, iter_pos(param, 0));
             break;
         }

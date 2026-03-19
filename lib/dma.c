@@ -156,7 +156,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 
     assert(dma != NULL);
 
-    btree_iterate(&dma->regions, (uintptr_t)dma_addr, &iter);
+    btree_iter_init(&dma->regions, (uintptr_t)dma_addr, &iter);
     region = btree_iter_get(&iter, NULL);
     if (region == NULL) {
         return ERROR_INT(ENOENT);
@@ -196,7 +196,7 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 
     assert(dma != NULL);
 
-    btree_iterate(&dma->regions, 0, &iter);
+    btree_iter_init(&dma->regions, 0, &iter);
     while ((region = btree_iter_remove(&iter)) != NULL) {
         vfu_log(dma->vfu_ctx, LOG_DEBUG,
                 "removing DMA region "
@@ -302,7 +302,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         return ERROR_PTR(ENOSPC);
     }
 
-    btree_iterate(&dma->regions, (uintptr_t)dma_addr, &iter);
+    btree_iter_init(&dma->regions, (uintptr_t)dma_addr, &iter);
     region = btree_iter_get(&iter, NULL);
     if (region != NULL) {
         /* First check if this is the same exact region. */
@@ -425,7 +425,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
     btree_iter_t iter;
     int cnt = 0, ret;
 
-    for (btree_iterate((btree_t *)&dma->regions, (uintptr_t)dma_addr, &iter);
+    for (btree_iter_init((btree_t *)&dma->regions, (uintptr_t)dma_addr, &iter);
          len > 0 && (region = btree_iter_get(&iter, NULL)) != NULL;
          btree_iter_next(&iter)) {
         vfu_dma_addr_t region_start = region->info.iova.iov_base;
@@ -479,7 +479,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
         return 0;
     }
 
-    for (btree_iterate(&dma->regions, 0, &iter);
+    for (btree_iter_init(&dma->regions, 0, &iter);
          (region = btree_iter_get(&iter, NULL)) != NULL;
          btree_iter_next(&iter)) {
         if (region->fd == -1) {
@@ -490,7 +490,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
             dma_memory_region_t* to_clear;
             int _errno = errno;
 
-            for (btree_iterate(&dma->regions, 0, &iter);
+            for (btree_iter_init(&dma->regions, 0, &iter);
                  (to_clear = btree_iter_get(&iter, NULL)) != region;
                  btree_iter_next(&iter)) {
                 free(to_clear->dirty_bitmap);
@@ -518,7 +518,7 @@ dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
         return;
     }
 
-    for (btree_iterate(&dma->regions, 0, &iter);
+    for (btree_iter_init(&dma->regions, 0, &iter);
          (region = btree_iter_get(&iter, NULL)) != NULL;
          btree_iter_next(&iter)) {
         free(region->dirty_bitmap);

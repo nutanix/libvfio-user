@@ -125,7 +125,7 @@ size_t btree_size(btree_t *tree);
  * This means that passing `key = 0` will start the iterator at the first
  * entry.
  */
-void btree_iterate(btree_t *tree, uintptr_t key, btree_iter_t *iter);
+void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter);
 
 /*
  * Obtains the value the iterator points at currently, or NULL if the iterator

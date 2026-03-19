@@ -39,7 +39,7 @@
 static void insert_value(btree_t *tree, uintptr_t value)
 {
     btree_iter_t iter;
-    btree_iterate(tree, value, &iter);
+    btree_iter_init(tree, value, &iter);
     assert(btree_iter_insert(&iter, value, (void *)(value + 1)) == 0);
 }
 
@@ -49,7 +49,7 @@ static void test_empty()
     btree_init(&tree);
 
     btree_iter_t iter;
-    btree_iterate(&tree, 0, &iter);
+    btree_iter_init(&tree, 0, &iter);
 
     assert(btree_iter_get(&iter, NULL) == NULL);
     uintptr_t key;
@@ -66,7 +66,7 @@ static void test_insert_front()
     btree_init(&tree);
 
     btree_iter_t iter;
-    btree_iterate(&tree, 0, &iter);
+    btree_iter_init(&tree, 0, &iter);
 
     const uintptr_t N = 100000;
     for (uintptr_t i = N; i > 0; --i) {
@@ -76,7 +76,7 @@ static void test_insert_front()
     uintptr_t expectation = 1;
     uintptr_t key = -1;
     void *value;
-    for (btree_iterate(&tree, 0, &iter);
+    for (btree_iter_init(&tree, 0, &iter);
          (value = btree_iter_get(&iter, &key)) != NULL;
          btree_iter_next(&iter)) {
         assert(key == expectation);
@@ -111,7 +111,7 @@ static void test_insert_randomized()
         uintptr_t key = -1;
         void *value;
         btree_iter_t iter;
-        for (btree_iterate(&tree, 0, &iter);
+        for (btree_iter_init(&tree, 0, &iter);
              (value = btree_iter_get(&iter, &key)) != NULL;
              btree_iter_next(&iter)) {
             for (uintptr_t p = pos; p < key; ++p) {
@@ -137,10 +137,10 @@ static void test_remove_front()
     insert_value(&tree, 2);
 
     btree_iter_t iter;
-    btree_iterate(&tree, 0, &iter);
+    btree_iter_init(&tree, 0, &iter);
     btree_iter_remove(&iter);
 
-    btree_iterate(&tree, 0, &iter);
+    btree_iter_init(&tree, 0, &iter);
     assert(btree_iter_get(&iter, NULL) == (void *)3);
 
     btree_iter_remove(&iter);
@@ -169,7 +169,7 @@ static void test_remove_randomized()
     for (uintptr_t i = 0; i < MOD; ++i) {
         /* Remove an element. */
         btree_iter_t iter;
-        btree_iterate(&tree, n, &iter);
+        btree_iter_init(&tree, n, &iter);
         btree_iter_remove(&iter);
         present[n] = false;
 

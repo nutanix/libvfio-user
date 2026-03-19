@@ -193,7 +193,7 @@ size_t btree_size(btree_t *tree)
     return tree->size;
 }
 
-void btree_iterate(btree_t *tree, uintptr_t key, btree_iter_t *iter)
+void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
 {
     iter->tree = tree;
 
