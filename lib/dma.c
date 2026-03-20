@@ -110,6 +110,9 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
 static inline void
 dma_controller_increment_regions_generation()
 {
+    uint64_t generation =
+        __atomic_fetch_add(&dma_regions_generation, 1, __ATOMIC_RELEASE);
+
     /*
      * The generations counter is wide enough such that it will not overflow in
      * practice: Even if we were to perform 2^32 region updates per second
@@ -117,9 +120,7 @@ dma_controller_increment_regions_generation()
      * IPC), it would still take more than 136 years to burn through the
      * higher-order 32 bits.
      */
-    assert(dma_regions_generation < UINT64_MAX);
-
-    ++dma_regions_generation;
+    assert(generation != UINT64_MAX);
 }
 
 void
