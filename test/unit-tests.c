@@ -453,7 +453,9 @@ test_vfu_setup_device_dma(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
 
-    assert_int_equal(0, vfu_setup_device_dma(&vfu_ctx, 0, NULL, NULL));
+    assert_int_equal(0, vfu_setup_device_dma(&vfu_ctx,
+                                             LIBVFIO_USER_MAX_DMA_REGIONS, NULL,
+                                             NULL));
     assert_non_null(vfu_ctx.dma);
     free(vfu_ctx.dma);
 }

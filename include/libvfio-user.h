@@ -527,19 +527,31 @@ typedef void (vfu_dma_unregister_cb_t)(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
  * The max_regions parameter sets an upper limit on the number of DMA regions
  * clients can register. The number of DMA regions will vary heavily depending
  * on client characteristics and workload. Setting a reasonable limit will
- * protect the server from OOM situations due to rogue clients. Passing 0 will
- * result in a default to be used instead (currently 1 million).
+ * protect the server from OOM situations due to rogue clients. Pass
+ * LIBVFIO_USER_MAX_DMA_REGIONS to use a reasonable default value.
  *
  * @vfu_ctx: the libvfio-user context
  * @max_regions: Maximum number of regions a client can register.
  * @dma_register: DMA region registration callback (optional)
  * @dma_unregister: DMA region unregistration callback (optional)
  */
-
 int
 vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
                      vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister);
+
+/*
+ * 1 million regions as a default limit is rather generous and should cover
+ * most use cases, including those that involve client-side IOMMUs with
+ * large-ish DMA buffers. Whether that's actually appropriate or sufficient
+ * depends heavily on the specific setup and workload, as well as client
+ * behavior. For example, VMs that don't put the vfio-user device behind an
+ * IOMMU will usually require only a handful regions. For VMs with IOMMUs, you
+ * may see lots of 4k regions due to the individual IOMMU mappings getting
+ * reflected to the server, but enabling transparent huge pages may bring down
+ * the number of individual mappings quite significantly.
+ */
+#define LIBVFIO_USER_MAX_DMA_REGIONS (1000 * 1000)
 
 enum vfu_dev_irq_type {
     VFU_DEV_INTX_IRQ,

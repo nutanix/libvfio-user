@@ -2231,7 +2231,6 @@ vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
     assert(vfu_ctx != NULL);
 
     // Create the internal DMA controller.
-    max_regions = max_regions == 0 ? MAX_DMA_REGIONS : max_regions;
     vfu_ctx->dma = dma_controller_create(vfu_ctx, max_regions, MAX_DMA_SIZE);
     if (vfu_ctx->dma == NULL) {
         return ERROR_INT(errno);
