@@ -114,7 +114,7 @@ def _side_effect(ctx, _):
     count, sgs = vfu_addr_to_sgl(ctx, 0x10000, 0x1000)
     assert count == 1
     sg = sgs[0]
-    assert sg.dma_addr == 0x10000 and sg.region == 0 \
+    assert sg.dma_addr == 0x10000 and sg.region != 0 \
         and sg.length == 0x1000 and sg.offset == 0 and sg.writeable
     iovec = iovec_t()
     ret = vfu_sgl_get(ctx, sg, iovec)

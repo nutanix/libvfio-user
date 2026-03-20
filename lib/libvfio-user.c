@@ -676,9 +676,9 @@ int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                struct vfio_user_dma_map *dma_map)
 {
+    dma_memory_region_t *region;
     char rstr[1024];
     int fd = -1;
-    int ret;
     uint32_t prot = 0;
 
     assert(vfu_ctx != NULL);
@@ -722,11 +722,10 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         }
     }
 
-    ret = dma_controller_add_region(vfu_ctx->dma,
-                                    (vfu_dma_addr_t)(uintptr_t)dma_map->addr,
-                                    dma_map->size, fd, dma_map->offset,
-                                    prot);
-    if (ret < 0) {
+    region = dma_controller_add_region(
+        vfu_ctx->dma, (vfu_dma_addr_t)(uintptr_t)dma_map->addr, dma_map->size,
+        fd, dma_map->offset, prot);
+    if (region == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
         close_safely(&fd);
         return -1;
@@ -734,7 +733,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     if (vfu_ctx->dma_register != NULL) {
         vfu_ctx->in_cb = CB_DMA_REGISTER;
-        vfu_ctx->dma_register(vfu_ctx, &vfu_ctx->dma->regions[ret].info);
+        vfu_ctx->dma_register(vfu_ctx, &region->info);
         vfu_ctx->in_cb = CB_NONE;
 
     }
@@ -2225,15 +2224,14 @@ vfu_setup_device_quiesce_cb(vfu_ctx_t *vfu_ctx, vfu_device_quiesce_cb_t *quiesce
 }
 
 EXPORT int
-vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, vfu_dma_register_cb_t *dma_register,
+vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
+                     vfu_dma_register_cb_t *dma_register,
                      vfu_dma_unregister_cb_t *dma_unregister)
 {
-
     assert(vfu_ctx != NULL);
 
     // Create the internal DMA controller.
-    vfu_ctx->dma = dma_controller_create(vfu_ctx, MAX_DMA_REGIONS,
-                                         MAX_DMA_SIZE);
+    vfu_ctx->dma = dma_controller_create(vfu_ctx, max_regions, MAX_DMA_SIZE);
     if (vfu_ctx->dma == NULL) {
         return ERROR_INT(errno);
     }
@@ -2500,9 +2498,9 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
 }
 
 EXPORT bool
-vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
+vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx UNUSED, dma_sg_t *sg)
 {
-    return dma_sg_is_mappable(vfu_ctx->dma, sg);
+    return dma_sg_is_mappable(sg);
 }
 
 EXPORT int

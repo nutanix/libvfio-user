@@ -123,7 +123,7 @@ def test_dma_map_busy(mock_dma_register, mock_quiesce):
     count, sgs = vfu_addr_to_sgl(ctx, 0x10 << PAGE_SHIFT, PAGE_SIZE)
     assert len(sgs) == 1
     sg = sgs[0]
-    assert sg.dma_addr == 0x10 << PAGE_SHIFT and sg.region == 0 \
+    assert sg.dma_addr == 0x10 << PAGE_SHIFT and sg.region != 0 \
         and sg.length == PAGE_SIZE and sg.offset == 0 and sg.writeable
 
 

@@ -26,6 +26,7 @@ endif
 unit_tests_sources = [
     'unit-tests.c',
     'mocks.c',
+    '../lib/btree.c',
     '../lib/dma.c',
     '../lib/irq.c',
     '../lib/libvfio-user.c',
@@ -61,6 +62,56 @@ test(
     unit_tests,
     suite: 'unit',
 )
+
+btree_unit_tests = executable(
+    'btree_unit_tests',
+    sources: [
+      'btree_unit_tests.c',
+      '../lib/btree.c',
+    ],
+    c_args: common_cflags,
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    install: false,
+)
+
+test(
+    'btree_unit_tests',
+    btree_unit_tests,
+    suite: 'unit',
+)
+
+cc = meson.get_compiler('c')
+if cc.get_id() == 'clang' and cc.version().version_compare('>=6.0.0')
+  btree_fuzz_test = executable(
+    'btree_fuzz_test',
+    sources: [
+      'btree_fuzz_test.c',
+      '../lib/btree.c',
+    ],
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    c_args: [
+      common_cflags,
+      '-fsanitize=fuzzer,address',
+    ],
+    link_args: [
+      '-fsanitize=fuzzer,address',
+    ],
+    install: false,
+  )
+
+  test('btree_fuzz_test',
+    btree_fuzz_test,
+    args: [
+      '-max_total_time=20',
+    ],
+  )
+endif
 
 test(
     'test-lspci',
