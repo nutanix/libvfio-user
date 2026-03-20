@@ -33,7 +33,7 @@ BUILD_DIR = $(CURDIR)/build
 .PHONY: all install test coverity pre-push clean tags
 
 all:
-	test -d $(BUILD_DIR) || meson $(BUILD_DIR)
+	test -d $(BUILD_DIR) || meson setup $(BUILD_DIR)
 	ninja -C $(BUILD_DIR)
 
 install:

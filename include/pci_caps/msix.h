@@ -37,7 +37,7 @@
 
 #include <linux/pci_regs.h>
 
-#include "pci_caps/common.h"
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
