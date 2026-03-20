@@ -463,7 +463,7 @@ _dma_addr_sg_split(const dma_controller_t *dma,
 int
 dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
-    dma_memory_region_t* region;
+    dma_memory_region_t *region;
     btree_iter_t iter;
 
     assert(dma != NULL);
@@ -487,7 +487,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
         }
 
         if (dirty_page_logging_start_on_region(region, pgsize) < 0) {
-            dma_memory_region_t* to_clear;
+            dma_memory_region_t *to_clear;
             int _errno = errno;
 
             for (btree_iter_init(&dma->regions, 0, &iter);
@@ -509,7 +509,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 void
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 {
-    dma_memory_region_t* region;
+    dma_memory_region_t *region;
     btree_iter_t iter;
 
     assert(dma != NULL);

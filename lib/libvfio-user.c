@@ -2498,9 +2498,8 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
 }
 
 EXPORT bool
-vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx, dma_sg_t *sg)
+vfu_sg_is_mappable(vfu_ctx_t *vfu_ctx UNUSED, dma_sg_t *sg)
 {
-    (void)vfu_ctx;
     return dma_sg_is_mappable(sg);
 }
 

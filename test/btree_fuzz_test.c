@@ -187,7 +187,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
                 /* Can't make copies if we're at the end. */
                 break;
             }
-            int copies = (1 << (param > 16 ? 16: param));
+            int copies = (1 << (param > 16 ? 16 : param));
             if (count[key] + copies > UINT16_MAX) {
                 /* Ignore the action if it would overflow the counter. */
                 break;

@@ -196,12 +196,12 @@ check_dma_region(const LargestIntegralType value,
 }
 
 static dma_memory_region_t *
-stage_dma_region(dma_controller_t *dma, dma_memory_region_t* region)
+stage_dma_region(dma_controller_t *dma, dma_memory_region_t *region)
 {
     uintptr_t key = (uintptr_t)iov_end(&region->info.iova) - 1;
     btree_iter_t iter;
 
-    dma_memory_region_t* value = calloc(1, sizeof(*value));
+    dma_memory_region_t *value = calloc(1, sizeof(*value));
     assert_non_null(value);
     *value = *region;
     btree_iter_init(&dma->regions, key, &iter);
@@ -210,12 +210,13 @@ stage_dma_region(dma_controller_t *dma, dma_memory_region_t* region)
 }
 
 static void
-verify_dma_region(dma_controller_t *dma, dma_memory_region_t* region)
+verify_dma_region(dma_controller_t *dma, dma_memory_region_t *region)
 {
-    dma_memory_region_t* entry;
+    dma_memory_region_t *entry;
     btree_iter_t iter;
 
-    btree_iter_init(&dma->regions, (uintptr_t)region->info.iova.iov_base, &iter);
+    btree_iter_init(&dma->regions, (uintptr_t)region->info.iova.iov_base,
+                    &iter);
     entry = btree_iter_get(&iter, NULL);
     assert_non_null(entry);
 
@@ -344,7 +345,8 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     /* FIXME add unit test when dma_unregister fails */
     patch("dma_controller_unmap_region");
     expect_value(dma_controller_unmap_region, dma, vfu_ctx.dma);
-    expect_check(dma_controller_unmap_region, region, check_dma_region, &region);
+    expect_check(dma_controller_unmap_region, region, check_dma_region,
+                 &region);
     assert_int_equal(0,
         dma_controller_remove_region(vfu_ctx.dma, (void *)0xdeadbeef, 0x100,
             mock_dma_unregister, &vfu_ctx));

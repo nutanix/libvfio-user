@@ -244,12 +244,12 @@ dma_addr_to_sgl(const dma_controller_t *dma,
     int cnt, ret;
 
     /*
-     * Fast path: Access into same single target region as last call.
+     * Fast path: Access into same target region as last call.
      *
-     * This bypasses region lookup entirely for the case where there is only a
-     * single DMA region representing all memory in the client. It has been
-     * measured to provide up to 10% CPU performance gain for a CPU-bound SPDK
-     * nvme workload at 512b block size.
+     * This bypasses region lookup for cases where most accesses go to a single
+     * DMA region representing RAM in the client. It has been measured to
+     * provide up to 10% CPU performance gain for a CPU-bound SPDK nvme
+     * workload at 512b block size.
      */
     if (likely(dma_regions_generation == regions_generation &&
                max_nr_sgs > 0 && len > 0 &&
