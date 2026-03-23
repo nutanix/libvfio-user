@@ -106,6 +106,7 @@ typedef struct dma_controller {
     struct vfu_ctx *vfu_ctx;
     size_t dirty_pgsize;        // Dirty page granularity
     btree_t regions;
+    uint64_t regions_generation;
 } dma_controller_t;
 
 dma_controller_t *
@@ -240,12 +241,11 @@ dma_addr_to_sgl(const dma_controller_t *dma,
 {
     static __thread const dma_memory_region_t *region_hint;
     static __thread uint64_t thread_generation;
-    extern uint64_t dma_regions_generation;
-    uint64_t global_generation;
+    uint64_t dma_generation;
     int cnt, ret;
 
-    global_generation =
-        __atomic_load_n(&dma_regions_generation, __ATOMIC_ACQUIRE);
+    dma_generation =
+        __atomic_load_n(&dma->regions_generation, __ATOMIC_ACQUIRE);
 
     /*
      * Fast path: Access into same target region as last call.
@@ -255,7 +255,7 @@ dma_addr_to_sgl(const dma_controller_t *dma,
      * provide up to 10% CPU performance gain for a CPU-bound SPDK nvme
      * workload at 512b block size.
      */
-    if (likely(thread_generation == global_generation &&
+    if (likely(thread_generation == dma_generation &&
                max_nr_sgs > 0 && len > 0 &&
                dma_addr >= region_hint->info.iova.iov_base &&
                dma_addr + len <= iov_end(&region_hint->info.iova))) {
@@ -271,7 +271,7 @@ dma_addr_to_sgl(const dma_controller_t *dma,
     cnt = _dma_addr_sg_split(dma, dma_addr, len, sgl, max_nr_sgs, prot);
     if (likely(cnt > 0)) {
         region_hint = sgl[0].region;
-        thread_generation = global_generation;
+        thread_generation = dma_generation;
     }
     return cnt;
 }

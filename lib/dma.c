@@ -43,14 +43,6 @@
 #include "dma.h"
 #include "private.h"
 
-/*
- * DMA region generation identifier: Incremented whenever the shape of the DMA
- * address space (i.e. the regions tree in a DMA controller) changes due to the
- * client adding or removing target regions. This is used to invalidate cached
- * region pointers belonging to previous generations.
- */
-uint64_t dma_regions_generation = 1;
-
 EXPORT size_t
 dma_sg_size(void)
 {
@@ -101,17 +93,32 @@ dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
     dma->vfu_ctx = vfu_ctx;
     dma->max_regions = (int)max_regions;
     dma->max_size = max_size;
-    btree_init(&dma->regions);
     dma->dirty_pgsize = 0;
+    btree_init(&dma->regions);
+    dma->regions_generation = 1;
 
     return dma;
 }
 
 static inline void
-dma_controller_increment_regions_generation()
+dma_controller_increment_regions_generation(dma_controller_t *dma)
 {
-    uint64_t generation =
-        __atomic_fetch_add(&dma_regions_generation, 1, __ATOMIC_RELEASE);
+    /*
+     * DMA region generation identifier: Incremented whenever the shape of the
+     * DMA address space (i.e. the regions tree in a DMA controller) changes due
+     * to a client adding or removing target regions. This is used to invalidate
+     * thread-local cached region pointers belonging to previous generations.
+     *
+     * This global supplies identifiers for all DMA controller instances. This
+     * makes sure that even with multiple DMA controllers, each generation
+     * identifier will be unique. Otherwise, we could get identifier collisions
+     * between DMA controller instances, and failing to ignore caches after DMA
+     * address space changes.
+     */
+    static uint64_t dma_regions_generation = 1;
+
+    dma->regions_generation =
+        __atomic_add_fetch(&dma_regions_generation, 1, __ATOMIC_RELEASE);
 
     /*
      * The generations counter is wide enough such that it will not overflow in
@@ -120,7 +127,7 @@ dma_controller_increment_regions_generation()
      * IPC), it would still take more than 136 years to burn through the
      * higher-order 32 bits.
      */
-    assert(generation != UINT64_MAX);
+    assert(dma->regions_generation != UINT64_MAX);
 }
 
 void
@@ -181,7 +188,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
     }
 
     btree_iter_remove(&iter);
-    dma_controller_increment_regions_generation();
+    dma_controller_increment_regions_generation(dma);
     free(region);
 
     return 0;
@@ -401,7 +408,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         goto rollback;
     }
 
-    dma_controller_increment_regions_generation();
+    dma_controller_increment_regions_generation(dma);
 
     return region;
 
