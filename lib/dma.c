@@ -65,8 +65,9 @@ fd_get_blocksize(int fd)
     return st.st_blksize;
 }
 
-/* Returns true if 2 fds refer to the same file.
-   If any fd is invalid, return false. */
+/*
+ * Return true if the two fds refer to the same underlying inode.
+ */
 static inline bool
 fds_are_same_file(int fd1, int fd2)
 {
@@ -74,6 +75,8 @@ fds_are_same_file(int fd1, int fd2)
 
     if (fd1 == fd2) {
         return true;
+    } else if (fd1 == -1 || fd2 == -1) {
+        return false;
     }
 
     return (fstat(fd1, &st1) == 0 && fstat(fd2, &st2) == 0 &&
@@ -397,7 +400,6 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         ret = dma_map_region(dma, region);
 
         if (ret != 0) {
-            ret = errno;
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %s: %m", rstr);
             goto rollback;

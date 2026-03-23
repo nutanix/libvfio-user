@@ -821,8 +821,10 @@ get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
     uint64_t bitmap_size = get_bitmap_size(dma_region->map.size,
                                            sysconf(_SC_PAGESIZE));
 
-    /* Saturating add to keep coverity happy. */
+    /* Saturating add and assert to keep coverity happy. */
     size_t size = satadd_u64(sizeof(*res) + sizeof(*report), bitmap_size);
+
+    assert(size <= UINT32_MAX);
 
     void *data = calloc(1, size);
     assert(data != NULL);
