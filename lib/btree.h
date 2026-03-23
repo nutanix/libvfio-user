@@ -85,7 +85,7 @@ typedef struct {
     /* Points back at the tree that we're iterating. */
     btree_t *tree;
     /*
-     * Cursors indicating the node and index within the node for each level.
+     * Cursors that indicate the node and index within the node for each level.
      * The intuition here is that the iterator position splits the tree into a
      * left and right half, and the split position is given by the node / split
      * index pair for each level.
@@ -121,9 +121,15 @@ void btree_destroy(btree_t *tree);
 size_t btree_size(btree_t *tree);
 
 /*
- * Initializes an iterator to point at the first entry not less than `key`.
- * This means that passing `key = 0` will start the iterator at the first
- * entry.
+ * Initializes an iterator, looking up `key`. The iterator will point at the
+ * first entry with a key greater or equal to `key`. This means that passing
+ * `key = 0` will start the iterator at the first entry. `btree_iter_get` can
+ * then be used to retrieve the value and its corresponding key.
+ *
+ * To achieve a get-or-insert operation, you can compare the key value returned
+ * from `btree_iter_get` to determine whether the originally requested key is
+ * present. If not, the iterator is positioned in the right spot for insertion
+ * using `btree_iter_insert`.
  */
 void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter);
 

@@ -99,7 +99,7 @@ struct btree_node {
 
     /*
      * Child node pointers. These are conceptually on each side of a node's
-     * entry, hence we number of children of a node is one more than its
+     * entry, hence the number of children of a node is one more than its
      * entries. The subtree at the child left to an entry contains keys that
      * are less than or equal to the entry, the right subtree contains larger
      * or equal entries.
@@ -199,7 +199,8 @@ void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
 
     /*
      * Build the cursor stack starting at the root, working towards the leaf
-     * and filling in cursors for each level.
+     * and filling in cursors for each level. Note that for empty trees, height
+     * is 0 and thus the loop will be skipped entirely.
      */
     struct btree_node *node = tree->root;
     for (int level = iter->tree->height - 1; level >= 0; --level) {
@@ -221,8 +222,11 @@ void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
 
 /*
  * Helper function to find the level of the element that is on the right side
- * of the iterator cut. Returns the level, or the tree height if we're at the
- * right end of the tree and no right side element exists.
+ * of the iterator cut. This is usually the next element on the leaf level, but
+ * in case we have reached the end of a node, we need to recursively check
+ * parent nodes towards the tree root as indicated by the iterator's cursors.
+ * Returns the level, or the tree height if we're at the right end of the tree
+ * and no right side element exists.
  */
 static inline int btree_iter_right_side_level(btree_iter_t *iter)
 {

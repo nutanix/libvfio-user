@@ -546,8 +546,8 @@ vfu_setup_device_dma(vfu_ctx_t *vfu_ctx, size_t max_regions,
  * large-ish DMA buffers. Whether that's actually appropriate or sufficient
  * depends heavily on the specific setup and workload, as well as client
  * behavior. For example, VMs that don't put the vfio-user device behind an
- * IOMMU will usually require only a handful regions. For VMs with IOMMUs, you
- * may see lots of 4k regions due to the individual IOMMU mappings getting
+ * IOMMU will usually require only a handful of regions. For VMs with IOMMUs,
+ * you may see lots of 4k regions due to the individual IOMMU mappings getting
  * reflected to the server, but enabling transparent huge pages may bring down
  * the number of individual mappings quite significantly.
  */
