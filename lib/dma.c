@@ -468,6 +468,21 @@ _dma_addr_sg_split(const dma_controller_t *dma,
     return cnt;
 }
 
+static void
+dma_controller_dirty_page_logging_reset(dma_controller_t *dma)
+{
+    dma_memory_region_t *region;
+    btree_iter_t iter;
+
+    for (btree_iter_init(&dma->regions, 0, &iter);
+         (region = btree_iter_get(&iter, NULL)) != NULL;
+         btree_iter_next(&iter)) {
+        free(region->dirty_bitmap);
+        region->dirty_bitmap = NULL;
+    }
+    dma->dirty_pgsize = 0;
+}
+
 int
 dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 {
@@ -495,15 +510,8 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
         }
 
         if (dirty_page_logging_start_on_region(region, pgsize) < 0) {
-            dma_memory_region_t *to_clear;
             int _errno = errno;
-
-            for (btree_iter_init(&dma->regions, 0, &iter);
-                 (to_clear = btree_iter_get(&iter, NULL)) != region;
-                 btree_iter_next(&iter)) {
-                free(to_clear->dirty_bitmap);
-                to_clear->dirty_bitmap = NULL;
-            }
+            dma_controller_dirty_page_logging_reset(dma);
             return ERROR_INT(_errno);
         }
     }
@@ -517,22 +525,13 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
 void
 dma_controller_dirty_page_logging_stop(dma_controller_t *dma)
 {
-    dma_memory_region_t *region;
-    btree_iter_t iter;
-
     assert(dma != NULL);
 
     if (dma->dirty_pgsize == 0) {
         return;
     }
 
-    for (btree_iter_init(&dma->regions, 0, &iter);
-         (region = btree_iter_get(&iter, NULL)) != NULL;
-         btree_iter_next(&iter)) {
-        free(region->dirty_bitmap);
-        region->dirty_bitmap = NULL;
-    }
-    dma->dirty_pgsize = 0;
+    dma_controller_dirty_page_logging_reset(dma);
 
     vfu_log(dma->vfu_ctx, LOG_DEBUG, "dirty pages: stopped logging");
 }
