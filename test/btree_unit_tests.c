@@ -36,14 +36,16 @@
 #include "btree.h"
 #include "common.h"
 
-static void insert_value(btree_t *tree, uintptr_t value)
+static void
+insert_value(btree_t *tree, uintptr_t value)
 {
     btree_iter_t iter;
     btree_iter_init(tree, value, &iter);
     assert(btree_iter_insert(&iter, value, (void *)(value + 1)) == 0);
 }
 
-static void test_empty()
+static void
+test_empty()
 {
     btree_t tree;
     btree_init(&tree);
@@ -60,7 +62,8 @@ static void test_empty()
     btree_destroy(&tree);
 }
 
-static void test_insert_front()
+static void
+test_insert_front()
 {
     btree_t tree;
     btree_init(&tree);
@@ -90,7 +93,8 @@ static void test_insert_front()
     btree_destroy(&tree);
 }
 
-static void test_insert_randomized()
+static void
+test_insert_randomized()
 {
     btree_t tree;
     btree_init(&tree);
@@ -128,7 +132,8 @@ static void test_insert_randomized()
     btree_destroy(&tree);
 }
 
-static void test_remove_front()
+static void
+test_remove_front()
 {
     btree_t tree;
     btree_init(&tree);
@@ -152,7 +157,8 @@ static void test_remove_front()
     btree_destroy(&tree);
 }
 
-static void test_remove_randomized()
+static void
+test_remove_randomized()
 {
     btree_t tree;
     btree_init(&tree);
@@ -191,7 +197,8 @@ static void test_remove_randomized()
     btree_destroy(&tree);
 }
 
-int main(void)
+int
+main(void)
 {
     test_empty();
     test_insert_front();

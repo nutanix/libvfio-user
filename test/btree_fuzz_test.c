@@ -79,7 +79,8 @@ enum fuzz_action {
  * Finds the next valid tree position, given the tree population state given in
  * `count`.
  */
-static uint32_t next(uint16_t count[256], uint32_t pos)
+static uint32_t
+next(uint16_t count[256], uint32_t pos)
 {
     if (iter_pos_key(pos) >= 256) {
         return 256 << 16;
@@ -95,7 +96,8 @@ static uint32_t next(uint16_t count[256], uint32_t pos)
     return pos;
 }
 
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+int
+LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     btree_t tree;
     btree_init(&tree);

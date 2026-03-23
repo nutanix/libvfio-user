@@ -107,18 +107,21 @@ typedef struct {
 /*
  * Initialize a B-tree instance.
  */
-void btree_init(btree_t *tree);
+void
+btree_init(btree_t *tree);
 
 /*
  * Destroy a B-tree and free all internal memory. Does not free the stored
  * values themselves.
  */
-void btree_destroy(btree_t *tree);
+void
+btree_destroy(btree_t *tree);
 
 /*
  * Returns the number of elements in the tree.
  */
-size_t btree_size(btree_t *tree);
+size_t
+btree_size(btree_t *tree);
 
 /*
  * Initializes an iterator, looking up `key`. The iterator will point at the
@@ -131,20 +134,23 @@ size_t btree_size(btree_t *tree);
  * present. If not, the iterator is positioned in the right spot for insertion
  * using `btree_iter_insert`.
  */
-void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter);
+void
+btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter);
 
 /*
  * Obtains the value the iterator points at currently, or NULL if the iterator
  * has reached the end of the tree. `key`, if non-NULL, will be updated to the
  * current entry's key.
  */
-void *btree_iter_get(btree_iter_t *iter, uintptr_t *key);
+void *
+btree_iter_get(btree_iter_t *iter, uintptr_t *key);
 
 /*
  * Advances the iterator. Returns the value that the iterator has advanced to,
  * or NULL if we have reached the end of the tree.
  */
-void *btree_iter_next(btree_iter_t *iter);
+void *
+btree_iter_next(btree_iter_t *iter);
 
 /*
  * Insert a value into the tree at the position indicated by the iterator. The
@@ -155,14 +161,16 @@ void *btree_iter_next(btree_iter_t *iter);
  * may have to allocate tree nodes, allocation failures will cause errno to be
  * set to ENOMEM.
  */
-int btree_iter_insert(btree_iter_t *iter, uintptr_t key, void *value);
+int
+btree_iter_insert(btree_iter_t *iter, uintptr_t key, void *value);
 
 /*
  * Delete the entry the iterator currently points at. The iterator will be
  * updated to point at the following entry (if any). Returns the value that was
  * stored, or NULL if there was no entry to remove.
  */
-void *btree_iter_remove(btree_iter_t *iter);
+void *
+btree_iter_remove(btree_iter_t *iter);
 
 #endif /* LIB_VFIO_USER_BTREE_H */
 

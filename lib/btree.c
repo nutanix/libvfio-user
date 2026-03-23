@@ -113,7 +113,8 @@ _Static_assert(BTREE_NODE_SIZE % BTREE_NODE_ALIGNMENT == 0,
                "allocation size must be a multiple of alignment");
 
 /* Make a cursor from a node pointer and entry index. */
-static inline btree_cursor_t btree_cursor(struct btree_node *node, size_t pos)
+static inline btree_cursor_t
+btree_cursor(struct btree_node *node, size_t pos)
 {
     uintptr_t ptr = (uintptr_t)node;
 
@@ -132,7 +133,8 @@ btree_cursor_node(btree_iter_t *iter, int level)
 }
 
 /* Extract the entry index from a cursor value. */
-static inline size_t btree_cursor_pos(btree_iter_t *iter, int level)
+static inline size_t
+btree_cursor_pos(btree_iter_t *iter, int level)
 {
     return iter->cursors[level] & BTREE_NODE_CURSOR_MASK;
 }
@@ -141,7 +143,8 @@ static inline size_t btree_cursor_pos(btree_iter_t *iter, int level)
  * Allocate a new node with the correct alignment so we have enough low-order
  * bits to use for index storage.
  */
-static struct btree_node *node_alloc(void)
+static struct btree_node *
+node_alloc(void)
 {
     void *node = NULL;
     if (posix_memalign(&node, BTREE_NODE_ALIGNMENT, BTREE_NODE_SIZE) != 0) {
@@ -156,7 +159,8 @@ static struct btree_node *node_alloc(void)
 /*
  * Recursively free a node and all its descendants.
  */
-static void node_destroy_recursive(struct btree_node *node, int height)
+static void
+node_destroy_recursive(struct btree_node *node, int height)
 {
     if (height == 0) {
         return;
@@ -169,7 +173,8 @@ static void node_destroy_recursive(struct btree_node *node, int height)
     free(node);
 }
 
-void btree_init(btree_t *tree)
+void
+btree_init(btree_t *tree)
 {
     assert(tree != NULL);
 
@@ -178,7 +183,8 @@ void btree_init(btree_t *tree)
     tree->height = 0;
 }
 
-void btree_destroy(btree_t *tree)
+void
+btree_destroy(btree_t *tree)
 {
     assert(tree != NULL);
 
@@ -186,14 +192,16 @@ void btree_destroy(btree_t *tree)
     btree_init(tree);
 }
 
-size_t btree_size(btree_t *tree)
+size_t
+btree_size(btree_t *tree)
 {
     assert(tree != NULL);
 
     return tree->size;
 }
 
-void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
+void
+btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
 {
     iter->tree = tree;
 
@@ -228,7 +236,8 @@ void btree_iter_init(btree_t *tree, uintptr_t key, btree_iter_t *iter)
  * Returns the level, or the tree height if we're at the right end of the tree
  * and no right side element exists.
  */
-static inline int btree_iter_right_side_level(btree_iter_t *iter)
+static inline int
+btree_iter_right_side_level(btree_iter_t *iter)
 {
     int level;
 
@@ -243,7 +252,8 @@ static inline int btree_iter_right_side_level(btree_iter_t *iter)
     return level;
 }
 
-void *btree_iter_get(btree_iter_t *iter, uintptr_t *key)
+void *
+btree_iter_get(btree_iter_t *iter, uintptr_t *key)
 {
     int level = btree_iter_right_side_level(iter);
     if (level >= iter->tree->height) {
@@ -260,7 +270,8 @@ void *btree_iter_get(btree_iter_t *iter, uintptr_t *key)
     return node->values[pos];
 }
 
-void *btree_iter_next(btree_iter_t *iter)
+void *
+btree_iter_next(btree_iter_t *iter)
 {
     int level = btree_iter_right_side_level(iter);
     if (level >= iter->tree->height) {
@@ -321,7 +332,8 @@ btree_node_insert_entry(struct btree_node *node, size_t pos, uintptr_t key,
     ++node->count;
 }
 
-int btree_iter_insert(btree_iter_t *iter, uintptr_t key, void *value)
+int
+btree_iter_insert(btree_iter_t *iter, uintptr_t key, void *value)
 {
     /* Lazy initialization of empty tree. */
     if (iter->tree->height == 0) {
@@ -435,7 +447,8 @@ int btree_iter_insert(btree_iter_t *iter, uintptr_t key, void *value)
  * Remove the entry at the given position in a node. Entries to the right will
  * be shifted one position to the left to close the gap.
  */
-static void btree_node_remove_entry(struct btree_node *node, size_t pos)
+static void
+btree_node_remove_entry(struct btree_node *node, size_t pos)
 {
     assert(pos < node->count);
     --node->count;
@@ -446,7 +459,8 @@ static void btree_node_remove_entry(struct btree_node *node, size_t pos)
     btree_move_array_entries(node->children, pos + 2, pos + 1, count);
 }
 
-void *btree_iter_remove(btree_iter_t *iter)
+void *
+btree_iter_remove(btree_iter_t *iter)
 {
     bool advance_iter = false;
 
