@@ -111,7 +111,7 @@ unpatch_all(void)
     }
 }
 
-int
+dma_memory_region_t *
 dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
                           uint64_t size, int fd, off_t offset,
                           uint32_t prot)
@@ -128,7 +128,7 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
     check_expected(offset);
     check_expected(prot);
     errno = mock();
-    return mock();
+    return mock_ptr_type(dma_memory_region_t *);
 }
 
 int

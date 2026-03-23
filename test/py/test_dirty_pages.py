@@ -67,7 +67,8 @@ def test_dirty_pages_setup():
 
     vfu_setup_device_quiesce_cb(ctx, quiesce_cb=quiesce_cb)
 
-    ret = vfu_setup_device_dma(ctx, dma_register, dma_unregister)
+    ret = vfu_setup_device_dma(ctx, MAX_DMA_REGIONS, dma_register,
+                               dma_unregister)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)

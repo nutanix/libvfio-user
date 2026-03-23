@@ -50,7 +50,6 @@
 #else
 #define MAX_DMA_SIZE UINT32_MAX /* FIXME check for __i386__ etc? */
 #endif
-#define MAX_DMA_REGIONS 64
 
 #define SERVER_MAX_DATA_XFER_SIZE (VFIO_USER_DEFAULT_MAX_DATA_XFER_SIZE)
 

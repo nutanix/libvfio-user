@@ -62,6 +62,9 @@
 #define ROUND_DOWN(x, a)    ((x) & ~((a)-1))
 #define ROUND_UP(x,a)       ROUND_DOWN((x)+(a)-1, a)
 
+#define NEXT_POWER_OF_2(x) \
+    ((x) == 0 ? 1 : (1 << (sizeof(ull_t) * CHAR_BIT - __builtin_clzll(x))))
+
 typedef unsigned long long ull_t;
 
 static inline int
