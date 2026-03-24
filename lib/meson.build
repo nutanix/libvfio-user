@@ -6,6 +6,7 @@ libvfio_user_cflags = []
 libvfio_user_sources = [
     'btree.c',
     'dma.c',
+    'iommufd.c',
     'irq.c',
     'libvfio-user.c',
     'migration.c',

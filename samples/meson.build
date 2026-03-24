@@ -1,6 +1,7 @@
 
 client_sources = [
     'client.c',
+    '../lib/iommufd.c',
     '../lib/migration.c',
     '../lib/tran.c',
     '../lib/tran_sock.c',
