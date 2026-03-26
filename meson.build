@@ -41,7 +41,6 @@ json_c_dep = dependency('json-c', version: '>=' + json_c_version)
 cmocka_version = ''
 cmocka_dep = dependency('cmocka', version: '>=' + cmocka_version)
 
-
 pytest = find_program('pytest-3', required: false)
 flake8 = find_program('flake8', required: false)
 misspell_fixer = find_program('misspell-fixer', required: false)
@@ -76,6 +75,10 @@ if get_option('warning_level') == '2'
         '-Wmissing-declarations',
         '-Wwrite-strings',
     ])
+endif
+
+if cc.check_header('linux/kcmp.h')
+  common_cflags += ['-DHAVE_LINUX_KCMP_H']
 endif
 
 subdir('include')

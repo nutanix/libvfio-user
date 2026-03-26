@@ -28,6 +28,7 @@ unit_tests_sources = [
     'mocks.c',
     '../lib/btree.c',
     '../lib/dma.c',
+    '../lib/fd_cache.c',
     '../lib/irq.c',
     '../lib/libvfio-user.c',
     '../lib/migration.c',
