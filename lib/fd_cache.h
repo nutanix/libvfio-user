@@ -58,6 +58,12 @@
  * Returns a file descriptor equivalent to the provided descriptor, or -1 on
  * error. The returned descriptor must be released by calling fd_cache_put()
  * when the caller no longer needs the descriptor.
+ *
+ * Depending on whether the `kcmp` syscall is available and functions
+ * correctly, this function might ignore certain kinds of file descriptors and
+ * bypass the cache for them. They won't be de-duplicated, but the API surface
+ * is still consistent: fd_cache_get always returns the passed fd in this case,
+ * and fd_cache_put will just close the file descriptor.
  */
 int
 fd_cache_get(int fd);

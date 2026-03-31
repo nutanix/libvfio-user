@@ -83,6 +83,8 @@ is_kcmp_available(int fd)
 
     return available;
 }
+#else
+#define is_kcmp_available(fd) (false)
 #endif
 
 static int
@@ -112,7 +114,7 @@ is_same_file(const struct fd_cache_entry *entry1,
 }
 
 static int
-fd_cache_entry_init(int fd, struct fd_cache_entry *entry)
+fd_cache_entry_init(int fd, struct fd_cache_entry *entry, bool *accurate)
 {
     struct stat st;
     int flags;
@@ -126,6 +128,17 @@ fd_cache_entry_init(int fd, struct fd_cache_entry *entry)
     entry->ino = st.st_ino;
     entry->flags = flags;
     entry->refcount = 0;
+
+    /*
+     * Indicate whether fd equivalence testing will work accurately for the fd.
+     * This is trivially true when kcmp is available. When operating in
+     * fallback mode, declare that non-regular files can't be accurately
+     * compared. This is to exclude most "exotic" file descriptors such as
+     * eventfd, etc. The reason is that some of these don't have unique inode
+     * numbers, which would cause false positives in (dev, inode)-based
+     * duplicate detection.
+     */
+    *accurate = is_kcmp_available(fd) || S_ISREG(st.st_mode);
 
     return 0;
 }
@@ -181,9 +194,21 @@ fd_cache_get_locked(int fd)
     struct fd_cache_entry query;
     btree_iter_t iter;
     uintptr_t key;
+    bool accurate;
 
-    if (fd_cache_entry_init(fd, &query) != 0 ||
-        fd_cache_lookup(&query, &iter, &entry) != 0) {
+    if (fd_cache_entry_init(fd, &query, &accurate) != 0) {
+        return -1;
+    }
+
+    /*
+     * When we can't make accurate comparisons, bypass the cache and
+     * pretend to the caller that everything is fine.
+     */
+    if (!accurate) {
+        return fd;
+    }
+
+    if (fd_cache_lookup(&query, &iter, &entry) != 0) {
         return -1;
     }
 
@@ -218,13 +243,27 @@ fd_cache_put_locked(int fd)
     struct fd_cache_entry *entry;
     struct fd_cache_entry query;
     btree_iter_t iter;
+    bool accurate;
 
     if (fd == -1) {
         return 0;
     }
 
-    if (fd_cache_entry_init(fd, &query) != 0 ||
-        fd_cache_lookup(&query, &iter, &entry) != 0) {
+    if (fd_cache_entry_init(fd, &query, &accurate) != 0) {
+        return -1;
+    }
+
+    if (!accurate) {
+        /*
+         * This file descriptor isn't eligible for de-duplication and thus
+         * fd_cache_get hasn't created a cache entry. Just close the
+         * descriptor to provide consistent semantics to the caller.
+         */
+        close_safely(&fd);
+        return 0;
+    }
+
+    if (fd_cache_lookup(&query, &iter, &entry) != 0) {
         return -1;
     }
 
