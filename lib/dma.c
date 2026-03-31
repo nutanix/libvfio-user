@@ -132,6 +132,11 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
                 region->fd, region->info.mapping.iov_base,
                 iov_end(&region->info.mapping));
     }
+
+    assert(region->fd != -1);
+
+    fd_cache_put(region->fd);
+    region->fd = -1;
 }
 
 /* FIXME not thread safe */
@@ -165,7 +170,6 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 
     if (region->info.vaddr != NULL) {
         dma_controller_unmap_region(dma, region);
-        fd_cache_put(region->fd);
     } else {
         assert(region->fd == -1);
     }
@@ -204,7 +208,6 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 
         if (region->info.vaddr != NULL) {
             dma_controller_unmap_region(dma, region);
-            fd_cache_put(region->fd);
         } else {
             assert(region->fd == -1);
         }
@@ -396,6 +399,9 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %s: %m", rstr);
             goto rollback;
+        } else {
+            /* Ownership of the fd is now with the region. */
+            fd = -1;
         }
     }
 
