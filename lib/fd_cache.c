@@ -52,6 +52,10 @@
 static btree_t cache_tree;
 static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Not static so the unit test can access these for fallback testing. */
+bool kcmp_checked;
+bool kcmp_available;
+
 struct fd_cache_entry {
     int fd;
     dev_t dev;
@@ -71,17 +75,14 @@ kcmp(pid_t pid1, pid_t pid2, int type, unsigned long idx1, unsigned long idx2)
 static bool
 is_kcmp_available(int fd)
 {
-    static bool checked = false;
-    static bool available = false;
-
-    if (!checked) {
+    if (!kcmp_checked) {
         pid_t pid = getpid();
 
-        available = kcmp(pid, pid, KCMP_FILE, fd, fd) == 0;
-        checked = true;
+        kcmp_available = kcmp(pid, pid, KCMP_FILE, fd, fd) == 0;
+        kcmp_checked = true;
     }
 
-    return available;
+    return kcmp_available;
 }
 #else
 #define is_kcmp_available(fd) (false)

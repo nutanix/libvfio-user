@@ -84,6 +84,27 @@ test(
     suite: 'unit',
 )
 
+fd_cache_unit_tests = executable(
+    'fd_cache_unit_tests',
+    sources: [
+      'fd_cache_unit_tests.c',
+      '../lib/btree.c',
+      '../lib/fd_cache.c',
+    ],
+    c_args: common_cflags,
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    install: false,
+)
+
+test(
+    'fd_cache_unit_tests',
+    fd_cache_unit_tests,
+    suite: 'unit',
+)
+
 cc = meson.get_compiler('c')
 if cc.get_id() == 'clang' and cc.version().version_compare('>=6.0.0')
   btree_fuzz_test = executable(
