@@ -376,6 +376,37 @@ test_dma_controller_add_region_fd_deduplication(void **state UNUSED)
 }
 
 static void
+test_dma_controller_add_region_twice(void **state UNUSED)
+{
+    char template[] = "libvfio_user_unit_tests_dma_mapping_XXXXXX";
+    vfu_dma_addr_t dma_addr = (void *)0x1000;
+    dma_memory_region_t *r1, *r2;
+    off_t offset = 0;
+    size_t size = 0x1000;
+    int fd1 = -1;
+    int fd2 = -1;
+
+    fd1 = mkstemp(template);
+    assert_int_not_equal(-1, fd1);
+    assert_int_equal(0, unlink(template));
+    assert_int_equal(0, ftruncate(fd1, size));
+    fd2 = dup(fd1);
+    assert_int_not_equal(-1, fd2);
+
+    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd1, offset,
+                                   PROT_NONE);
+    assert_non_null(r1);
+    assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
+
+    /* Once more to confirm that identical regions are accepted. */
+    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd2, offset,
+                                   PROT_NONE);
+    assert_non_null(r2);
+    assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
+    assert_ptr_equal(r1, r2);
+}
+
+static void
 test_dma_controller_remove_region_mapped(void **state UNUSED)
 {
     dma_memory_region_t region = {
@@ -612,6 +643,7 @@ main(void)
         CM_TEST_ENTRY(test_handle_dma_unmap),
         CM_TEST_ENTRY(test_dma_controller_add_region_no_fd),
         CM_TEST_ENTRY(test_dma_controller_add_region_fd_deduplication),
+        CM_TEST_ENTRY(test_dma_controller_add_region_twice),
         CM_TEST_ENTRY(test_dma_controller_remove_region_mapped),
         CM_TEST_ENTRY(test_dma_controller_remove_region_unmapped),
         CM_TEST_ENTRY(test_dma_addr_to_sgl),
