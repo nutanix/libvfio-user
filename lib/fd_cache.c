@@ -230,7 +230,6 @@ fd_cache_get_locked(int fd)
 
     key = fd_cache_entry_compute_key(entry);
     if (btree_iter_insert(&iter, key, entry) != 0) {
-        close_safely(&entry->fd);
         free(entry);
         return -1;
     }
