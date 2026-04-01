@@ -309,4 +309,28 @@ fd_cache_put(int fd)
     return ret;
 }
 
+int
+fd_cache_is_same_file(int fd1, int fd2)
+{
+    struct fd_cache_entry entry1;
+    struct fd_cache_entry entry2;
+    bool accurate;
+    int ret = -1;
+
+    if (fd1 == fd2) {
+        return 0;
+    } else if (fd1 == -1 || fd2 == -1) {
+        return 1;
+    }
+
+    pthread_mutex_lock(&cache_mutex);
+    if (fd_cache_entry_init(fd1, &entry1, &accurate) == 0 &&
+        fd_cache_entry_init(fd2, &entry2, &accurate) == 0) {
+        ret = is_same_file(&entry1, &entry2);
+    }
+    pthread_mutex_unlock(&cache_mutex);
+
+    return ret;
+}
+
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

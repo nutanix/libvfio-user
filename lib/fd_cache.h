@@ -79,6 +79,22 @@ fd_cache_get(int fd);
 int
 fd_cache_put(int fd);
 
+/*
+ * A utility function to test whether two file descriptors refer to the same
+ * open file. This is only accurate for all cases when kcmp is available. When
+ * it is not (because the kernel doesn't support it or it is blocked by
+ * seccomp), we fall back to a heuristic, which isn't entirely accurate.
+ * Specifically, it has false positives and may report file descriptors to be
+ * equivalent when they are in fact not. In particular, this happens for
+ * anon_inode based file descriptors that don't have a unique inode number, as
+ * is the case for eventfd, for example.
+ *
+ * Returns 1 if the referenced files are different, 0 if the files appear to
+ * match (with the caveats mentioned above) and -1 on error.
+ */
+int
+fd_cache_is_same_file(int fd1, int fd2);
+
 #endif /* LIB_VFIO_USER_FD_CACHE_H */
 
 /* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

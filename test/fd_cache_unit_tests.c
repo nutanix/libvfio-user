@@ -64,6 +64,8 @@ test_tmpfile()
     assert(fd2 != -1);
     assert(fd2 != fd1);
 
+    assert(fd_cache_is_same_file(fd1, fd2) == 0);
+
     /* Confirm that the cache recognizes duplicated file descriptors. */
     fd1 = fd_cache_get(fd1);
     assert(fd1 != -1);
@@ -92,6 +94,8 @@ test_eventfd()
     assert(fd1 != -1);
     fd2 = dup(fd1);
     assert(fd2 != -1);
+
+    assert(fd_cache_is_same_file(fd1, fd2) == 0);
 
     fd1 = fd_cache_get(fd1);
     assert(fd1 != -1);

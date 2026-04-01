@@ -298,15 +298,6 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         return ERROR_PTR(ENOSPC);
     }
 
-    if (fd != -1) {
-        fd = fd_cache_get(fd);
-        if (fd == -1) {
-            vfu_log(dma->vfu_ctx, LOG_ERR,
-                    "can't de-duplicate fd for new DMA region %s: %m", rstr);
-            return NULL;
-        }
-    }
-
     btree_iter_init(&dma->regions, (uintptr_t)dma_addr, &iter);
     existing = btree_iter_get(&iter, NULL);
     if (existing != NULL) {
@@ -317,22 +308,18 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
                         "%s; existing=%#llx", rstr,
                         (ull_t)existing->offset);
-                errno = EINVAL;
-                goto rollback;
+                return ERROR_PTR(EINVAL);
             }
-            if (existing->fd != fd) {
+            if (fd_cache_is_same_file(existing->fd, fd) != 0) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
                         "existing=%d", rstr, existing->fd);
-                errno = EINVAL;
-                goto rollback;
+                return ERROR_PTR(EINVAL);
             }
             if (existing->info.prot != prot) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot for new DMA region "
                         "%s; existing=%#x", rstr, existing->info.prot);
-                errno = EINVAL;
-                goto rollback;
+                return ERROR_PTR(EINVAL);
             }
-            fd_cache_put(fd);
             return existing;
         }
 
@@ -344,23 +331,28 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
                     "DMA region [%p, %p)", rstr, existing->info.iova.iov_base,
                     iov_end(&existing->info.iova));
-            errno = EINVAL;
-            goto rollback;
+            return ERROR_PTR(EINVAL);
         }
     }
 
     if (btree_size(&dma->regions) == dma->max_regions) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "hit max regions %zu", dma->max_regions);
-        errno = EINVAL;
-        goto rollback;
+        return ERROR_PTR(EINVAL);
     }
 
     if (fd != -1) {
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
-            errno = EINVAL;
-            goto rollback;
+            return ERROR_PTR(EINVAL);
+        }
+
+        fd = fd_cache_get(fd);
+        if (fd == -1) {
+            vfu_log(dma->vfu_ctx, LOG_ERR,
+                    "failed to de-duplicate fd for new DMA region %s: %m",
+                    rstr);
+            return NULL;
         }
     }
     page_size = MAX(page_size, getpagesize());
