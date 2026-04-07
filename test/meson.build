@@ -28,6 +28,7 @@ unit_tests_sources = [
     'mocks.c',
     '../lib/btree.c',
     '../lib/dma.c',
+    '../lib/fd_cache.c',
     '../lib/irq.c',
     '../lib/libvfio-user.c',
     '../lib/migration.c',
@@ -80,6 +81,27 @@ btree_unit_tests = executable(
 test(
     'btree_unit_tests',
     btree_unit_tests,
+    suite: 'unit',
+)
+
+fd_cache_unit_tests = executable(
+    'fd_cache_unit_tests',
+    sources: [
+      'fd_cache_unit_tests.c',
+      '../lib/btree.c',
+      '../lib/fd_cache.c',
+    ],
+    c_args: common_cflags,
+    include_directories: [
+      public_include_dir,
+      lib_include_dir,
+    ],
+    install: false,
+)
+
+test(
+    'fd_cache_unit_tests',
+    fd_cache_unit_tests,
     suite: 'unit',
 )
 

@@ -30,6 +30,7 @@
 
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <setjmp.h>
 #include <cmocka.h>
 #include <limits.h>
@@ -42,6 +43,7 @@
 #include <sys/param.h>
 
 #include "dma.h"
+#include "fd_cache.h"
 #include "irq.h"
 #include "libvfio-user.h"
 #include "migration.h"
@@ -97,6 +99,7 @@ setup(void **state UNUSED)
 
     vfu_ctx.dma = &dma;
     vfu_ctx.dma->max_regions = 10;
+    vfu_ctx.dma->max_size = 1024 * 1024;
     vfu_ctx.dma->vfu_ctx = &vfu_ctx;
     btree_init(&vfu_ctx.dma->regions);
 
@@ -121,6 +124,7 @@ teardown(void **state UNUSED)
 
     btree_iter_init(&vfu_ctx.dma->regions, 0, &iter);
     while ((region = btree_iter_remove(&iter)) != NULL) {
+        fd_cache_put(&region->fd);
         free(region);
     }
     return 0;
@@ -326,6 +330,80 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     assert_int_equal(offset, r->offset);
     assert_int_equal(fd, r->fd);
     assert_int_equal(PROT_NONE, r->info.prot);
+}
+
+static void
+test_dma_controller_add_region_fd_deduplication(void **state UNUSED)
+{
+    char template[] = "libvfio_user_unit_tests_dma_mapping_XXXXXX";
+    vfu_dma_addr_t dma_addr = (void *)0x1000;
+    dma_memory_region_t *r1;
+    dma_memory_region_t *r2;
+    off_t offset = 0;
+    size_t size = 0x1000;
+    int fd1 = -1;
+    int fd2 = -1;
+
+    fd1 = mkstemp(template);
+    assert_int_not_equal(-1, fd1);
+    assert_int_equal(0, unlink(template));
+    assert_int_equal(0, ftruncate(fd1, size * 2));
+    fd2 = dup(fd1);
+    assert_int_not_equal(-1, fd2);
+
+    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd1, offset,
+                                   PROT_NONE);
+    assert_non_null(r1);
+    assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
+    assert_ptr_not_equal(NULL, r1->info.vaddr);
+    assert_ptr_not_equal(NULL, r1->info.mapping.iov_base);
+    assert_int_equal(size, r1->info.mapping.iov_len);
+    assert_ptr_equal(dma_addr, r1->info.iova.iov_base);
+    assert_int_equal(size, r1->info.iova.iov_len);
+    assert_int_equal(sysconf(_SC_PAGE_SIZE), r1->info.page_size);
+    assert_int_not_equal(-1, r1->fd);
+    assert_int_equal(PROT_NONE, r1->info.prot);
+
+    /*
+     * Add another mapping for the same file and verify that the file
+     * descriptor gets de-duplicated.
+     */
+    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr + size, size, fd2,
+                                   offset + size, PROT_NONE);
+    assert_non_null(r2);
+    assert_int_equal(2, btree_size(&vfu_ctx.dma->regions));
+    assert_int_equal(r1->fd, r2->fd);
+}
+
+static void
+test_dma_controller_add_region_twice(void **state UNUSED)
+{
+    char template[] = "libvfio_user_unit_tests_dma_mapping_XXXXXX";
+    vfu_dma_addr_t dma_addr = (void *)0x1000;
+    dma_memory_region_t *r1, *r2;
+    off_t offset = 0;
+    size_t size = 0x1000;
+    int fd1 = -1;
+    int fd2 = -1;
+
+    fd1 = mkstemp(template);
+    assert_int_not_equal(-1, fd1);
+    assert_int_equal(0, unlink(template));
+    assert_int_equal(0, ftruncate(fd1, size));
+    fd2 = dup(fd1);
+    assert_int_not_equal(-1, fd2);
+
+    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd1, offset,
+                                   PROT_NONE);
+    assert_non_null(r1);
+    assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
+
+    /* Once more to confirm that identical regions are accepted. */
+    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd2, offset,
+                                   PROT_NONE);
+    assert_non_null(r2);
+    assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
+    assert_ptr_equal(r1, r2);
 }
 
 static void
@@ -564,6 +642,8 @@ main(void)
         CM_TEST_ENTRY(test_dma_map_return_value),
         CM_TEST_ENTRY(test_handle_dma_unmap),
         CM_TEST_ENTRY(test_dma_controller_add_region_no_fd),
+        CM_TEST_ENTRY(test_dma_controller_add_region_fd_deduplication),
+        CM_TEST_ENTRY(test_dma_controller_add_region_twice),
         CM_TEST_ENTRY(test_dma_controller_remove_region_mapped),
         CM_TEST_ENTRY(test_dma_controller_remove_region_unmapped),
         CM_TEST_ENTRY(test_dma_addr_to_sgl),

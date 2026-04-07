@@ -41,6 +41,7 @@
 #include <errno.h>
 
 #include "dma.h"
+#include "fd_cache.h"
 #include "private.h"
 
 EXPORT size_t
@@ -63,24 +64,6 @@ fd_get_blocksize(int fd)
         return -1;
 
     return st.st_blksize;
-}
-
-/*
- * Return true if the two fds refer to the same underlying inode.
- */
-static inline bool
-fds_are_same_file(int fd1, int fd2)
-{
-    struct stat st1, st2;
-
-    if (fd1 == fd2) {
-        return true;
-    } else if (fd1 == -1 || fd2 == -1) {
-        return false;
-    }
-
-    return (fstat(fd1, &st1) == 0 && fstat(fd2, &st2) == 0 &&
-            st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino);
 }
 
 dma_controller_t *
@@ -152,7 +135,8 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
 
     assert(region->fd != -1);
 
-    close_safely(&region->fd);
+    err = fd_cache_put(&region->fd);
+    assert(err == 0);
 }
 
 /* FIXME not thread safe */
@@ -296,11 +280,13 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, uint64_t size,
                                        int fd, off_t offset, uint32_t prot)
 {
-    dma_memory_region_t *region;
+    dma_memory_region_t *existing = NULL;
+    dma_memory_region_t *region = NULL;
     btree_iter_t iter;
     int page_size = 0;
     char rstr[1024];
     int ret = 0;
+    int err;
 
     assert(dma != NULL);
 
@@ -314,44 +300,39 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     }
 
     btree_iter_init(&dma->regions, (uintptr_t)dma_addr, &iter);
-    region = btree_iter_get(&iter, NULL);
-    if (region != NULL) {
+    existing = btree_iter_get(&iter, NULL);
+    if (existing != NULL) {
         /* First check if this is the same exact region. */
-        if (region->info.iova.iov_base == dma_addr &&
-            region->info.iova.iov_len == size) {
-            if (offset != region->offset) {
+        if (existing->info.iova.iov_base == dma_addr &&
+            existing->info.iova.iov_len == size) {
+            if (offset != existing->offset) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad offset for new DMA region "
                         "%s; existing=%#llx", rstr,
-                        (ull_t)region->offset);
+                        (ull_t)existing->offset);
                 return ERROR_PTR(EINVAL);
             }
-            if (!fds_are_same_file(region->fd, fd)) {
-                /*
-                 * Printing the file descriptors here doesn't really make
-                 * sense as they can be different but actually pointing to
-                 * the same file, however in the majority of cases we'll be
-                 * using a single fd.
-                 */
+            if (fd_cache_is_same_file(existing->fd, fd) != 0) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
-                        "existing=%d", rstr, region->fd);
+                        "existing=%d", rstr, existing->fd);
                 return ERROR_PTR(EINVAL);
             }
-            if (region->info.prot != prot) {
+            if (existing->info.prot != prot) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad prot for new DMA region "
-                        "%s; existing=%#x", rstr, region->info.prot);
+                        "%s; existing=%#x", rstr, existing->info.prot);
                 return ERROR_PTR(EINVAL);
             }
-            return region;
+            close_safely(&fd);
+            return existing;
         }
 
         /* Check for overlap, i.e. start of one region is within another. */
-        if ((dma_addr >= region->info.iova.iov_base &&
-             dma_addr < iov_end(&region->info.iova)) ||
-            (region->info.iova.iov_base >= dma_addr &&
-             region->info.iova.iov_base < dma_addr + size)) {
+        if ((dma_addr >= existing->info.iova.iov_base &&
+             dma_addr < iov_end(&existing->info.iova)) ||
+            (existing->info.iova.iov_base >= dma_addr &&
+             existing->info.iova.iov_base < dma_addr + size)) {
             vfu_log(dma->vfu_ctx, LOG_INFO, "new DMA region %s overlaps with "
-                    "DMA region [%p, %p)", rstr, region->info.iova.iov_base,
-                    iov_end(&region->info.iova));
+                    "DMA region [%p, %p)", rstr, existing->info.iova.iov_base,
+                    iov_end(&existing->info.iova));
             return ERROR_PTR(EINVAL);
         }
     }
@@ -367,12 +348,21 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
             return ERROR_PTR(EINVAL);
         }
+
+        fd = fd_cache_get(fd);
+        if (fd == -1) {
+            vfu_log(dma->vfu_ctx, LOG_ERR,
+                    "failed to de-duplicate fd for new DMA region %s: %m",
+                    rstr);
+            return NULL;
+        }
     }
     page_size = MAX(page_size, getpagesize());
 
     region = calloc(1, sizeof(*region));
     if (region == NULL) {
-        return ERROR_PTR(ENOMEM);
+        errno = ENOMEM;
+        goto rollback;
     }
 
     region->info.iova.iov_base = (void *)dma_addr;
@@ -403,6 +393,9 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             vfu_log(dma->vfu_ctx, LOG_ERR,
                    "failed to memory map DMA region %s: %m", rstr);
             goto rollback;
+        } else {
+            /* Ownership of the fd is now with the region. */
+            fd = -1;
         }
     }
 
@@ -416,12 +409,15 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
 
 rollback:
     ret = errno;
-    if (region->info.vaddr != NULL) {
-        dma_controller_unmap_region(dma, region);
+    if (region != NULL) {
+        if (region->info.vaddr != NULL) {
+            dma_controller_unmap_region(dma, region);
+        }
+        free(region->dirty_bitmap);
+        free(region);
     }
-    close_safely(&region->fd);
-    free(region->dirty_bitmap);
-    free(region);
+    err = fd_cache_put(&fd);
+    assert(err == 0);
 
     return ERROR_PTR(ret);
 }
