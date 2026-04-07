@@ -135,8 +135,8 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
 
     assert(region->fd != -1);
 
-    fd_cache_put(region->fd);
-    region->fd = -1;
+    err = fd_cache_put(&region->fd);
+    assert(err == 0);
 }
 
 /* FIXME not thread safe */
@@ -286,6 +286,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     int page_size = 0;
     char rstr[1024];
     int ret = 0;
+    int err;
 
     assert(dma != NULL);
 
@@ -414,7 +415,8 @@ rollback:
         free(region->dirty_bitmap);
         free(region);
     }
-    fd_cache_put(fd);
+    err = fd_cache_put(&fd);
+    assert(err == 0);
 
     return ERROR_PTR(ret);
 }

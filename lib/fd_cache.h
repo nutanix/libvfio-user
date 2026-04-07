@@ -71,13 +71,13 @@ fd_cache_get(int fd);
 /*
  * Release a file descriptor previously acquired from the cache.
  *
- * Returns 0 on success, -1 on error with errno set, specifically ENOENT in
- * case the provided file descriptor isn't present in the cache. A -1 fd
- * argument is accepted and ignored without taking action as a special case for
- * convenience.
+ * Returns 0 and sets fd to -1 on success, or returns -1 on error with errno
+ * set. Specifically, ENOENT indicates that the provided file descriptor isn't
+ * present in the cache. A -1 value in the fd argument is accepted and ignored
+ * without taking action as a special case for convenience.
  */
 int
-fd_cache_put(int fd);
+fd_cache_put(int *fd);
 
 /*
  * A utility function to test whether two file descriptors refer to the same

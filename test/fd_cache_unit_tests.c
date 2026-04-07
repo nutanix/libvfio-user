@@ -80,9 +80,9 @@ test_tmpfile()
     assert(fd3 != -1);
     assert(fd1 != fd3);
 
-    fd_cache_put(fd1);
-    fd_cache_put(fd2);
-    fd_cache_put(fd3);
+    assert(fd_cache_put(&fd1) == 0);
+    assert(fd_cache_put(&fd2) == 0);
+    assert(fd_cache_put(&fd3) == 0);
 }
 
 static void
@@ -112,8 +112,8 @@ test_eventfd()
         assert(fd1 != fd2);
     }
 
-    fd_cache_put(fd1);
-    fd_cache_put(fd2);
+    assert(fd_cache_put(&fd1) == 0);
+    assert(fd_cache_put(&fd2) == 0);
 }
 
 int

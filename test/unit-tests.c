@@ -124,7 +124,7 @@ teardown(void **state UNUSED)
 
     btree_iter_init(&vfu_ctx.dma->regions, 0, &iter);
     while ((region = btree_iter_remove(&iter)) != NULL) {
-        fd_cache_put(region->fd);
+        fd_cache_put(&region->fd);
         free(region);
     }
     return 0;

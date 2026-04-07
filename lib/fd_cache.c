@@ -261,18 +261,18 @@ fd_cache_get_locked(int fd)
 }
 
 static int
-fd_cache_put_locked(int fd)
+fd_cache_put_locked(int *fd)
 {
     struct fd_cache_entry *entry;
     struct fd_cache_entry query;
     btree_iter_t iter;
     bool accurate;
 
-    if (fd == -1) {
+    if (*fd == -1) {
         return 0;
     }
 
-    if (fd_cache_entry_init(fd, &query, &accurate) != 0) {
+    if (fd_cache_entry_init(*fd, &query, &accurate) != 0) {
         return -1;
     }
 
@@ -282,7 +282,7 @@ fd_cache_put_locked(int fd)
          * fd_cache_get hasn't created a cache entry. Just close the
          * descriptor to provide consistent semantics to the caller.
          */
-        close_safely(&fd);
+        close_safely(fd);
         return 0;
     }
 
@@ -290,7 +290,7 @@ fd_cache_put_locked(int fd)
         return -1;
     }
 
-    if (entry == NULL || entry->fd != fd) {
+    if (entry == NULL || entry->fd != *fd) {
         errno = ENOENT;
         return -1;
     }
@@ -303,6 +303,8 @@ fd_cache_put_locked(int fd)
         close_safely(&entry->fd);
         free(entry);
     }
+
+    *fd = -1;
 
     return 0;
 }
@@ -320,7 +322,7 @@ fd_cache_get(int fd)
 }
 
 int
-fd_cache_put(int fd)
+fd_cache_put(int *fd)
 {
     int ret;
 
