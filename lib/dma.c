@@ -321,6 +321,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                         "%s; existing=%#x", rstr, existing->info.prot);
                 return ERROR_PTR(EINVAL);
             }
+            close_safely(&fd);
             return existing;
         }
 
