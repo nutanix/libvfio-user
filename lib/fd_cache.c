@@ -48,7 +48,17 @@
 #include "common.h"
 #include "fd_cache.h"
 
-/* The file descriptor cache is a global B-tree, protected by a mutex. */
+/*
+ * The file descriptor cache is a global B-tree, protected by a mutex.
+ *
+ * Note that libvfio-user's general approach to thread safety is to assume
+ * a given vfu_ctx_t is operated on a single thread only or protected by
+ * appropriate locking by the caller (with a noteworthy exception for DMA via
+ * some vfu_sgl_* APIs). However, since file descriptors are a per-process
+ * resource, we maintain a process-global file descriptor cache and protect it
+ * with a mutex in order to keep keep multiple vfu_ctx_t independent and avoid
+ * imposing locking requirements across contexts.
+ */
 static btree_t cache_tree;
 static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -93,23 +103,29 @@ is_same_file(const struct fd_cache_entry *entry1,
              const struct fd_cache_entry *entry2)
 {
 #ifdef HAVE_LINUX_KCMP_H
-    /*
-     * We prefer using kcmp for detecting file descriptor duplicates.
-     * Unfortunately, it's not available on all kernel versions/configurations,
-     * and Docker's default seccomp policy blocks it. Thus we fall back to
-     * comparing device and inode numbers as well as flags bits. Note that the
-     * fallback isn't a perfect replacement, as it will consider file
-     * descriptors identical even though they originate from separate open()
-     * calls as long as their parameters match. That's OK though, as we really
-     * only care about the targets. Specifically, the file positions aren't
-     * of relevance due to using pread/pwrite with explicit offsets.
-     */
     if (is_kcmp_available(entry1->fd)) {
         pid_t pid = getpid();
         return kcmp(pid, pid, KCMP_FILE, entry1->fd, entry2->fd);
     }
 #endif
 
+    /*
+     * We prefer using kcmp for detecting file descriptor duplicates.
+     *
+     * Unfortunately, it's not available on all kernel versions/configurations,
+     * and Docker's default seccomp policy blocks it. Thus we fall back to
+     * comparing device and inode numbers as well as flags bits. This considers
+     * file descriptors equivalent if they are referring to the same file on
+     * disk (as per device/inode numbers) and were opened in identical mode
+     * (such as read/write, as determined by flags).
+     *
+     * Note that this fallback isn't a perfect replacement for kcmp, as it will
+     * consider file descriptors identical even though they originate from
+     * separate open() calls as long as their parameters match. That's OK
+     * though, as we really only care about the targets. Specifically, the file
+     * positions aren't of relevance due to using pread/pwrite with explicit
+     * offsets.
+     */
     return !(entry1->dev == entry2->dev && entry1->ino == entry2->ino &&
              entry1->flags == entry2->flags);
 }
@@ -149,10 +165,16 @@ fd_cache_entry_compute_key(const struct fd_cache_entry *entry)
 {
     /*
      * Compute a key from device and inode numbers. Note that the key value
-     * isn't unique per file descriptor, but at best per file (assuming there
-     * are no key collisions). That's OK given that the cache B-Tree can handle
-     * multiple entries with the same key, at least as long as the number of
-     * identical keys doesn't grow too large.
+     * isn't unique per file descriptor, for example in case a file gets
+     * open()-ed multiple times. The value is expected to be unique per file
+     * file though, as long as the computed keys don't happen to collide.
+     * Either way, identical keys are tolerable thanks to the cache B-Tree
+     * being able to handle multiple entries with the same key, at least as
+     * long as the number of identical keys doesn't grow too large.
+     *
+     * Given that device and inode numbers are usually only using a lower
+     * portion of a 64 bit integer's range, we byte-swap one of the numbers in
+     * an effort to reduce the likelihood of key collisions.
      */
     return entry->ino ^ (bswap_64(entry->dev) >>
                          ((sizeof(uint64_t) - sizeof(uintptr_t)) * CHAR_BIT));
@@ -169,8 +191,9 @@ fd_cache_lookup(const struct fd_cache_entry *query, btree_iter_t *iter,
     /*
      * Note that the key is not guaranteed to be unique: Collisions can happen
      * if we have multiple independent file descriptors (not just duplicates)
-     * for a given file, or when the cache keys are colliding accidentally (due
-     * to unfortunate inode/device number values).
+     * for a given file (e.g. from multiple open() calls with different
+     * read/write access modes), or when the cache keys are colliding
+     * accidentally (due to unfortunate device/inode number values).
      *
      * Thus, we iterate over all entries matching the target key and rely on
      * `is_same_file` to identify actually matching entries.
