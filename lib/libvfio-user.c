@@ -2413,6 +2413,40 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
         return ERROR_INT(EPERM);
     }
 
+    if (sg->region->access_mode == REGION_ACCESS_MODE_MMAP) {
+        void *target, *src, *dst;
+        assert(sg->region->info.vaddr != NULL);
+        target = sg->region->info.vaddr + sg->offset;
+        src = cmd == VFIO_USER_DMA_READ ? target : data;
+        dst = cmd == VFIO_USER_DMA_READ ? data : target;
+        memcpy(dst, src, sg->length);
+        return 0;
+    }
+
+    if (sg->region->access_mode == REGION_ACCESS_MODE_FILE_IO) {
+        size_t length, offset;
+        assert(sg->region->fd != -1);
+        length = sg->length;
+        offset = sg->offset + sg->region->offset;
+        while (length > 0) {
+            ssize_t ret;
+            if (cmd == VFIO_USER_DMA_READ) {
+                ret = pread(sg->region->fd, data, length, offset);
+            } else {
+                ret = pwrite(sg->region->fd, data, length, offset);
+            }
+            if (ret <= 0) {
+                return ERROR_INT(EIO);
+            }
+            data += ret;
+            offset += ret;
+            length -= ret;
+        }
+        return 0;
+    }
+
+    assert(sg->region->access_mode == REGION_ACCESS_MODE_MSG);
+
     rlen = sizeof(struct vfio_user_dma_region_access) +
            MIN(sg->length, vfu_ctx->client_max_data_xfer_size);
 
