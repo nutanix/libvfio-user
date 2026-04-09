@@ -676,6 +676,7 @@ int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                struct vfio_user_dma_map *dma_map)
 {
+    enum region_access_mode access_mode;
     dma_memory_region_t *region;
     char rstr[1024];
     int fd = -1;
@@ -699,6 +700,14 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
 
+    if (msg->in.nr_fds > 0) {
+        fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
+        if (fd < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
+            return -1;
+        }
+    }
+
     if (dma_map->flags & VFIO_USER_F_DMA_REGION_READ) {
         prot |= PROT_READ;
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_READ;
@@ -709,22 +718,31 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_WRITE;
     }
 
+    /* If not specified, default to mmap()-ed access if an fd is provided. */
+    access_mode = fd != -1 ? REGION_ACCESS_MODE_MMAP : REGION_ACCESS_MODE_MSG;
+    if (dma_map->flags & VFIO_USER_F_DMA_REGION_MMAP) {
+        access_mode = REGION_ACCESS_MODE_MMAP;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_MMAP;
+    } else if (dma_map->flags & VFIO_USER_F_DMA_REGION_FILE_IO) {
+        access_mode = REGION_ACCESS_MODE_FILE_IO;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_FILE_IO;
+    }
+
     if (dma_map->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
+        close_safely(&fd);
         return ERROR_INT(EINVAL);
     }
 
-    if (msg->in.nr_fds > 0) {
-        fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
-        if (fd < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
-            return -1;
-        }
+    if (access_mode != REGION_ACCESS_MODE_MSG && fd == -1) {
+        vfu_log(vfu_ctx, LOG_ERR, "file descriptor required for mode=%u",
+                access_mode);
+        return ERROR_INT(EINVAL);
     }
 
     region = dma_controller_add_region(
         vfu_ctx->dma, (vfu_dma_addr_t)(uintptr_t)dma_map->addr, dma_map->size,
-        fd, dma_map->offset, prot);
+        fd, dma_map->offset, prot, access_mode);
     if (region == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
         close_safely(&fd);

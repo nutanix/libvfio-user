@@ -52,7 +52,7 @@ dma_sg_size(void)
 
 bool
 dma_sg_is_mappable(const dma_sg_t *sg) {
-    return sg->region->info.vaddr != NULL;
+    return sg->region->access_mode == REGION_ACCESS_MODE_MMAP;
 }
 
 static inline ssize_t
@@ -132,11 +132,6 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
                 region->fd, region->info.mapping.iov_base,
                 iov_end(&region->info.mapping));
     }
-
-    assert(region->fd != -1);
-
-    err = fd_cache_put(&region->fd);
-    assert(err == 0);
 }
 
 /* FIXME not thread safe */
@@ -148,6 +143,7 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 {
     dma_memory_region_t *region;
     btree_iter_t iter;
+    int err;
 
     assert(dma != NULL);
 
@@ -170,12 +166,12 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 
     if (region->info.vaddr != NULL) {
         dma_controller_unmap_region(dma, region);
-    } else {
-        assert(region->fd == -1);
     }
 
     btree_iter_remove(&iter);
     dma_controller_increment_regions_generation(dma);
+    err = fd_cache_put(&region->fd);
+    assert(err == 0);
     free(region);
 
     return 0;
@@ -188,6 +184,7 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 {
     dma_memory_region_t *region = NULL;
     btree_iter_t iter;
+    int err;
 
     assert(dma != NULL);
 
@@ -208,10 +205,10 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 
         if (region->info.vaddr != NULL) {
             dma_controller_unmap_region(dma, region);
-        } else {
-            assert(region->fd == -1);
         }
 
+        err = fd_cache_put(&region->fd);
+        assert(err == 0);
         free(region);
     }
 }
@@ -261,7 +258,7 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
 static int
 dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 {
-    assert(region->fd != -1);
+    assert(region->access_mode != REGION_ACCESS_MODE_MSG);
 
     ssize_t size = get_bitmap_size(region->info.iova.iov_len, pgsize);
     if (size < 0) {
@@ -278,7 +275,8 @@ dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
 dma_memory_region_t *
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, uint64_t size,
-                                       int fd, off_t offset, uint32_t prot)
+                                       int fd, off_t offset, uint32_t prot,
+                                       enum region_access_mode access_mode)
 {
     dma_memory_region_t *existing = NULL;
     dma_memory_region_t *region = NULL;
@@ -342,7 +340,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         return ERROR_PTR(EINVAL);
     }
 
-    if (fd != -1) {
+    if (access_mode != REGION_ACCESS_MODE_MSG) {
         page_size = fd_get_blocksize(fd);
         if (page_size < 0) {
             vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
@@ -369,10 +367,11 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     region->info.iova.iov_len = size;
     region->info.page_size = page_size;
     region->info.prot = prot;
+    region->access_mode = access_mode;
     region->offset = offset;
     region->fd = fd;
 
-    if (fd != -1) {
+    if (access_mode != REGION_ACCESS_MODE_MSG) {
         /*
          * TODO introduce a function that tells whether dirty page logging is
          * enabled
@@ -387,15 +386,14 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
             }
         }
 
-        ret = dma_map_region(dma, region);
+        if (access_mode == REGION_ACCESS_MODE_MMAP) {
+            ret = dma_map_region(dma, region);
 
-        if (ret != 0) {
-            vfu_log(dma->vfu_ctx, LOG_ERR,
-                   "failed to memory map DMA region %s: %m", rstr);
-            goto rollback;
-        } else {
-            /* Ownership of the fd is now with the region. */
-            fd = -1;
+            if (ret != 0) {
+                vfu_log(dma->vfu_ctx, LOG_ERR,
+                       "failed to memory map DMA region %s: %m", rstr);
+                goto rollback;
+            }
         }
     }
 
@@ -503,7 +501,7 @@ dma_controller_dirty_page_logging_start(dma_controller_t *dma, size_t pgsize)
     for (btree_iter_init(&dma->regions, 0, &iter);
          (region = btree_iter_get(&iter, NULL)) != NULL;
          btree_iter_next(&iter)) {
-        if (region->fd == -1) {
+        if (region->access_mode == REGION_ACCESS_MODE_MSG) {
             continue;
         }
 
@@ -766,8 +764,8 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
 
     region = sg.region;
 
-    if (region->fd == -1) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "region [%p-%p] is not mapped",
+    if (region->access_mode == REGION_ACCESS_MODE_MSG) {
+        vfu_log(dma->vfu_ctx, LOG_ERR, "region [%p-%p] isn't accessed directly",
                 region->info.iova.iov_base, iov_end(&region->info.iova));
         return ERROR_INT(EINVAL);
     }
