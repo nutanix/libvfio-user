@@ -145,9 +145,9 @@ def test_dma_read_write():
     assert ret == 1
 
     data = bytearray([x & 0xff for x in range(0, sg[0].length)])
-    assert vfu_sgl_write(ctx, sg, 1, data) == 0
+    assert vfu_sgl_write(ctx, sg, 1, data, 0) == 0
 
-    assert vfu_sgl_read(ctx, sg, 1) == (0, data)
+    assert vfu_sgl_read(ctx, sg, 1, 0) == (0, data)
 
     assert dma_handler.read(sg[0].dma_addr + sg[0].offset,
                             sg[0].length) == data
@@ -162,9 +162,9 @@ def test_dma_read_write_large():
     assert ret == 1
 
     data = bytearray([x & 0xff for x in range(0, sg[0].length)])
-    assert vfu_sgl_write(ctx, sg, 1, data) == 0
+    assert vfu_sgl_write(ctx, sg, 1, data, 0) == 0
 
-    assert vfu_sgl_read(ctx, sg, 1) == (0, data)
+    assert vfu_sgl_read(ctx, sg, 1, 0) == (0, data)
 
     assert dma_handler.read(sg[0].dma_addr + sg[0].offset,
                             sg[0].length) == data
@@ -184,9 +184,48 @@ def test_dma_read_write_error():
                               prot=mmap.PROT_READ | mmap.PROT_WRITE)
     assert ret == 1
 
-    ret, _ = vfu_sgl_read(ctx, sg, 1)
+    ret, _ = vfu_sgl_read(ctx, sg, 1, 0)
     assert ret == -1
     assert c.get_errno() == errno.EIO
+
+
+def test_dma_read_write_bad_flags():
+    ret, sg = vfu_addr_to_sgl(ctx,
+                              dma_addr=MAP_ADDR + 0x1000,
+                              length=2 * PAGE_SIZE + 42,
+                              max_nr_sgs=1,
+                              prot=mmap.PROT_READ | mmap.PROT_WRITE)
+    assert ret == 1
+
+    data = bytearray([x & 0xff for x in range(0, sg[0].length)])
+    ret = vfu_sgl_write(ctx, sg, 1, data, 0x42)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+    ret, _ = vfu_sgl_read(ctx, sg, 1, 0x42)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+
+def test_dma_read_write_bad_sg_count():
+    ret, sg = vfu_addr_to_sgl(ctx,
+                              dma_addr=MAP_ADDR + 0x1000,
+                              length=2 * PAGE_SIZE + 42,
+                              max_nr_sgs=2,
+                              prot=mmap.PROT_READ | mmap.PROT_WRITE)
+    assert ret == 1
+
+    # Cheese this: we don't actually have a second sg, but we presume sg_cnt is
+    # checked first.
+
+    data = bytearray([x & 0xff for x in range(0, sg[0].length)])
+    ret = vfu_sgl_write(ctx, sg, 2, data, 0)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTSUP
+
+    ret, _ = vfu_sgl_read(ctx, sg, 2, 0)
+    assert ret == -1
+    assert c.get_errno() == errno.ENOTSUP
 
 
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
