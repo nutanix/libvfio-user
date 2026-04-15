@@ -113,10 +113,9 @@ test_insert_randomized()
         /* Iterate the tree and verify the inserted elements are present. */
         int pos = 0;
         uintptr_t key = -1;
-        void *value;
         btree_iter_t iter;
         for (btree_iter_init(&tree, 0, &iter);
-             (value = btree_iter_get(&iter, &key)) != NULL;
+             btree_iter_get(&iter, &key) != NULL;
              btree_iter_next(&iter)) {
             for (uintptr_t p = pos; p < key; ++p) {
                 assert(!present[p]);

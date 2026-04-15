@@ -256,6 +256,7 @@ dma_addr_to_sgl(const dma_controller_t *dma,
      * workload at 512b block size.
      */
     if (likely(thread_generation == dma_generation &&
+               region_hint != NULL &&
                max_nr_sgs > 0 && len > 0 &&
                dma_addr >= region_hint->info.iova.iov_base &&
                dma_addr + len <= iov_end(&region_hint->info.iova))) {
