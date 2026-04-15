@@ -40,7 +40,7 @@ meson build -Db_sanitize=address
 meson test -C build
 ```
 
-The `.github/workflows/pull_request.sh` script runs a
+The `scripts/pre-push.sh` script runs a
 sequence of builds in various configurations. This is
 invoked for all pull requests, but can be launched
 manually by contributors ahead of opening a pull
