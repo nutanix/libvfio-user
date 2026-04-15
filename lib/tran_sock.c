@@ -100,7 +100,9 @@ tran_sock_send_iovec(int sock, uint16_t msg_id, bool is_reply,
         msg.msg_control = buf;
         msg.msg_controllen = CMSG_SPACE(size);
 
-        struct cmsghdr * cmsg = CMSG_FIRSTHDR(&msg);
+        struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+        /* Quieten clang-analyzer. */
+        assert(cmsg != NULL);
         cmsg->cmsg_level = SOL_SOCKET;
         cmsg->cmsg_type = SCM_RIGHTS;
         cmsg->cmsg_len = CMSG_LEN(size);
