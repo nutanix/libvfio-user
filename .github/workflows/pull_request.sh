@@ -18,7 +18,7 @@ meson test -C $BUILD/asan --no-suite style --print-errorlogs
 # analyzer build
 meson setup $BUILD/scan-build -Dtran-pipe=true
 # no "meson scan-build" for some reason
-ninja -C $BUILD/scan-build -v scan-build -v
+SCANBUILD=$(pwd)/scripts/scan-build.sh ninja -C $BUILD/scan-build -v scan-build -v
 meson test -C $BUILD/scan-build --no-suite style --print-errorlogs
 
 # debug build with clang
