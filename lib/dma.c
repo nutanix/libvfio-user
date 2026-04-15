@@ -66,6 +66,32 @@ fd_get_blocksize(int fd)
     return st.st_blksize;
 }
 
+static int
+dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
+{
+    assert(region->fd != -1);
+
+    ssize_t size = get_bitmap_size(region->info.iova.iov_len, pgsize);
+    if (size < 0) {
+        return size;
+    }
+
+    region->dirty_bitmap = calloc(size, 1);
+    if (region->dirty_bitmap == NULL) {
+        return ERROR_INT(errno);
+    }
+    return 0;
+}
+
+static void
+dirty_page_logging_stop_on_region(dma_memory_region_t *region)
+{
+    if (region->dirty_bitmap != NULL) {
+        free(region->dirty_bitmap);
+        region->dirty_bitmap = NULL;
+    }
+}
+
 dma_controller_t *
 dma_controller_create(vfu_ctx_t *vfu_ctx, size_t max_regions, size_t max_size)
 {
@@ -134,6 +160,8 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
     }
 
     assert(region->fd != -1);
+
+    dirty_page_logging_stop_on_region(region);
 
     err = fd_cache_put(&region->fd);
     assert(err == 0);
@@ -255,23 +283,6 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
             region->info.mapping.iov_base, iov_end(&region->info.mapping));
 
 
-    return 0;
-}
-
-static int
-dirty_page_logging_start_on_region(dma_memory_region_t *region, size_t pgsize)
-{
-    assert(region->fd != -1);
-
-    ssize_t size = get_bitmap_size(region->info.iova.iov_len, pgsize);
-    if (size < 0) {
-        return size;
-    }
-
-    region->dirty_bitmap = calloc(size, 1);
-    if (region->dirty_bitmap == NULL) {
-        return ERROR_INT(errno);
-    }
     return 0;
 }
 
@@ -413,7 +424,7 @@ rollback:
         if (region->info.vaddr != NULL) {
             dma_controller_unmap_region(dma, region);
         }
-        free(region->dirty_bitmap);
+        dirty_page_logging_stop_on_region(region);
         free(region);
     }
     err = fd_cache_put(&fd);
@@ -475,8 +486,7 @@ dma_controller_dirty_page_logging_reset(dma_controller_t *dma)
     for (btree_iter_init(&dma->regions, 0, &iter);
          (region = btree_iter_get(&iter, NULL)) != NULL;
          btree_iter_next(&iter)) {
-        free(region->dirty_bitmap);
-        region->dirty_bitmap = NULL;
+        dirty_page_logging_stop_on_region(region);
     }
     dma->dirty_pgsize = 0;
 }
