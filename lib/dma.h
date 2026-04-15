@@ -85,9 +85,20 @@
 
 struct vfu_ctx;
 
+/* Designates how to access a DMA target region */
+enum region_access_mode {
+    /* Use VFIO_USER_DMA_{READ,WRITE} messages on socket */
+    REGION_ACCESS_MODE_MSG,
+    /* mmap() provided file descriptor */
+    REGION_ACCESS_MODE_MMAP,
+    /* pread()/pwrite() on provided file descriptor */
+    REGION_ACCESS_MODE_FILE_IO,
+};
+
 typedef struct {
     vfu_dma_info_t info;
-    int fd;                     // File descriptor to mmap
+    enum region_access_mode access_mode;
+    int fd;                     // File descriptor for direct access
     off_t offset;               // File offset
     uint8_t *dirty_bitmap;         // Dirty page bitmap
 } dma_memory_region_t;
@@ -127,7 +138,8 @@ dma_controller_destroy(dma_controller_t *dma);
  */
 MOCK_DECLARE(dma_memory_region_t *, dma_controller_add_region,
              dma_controller_t *dma, vfu_dma_addr_t dma_addr, uint64_t size,
-             int fd, off_t offset, uint32_t prot);
+             int fd, off_t offset, uint32_t prot,
+             enum region_access_mode access_mode);
 
 MOCK_DECLARE(int, dma_controller_remove_region, dma_controller_t *dma,
              vfu_dma_addr_t dma_addr, size_t size,
@@ -294,7 +306,7 @@ dma_sgl_get(dma_controller_t *dma, dma_sg_t *sgl, struct iovec *iov, size_t cnt)
             return ERROR_INT(EINVAL);
         }
 
-        if (sg->region->info.vaddr == NULL) {
+        if (sg->region->access_mode != REGION_ACCESS_MODE_MMAP) {
             return ERROR_INT(EFAULT);
         }
 
