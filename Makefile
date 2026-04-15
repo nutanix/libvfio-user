@@ -43,10 +43,10 @@ test: all
 	meson test -C $(BUILD_DIR)
 
 pre-push:
-	.github/workflows/pull_request.sh
+	scripts/pre-push.sh
 
 coverity:
-	.github/workflows/coverity.sh
+	scripts/coverity.sh
 
 clean:
 	rm -rf $(BUILD_DIR)
