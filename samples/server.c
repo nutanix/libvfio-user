@@ -220,7 +220,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
         if (use_messages) {
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: MESSAGE WRITE addr %p size %d",
                     __func__, addr, size);
-            ret = vfu_sgl_write(vfu_ctx, sg, 1, &buf[i * size]);
+            ret = vfu_sgl_write(vfu_ctx, sg, 1, &buf[i * size], 0);
             if (ret < 0) {
                 err(EXIT_FAILURE, "vfu_sgl_write failed");
             }
@@ -269,7 +269,7 @@ static void do_dma_io(vfu_ctx_t *vfu_ctx, struct server_data *server_data,
         if (use_messages) {
             vfu_log(vfu_ctx, LOG_DEBUG, "%s: MESSAGE READ  addr %p size %d",
                     __func__, addr, 2 * size);
-            ret = vfu_sgl_read(vfu_ctx, sg, 1, &buf[i * size]);
+            ret = vfu_sgl_read(vfu_ctx, sg, 1, &buf[i * size], 0);
             if (ret < 0) {
                 err(EXIT_FAILURE, "vfu_sgl_read failed");
             }
