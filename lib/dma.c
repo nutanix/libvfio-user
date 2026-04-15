@@ -135,6 +135,11 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
 
     assert(region->fd != -1);
 
+    if (region->dirty_bitmap != NULL) {
+        free(region->dirty_bitmap);
+        region->dirty_bitmap = NULL;
+    }
+
     err = fd_cache_put(&region->fd);
     assert(err == 0);
 }
