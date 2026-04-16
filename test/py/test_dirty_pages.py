@@ -412,4 +412,90 @@ def test_dirty_pages_uninitialised_dma():
 
     vfu_destroy_ctx(ctx)
 
+
+def test_dirty_pages_ctx_no_stop():
+    """
+    Test that dirty page tracking resources are properly cleaned up even when:
+    1. DMA regions are unmapped while dirty page logging is active
+    2. The device context is destroyed without explicitly stopping dirty page
+       logging first
+
+    This validates that there are no memory leaks in the dirty bitmap handling
+    paths during both explicit DMA unmap operations and implicit cleanup during
+    context destruction.
+    """
+    global ctx, client
+
+    # Create context and initialize device
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    ret = vfu_pci_init(ctx)
+    assert ret == 0
+
+    vfu_setup_device_quiesce_cb(ctx, quiesce_cb=quiesce_cb)
+
+    ret = vfu_setup_device_dma(ctx, MAX_DMA_REGIONS,
+                               dma_register,
+                               dma_unregister)
+    assert ret == 0
+
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
+
+    client = connect_client(ctx)
+
+    # Create two separate DMA regions
+    f1 = tempfile.TemporaryFile()
+    f1.truncate(0x10 << PAGE_SHIFT)
+    f2 = tempfile.TemporaryFile()
+    f2.truncate(0x10 << PAGE_SHIFT)
+
+    # Map first region at 0x100000
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x10 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, fds=[f1.fileno()])
+
+    # Map second region at 0x300000
+    payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
+        flags=(VFIO_USER_F_DMA_REGION_READ | VFIO_USER_F_DMA_REGION_WRITE),
+        offset=0, addr=0x30 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, fds=[f2.fileno()])
+
+    # Setup migration support
+    ret = vfu_setup_device_migration_callbacks(ctx)
+    assert ret == 0
+
+    # Start dirty page logging
+    start_logging()
+
+    # Modify pages in both regions
+    write_to_page(ctx, 0x10, 1, get_bitmap=False)
+    write_to_page(ctx, 0x30, 1, get_bitmap=False)
+
+    # Unmap the first DMA region
+    payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
+        addr=0x10 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
+    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
+
+    # Verify first region is actually unmapped (should fail)
+    get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT,
+                          length=0x10 << PAGE_SHIFT,
+                          expect=errno.ENOENT)
+
+    # Verify second region still works and dirty bit is correctly set
+    bitmap = get_dirty_page_bitmap(addr=0x30 << PAGE_SHIFT,
+                                   length=0x10 << PAGE_SHIFT)
+    # First page of second region should be marked dirty
+    assert bitmap == 0b1
+
+    # Don't unmap the second DMA region - let context destruction clean it up
+    # This tests that the destroy path properly frees remaining dirty bitmaps
+
+    # Cleanup
+    client.disconnect(ctx)
+    vfu_destroy_ctx(ctx)
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab:
