@@ -52,6 +52,7 @@ _log(vfu_ctx_t *vfu_ctx UNUSED, UNUSED int level, char const *msg)
 }
 
 static int pin[16];
+bool initial_dirty;
 bool dirty = true;
 
 static ssize_t
@@ -119,6 +120,10 @@ static int
 migration_device_state_transition(vfu_ctx_t *vfu_ctx, vfu_migr_state_t state)
 {
     vfu_log(vfu_ctx, LOG_DEBUG, "migration: transition to state %d", state);
+    if (state == VFU_MIGR_STATE_PRE_COPY) {
+        initial_dirty = true;
+        dirty = true;
+    }
     return 0;
 }
 
@@ -130,6 +135,7 @@ migration_read_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
     if (dirty) {
         memcpy(buf, &pin, sizeof(pin));
         dirty = false;
+        initial_dirty = false;
         return sizeof(pin);
     }
 
@@ -141,6 +147,23 @@ migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
     assert(size == sizeof(pin));
     memcpy(&pin, buf, sizeof(pin));
+    return 0;
+}
+
+static ssize_t
+migration_get_data_size(UNUSED vfu_ctx_t *vfu_ctx)
+{
+    return dirty ? sizeof(pin) : 0;
+}
+
+static int
+migration_get_precopy_info(UNUSED vfu_ctx_t *vfu_ctx, uint64_t *initial_bytes,
+                           uint64_t *dirty_bytes)
+{
+    *initial_bytes = initial_dirty ? sizeof(pin) : 0;
+    *dirty_bytes = dirty ? sizeof(pin) : 0;
+    *dirty_bytes -= *initial_bytes;
+
     return 0;
 }
 
@@ -168,7 +191,9 @@ main(int argc, char *argv[])
         .version = VFU_MIGR_CALLBACKS_VERS,
         .transition = &migration_device_state_transition,
         .read_data = &migration_read_data,
-        .write_data = &migration_write_data
+        .write_data = &migration_write_data,
+        .get_data_size = &migration_get_data_size,
+        .get_precopy_info = &migration_get_precopy_info,
     };
 
     while ((opt = getopt(argc, argv, "MRv")) != -1) {
