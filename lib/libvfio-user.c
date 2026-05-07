@@ -888,16 +888,12 @@ static int
 device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
-    
+
     ret = call_reset_cb(vfu_ctx, reason);
     if (ret < 0) {
         return ret;
     }
 
-    if (vfu_ctx->migration != NULL) {
-        migr_state_transition(vfu_ctx->migration,
-                              VFIO_USER_DEVICE_STATE_RUNNING);
-    }
     return 0;
 }
 
