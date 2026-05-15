@@ -30,6 +30,26 @@
 
 #include "private.h"
 
+#ifndef check_expected_int
+#define check_expected_int(parameter) \
+    check_expected(parameter)
+#endif
+
+#ifndef check_expected_uint
+#define check_expected_uint(parameter) \
+    check_expected(parameter)
+#endif
+
+#ifndef expect_int_value
+#define expect_int_value(function, parameter, value) \
+    expect_value(function, parameter, value)
+#endif
+
+#ifndef expect_uint_value
+#define expect_uint_value(function, parameter, value) \
+    expect_value(function, parameter, value)
+#endif
+
 void unpatch_all(void);
 
 void patch(const char *name);
