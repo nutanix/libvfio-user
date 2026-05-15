@@ -30,6 +30,47 @@
 
 #include "private.h"
 
+/*
+ * Since <cmocka_version.h> is unavailable in CMocka versions prior to 2.0.0,
+ * the presence of the expect_check_data() macro is used instead to determine
+ * the current API version of CMocka.
+ */
+#ifndef expect_check_data
+
+/*
+ * In CMocka 1.x, the callback function (check_function) for expect_check()
+ * requires parameters of LargestIntegralType, whereas in CMocka 2.x, both
+ * expect_check() and LargestIntegralType are deprecated, and the callback
+ * function for expect_check_data() requires parameters with the type of
+ * CMockaValueData, which is incompatible with LargestIntegralType.
+ *
+ * Therefore, this typedef is required to maintain compatibility between
+ * different CMocka versions, while minimizing changes to the existing
+ * unit tests.
+ */
+typedef uintmax_t CMockaValueData;
+
+#define cast_ptr_to_cmocka_value(value)       ((uintptr_t)(value))
+#define extract_uint_from_cmocka_value(value) (value)
+
+#define check_expected_int(parameter) \
+    check_expected(parameter)
+
+#define check_expected_uint(parameter) \
+    check_expected(parameter)
+
+#define expect_check_data(function, parameter, check_function, check_data) \
+    expect_check(function, parameter, check_function, check_data)
+
+#define expect_int_value(function, parameter, value) \
+    expect_value(function, parameter, value)
+
+#define expect_uint_value(function, parameter, value) \
+    expect_value(function, parameter, value)
+#else
+#define extract_uint_from_cmocka_value(value) ((value).uint_val)
+#endif
+
 void unpatch_all(void);
 
 void patch(const char *name);

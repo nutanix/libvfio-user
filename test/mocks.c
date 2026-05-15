@@ -123,10 +123,10 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr,
 
     check_expected_ptr(dma);
     check_expected_ptr(dma_addr);
-    check_expected(size);
-    check_expected(fd);
-    check_expected(offset);
-    check_expected(prot);
+    check_expected_uint(size);
+    check_expected_int(fd);
+    check_expected_int(offset);
+    check_expected_uint(prot);
     errno = mock();
     return mock_ptr_type(dma_memory_region_t *);
 }
@@ -142,11 +142,11 @@ dma_controller_remove_region(dma_controller_t *dma,
                                                    dma_unregister, data);
     }
 
-    check_expected(dma);
-    check_expected(dma_addr);
-    check_expected(size);
-    check_expected(dma_unregister);
-    check_expected(data);
+    check_expected_ptr(dma);
+    check_expected_ptr(dma_addr);
+    check_expected_uint(size);
+    check_expected_ptr(dma_unregister);
+    check_expected_ptr(data);
     return mock();
 }
 
@@ -154,8 +154,8 @@ void
 dma_controller_unmap_region(dma_controller_t *dma,
                             dma_memory_region_t *region)
 {
-    check_expected(dma);
-    check_expected(region);
+    check_expected_ptr(dma);
+    check_expected_ptr(region);
 }
 
 bool
@@ -164,7 +164,7 @@ device_is_stopped(struct migration *migration)
     if (!is_patched("device_is_stopped")) {
         return __real_device_is_stopped(migration);
     }
-    check_expected(migration);
+    check_expected_ptr(migration);
     return mock();
 }
 
@@ -174,7 +174,7 @@ device_is_stopped_and_copying(struct migration *migration)
     if (!is_patched("device_is_stopped_and_copying")) {
         return __real_device_is_stopped_and_copying(migration);
     }
-    check_expected(migration);
+    check_expected_ptr(migration);
     return mock();
 }
 
@@ -184,7 +184,7 @@ cmd_allowed_when_stopped_and_copying(uint16_t cmd)
     if (!is_patched("cmd_allowed_when_stopped_and_copying")) {
         return __real_cmd_allowed_when_stopped_and_copying(cmd);
     }
-    check_expected(cmd);
+    check_expected_uint(cmd);
     return mock();
 }
 
@@ -194,8 +194,8 @@ should_exec_command(vfu_ctx_t *vfu_ctx, uint16_t cmd)
     if (!is_patched("should_exec_command")) {
         return __real_should_exec_command(vfu_ctx, cmd);
     }
-    check_expected(vfu_ctx);
-    check_expected(cmd);
+    check_expected_ptr(vfu_ctx);
+    check_expected_uint(cmd);
     return mock();
 }
 
@@ -207,10 +207,10 @@ handle_device_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return __real_handle_device_state(vfu_ctx, migr, device_state,
                                           notify);
     }
-    check_expected(vfu_ctx);
-    check_expected(migr);
-    check_expected(device_state);
-    check_expected(notify);
+    check_expected_ptr(vfu_ctx);
+    check_expected_ptr(migr);
+    check_expected_uint(device_state);
+    check_expected_int(notify);
     return mock();
 }
 
@@ -222,8 +222,8 @@ migr_state_transition(struct migration *migr,
         __real_migr_state_transition(migr, state);
         return;
     }
-    check_expected(migr);
-    check_expected(state);
+    check_expected_ptr(migr);
+    check_expected_int(state);
 }
 
 bool
@@ -232,8 +232,8 @@ vfio_migr_state_transition_is_valid(uint32_t from, uint32_t to)
     if (!is_patched("vfio_migr_state_transition_is_valid")) {
         return __real_vfio_migr_state_transition_is_valid(from, to);
     }
-    check_expected(from);
-    check_expected(to);
+    check_expected_uint(from);
+    check_expected_uint(to);
     return mock();
 }
 
@@ -244,9 +244,9 @@ state_trans_notify(vfu_ctx_t *vfu_ctx, int (*fn)(vfu_ctx_t*, vfu_migr_state_t),
     if (!is_patched("state_trans_notify")) {
         return __real_state_trans_notify(vfu_ctx, fn, vfio_device_state);
     }
-    check_expected(vfu_ctx);
-    check_expected(fn);
-    check_expected(vfio_device_state);
+    check_expected_ptr(vfu_ctx);
+    check_expected_ptr(fn);
+    check_expected_uint(vfio_device_state);
     errno = mock();
     return mock();
 }
@@ -259,10 +259,10 @@ migr_trans_to_valid_state(vfu_ctx_t *vfu_ctx, struct migration *migr,
         return __real_migr_trans_to_valid_state(vfu_ctx, migr, device_state,
                                                 notify);
     }
-    check_expected(vfu_ctx);
-    check_expected(migr);
-    check_expected(device_state);
-    check_expected(notify);
+    check_expected_ptr(vfu_ctx);
+    check_expected_ptr(migr);
+    check_expected_uint(device_state);
+    check_expected_int(notify);
     return mock();
 }
 
@@ -272,7 +272,7 @@ migr_state_vfio_to_vfu(uint32_t vfio_device_state)
     if (!is_patched("migr_state_vfio_to_vfu")) {
         return __real_migr_state_vfio_to_vfu(vfio_device_state);
     }
-    check_expected(vfio_device_state);
+    check_expected_uint(vfio_device_state);
     return mock();
 }
 
@@ -280,22 +280,22 @@ migr_state_vfio_to_vfu(uint32_t vfio_device_state)
 void
 mock_dma_register(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
-    check_expected(vfu_ctx);
-    check_expected(info);
+    check_expected_ptr(vfu_ctx);
+    check_expected_ptr(info);
 }
 
 void
 mock_dma_unregister(vfu_ctx_t *vfu_ctx, vfu_dma_info_t *info)
 {
-    check_expected(vfu_ctx);
-    check_expected(info);
+    check_expected_ptr(vfu_ctx);
+    check_expected_ptr(info);
 }
 
 int
 mock_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type)
 {
-    check_expected(vfu_ctx);
-    check_expected(type);
+    check_expected_ptr(vfu_ctx);
+    check_expected_int(type);
     return mock();
 }
 
@@ -303,8 +303,8 @@ mock_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type)
 int
 mock_notify_migr_state_trans_cb(vfu_ctx_t *vfu_ctx, vfu_migr_state_t vfu_state)
 {
-    check_expected(vfu_ctx);
-    check_expected(vfu_state);
+    check_expected_ptr(vfu_ctx);
+    check_expected_int(vfu_state);
     return mock();
 }
 
@@ -328,7 +328,7 @@ close(int fd)
         return __real_close(fd);
     }
 
-    check_expected(fd);
+    check_expected_int(fd);
     return mock();
 }
 
