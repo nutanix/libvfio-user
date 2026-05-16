@@ -172,11 +172,13 @@ test_dma_map_without_fd(void **state UNUSED)
 }
 
 static int
-check_dma_info(const LargestIntegralType value,
-               const LargestIntegralType cvalue)
+check_dma_info(const CMockaValueData value,
+               const CMockaValueData cvalue)
 {
-    vfu_dma_info_t *info = (vfu_dma_info_t *)(long)value;
-    vfu_dma_info_t *cinfo = (vfu_dma_info_t *)(long)cvalue;
+    vfu_dma_info_t *info = 
+        (vfu_dma_info_t *)(long)extract_uint_from_cmocka_value(value);
+    vfu_dma_info_t *cinfo = 
+        (vfu_dma_info_t *)(long)extract_uint_from_cmocka_value(cvalue);
 
     return info->iova.iov_base == cinfo->iova.iov_base &&
         info->iova.iov_len == cinfo->iova.iov_len &&
@@ -188,13 +190,16 @@ check_dma_info(const LargestIntegralType value,
 }
 
 static int
-check_dma_region(const LargestIntegralType value,
-                 const LargestIntegralType cvalue)
+check_dma_region(const CMockaValueData value,
+                 const CMockaValueData cvalue)
 {
-    dma_memory_region_t *region = (dma_memory_region_t *)(long)value;
-    dma_memory_region_t *cregion = (dma_memory_region_t *)(long)cvalue;
+    dma_memory_region_t *region = 
+        (dma_memory_region_t *)(long)extract_uint_from_cmocka_value(value);
+    dma_memory_region_t *cregion = 
+        (dma_memory_region_t *)(long)extract_uint_from_cmocka_value(cvalue);
 
-    return check_dma_info((uintptr_t)&region->info, (uintptr_t) &cregion->info) &&
+    return check_dma_info(cast_ptr_to_cmocka_value(&region->info), 
+        cast_ptr_to_cmocka_value(&cregion->info)) &&
         region->fd == cregion->fd &&
         region->offset == cregion->offset;
 }
@@ -225,7 +230,8 @@ verify_dma_region(dma_controller_t *dma, dma_memory_region_t *region)
     assert_non_null(entry);
 
     assert_int_equal(
-        1, check_dma_info((uintptr_t)&entry->info, (uintptr_t)&region->info));
+        1, check_dma_info(cast_ptr_to_cmocka_value(&entry->info), 
+                          cast_ptr_to_cmocka_value(&region->info)));
 }
 
 /*
@@ -294,7 +300,8 @@ test_handle_dma_unmap(void **state UNUSED)
     vfu_ctx.dma_unregister = mock_dma_unregister;
 
     expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
-    expect_check(mock_dma_unregister, info, check_dma_info, &regions[0].info);
+    expect_check_data(mock_dma_unregister, info, check_dma_info, 
+                      cast_ptr_to_cmocka_value(&regions[0].info));
 
     ret = handle_dma_unmap(&vfu_ctx,
                            mkmsg(VFIO_USER_DMA_UNMAP, &dma_unmap,
@@ -419,12 +426,13 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     stage_dma_region(vfu_ctx.dma, &region);
 
     expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
-    expect_check(mock_dma_unregister, info, check_dma_info, &region);
+    expect_check_data(mock_dma_unregister, info, check_dma_info,
+                      cast_ptr_to_cmocka_value(&region));
     /* FIXME add unit test when dma_unregister fails */
     patch("dma_controller_unmap_region");
     expect_uint_value(dma_controller_unmap_region, dma, (uintptr_t) vfu_ctx.dma);
-    expect_check(dma_controller_unmap_region, region, check_dma_region,
-                 &region);
+    expect_check_data(dma_controller_unmap_region, region, check_dma_region,
+                      cast_ptr_to_cmocka_value(&region));
     assert_int_equal(0,
         dma_controller_remove_region(vfu_ctx.dma, (void *)0xdeadbeef, 0x100,
             mock_dma_unregister, &vfu_ctx));
@@ -441,7 +449,8 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
     stage_dma_region(vfu_ctx.dma, &region);
 
     expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
-    expect_check(mock_dma_unregister, info, check_dma_info, &region.info);
+    expect_check_data(mock_dma_unregister, info, check_dma_info, 
+                      cast_ptr_to_cmocka_value(&region.info));
     patch("dma_controller_unmap_region");
     assert_int_equal(0,
         dma_controller_remove_region(vfu_ctx.dma, (void *)0xdeadbeef, 0x100,

@@ -50,6 +50,18 @@
     expect_value(function, parameter, value)
 #endif
 
+#ifndef expect_check_data
+typedef uintmax_t CMockaValueData;
+
+#define cast_ptr_to_cmocka_value(value)       ((uintptr_t) (value))
+#define extract_uint_from_cmocka_value(value) (value)
+
+#define expect_check_data(function, parameter, check_function, check_data) \
+    expect_check(function, parameter, check_function, check_data)
+#else
+#define extract_uint_from_cmocka_value(value) ((value).uint_val)
+#endif
+
 void unpatch_all(void);
 
 void patch(const char *name);
