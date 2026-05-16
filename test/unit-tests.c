@@ -159,8 +159,8 @@ test_dma_map_without_fd(void **state UNUSED)
     patch("dma_controller_add_region");
     will_return(dma_controller_add_region, 0xfa4e);
     will_return(dma_controller_add_region, 0xfa4e);
-    expect_uint_value(dma_controller_add_region, dma, (uintptr_t) vfu_ctx.dma);
-    expect_uint_value(dma_controller_add_region, dma_addr, (uintptr_t) dma_map.addr);
+    expect_uint_value(dma_controller_add_region, dma, (uintptr_t)vfu_ctx.dma);
+    expect_uint_value(dma_controller_add_region, dma_addr, (uintptr_t)dma_map.addr);
     expect_uint_value(dma_controller_add_region, size, dma_map.size);
     expect_int_value(dma_controller_add_region, fd, -1);
     expect_int_value(dma_controller_add_region, offset, dma_map.offset);
@@ -299,7 +299,7 @@ test_handle_dma_unmap(void **state UNUSED)
 
     vfu_ctx.dma_unregister = mock_dma_unregister;
 
-    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
+    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t)&vfu_ctx);
     expect_check_data(mock_dma_unregister, info, check_dma_info, 
                       cast_ptr_to_cmocka_value(&regions[0].info));
 
@@ -425,12 +425,12 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
     };
     stage_dma_region(vfu_ctx.dma, &region);
 
-    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
+    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t)&vfu_ctx);
     expect_check_data(mock_dma_unregister, info, check_dma_info,
                       cast_ptr_to_cmocka_value(&region));
     /* FIXME add unit test when dma_unregister fails */
     patch("dma_controller_unmap_region");
-    expect_uint_value(dma_controller_unmap_region, dma, (uintptr_t) vfu_ctx.dma);
+    expect_uint_value(dma_controller_unmap_region, dma, (uintptr_t)vfu_ctx.dma);
     expect_check_data(dma_controller_unmap_region, region, check_dma_region,
                       cast_ptr_to_cmocka_value(&region));
     assert_int_equal(0,
@@ -448,7 +448,7 @@ test_dma_controller_remove_region_unmapped(void **state UNUSED)
     };
     stage_dma_region(vfu_ctx.dma, &region);
 
-    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t) &vfu_ctx);
+    expect_uint_value(mock_dma_unregister, vfu_ctx, (uintptr_t)&vfu_ctx);
     expect_check_data(mock_dma_unregister, info, check_dma_info, 
                       cast_ptr_to_cmocka_value(&region.info));
     patch("dma_controller_unmap_region");
@@ -614,7 +614,7 @@ test_should_exec_command(UNUSED void **state)
     will_return(device_is_stopped_and_copying, true);
     expect_uint_value(device_is_stopped_and_copying, 
                       migration, 
-                      (uintptr_t) &migration);
+                      (uintptr_t)&migration);
     will_return(cmd_allowed_when_stopped_and_copying, true);
     expect_uint_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_true(should_exec_command(&vfu_ctx, 0xbeef));
@@ -630,7 +630,7 @@ test_should_exec_command(UNUSED void **state)
     will_return(device_is_stopped_and_copying, false);
     expect_any(device_is_stopped_and_copying, migration);
     will_return(device_is_stopped, true);
-    expect_uint_value(device_is_stopped, migration, (uintptr_t) &migration);
+    expect_uint_value(device_is_stopped, migration, (uintptr_t)&migration);
     will_return(cmd_allowed_when_stopped_and_copying, false);
     expect_uint_value(cmd_allowed_when_stopped_and_copying, cmd, 0xbeef);
     assert_false(should_exec_command(&vfu_ctx, 0xbeef));
