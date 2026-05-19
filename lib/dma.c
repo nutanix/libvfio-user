@@ -160,6 +160,42 @@ MOCK_DEFINE(dma_controller_unmap_region)(dma_controller_t *dma,
     }
 }
 
+static void
+dma_controller_destroy_region(dma_controller_t *dma, dma_memory_region_t *region,
+                              vfu_dma_unregister_cb_t *dma_unregister,
+                              void *data)
+{
+    int err;
+
+    assert(dma != NULL);
+    assert(region != NULL);
+
+    if (dma_unregister != NULL) {
+        dma->vfu_ctx->in_cb = CB_DMA_UNREGISTER;
+        dma_unregister(data, &region->info);
+        dma->vfu_ctx->in_cb = CB_NONE;
+    }
+
+    switch (region->access_mode) {
+        case REGION_ACCESS_MODE_MSG:
+            assert(region->fd == -1);
+            break;
+        case REGION_ACCESS_MODE_MMAP:
+            if (region->info.vaddr != NULL) {
+                dma_controller_unmap_region(dma, region);
+            }
+            /* fall through */
+        case REGION_ACCESS_MODE_FILE_IO:
+            err = fd_cache_put(&region->fd);
+            assert(err == 0);
+            break;
+    }
+
+    dma_controller_increment_regions_generation(dma);
+    dirty_page_logging_stop_on_region(region);
+    free(region);
+}
+
 /* FIXME not thread safe */
 int
 MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
@@ -169,7 +205,6 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
 {
     dma_memory_region_t *region;
     btree_iter_t iter;
-    int err;
 
     assert(dma != NULL);
 
@@ -184,22 +219,8 @@ MOCK_DEFINE(dma_controller_remove_region)(dma_controller_t *dma,
         return ERROR_INT(ENOENT);
     }
 
-    if (dma_unregister != NULL) {
-        dma->vfu_ctx->in_cb = CB_DMA_UNREGISTER;
-        dma_unregister(data, &region->info);
-        dma->vfu_ctx->in_cb = CB_NONE;
-    }
-
-    if (region->info.vaddr != NULL) {
-        dma_controller_unmap_region(dma, region);
-    }
-
     btree_iter_remove(&iter);
-    dma_controller_increment_regions_generation(dma);
-    dirty_page_logging_stop_on_region(region);
-    err = fd_cache_put(&region->fd);
-    assert(err == 0);
-    free(region);
+    dma_controller_destroy_region(dma, region, dma_unregister, data);
 
     return 0;
 }
@@ -211,7 +232,6 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
 {
     dma_memory_region_t *region = NULL;
     btree_iter_t iter;
-    int err;
 
     assert(dma != NULL);
 
@@ -224,19 +244,7 @@ dma_controller_remove_all_regions(dma_controller_t *dma,
                 region->info.vaddr, region->info.mapping.iov_base,
                 iov_end(&region->info.mapping));
 
-        if (dma_unregister != NULL) {
-            dma->vfu_ctx->in_cb = CB_DMA_UNREGISTER;
-            dma_unregister(data, &region->info);
-            dma->vfu_ctx->in_cb = CB_NONE;
-        }
-
-        if (region->info.vaddr != NULL) {
-            dma_controller_unmap_region(dma, region);
-        }
-
-        err = fd_cache_put(&region->fd);
-        assert(err == 0);
-        free(region);
+        dma_controller_destroy_region(dma, region, dma_unregister, data);
     }
 }
 
