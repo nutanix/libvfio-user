@@ -697,7 +697,9 @@ vfu_addr_to_sgl(vfu_ctx_t *vfu_ctx, vfu_dma_addr_t dma_addr, size_t len,
  * vfu_sgl_put().
  *
  * This is only supported when a @dma_unregister callback is provided to
- * vfu_setup_device_dma().
+ * vfu_setup_device_dma(). In addition, the client must have registered the
+ * relevant DMA regions to allow mmap()-ed access and supplied file
+ * descriptors, otherwise this function will fail with EFAULT.
  *
  * @vfu_ctx: the libvfio-user context
  * @sgl: array of scatter/gather entries returned by vfu_addr_to_sg. These
@@ -738,12 +740,19 @@ vfu_sgl_mark_dirty(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt);
 void
 vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt);
 
+/* Flags to vfu_sgl_read() and vfu_sgl_write(). */
+
+/* Perform direct access via file descriptor, if possible. */
+#define VFU_SGL_DIRECT_ACCESS (1)
+
 /**
  * Read from the dma region exposed by the client. This can be used as an
  * alternative to reading from a vfu_sgl_get() mapping, if the region is not
  * directly mappable, or DMA notification callbacks have not been provided.
  *
- * The implementation involves a round-trip communication with the client.
+ * When the VFU_SGL_DIRECT_ACCESS flag is specified, the DMA operation is
+ * performed against a client-supplied file descriptor, if applicable.
+ * Otherwise, the operation incurs an IPC round-trip with the client.
  *
  * Note that currently, only one @sg entry is supported (@sg_cnt must be 1).
  *
@@ -751,7 +760,7 @@ vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt);
  * @sg: array of scatter/gather entries
  * @sg_cnt: number of scatter/gather entries
  * @data: data buffer to read
- * @flags: must be 0
+ * @flags: VFU_SGL_* flags
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */
@@ -764,12 +773,15 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t sg_cnt,
  * alternative to reading from a vfu_sgl_get() mapping, if the region is not
  * directly mappable, or DMA notification callbacks have not been provided.
  *
- * The implementation involves a round-trip communication with the client.
+ * When the VFU_SGL_DIRECT_ACCESS flag is specified, the DMA operation is
+ * performed against a client-supplied file descriptor, if applicable.
+ * Otherwise, the operation incurs an IPC round-trip with the client.
  *
  * Note that currently, only one @sg entry is supported (@sg_cnt must be 1).
  *
- * During live migration, this call does not mark any of the written pages as
- * dirty; the client is expected to track this.
+ * During live migration, this call does only mark the written pages as dirty
+ * if the access is performed directly against a file descriptor. For access
+ * via IPC, the client is expected to track which pages have been written.
  *
  * @vfu_ctx: the libvfio-user context
  * @sg: array of scatter/gather entries

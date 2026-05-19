@@ -2396,7 +2396,7 @@ vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl,
 
 static int
 vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
-                 dma_sg_t *sg, void *data)
+                 int flags, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_reply;
     struct vfio_user_dma_region_access *dma_req;
@@ -2415,39 +2415,47 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
         return ERROR_INT(EPERM);
     }
 
-    if (sg->region->access_mode == REGION_ACCESS_MODE_MMAP) {
-        void *target, *src, *dst;
-        assert(sg->region->info.vaddr != NULL);
-        target = sg->region->info.vaddr + sg->offset;
-        src = cmd == VFIO_USER_DMA_READ ? target : data;
-        dst = cmd == VFIO_USER_DMA_READ ? data : target;
-        memcpy(dst, src, sg->length);
-        return 0;
-    }
-
-    if (sg->region->access_mode == REGION_ACCESS_MODE_FILE_IO) {
-        size_t length, offset;
-        assert(sg->region->fd != -1);
-        length = sg->length;
-        offset = sg->offset + sg->region->offset;
-        while (length > 0) {
-            ssize_t ret;
-            if (cmd == VFIO_USER_DMA_READ) {
-                ret = pread(sg->region->fd, data, length, offset);
-            } else {
-                ret = pwrite(sg->region->fd, data, length, offset);
+    if (flags & VFU_SGL_DIRECT_ACCESS) {
+        if (sg->region->access_mode == REGION_ACCESS_MODE_MMAP) {
+            void *target, *src, *dst;
+            assert(sg->region->info.vaddr != NULL);
+            target = sg->region->info.vaddr + sg->offset;
+            src = cmd == VFIO_USER_DMA_READ ? target : data;
+            dst = cmd == VFIO_USER_DMA_READ ? data : target;
+            if (cmd == VFIO_USER_DMA_WRITE) {
+                dma_sgl_mark_dirty(vfu_ctx->dma, sg, 1);
             }
-            if (ret <= 0) {
-                return ERROR_INT(EIO);
-            }
-            data += ret;
-            offset += ret;
-            length -= ret;
+            memcpy(dst, src, sg->length);
+            return 0;
         }
-        return 0;
-    }
 
-    assert(sg->region->access_mode == REGION_ACCESS_MODE_MSG);
+        if (sg->region->access_mode == REGION_ACCESS_MODE_FILE_IO) {
+            size_t length, offset;
+            assert(sg->region->fd != -1);
+            length = sg->length;
+            offset = sg->offset + sg->region->offset;
+            if (cmd == VFIO_USER_DMA_WRITE) {
+                dma_sgl_mark_dirty(vfu_ctx->dma, sg, 1);
+            }
+            while (length > 0) {
+                ssize_t ret;
+                if (cmd == VFIO_USER_DMA_READ) {
+                    ret = pread(sg->region->fd, data, length, offset);
+                } else {
+                    ret = pwrite(sg->region->fd, data, length, offset);
+                }
+                if (ret <= 0) {
+                    return ERROR_INT(EIO);
+                }
+                data += ret;
+                offset += ret;
+                length -= ret;
+            }
+            return 0;
+        }
+
+        assert(sg->region->access_mode == REGION_ACCESS_MODE_MSG);
+    }
 
     rlen = sizeof(struct vfio_user_dma_region_access) +
            MIN(sg->length, vfu_ctx->client_max_data_xfer_size);
@@ -2531,7 +2539,7 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
-    if (flags != 0) {
+    if (flags & ~VFU_SGL_DIRECT_ACCESS) {
         return ERROR_INT(EINVAL);
     }
 
@@ -2540,7 +2548,7 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
         return ERROR_INT(ENOTSUP);
     }
 
-    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sgl, data);
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, flags, sgl, data);
 }
 
 EXPORT int
@@ -2549,7 +2557,7 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
-    if (flags != 0) {
+    if (flags & ~VFU_SGL_DIRECT_ACCESS) {
         return ERROR_INT(EINVAL);
     }
 
@@ -2558,7 +2566,7 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
         return ERROR_INT(ENOTSUP);
     }
 
-    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sgl, data);
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, flags, sgl, data);
 }
 
 EXPORT bool
