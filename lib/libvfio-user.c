@@ -742,7 +742,7 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     region = dma_controller_add_region(
         vfu_ctx->dma, (vfu_dma_addr_t)(uintptr_t)dma_map->addr, dma_map->size,
-        fd, dma_map->offset, prot, access_mode);
+        &fd, dma_map->offset, prot, access_mode);
     if (region == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
         close_safely(&fd);

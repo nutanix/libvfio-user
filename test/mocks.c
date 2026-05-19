@@ -113,7 +113,7 @@ unpatch_all(void)
 
 dma_memory_region_t *
 dma_controller_add_region(dma_controller_t *dma, void *dma_addr, uint64_t size,
-                          int fd, off_t offset, uint32_t prot,
+                          int *fd, off_t offset, uint32_t prot,
                           enum region_access_mode access_mode)
 {
     if (!is_patched("dma_controller_add_region")) {

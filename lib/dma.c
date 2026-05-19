@@ -293,7 +293,7 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
 dma_memory_region_t *
 MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                                        vfu_dma_addr_t dma_addr, uint64_t size,
-                                       int fd, off_t offset, uint32_t prot,
+                                       int *fd, off_t offset, uint32_t prot,
                                        enum region_access_mode access_mode)
 {
     dma_memory_region_t *existing = NULL;
@@ -302,12 +302,11 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
     int page_size = 0;
     char rstr[1024];
     int ret = 0;
-    int err;
 
     assert(dma != NULL);
 
     snprintf(rstr, sizeof(rstr), "[%p, %p) fd=%d offset=%#llx prot=%#x",
-             dma_addr, dma_addr + size, fd, (ull_t)offset, prot);
+             dma_addr, dma_addr + size, *fd, (ull_t)offset, prot);
 
     if (size > dma->max_size) {
         vfu_log(dma->vfu_ctx, LOG_ERR, "DMA region size %llu > max %zu",
@@ -327,7 +326,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                         (ull_t)existing->offset);
                 return ERROR_PTR(EINVAL);
             }
-            if (fd_cache_is_same_file(existing->fd, fd) != 0) {
+            if (fd_cache_is_same_file(existing->fd, *fd) != 0) {
                 vfu_log(dma->vfu_ctx, LOG_ERR, "bad fd for new DMA region %s; "
                         "existing=%d", rstr, existing->fd);
                 return ERROR_PTR(EINVAL);
@@ -337,7 +336,7 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
                         "%s; existing=%#x", rstr, existing->info.prot);
                 return ERROR_PTR(EINVAL);
             }
-            close_safely(&fd);
+            close_safely(fd);
             return existing;
         }
 
@@ -358,82 +357,81 @@ MOCK_DEFINE(dma_controller_add_region)(dma_controller_t *dma,
         return ERROR_PTR(EINVAL);
     }
 
-    if (access_mode != REGION_ACCESS_MODE_MSG) {
-        page_size = fd_get_blocksize(fd);
-        if (page_size < 0) {
-            vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
-            return ERROR_PTR(EINVAL);
-        }
-
-        fd = fd_cache_get(fd);
-        if (fd == -1) {
-            vfu_log(dma->vfu_ctx, LOG_ERR,
-                    "failed to de-duplicate fd for new DMA region %s: %m",
-                    rstr);
-            return NULL;
-        }
-    }
-    page_size = MAX(page_size, getpagesize());
-
     region = calloc(1, sizeof(*region));
     if (region == NULL) {
-        errno = ENOMEM;
-        goto rollback;
+        vfu_log(dma->vfu_ctx, LOG_ERR, "failed to allocate region entry");
+        return ERROR_PTR(ENOMEM);
     }
 
     region->info.iova.iov_base = (void *)dma_addr;
     region->info.iova.iov_len = size;
-    region->info.page_size = page_size;
     region->info.prot = prot;
+    region->info.page_size = getpagesize();
     region->access_mode = access_mode;
     region->offset = offset;
-    region->fd = fd;
+    region->fd = -1;
 
-    if (access_mode != REGION_ACCESS_MODE_MSG) {
-        /*
-         * TODO introduce a function that tells whether dirty page logging is
-         * enabled
-         */
-        if (dma->dirty_pgsize != 0) {
-            if (dirty_page_logging_start_on_region(region, dma->dirty_pgsize) < 0) {
-                /*
-                 * TODO We don't necessarily have to fail, we can continue
-                 * and fail the get dirty page bitmap request later.
-                 */
-                goto rollback;
-            }
-        }
-
-        if (access_mode == REGION_ACCESS_MODE_MMAP) {
-            ret = dma_map_region(dma, region);
-
-            if (ret != 0) {
+    switch (access_mode) {
+        case REGION_ACCESS_MODE_MSG:
+            assert(*fd == -1);
+            break;
+        case REGION_ACCESS_MODE_MMAP:
+        case REGION_ACCESS_MODE_FILE_IO:
+            assert(*fd != -1);
+            region->fd = fd_cache_get(*fd);
+            if (region->fd == -1) {
                 vfu_log(dma->vfu_ctx, LOG_ERR,
-                       "failed to memory map DMA region %s: %m", rstr);
-                goto rollback;
+                        "failed to de-duplicate fd for new DMA region %s: %m",
+                        rstr);
+                goto destroy_region;
             }
-        }
+            *fd = -1;  /* The fd is now owned by the cache */
+
+            page_size = fd_get_blocksize(region->fd);
+            if (page_size < 0) {
+                vfu_log(dma->vfu_ctx, LOG_ERR, "bad page size %d", page_size);
+                errno = EINVAL;
+                goto destroy_region;
+            }
+            region->info.page_size = MAX(region->info.page_size, (size_t)page_size);
+
+            /*
+             * TODO introduce a function that tells whether dirty page logging is
+             * enabled
+             */
+            if (dma->dirty_pgsize != 0) {
+                if (dirty_page_logging_start_on_region(region, dma->dirty_pgsize) < 0) {
+                    /*
+                     * TODO We don't necessarily have to fail, we can continue
+                     * and fail the get dirty page bitmap request later.
+                     */
+                    goto destroy_region;
+                }
+            }
+
+            if (access_mode == REGION_ACCESS_MODE_MMAP) {
+                ret = dma_map_region(dma, region);
+
+                if (ret != 0) {
+                    vfu_log(dma->vfu_ctx, LOG_ERR,
+                           "failed to memory map DMA region %s: %m", rstr);
+                    goto destroy_region;
+                }
+            }
+            break;
     }
 
     if (btree_iter_insert(&iter, (uintptr_t)dma_addr + size - 1, region) != 0) {
-        goto rollback;
+        goto destroy_region;
     }
 
     dma_controller_increment_regions_generation(dma);
 
     return region;
 
-rollback:
+destroy_region:
     ret = errno;
-    if (region != NULL) {
-        if (region->info.vaddr != NULL) {
-            dma_controller_unmap_region(dma, region);
-        }
-        dirty_page_logging_stop_on_region(region);
-        free(region);
-    }
-    err = fd_cache_put(&fd);
-    assert(err == 0);
+    dma_controller_destroy_region(dma, region, NULL, NULL);
 
     return ERROR_PTR(ret);
 }
