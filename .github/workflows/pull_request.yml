@@ -13,7 +13,7 @@ jobs:
           sudo apt-get -y install libjson-c-dev libcmocka-dev clang \
             clang-tools valgrind python3-pytest debianutils flake8 meson \
             ninja-build
-          ./.github/workflows/pull_request.sh
+          make pre-push
   centos-7:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
           yum -y install make gcc-4.8.5 epel-release pciutils
           yum -y install clang clang-analyzer json-c-devel libcmocka-devel \
               valgrind python36-pytest which ninja-build meson
-          ./.github/workflows/pull_request.sh
+          make pre-push
   fedora-35:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
               gcc make clang clang-analyzer json-c-devel libcmocka-devel pciutils \
               diffutils valgrind python3-pytest python3-flake8 which \
               meson ninja-build
-          ./.github/workflows/pull_request.sh
+          make pre-push
   debian-11:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
           apt-get -y install build-essential cmake pkg-config libjson-c-dev \
             libcmocka-dev clang clang-tools valgrind python3-pytest \
             debianutils flake8 meson ninja-build
-          ./.github/workflows/pull_request.sh
+          make pre-push
   debian-12:
     timeout-minutes: 10
     runs-on: ubuntu-22.04
@@ -72,7 +72,7 @@ jobs:
           apt-get -y install build-essential cmake pkg-config libjson-c-dev \
             libcmocka-dev clang clang-tools valgrind python3-pytest \
             debianutils flake8 meson ninja-build
-          ./.github/workflows/pull_request.sh
+          make pre-push
   spelling:
     runs-on: ubuntu-latest
     container: vlajos/misspell-fixer

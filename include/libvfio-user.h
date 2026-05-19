@@ -743,31 +743,45 @@ vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, struct iovec *iov, size_t cnt);
  * alternative to reading from a vfu_sgl_get() mapping, if the region is not
  * directly mappable, or DMA notification callbacks have not been provided.
  *
+ * The implementation involves a round-trip communication with the client.
+ *
+ * Note that currently, only one @sg entry is supported (@sg_cnt must be 1).
+ *
  * @vfu_ctx: the libvfio-user context
- * @sg: a DMA segment obtained from dma_addr_to_sg
- * @data: data buffer to read into
+ * @sg: array of scatter/gather entries
+ * @sg_cnt: number of scatter/gather entries
+ * @data: data buffer to read
+ * @flags: must be 0
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t cnt, void *data);
+vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t sg_cnt,
+             void *data, int flags);
 
 /**
  * Write to the dma region exposed by the client. This can be used as an
  * alternative to reading from a vfu_sgl_get() mapping, if the region is not
  * directly mappable, or DMA notification callbacks have not been provided.
  *
+ * The implementation involves a round-trip communication with the client.
+ *
+ * Note that currently, only one @sg entry is supported (@sg_cnt must be 1).
+ *
  * During live migration, this call does not mark any of the written pages as
  * dirty; the client is expected to track this.
  *
  * @vfu_ctx: the libvfio-user context
- * @sg: a DMA segment obtained from dma_addr_to_sg
+ * @sg: array of scatter/gather entries
+ * @sg_cnt: number of scatter/gather entries
  * @data: data buffer to write
+ * @flags: must be 0
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */
 int
-vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t cnt, void *data);
+vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t sg_cnt,
+              void *data, int flags);
 
 /*
  * Supported PCI regions.

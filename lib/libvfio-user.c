@@ -906,16 +906,12 @@ static int
 device_reset(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason)
 {
     int ret;
-    
+
     ret = call_reset_cb(vfu_ctx, reason);
     if (ret < 0) {
         return ret;
     }
 
-    if (vfu_ctx->migration != NULL) {
-        migr_state_transition(vfu_ctx->migration,
-                              VFIO_USER_DEVICE_STATE_RUNNING);
-    }
     return 0;
 }
 
@@ -2524,12 +2520,17 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 }
 
 EXPORT int
-vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
+vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
+             void *data, int flags)
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
+    if (flags != 0) {
+        return ERROR_INT(EINVAL);
+    }
+
     /* Not currently implemented. */
-    if (cnt != 1) {
+    if (sg_cnt != 1) {
         return ERROR_INT(ENOTSUP);
     }
 
@@ -2537,12 +2538,17 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
 }
 
 EXPORT int
-vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t cnt, void *data)
+vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
+              void *data, int flags)
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
+    if (flags != 0) {
+        return ERROR_INT(EINVAL);
+    }
+
     /* Not currently implemented. */
-    if (cnt != 1) {
+    if (sg_cnt != 1) {
         return ERROR_INT(ENOTSUP);
     }
 

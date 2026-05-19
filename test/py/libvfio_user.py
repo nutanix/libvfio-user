@@ -717,9 +717,9 @@ lib.vfu_sgl_get.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
 lib.vfu_sgl_put.argtypes = (c.c_void_p, c.POINTER(dma_sg_t),
                             c.POINTER(iovec_t), c.c_size_t)
 lib.vfu_sgl_read.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
-                             c.c_void_p)
+                             c.c_void_p, c.c_int)
 lib.vfu_sgl_write.argtypes = (c.c_void_p, c.POINTER(dma_sg_t), c.c_size_t,
-                              c.c_void_p)
+                              c.c_void_p, c.c_int)
 
 lib.vfu_create_ioeventfd.argtypes = (c.c_void_p, c.c_uint32, c.c_int,
                                      c.c_size_t, c.c_uint32, c.c_uint32,
@@ -1355,16 +1355,16 @@ def vfu_sgl_put(ctx, sg, iovec, cnt=1):
     return lib.vfu_sgl_put(ctx, sg, iovec, cnt)
 
 
-def vfu_sgl_read(ctx, sg, cnt=1):
+def vfu_sgl_read(ctx, sg, cnt=1, flags=0):
     data = bytearray(sum([sge.length for sge in sg]))
     buf = (c.c_byte * len(data)).from_buffer(data)
-    return lib.vfu_sgl_read(ctx, sg, cnt, buf), data
+    return lib.vfu_sgl_read(ctx, sg, cnt, buf, flags), data
 
 
-def vfu_sgl_write(ctx, sg, cnt=1, data=bytearray()):
+def vfu_sgl_write(ctx, sg, cnt=1, data=bytearray(), flags=0):
     assert len(data) == sum([sge.length for sge in sg])
     buf = (c.c_byte * len(data)).from_buffer(data)
-    return lib.vfu_sgl_write(ctx, sg, cnt, buf)
+    return lib.vfu_sgl_write(ctx, sg, cnt, buf, flags)
 
 
 def vfu_create_ioeventfd(ctx, region_idx, fd, gpa_offset, size, flags,
