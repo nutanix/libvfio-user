@@ -145,6 +145,13 @@ test_dma_map_mappable_without_fd(void **state UNUSED)
     assert_int_equal(0, ret);
 }
 
+static int check_fd_ptr(const uintmax_t value, const uintmax_t fd_val)
+{
+    int *fd_ptr = (int*)value;
+    int expected_fd = (int)fd_val;
+    return fd_ptr != NULL && *fd_ptr == expected_fd;
+}
+
 static void
 test_dma_map_without_fd(void **state UNUSED)
 {
@@ -162,9 +169,11 @@ test_dma_map_without_fd(void **state UNUSED)
     expect_value(dma_controller_add_region, dma, vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, dma_map.addr);
     expect_value(dma_controller_add_region, size, dma_map.size);
-    expect_value(dma_controller_add_region, fd, -1);
+    expect_check(dma_controller_add_region, fd, check_fd_ptr, -1);
     expect_value(dma_controller_add_region, offset, dma_map.offset);
     expect_value(dma_controller_add_region, prot, PROT_NONE);
+    expect_value(dma_controller_add_region, access_mode,
+                 REGION_ACCESS_MODE_MSG);
     ret = handle_dma_map(&vfu_ctx,
                          mkmsg(VFIO_USER_DMA_MAP, &dma_map, sizeof(dma_map)),
                          &dma_map);
@@ -246,9 +255,11 @@ test_dma_map_return_value(void **state UNUSED)
     expect_value(dma_controller_add_region, dma, (uintptr_t)vfu_ctx.dma);
     expect_value(dma_controller_add_region, dma_addr, dma_map.addr);
     expect_value(dma_controller_add_region, size, dma_map.size);
-    expect_value(dma_controller_add_region, fd, -1);
+    expect_check(dma_controller_add_region, fd, check_fd_ptr, -1);
     expect_value(dma_controller_add_region, offset, dma_map.offset);
     expect_value(dma_controller_add_region, prot, PROT_NONE);
+    expect_value(dma_controller_add_region, access_mode,
+                 REGION_ACCESS_MODE_MSG);
     will_return(dma_controller_add_region, 0);
     will_return(dma_controller_add_region, 2);
 
@@ -317,8 +328,8 @@ test_dma_controller_add_region_no_fd(void **state UNUSED)
     size_t size = 0;
     int fd = -1;
 
-    r = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd, offset,
-                                  PROT_NONE);
+    r = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, &fd, offset,
+                                  PROT_NONE, REGION_ACCESS_MODE_MSG);
     assert_non_null(r);
     assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
     assert_ptr_equal(NULL, r->info.vaddr);
@@ -351,8 +362,8 @@ test_dma_controller_add_region_fd_deduplication(void **state UNUSED)
     fd2 = dup(fd1);
     assert_int_not_equal(-1, fd2);
 
-    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd1, offset,
-                                   PROT_NONE);
+    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, &fd1, offset,
+                                   PROT_NONE, REGION_ACCESS_MODE_MMAP);
     assert_non_null(r1);
     assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
     assert_ptr_not_equal(NULL, r1->info.vaddr);
@@ -368,8 +379,9 @@ test_dma_controller_add_region_fd_deduplication(void **state UNUSED)
      * Add another mapping for the same file and verify that the file
      * descriptor gets de-duplicated.
      */
-    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr + size, size, fd2,
-                                   offset + size, PROT_NONE);
+    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr + size, size, &fd2,
+                                   offset + size, PROT_NONE,
+                                   REGION_ACCESS_MODE_MMAP);
     assert_non_null(r2);
     assert_int_equal(2, btree_size(&vfu_ctx.dma->regions));
     assert_int_equal(r1->fd, r2->fd);
@@ -393,14 +405,14 @@ test_dma_controller_add_region_twice(void **state UNUSED)
     fd2 = dup(fd1);
     assert_int_not_equal(-1, fd2);
 
-    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd1, offset,
-                                   PROT_NONE);
+    r1 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, &fd1, offset,
+                                   PROT_NONE, REGION_ACCESS_MODE_MMAP);
     assert_non_null(r1);
     assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
 
     /* Once more to confirm that identical regions are accepted. */
-    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, fd2, offset,
-                                   PROT_NONE);
+    r2 = dma_controller_add_region(vfu_ctx.dma, dma_addr, size, &fd2, offset,
+                                   PROT_NONE, REGION_ACCESS_MODE_MMAP);
     assert_non_null(r2);
     assert_int_equal(1, btree_size(&vfu_ctx.dma->regions));
     assert_ptr_equal(r1, r2);
@@ -415,6 +427,9 @@ test_dma_controller_remove_region_mapped(void **state UNUSED)
         .info.mapping.iov_base = (void *)0xcafebabe,
         .info.mapping.iov_len = 0x1000,
         .info.vaddr = (void *)0xcafebabe,
+        .access_mode = REGION_ACCESS_MODE_MMAP,
+        /* Cheating a bit with the fd to avoid opening a file */
+        .fd = -1,
     };
     stage_dma_region(vfu_ctx.dma, &region);
 
@@ -461,12 +476,14 @@ test_dma_addr_to_sgl(void **state UNUSED)
             .info.iova.iov_base = (void *)0x1000,
             .info.iova.iov_len = 0x4000,
             .info.vaddr = (void *)0xdeadbeef,
+            .access_mode = REGION_ACCESS_MODE_MMAP,
         },
         {
             .info.iova.iov_base = (void *)0x5000,
             .info.iova.iov_len = 0x2000,
             .info.vaddr = (void *)0xcafebabe,
             .info.prot = PROT_WRITE,
+            .access_mode = REGION_ACCESS_MODE_MMAP,
         },
     };
 

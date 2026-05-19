@@ -676,6 +676,7 @@ int
 handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
                struct vfio_user_dma_map *dma_map)
 {
+    enum region_access_mode access_mode;
     dma_memory_region_t *region;
     char rstr[1024];
     int fd = -1;
@@ -699,6 +700,14 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
 
     vfu_log(vfu_ctx, LOG_DEBUG, "adding DMA region %s", rstr);
 
+    if (msg->in.nr_fds > 0) {
+        fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
+        if (fd < 0) {
+            vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
+            return -1;
+        }
+    }
+
     if (dma_map->flags & VFIO_USER_F_DMA_REGION_READ) {
         prot |= PROT_READ;
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_READ;
@@ -709,22 +718,37 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_WRITE;
     }
 
-    if (dma_map->flags != 0) {
-        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
-        return ERROR_INT(EINVAL);
+    if (dma_map->flags & VFIO_USER_F_DMA_REGION_MMAP) {
+        if (fd == -1) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "file descriptor required for MMAP DMA region");
+            return ERROR_INT(EINVAL);
+        }
+        access_mode = REGION_ACCESS_MODE_MMAP;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_MMAP;
+    } else if (dma_map->flags & VFIO_USER_F_DMA_REGION_FILE_IO) {
+        if (fd == -1) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "file descriptor required for FILE_IO DMA region");
+            return ERROR_INT(EINVAL);
+        }
+        access_mode = REGION_ACCESS_MODE_FILE_IO;
+        dma_map->flags &= ~VFIO_USER_F_DMA_REGION_FILE_IO;
+    } else {
+        /* Compatibility: default to mmap()-ed access if an fd is provided. */
+        access_mode =
+            fd != -1 ? REGION_ACCESS_MODE_MMAP : REGION_ACCESS_MODE_MSG;
     }
 
-    if (msg->in.nr_fds > 0) {
-        fd = consume_fd(msg->in.fds, msg->in.nr_fds, 0);
-        if (fd < 0) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
-            return -1;
-        }
+    if (dma_map->flags != 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
+        close_safely(&fd);
+        return ERROR_INT(EINVAL);
     }
 
     region = dma_controller_add_region(
         vfu_ctx->dma, (vfu_dma_addr_t)(uintptr_t)dma_map->addr, dma_map->size,
-        fd, dma_map->offset, prot);
+        &fd, dma_map->offset, prot, access_mode);
     if (region == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "failed to add DMA region %s: %m", rstr);
         close_safely(&fd);
@@ -2372,7 +2396,7 @@ vfu_sgl_put(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl,
 
 static int
 vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
-                 dma_sg_t *sg, void *data)
+                 int flags, dma_sg_t *sg, void *data)
 {
     struct vfio_user_dma_region_access *dma_reply;
     struct vfio_user_dma_region_access *dma_req;
@@ -2389,6 +2413,48 @@ vfu_dma_transfer(vfu_ctx_t *vfu_ctx, enum vfio_user_command cmd,
 
     if (cmd == VFIO_USER_DMA_WRITE && !sg->writeable) {
         return ERROR_INT(EPERM);
+    }
+
+    if (flags & VFU_SGL_DIRECT_ACCESS) {
+        if (sg->region->access_mode == REGION_ACCESS_MODE_MMAP) {
+            void *target, *src, *dst;
+            assert(sg->region->info.vaddr != NULL);
+            target = sg->region->info.vaddr + sg->offset;
+            src = cmd == VFIO_USER_DMA_READ ? target : data;
+            dst = cmd == VFIO_USER_DMA_READ ? data : target;
+            if (cmd == VFIO_USER_DMA_WRITE) {
+                dma_sgl_mark_dirty(vfu_ctx->dma, sg, 1);
+            }
+            memcpy(dst, src, sg->length);
+            return 0;
+        }
+
+        if (sg->region->access_mode == REGION_ACCESS_MODE_FILE_IO) {
+            size_t length, offset;
+            assert(sg->region->fd != -1);
+            length = sg->length;
+            offset = sg->offset + sg->region->offset;
+            if (cmd == VFIO_USER_DMA_WRITE) {
+                dma_sgl_mark_dirty(vfu_ctx->dma, sg, 1);
+            }
+            while (length > 0) {
+                ssize_t ret;
+                if (cmd == VFIO_USER_DMA_READ) {
+                    ret = pread(sg->region->fd, data, length, offset);
+                } else {
+                    ret = pwrite(sg->region->fd, data, length, offset);
+                }
+                if (ret <= 0) {
+                    return ERROR_INT(EIO);
+                }
+                data += ret;
+                offset += ret;
+                length -= ret;
+            }
+            return 0;
+        }
+
+        assert(sg->region->access_mode == REGION_ACCESS_MODE_MSG);
     }
 
     rlen = sizeof(struct vfio_user_dma_region_access) +
@@ -2473,7 +2539,7 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
-    if (flags != 0) {
+    if (flags & ~VFU_SGL_DIRECT_ACCESS) {
         return ERROR_INT(EINVAL);
     }
 
@@ -2482,7 +2548,7 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
         return ERROR_INT(ENOTSUP);
     }
 
-    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, sgl, data);
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_READ, flags, sgl, data);
 }
 
 EXPORT int
@@ -2491,7 +2557,7 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
 {
     assert(vfu_ctx->pending.state == VFU_CTX_PENDING_NONE);
 
-    if (flags != 0) {
+    if (flags & ~VFU_SGL_DIRECT_ACCESS) {
         return ERROR_INT(EINVAL);
     }
 
@@ -2500,7 +2566,7 @@ vfu_sgl_write(vfu_ctx_t *vfu_ctx, dma_sg_t *sgl, size_t sg_cnt,
         return ERROR_INT(ENOTSUP);
     }
 
-    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, sgl, data);
+    return vfu_dma_transfer(vfu_ctx, VFIO_USER_DMA_WRITE, flags, sgl, data);
 }
 
 EXPORT bool
