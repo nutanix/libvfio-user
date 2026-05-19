@@ -718,25 +718,31 @@ handle_dma_map(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_WRITE;
     }
 
-    /* If not specified, default to mmap()-ed access if an fd is provided. */
-    access_mode = fd != -1 ? REGION_ACCESS_MODE_MMAP : REGION_ACCESS_MODE_MSG;
     if (dma_map->flags & VFIO_USER_F_DMA_REGION_MMAP) {
+        if (fd == -1) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "file descriptor required for MMAP DMA region");
+            return ERROR_INT(EINVAL);
+        }
         access_mode = REGION_ACCESS_MODE_MMAP;
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_MMAP;
     } else if (dma_map->flags & VFIO_USER_F_DMA_REGION_FILE_IO) {
+        if (fd == -1) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "file descriptor required for FILE_IO DMA region");
+            return ERROR_INT(EINVAL);
+        }
         access_mode = REGION_ACCESS_MODE_FILE_IO;
         dma_map->flags &= ~VFIO_USER_F_DMA_REGION_FILE_IO;
+    } else {
+        /* Compatibility: default to mmap()-ed access if an fd is provided. */
+        access_mode =
+            fd != -1 ? REGION_ACCESS_MODE_MMAP : REGION_ACCESS_MODE_MSG;
     }
 
     if (dma_map->flags != 0) {
         vfu_log(vfu_ctx, LOG_ERR, "bad flags=%#x", dma_map->flags);
         close_safely(&fd);
-        return ERROR_INT(EINVAL);
-    }
-
-    if (access_mode != REGION_ACCESS_MODE_MSG && fd == -1) {
-        vfu_log(vfu_ctx, LOG_ERR, "file descriptor required for mode=%u",
-                access_mode);
         return ERROR_INT(EINVAL);
     }
 
