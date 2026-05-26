@@ -1416,7 +1416,6 @@ get_request_header(vfu_ctx_t *vfu_ctx, vfu_msg_t **msgp)
                 if (errno != EBUSY) {
                     vfu_log(vfu_ctx, LOG_WARNING, "failed to reset context: %m");
                 }
-                return ret;
             }
             return ERROR_INT(ENOTCONN);
         default:
