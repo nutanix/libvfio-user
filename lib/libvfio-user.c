@@ -1825,7 +1825,7 @@ vfu_reset_ctx(vfu_ctx_t *vfu_ctx, int reason)
         if (ret < 0) {
             if (errno == EBUSY) {
                 vfu_ctx->pending.state = VFU_CTX_PENDING_CTX_RESET;
-                return ret;
+                return 0;
             }
             vfu_log(vfu_ctx, LOG_ERR, "failed to quiesce device: %m");
             return ret;
