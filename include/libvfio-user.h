@@ -787,7 +787,7 @@ vfu_sgl_read(vfu_ctx_t *vfu_ctx, dma_sg_t *sg, size_t sg_cnt,
  * @sg: array of scatter/gather entries
  * @sg_cnt: number of scatter/gather entries
  * @data: data buffer to write
- * @flags: must be 0
+ * @flags: VFU_SGL_* flags
  *
  * @returns 0 on success, -1 on failure. Sets errno.
  */

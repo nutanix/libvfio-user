@@ -309,6 +309,7 @@ dma_sgl_get(dma_controller_t *dma, dma_sg_t *sgl, struct iovec *iov, size_t cnt)
         if (sg->region->access_mode != REGION_ACCESS_MODE_MMAP) {
             return ERROR_INT(EFAULT);
         }
+        assert(sg->region->info.vaddr != NULL);
 
 #ifdef DEBUG_SGL
         vfu_log(dma->vfu_ctx, LOG_DEBUG, "map %p-%p",
