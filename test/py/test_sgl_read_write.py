@@ -29,7 +29,10 @@
 #
 
 from libvfio_user import *
+import mmap
+import pytest
 import select
+import tempfile
 import threading
 
 MAP_ADDR = 0x10000000
@@ -39,6 +42,11 @@ ctx = None
 client = None
 
 
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+
 class DMARegionHandler:
     """
     A helper to service DMA region accesses arriving over a socket. Accesses
@@ -46,7 +54,7 @@ class DMARegionHandler:
     takes place on a separate thread so as to not block the test code.
     """
 
-    def __handle_requests(sock, pipe, buf, lock, addr, error_no):
+    def __handle_requests(sock, pipe, buf, counter, lock, addr, error_no):
         while True:
             (ready, _, _) = select.select([sock, pipe], [], [])
             if pipe in ready:
@@ -63,6 +71,7 @@ class DMARegionHandler:
 
             offset = access.addr - addr
             with lock:
+                counter.value += 1
                 if cmd == VFIO_USER_DMA_READ:
                     data = buf[offset:offset + access.count]
                 else:
@@ -80,16 +89,20 @@ class DMARegionHandler:
         sock.close()
 
     def __init__(self, sock, addr, size, error_no=0):
-        self.data = bytearray(size)
+        self.file = tempfile.TemporaryFile()
+        self.file.truncate(size)
+        self.data = mmap.mmap(self.file.fileno(), 0)
         self.data_lock = threading.Lock()
         self.addr = addr
         (pipe_r, self.pipe_w) = os.pipe()
         # Duplicate the socket file descriptor so the thread can own it and
         # make sure it gets closed only when terminating the thread.
         sock = socket.socket(fileno=os.dup(sock.fileno()))
+        self.counter = Counter()
         thread = threading.Thread(
             target=DMARegionHandler.__handle_requests,
-            args=[sock, pipe_r, self.data, self.data_lock, addr, error_no])
+            args=[sock, pipe_r, self.data, self.counter, self.data_lock, addr,
+                  error_no])
         thread.start()
 
     def shutdown(self):
@@ -102,7 +115,15 @@ class DMARegionHandler:
             return self.data[offset:offset + size]
 
 
-def setup_function(function):
+access_mode_flags = [
+    0,
+    VFIO_USER_F_DMA_REGION_MMAP,
+    VFIO_USER_F_DMA_REGION_FILE_IO,
+]
+
+
+@pytest.fixture(autouse=True, params=access_mode_flags)
+def flags(request):
     global ctx, client, dma_handler
     ctx = prepare_ctx_for_dma()
     assert ctx is not None
@@ -117,26 +138,35 @@ def setup_function(function):
     client = connect_client(ctx, caps)
     assert client.client_cmd_socket is not None
 
+    dma_handler = DMARegionHandler(client.client_cmd_socket, MAP_ADDR,
+                                   MAP_SIZE)
+
+    flags = (request.param | VFIO_USER_F_DMA_REGION_READ
+             | VFIO_USER_F_DMA_REGION_WRITE)
     payload = vfio_user_dma_map(argsz=len(vfio_user_dma_map()),
-                                flags=(VFIO_USER_F_DMA_REGION_READ
-                                       | VFIO_USER_F_DMA_REGION_WRITE),
+                                flags=flags,
                                 offset=0,
                                 addr=MAP_ADDR,
                                 size=MAP_SIZE)
 
-    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload)
+    if flags & (VFIO_USER_F_DMA_REGION_MMAP | VFIO_USER_F_DMA_REGION_FILE_IO):
+        fds = [dma_handler.file.fileno()]
+    else:
+        fds = []
 
-    dma_handler = DMARegionHandler(client.client_cmd_socket, payload.addr,
-                                   payload.size)
+    msg(ctx, client.sock, VFIO_USER_DMA_MAP, payload, fds=fds)
+
+    return flags
 
 
 def teardown_function(function):
+    global ctx, client, dma_handler
     dma_handler.shutdown()
     client.disconnect(ctx)
     vfu_destroy_ctx(ctx)
 
 
-def test_dma_read_write():
+def test_dma_read_write(flags):
     ret, sg = vfu_addr_to_sgl(ctx,
                               dma_addr=MAP_ADDR + 0x1000,
                               length=64,
@@ -145,12 +175,18 @@ def test_dma_read_write():
     assert ret == 1
 
     data = bytearray([x & 0xff for x in range(0, sg[0].length)])
-    assert vfu_sgl_write(ctx, sg, 1, data, 0) == 0
+    assert vfu_sgl_write(ctx, sg, 1, data, VFU_SGL_DIRECT_ACCESS) == 0
 
-    assert vfu_sgl_read(ctx, sg, 1, 0) == (0, data)
+    assert vfu_sgl_read(ctx, sg, 1, VFU_SGL_DIRECT_ACCESS) == (0, data)
 
     assert dma_handler.read(sg[0].dma_addr + sg[0].offset,
                             sg[0].length) == data
+
+    # Make sure we only see DMA IPC when there is no other option.
+    if flags & (VFIO_USER_F_DMA_REGION_MMAP | VFIO_USER_F_DMA_REGION_FILE_IO):
+        assert dma_handler.counter.value == 0
+    else:
+        assert dma_handler.counter.value == 2
 
 
 def test_dma_read_write_large():
@@ -170,7 +206,10 @@ def test_dma_read_write_large():
                             sg[0].length) == data
 
 
-def test_dma_read_write_error():
+def test_dma_read_write_error(flags):
+    if flags & (VFIO_USER_F_DMA_REGION_MMAP | VFIO_USER_F_DMA_REGION_FILE_IO):
+        pytest.skip("Can't generate error for direct file access modes")
+
     # Reinitialize the handler to return EIO.
     global dma_handler
     dma_handler.shutdown()
