@@ -124,7 +124,7 @@ dma_controller_add_region(dma_controller_t *dma, void *dma_addr, uint64_t size,
     check_expected_ptr(dma);
     check_expected_ptr(dma_addr);
     check_expected_uint(size);
-    check_expected_int(fd);
+    check_expected_ptr(fd);
     check_expected_int(offset);
     check_expected_uint(prot);
     check_expected_int(access_mode);
