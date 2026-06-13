@@ -252,6 +252,44 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 }
 
 static int
+handle_status_write(vfu_ctx_t *ctx UNUSED,
+                    vfu_pci_config_space_t *pci,
+                    const char *buf)
+{
+    vfu_pci_hdr_sts_t w;
+
+    assert(pci != NULL);
+    assert(buf != NULL);
+
+    w.raw = *(uint16_t *)buf;
+
+    if (w.dpd) {
+        pci->hdr.sts.dpd = 0;
+    }
+
+    if (w.sta) {
+        pci->hdr.sts.sta = 0;
+    }
+
+    if (w.rta) {
+        pci->hdr.sts.rta = 0;
+    }
+
+    if (w.rma) {
+        pci->hdr.sts.rma = 0;
+    }
+
+    if (w.sse) {
+        pci->hdr.sts.sse = 0;
+    }
+
+    if (w.dpe) {
+        pci->hdr.sts.dpe = 0;
+    }
+
+    return 0;
+}
+static int
 pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
 {
     vfu_pci_config_space_t *cfg_space;
@@ -267,8 +305,7 @@ pci_hdr_write(vfu_ctx_t *vfu_ctx, const char *buf, loff_t offset)
         ret = handle_command_write(vfu_ctx, cfg_space, buf);
         break;
     case PCI_STATUS:
-        /* FIXME ignoring write completely is wrong as some bits are RW1C */
-        vfu_log(vfu_ctx, LOG_INFO, "write to status ignored");
+        ret = handle_status_write(vfu_ctx, cfg_space, buf);
         break;
     /*
      * According to the PCI spec, writing to read-only registers must be
