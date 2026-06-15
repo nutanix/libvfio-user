@@ -252,38 +252,37 @@ handle_erom_write(vfu_ctx_t *ctx, vfu_pci_config_space_t *pci,
 }
 
 static int
-handle_status_write(vfu_ctx_t *ctx UNUSED,
-                    vfu_pci_config_space_t *pci,
+handle_status_write(vfu_ctx_t *ctx UNUSED, vfu_pci_config_space_t *pci,
                     const char *buf)
 {
-    vfu_pci_hdr_sts_t w;
+    vfu_pci_hdr_sts_t device_status;
 
     assert(pci != NULL);
     assert(buf != NULL);
 
-    w.raw = *(uint16_t *)buf;
+    device_status.raw = *(uint16_t *)buf;
 
-    if (w.dpd) {
+    if (device_status.dpd) {
         pci->hdr.sts.dpd = 0;
     }
 
-    if (w.sta) {
+    if (device_status.sta) {
         pci->hdr.sts.sta = 0;
     }
 
-    if (w.rta) {
+    if (device_status.rta) {
         pci->hdr.sts.rta = 0;
     }
 
-    if (w.rma) {
+    if (device_status.rma) {
         pci->hdr.sts.rma = 0;
     }
 
-    if (w.sse) {
+    if (device_status.sse) {
         pci->hdr.sts.sse = 0;
     }
 
-    if (w.dpe) {
+    if (device_status.dpe) {
         pci->hdr.sts.dpe = 0;
     }
 

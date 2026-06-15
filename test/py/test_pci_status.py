@@ -1,16 +1,36 @@
 #
-# Copyright (c) 2026 Nutanix Inc.
+# Copyright (c) 2021 Nutanix Inc. All rights reserved.
+#
+# Authors: John Levon <john.levon@nutanix.com>
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions are met:
+#      * Redistributions of source code must retain the above copyright
+#        notice, this list of conditions and the following disclaimer.
+#      * Redistributions in binary form must reproduce the above copyright
+#        notice, this list of conditions and the following disclaimer in the
+#        documentation and/or other materials provided with the distribution.
+#      * Neither the name of Nutanix nor the names of its contributors may be
+#        used to endorse or promote products derived from this software without
+#        specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+#  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#  ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+#  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+#  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+#  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+#  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+#  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+#  DAMAGE.
 #
 
 from libvfio_user import *
 import struct
 
 ctx = None
-
-PCI_STATUS = 0x06
-PCI_STATUS_CAP_LIST = 0x0010
-PCI_STATUS_DETECTED_PARITY = 0x8000
-
 
 def setup_function(function):
     global ctx
@@ -41,7 +61,16 @@ def read_status(sock):
 
 
 def test_pci_status_rw1c():
-
+    """
+    Verify RW1C handling of the PCI status register.
+    
+    Checks that all six write-1-to-clear bits (dpd, sta, rta, rma, sse, dpe):
+      - are cleared when the guest writes a 1;
+      - are left unchanged when the guest writes a 0.
+    
+    Also checks that writing to a read-only bit (Capabilities List) has no
+    effect.
+    """
     ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
     assert ret == 0
 
@@ -57,56 +86,37 @@ def test_pci_status_rw1c():
     assert ret == 0
 
     client = connect_client(ctx)
+    rw1c_bits = [
+        PCI_STATUS_PARITY,
+        PCI_STATUS_SIG_TARGET_ABORT,
+        PCI_STATUS_REC_TARGET_ABORT,
+        PCI_STATUS_REC_MASTER_ABORT,
+        PCI_STATUS_SIG_SYSTEM_ERROR,
+        PCI_STATUS_DETECTED_PARITY,
+    ]
+    all_rw1c = 0
+    for bit in rw1c_bits:
+        all_rw1c |= bit
 
-    initial = (
-        PCI_STATUS_DETECTED_PARITY |
-        PCI_STATUS_CAP_LIST
-    )
+    # Seed every RW1C bit plus a read-only bit (CAP_LIST) directly.
+    write_pci_cfg_space(ctx, struct.pack("<H", all_rw1c | PCI_STATUS_CAP_LIST),
+                        2, PCI_STATUS)
+    assert read_status(client.sock) == all_rw1c | PCI_STATUS_CAP_LIST
 
-    write_pci_cfg_space(
-        ctx,
-        struct.pack("<H", initial),
-        2,
-        PCI_STATUS
-    )
+    # Writing 0 must clear nothing.
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=PCI_STATUS, count=2, data=struct.pack("<H", 0))
+    assert read_status(client.sock) == all_rw1c | PCI_STATUS_CAP_LIST
 
-    assert read_status(client.sock) == initial
+    # Writing 1 clears that bit only; the RO CAP_LIST bit must survive.
+    remaining = all_rw1c
+    for bit in rw1c_bits:
+        write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                     offset=PCI_STATUS, count=2, data=struct.pack("<H", bit))
+        remaining &= ~bit
+        assert read_status(client.sock) == remaining | PCI_STATUS_CAP_LIST
 
-    write_region(
-        ctx,
-        client.sock,
-        VFU_PCI_DEV_CFG_REGION_IDX,
-        offset=PCI_STATUS,
-        count=2,
-        data=struct.pack(
-            "<H",
-            PCI_STATUS_DETECTED_PARITY
-        )
-    )
-
+    # Writing 1 to a read-only bit must have no effect.
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=PCI_STATUS, count=2, data=struct.pack("<H", PCI_STATUS_CAP_LIST))
     assert read_status(client.sock) == PCI_STATUS_CAP_LIST
-
-    write_pci_cfg_space(
-        ctx,
-        struct.pack(
-            "<H",
-            PCI_STATUS_DETECTED_PARITY
-        ),
-        2,
-        PCI_STATUS
-    )
-
-    write_region(
-        ctx,
-        client.sock,
-        VFU_PCI_DEV_CFG_REGION_IDX,
-        offset=PCI_STATUS,
-        count=2,
-        data=struct.pack("<H", 0)
-    )
-
-    assert (
-        read_status(client.sock)
-        ==
-        PCI_STATUS_DETECTED_PARITY
-    )
