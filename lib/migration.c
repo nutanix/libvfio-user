@@ -286,6 +286,12 @@ migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state)
 }
 
 ssize_t
+migration_get_data_size(vfu_ctx_t *vfu_ctx)
+{
+    return vfu_ctx->migration->callbacks.get_data_size(vfu_ctx);
+}
+
+ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
 {
     assert(vfu_ctx != NULL);
@@ -402,6 +408,44 @@ handle_mig_data_write(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
                 ret);
         return ERROR_INT(EINVAL);
     }
+
+    return 0;
+}
+
+int
+handle_mig_get_precopy_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg)
+{
+    struct migration *migr = vfu_ctx->migration;
+
+    if (migr->state != VFIO_USER_DEVICE_STATE_PRE_COPY) {
+        vfu_log(vfu_ctx, LOG_ERR, "bad migration state to get precopy info: %d",
+                migr->state);
+        return ERROR_INT(EINVAL);
+    }
+
+    msg->out.iov.iov_len = sizeof(struct vfio_user_precopy_info);
+    msg->out.iov.iov_base = calloc(1, msg->out.iov.iov_len);
+
+    if (msg->out.iov.iov_base == NULL) {
+        return ERROR_INT(ENOMEM);
+    }
+
+    struct vfio_user_precopy_info *res = msg->out.iov.iov_base;
+    res->argsz = sizeof(struct vfio_user_precopy_info);
+
+    uint64_t initial_bytes, dirty_bytes;
+    ssize_t ret = migr->callbacks.get_precopy_info(vfu_ctx, &initial_bytes,
+                                                   &dirty_bytes);
+
+    if (ret < 0) {
+        vfu_log(vfu_ctx, LOG_ERR, "get_precopy_info callback failed, errno=%d",
+                errno);
+        iov_free(&msg->out.iov);
+        return ret;
+    }
+
+    res->initial_bytes = initial_bytes;
+    res->dirty_bytes = dirty_bytes;
 
     return 0;
 }
