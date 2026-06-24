@@ -79,6 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install misspell-fixer
-        run: git clone https://github.com/vlajos/misspell-fixer.git /misspell-fixer
+        run: |
+          apt-get install -y git
+          git clone https://github.com/vlajos/misspell-fixer.git /misspell-fixer
       - name: run misspell-fixer
         run: /misspell-fixer/misspell-fixer -sv .
