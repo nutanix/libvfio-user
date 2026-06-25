@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2021 Nutanix Inc. All rights reserved.
+# Copyright (c) 2026 Siddharth c
 #
-# Authors: John Levon <john.levon@nutanix.com>
+# Authors: Siddharth C <siddharthcibi@icloud.com>
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
