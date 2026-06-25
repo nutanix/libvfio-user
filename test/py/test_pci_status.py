@@ -32,6 +32,7 @@ import struct
 
 ctx = None
 
+
 def setup_function(function):
     global ctx
 
@@ -63,11 +64,11 @@ def read_status(sock):
 def test_pci_status_rw1c():
     """
     Verify RW1C handling of the PCI status register.
-    
+
     Checks that all six write-1-to-clear bits (dpd, sta, rta, rma, sse, dpe):
       - are cleared when the guest writes a 1;
       - are left unchanged when the guest writes a 0.
-    
+
     Also checks that writing to a read-only bit (Capabilities List) has no
     effect.
     """
@@ -117,6 +118,13 @@ def test_pci_status_rw1c():
         assert read_status(client.sock) == remaining | PCI_STATUS_CAP_LIST
 
     # Writing 1 to a read-only bit must have no effect.
-    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
-                 offset=PCI_STATUS, count=2, data=struct.pack("<H", PCI_STATUS_CAP_LIST))
+    write_region(
+        ctx,
+        client.sock,
+        VFU_PCI_DEV_CFG_REGION_IDX,
+        offset=PCI_STATUS,
+        count=2,
+        data=struct.pack(
+            "<H",
+            PCI_STATUS_CAP_LIST))
     assert read_status(client.sock) == PCI_STATUS_CAP_LIST
