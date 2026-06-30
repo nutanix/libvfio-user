@@ -1798,7 +1798,18 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     if (vfu_ctx->pci.nr_caps != 0) {
         vfu_ctx->pci.config_space->hdr.sts.cl = 0x1;
     }
+    if (vfu_ctx->pci_cap_exp_off >= 0) {
+        struct pxcap *px;
 
+        px = (struct pxcap *)pci_config_space_ptr(vfu_ctx,
+		vfu_ctx->pci_cap_exp_off);
+
+        if (px->pxdcap.flrc && vfu_ctx->reset == NULL) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "FLR capability requires a reset callback");
+            return ERROR_INT(EINVAL);
+        }
+    }
     vfu_ctx->realized = true;
 
     return 0;

@@ -120,6 +120,10 @@ vfu_create_ctx(vfu_trans_t trans, const char *path,
  * mandatory to be called before vfu_attach_ctx().
  * @vfu_ctx: the libvfio-user context
  *
+ * Devices advertising PCIe Function Level Reset capability must
+ * register a reset callback via vfu_setup_device_reset_cb()
+ * before realization, otherwise realization fails with EINVAL.
+ *
  * @returns: 0 on success, -1 on error. Sets errno.
  */
 int

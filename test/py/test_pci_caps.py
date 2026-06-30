@@ -342,6 +342,29 @@ def test_pci_cap_write_px(mock_quiesce, mock_reset):
                          expect=errno.EINVAL)
 
 
+@patch('libvfio_user.quiesce_cb')
+def test_pci_cap_write_px_no_reset_cb(mock_quiesce):
+    """
+    FLR must fail if no reset callback exists.
+    """
+
+    global ctx
+
+    # recreate context without reset callback
+    vfu_destroy_ctx(ctx)
+
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    vfu_setup_device_quiesce_cb(ctx)
+
+    setup_pci_dev(realize=False)
+    setup_flrc(ctx)
+    ret = vfu_realize_ctx(ctx)
+    assert ret == -1
+    assert c.get_errno() == errno.EINVAL
+
+
 def test_pci_cap_write_msi():
     setup_pci_dev(realize=True)
     client = connect_client(ctx)
