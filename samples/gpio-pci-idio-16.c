@@ -141,7 +141,7 @@ migration_write_data(UNUSED vfu_ctx_t *vfu_ctx, void *buf, uint64_t size)
 {
     assert(size == sizeof(pin));
     memcpy(&pin, buf, sizeof(pin));
-    return 0;
+    return size;
 }
 
 static void
