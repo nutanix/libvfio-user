@@ -1802,7 +1802,7 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
         struct pxcap *px;
 
         px = (struct pxcap *)pci_config_space_ptr(vfu_ctx,
-		vfu_ctx->pci_cap_exp_off);
+                                                  vfu_ctx->pci_cap_exp_off);
 
         if (px->pxdcap.flrc && vfu_ctx->reset == NULL) {
             vfu_log(vfu_ctx, LOG_ERR,
