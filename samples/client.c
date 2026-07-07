@@ -301,7 +301,7 @@ mmap_sparse_areas(int fd, struct vfio_region_info *region_info,
 }
 
 static void
-get_device_region_info(int sock, uint32_t index)
+get_device_region_info(int sock, uint32_t index, size_t *region_size)
 {
     struct vfio_region_info *region_info;
     size_t cap_sz;
@@ -353,16 +353,23 @@ get_device_region_info(int sock, uint32_t index)
             assert(index != VFU_PCI_DEV_BAR1_REGION_IDX);
         }
     }
+    *region_size = region_info->size;
     free(region_info);
 }
 
 static void
-get_device_regions_info(int sock, struct vfio_user_device_info *client_dev_info)
+get_device_regions_info(int sock,
+                        struct vfio_user_device_info *client_dev_info,
+                        size_t *bar1_size)
 {
     unsigned int i;
 
     for (i = 0; i < client_dev_info->num_regions; i++) {
-        get_device_region_info(sock, i);
+        size_t region_size;
+        get_device_region_info(sock, i, &region_size);
+        if (i == VFU_PCI_DEV_BAR1_REGION_IDX) {
+            *bar1_size = region_size;
+        }
     }
 }
 
@@ -1182,7 +1189,7 @@ int main(int argc, char *argv[])
     struct iovec *migr_iters;
     size_t nr_iters;
     uint32_t crc;
-    size_t bar1_size = 0x4000; /* FIXME get this value from region info */
+    size_t bar1_size;
 
     struct vfio_user_device_feature *dirty_pages_feature;
     struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
@@ -1228,7 +1235,7 @@ int main(int argc, char *argv[])
     get_device_info(sock, &client_dev_info);
 
     /* VFIO_USER_DEVICE_GET_REGION_INFO */
-    get_device_regions_info(sock, &client_dev_info);
+    get_device_regions_info(sock, &client_dev_info, &bar1_size);
 
     ret = access_region(sock, VFU_PCI_DEV_CFG_REGION_IDX, false, 0, &config_space,
                         sizeof(config_space));
