@@ -1,0 +1,7 @@
+# clangd configuration.
+#
+# Point clangd at the Meson-generated compile_commands.json so it works
+# without a symlink at the repo root. Run `make` (or `meson setup build`)
+# once and clangd will pick up per-file flags automatically.
+CompileFlags:
+  CompilationDatabase: build

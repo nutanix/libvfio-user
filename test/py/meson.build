@@ -48,6 +48,7 @@ python_tests = [
     'test_sgl_read_write.py',
     'test_vfu_create_ctx.py',
     'test_vfu_realize_ctx.py',
+    'test_pci_status.py',
 ]
 
 if get_option('shadow-ioeventfd')

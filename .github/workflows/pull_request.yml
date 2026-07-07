@@ -75,8 +75,13 @@ jobs:
           make pre-push
   spelling:
     runs-on: ubuntu-latest
-    container: vlajos/misspell-fixer
+    container: debian:13
     steps:
       - uses: actions/checkout@v4
+      - name: install misspell-fixer
+        run: |
+          apt-get update
+          apt-get install -y git
+          git clone https://github.com/vlajos/misspell-fixer.git /misspell-fixer
       - name: run misspell-fixer
         run: /misspell-fixer/misspell-fixer -sv .
