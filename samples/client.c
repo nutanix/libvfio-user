@@ -976,7 +976,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     expected_data = bar1_size;
     *nr_iters = (expected_data + max_iter_size - 1) / max_iter_size;
-    assert(*nr_iters == 12);
+    assert(*nr_iters == 16);
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
         err(EXIT_FAILURE, NULL);
@@ -1014,7 +1014,7 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 
     expected_data = bar1_size + sizeof(time_t);
     *nr_iters = (expected_data + max_iter_size - 1) / max_iter_size;
-    assert(*nr_iters == 13);
+    assert(*nr_iters == 17);
     free(*migr_iters);
     *migr_iters = malloc(sizeof(struct iovec) * *nr_iters);
     if (*migr_iters == NULL) {
@@ -1182,7 +1182,7 @@ int main(int argc, char *argv[])
     struct iovec *migr_iters;
     size_t nr_iters;
     uint32_t crc;
-    size_t bar1_size = 0x3000; /* FIXME get this value from region info */
+    size_t bar1_size = 0x4000; /* FIXME get this value from region info */
 
     struct vfio_user_device_feature *dirty_pages_feature;
     struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
