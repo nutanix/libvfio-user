@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
     bool verbose = false;
     int opt;
     struct sigaction act = {.sa_handler = _sa_handler};
-    const size_t bar1_size = 0x3000;
+    const size_t bar1_size = 0x4000;
     struct server_data server_data = {
         .migration = {
             .state = VFU_MIGR_STATE_RUNNING
@@ -518,9 +518,9 @@ int main(int argc, char *argv[])
     umask(0022);
 
     /*
-     * Setup BAR1 to be 3 pages in size where only the first and the last pages
-     * are mappable. The client can still mmap the 2nd page, we can't prohibit
-     * this under Linux. If we really want to prohibit it we have to use
+     * Setup BAR1 to be 4 pages in size where only the first and the last pages
+     * are mappable. The client can still mmap the 2nd and 3rd pages, we can't
+     * prohibit this under Linux. If we really want to prohibit it we have to use
      * separate files for the same region.
      */
     if ((tmpfd = mkstemp(template)) == -1) {
