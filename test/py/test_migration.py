@@ -322,6 +322,11 @@ def test_migration_nonexistent_state():
     transition_to_migr_state(0xabcd, expect=errno.EINVAL)
 
 
+def test_migration_num_states_boundary():
+    transition_to_migr_state(VFIO_USER_DEVICE_NUM_STATES,
+                             expect=errno.EINVAL)
+
+
 def test_migration_failed_callback():
     setup_fail_callbacks(0xbeef)
     transition_to_migr_state(VFIO_USER_DEVICE_STATE_RUNNING, expect=0xbeef)

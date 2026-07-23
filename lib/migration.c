@@ -268,7 +268,7 @@ migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state)
     uint32_t state;
     ssize_t ret = 0;
     
-    if (device_state > VFIO_USER_DEVICE_NUM_STATES) {
+    if (device_state >= VFIO_USER_DEVICE_NUM_STATES) {
         return ERROR_INT(EINVAL);
     }
     
