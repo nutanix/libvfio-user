@@ -36,14 +36,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common.h"
 #include "libvfio-user.h"
 
 static int
-lspci_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t type)
+lspci_reset_cb(vfu_ctx_t *vfu_ctx UNUSED,
+               vfu_reset_type_t type UNUSED)
 {
-    (void)vfu_ctx;
-    (void)type;
-
     return 0;
 }
 
