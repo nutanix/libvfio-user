@@ -1018,6 +1018,7 @@ handle_migration_device_feature_get(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg,
             struct vfio_user_device_feature_mig_state *state =
                 (void *)res->data;
             state->device_state = migration_get_state(vfu_ctx);
+            state->data_fd = -1;
             return 0;
         }
         
@@ -1032,11 +1033,17 @@ static int
 handle_migration_device_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature,
                                     struct vfio_user_device_feature *res)
 {
+    int ret;
     assert(feature == VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE);
 
     struct vfio_user_device_feature_mig_state *state = (void *)res->data;
 
-    return migration_set_state(vfu_ctx, state->device_state);
+    ret = migration_set_state(vfu_ctx, state->device_state);
+
+    /* Force data_fd to -1 in the response per the vfio-user protocol */
+    state->data_fd = -1;
+
+    return ret;
 }
 
 static int
