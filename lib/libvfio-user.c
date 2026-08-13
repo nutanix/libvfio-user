@@ -1038,10 +1038,7 @@ handle_migration_device_feature_set(vfu_ctx_t *vfu_ctx, uint32_t feature,
 
     struct vfio_user_device_feature_mig_state *state = (void *)res->data;
 
-    ret = migration_set_state(vfu_ctx, state->device_state);
-
-    /* Force data_fd to -1 in the response per the vfio-user protocol */
-    state->data_fd = -1;
+    ret = migration_set_state(vfu_ctx, state);
 
     return ret;
 }

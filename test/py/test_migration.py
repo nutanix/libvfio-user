@@ -347,7 +347,8 @@ def test_migration_get_state():
     _, result = vfio_user_device_feature.pop_from_buffer(result)
     state, _ = vfio_user_device_feature_mig_state.pop_from_buffer(result)
     assert state.device_state == VFIO_USER_DEVICE_STATE_RUNNING
-    assert state.data_fd in (-1, 4294967295)
+    # defined as -1 embedded into a uint32_t
+    assert state.data_fd == 4294967295
 
 
 def test_handle_mig_data_read():
