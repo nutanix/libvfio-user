@@ -262,16 +262,17 @@ migration_get_state(vfu_ctx_t *vfu_ctx)
 }
 
 ssize_t
-migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state)
+migration_set_state(vfu_ctx_t *vfu_ctx, struct vfio_user_device_feature_mig_state *mig_state)
 {
     struct migration *migr = vfu_ctx->migration;
     uint32_t state;
     ssize_t ret = 0;
-    
+    uint32_t device_state = mig_state->device_state;
+
     if (device_state >= VFIO_USER_DEVICE_NUM_STATES) {
         return ERROR_INT(EINVAL);
     }
-    
+
     while (migr->state != device_state && ret == 0) {
         state = next_state[migr->state][device_state];
 
@@ -280,8 +281,11 @@ migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state)
         }
 
         ret = handle_device_state(vfu_ctx, migr, state, true);
-    };
-    
+    }
+
+    /* Force data_fd to -1 in the response per the vfio-user protocol */
+    mig_state->data_fd = -1;
+
     return ret;
 }
 

@@ -51,7 +51,7 @@ size_t
 migration_get_state(vfu_ctx_t *vfu_ctx);
 
 ssize_t
-migration_set_state(vfu_ctx_t *vfu_ctx, uint32_t device_state);
+migration_set_state(vfu_ctx_t *vfu_ctx, struct vfio_user_device_feature_mig_state *mig_state);
 
 ssize_t
 handle_mig_data_read(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
