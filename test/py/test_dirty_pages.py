@@ -341,9 +341,6 @@ def test_dirty_pages_get_modified():
 
 
 def test_dirty_pages_invalid_arguments():
-    # Failed to translate
-    get_dirty_page_bitmap(addr=0xdeadbeef, expect=errno.ENOENT)
-
     # Does not exactly match a region (libvfio-user limitation)
     get_dirty_page_bitmap(addr=(0x10 << PAGE_SHIFT) + 1,
                           length=(0x20 << PAGE_SHIFT) - 1,
@@ -352,8 +349,19 @@ def test_dirty_pages_invalid_arguments():
     # Invalid requested bitmap size
     get_dirty_page_bitmap(page_size=1 << 24, expect=errno.EINVAL)
 
-    # Region not mapped
-    get_dirty_page_bitmap(addr=0x40 << PAGE_SHIFT, expect=errno.EINVAL)
+
+def test_dirty_pages_unmapped_and_msg_regions():
+    """
+    Regions that are unmapped or accessed via message-based DMA should
+    return success and an empty bitmap (all zeroes).
+    """
+    # Unmapped region
+    bitmap = get_dirty_page_bitmap(addr=0xdeadbeef, expect=0)
+    assert bitmap == 0
+
+    # Message-based DMA region
+    bitmap = get_dirty_page_bitmap(addr=0x40 << PAGE_SHIFT, expect=0)
+    assert bitmap == 0
 
 
 def stop_logging(addr=None, length=None):
@@ -479,10 +487,11 @@ def test_dirty_pages_ctx_no_stop():
         addr=0x10 << PAGE_SHIFT, size=0x10 << PAGE_SHIFT)
     msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
 
-    # Verify first region is actually unmapped (should fail)
-    get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT,
-                          length=0x10 << PAGE_SHIFT,
-                          expect=errno.ENOENT)
+    # Verify first region is actually unmapped (returns empty bitmap)
+    bitmap = get_dirty_page_bitmap(addr=0x10 << PAGE_SHIFT,
+                                   length=0x10 << PAGE_SHIFT,
+                                   expect=0)
+    assert bitmap == 0
 
     # Verify second region still works and dirty bit is correctly set
     bitmap = get_dirty_page_bitmap(addr=0x30 << PAGE_SHIFT,

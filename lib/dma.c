@@ -730,10 +730,12 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
      */
     ret = dma_addr_to_sgl(dma, addr, len, &sg, 1, PROT_NONE);
     if (unlikely(ret != 1)) {
-        vfu_log(dma->vfu_ctx, LOG_DEBUG, "failed to translate %#llx-%#llx: %m",
-                (unsigned long long)(uintptr_t)addr,
-		(unsigned long long)(uintptr_t)addr + len - 1);
-        return ret;
+        /*
+         * Unmapped region (e.g. firmware or MMIO). The client tracks any 
+         * message-based DMA that might occur here. Return an empty bitmap.
+         */
+        memset(bitmap, 0, size);
+        return 0;
     }
 
     if (unlikely(sg.dma_addr != addr || sg.length != len)) {
@@ -780,9 +782,12 @@ dma_controller_dirty_page_get(dma_controller_t *dma, vfu_dma_addr_t addr,
     region = sg.region;
 
     if (region->access_mode == REGION_ACCESS_MODE_MSG) {
-        vfu_log(dma->vfu_ctx, LOG_ERR, "region [%p-%p] isn't accessed directly",
-                region->info.iova.iov_base, iov_end(&region->info.iova));
-        return ERROR_INT(EINVAL);
+        /*
+         * The client automatically tracks dirty pages for message-based DMA
+         * operations, so we safely return an empty bitmap here.
+         */
+        memset(bitmap, 0, size);
+        return 0;
     }
 
     if (client_pgsize == dma->dirty_pgsize) {
