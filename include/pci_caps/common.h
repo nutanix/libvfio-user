@@ -35,6 +35,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../pci_defs.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,9 +45,9 @@ struct cap_hdr {
     uint8_t id;
     uint8_t next;
 } __attribute__((packed));
-_Static_assert(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
-_Static_assert(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
-_Static_assert(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
+VFU_STATIC_ASSERT(sizeof(struct cap_hdr) == 0x2, "bad PCI capability header size");
+VFU_STATIC_ASSERT(offsetof(struct cap_hdr, id) == PCI_CAP_LIST_ID, "bad offset");
+VFU_STATIC_ASSERT(offsetof(struct cap_hdr, next) == PCI_CAP_LIST_NEXT, "bad offset");
 
 /*
  * Vendor-specific capability

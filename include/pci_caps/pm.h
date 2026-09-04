@@ -52,7 +52,7 @@ struct pc {
     uint16_t d2s:1;
     uint16_t psup:5;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pc) == 0x2, "bad PC size");
+VFU_STATIC_ASSERT(sizeof(struct pc) == 0x2, "bad PC size");
 
 /*
  * Power Management Status and Control Register
@@ -72,7 +72,7 @@ struct pmcs {
         };
     };
 } __attribute__((packed));
-_Static_assert(sizeof(struct pmcs) == 0x2, "bad PMCS size");
+VFU_STATIC_ASSERT(sizeof(struct pmcs) == 0x2, "bad PMCS size");
 
 struct pmcap {
     struct cap_hdr hdr;
@@ -81,8 +81,8 @@ struct pmcap {
     uint8_t pmcsr_bse;
     uint8_t data;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad pmcap size");
-_Static_assert(offsetof(struct pmcap, hdr) == 0, "bad offset");
+VFU_STATIC_ASSERT(sizeof(struct pmcap) == PCI_PM_SIZEOF, "bad pmcap size");
+VFU_STATIC_ASSERT(offsetof(struct pmcap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus
 }

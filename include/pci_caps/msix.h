@@ -50,21 +50,21 @@ struct mxc {
 	uint16_t fm:1;          /* RW */
 	uint16_t mxe:1;         /* RW */
 } __attribute__ ((packed));
-_Static_assert(sizeof(struct mxc) == PCI_MSIX_FLAGS, "bad MXC size");
+VFU_STATIC_ASSERT(sizeof(struct mxc) == PCI_MSIX_FLAGS, "bad MXC size");
 
 /* Table Offset / Table BIR for MSI-X */
 struct mtab {
 	uint32_t tbir:3;    /* RO */
 	uint32_t to:29;     /* RO */
 } __attribute__ ((packed));
-_Static_assert(sizeof(struct mtab) == PCI_MSIX_TABLE, "bad MTAB size");
+VFU_STATIC_ASSERT(sizeof(struct mtab) == PCI_MSIX_TABLE, "bad MTAB size");
 
 /* PBA Offset / PBA BIR for MSI-X */
 struct mpba {
 	uint32_t pbir:3;    /* RO */
 	uint32_t pbao:29;   /* RO */
 } __attribute__ ((packed));
-_Static_assert(sizeof(struct mtab) == PCI_MSIX_PBA - PCI_MSIX_TABLE,
+VFU_STATIC_ASSERT(sizeof(struct mtab) == PCI_MSIX_PBA - PCI_MSIX_TABLE,
                "bad MPBA size");
 
 struct msixcap {
@@ -73,8 +73,8 @@ struct msixcap {
 	struct mtab mtab;
 	struct mpba mpba;
 } __attribute__ ((packed)) __attribute__ ((aligned(4)));
-_Static_assert(sizeof(struct msixcap) == PCI_CAP_MSIX_SIZEOF, "bad MSI-X size");
-_Static_assert(offsetof(struct msixcap, hdr) == 0, "bad offset");
+VFU_STATIC_ASSERT(sizeof(struct msixcap) == PCI_CAP_MSIX_SIZEOF, "bad MSI-X size");
+VFU_STATIC_ASSERT(offsetof(struct msixcap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus
 }
