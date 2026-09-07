@@ -46,7 +46,7 @@
 #include <linux/vfio.h>
 #include <linux/version.h>
 
-#include "pci_defs.h"
+#include "static_assert.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -35,7 +35,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../pci_defs.h"
+#include "../static_assert.h"
 
 #ifdef __cplusplus
 extern "C" {
