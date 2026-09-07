@@ -37,16 +37,7 @@
 #include <stdbool.h>
 #include <linux/pci_regs.h>
 
-/*
- * C++ has no _Static_assert; static_assert is the C++11 spelling.  This
- * lets the layout assertions below compile in both languages without
- * depending on the consumer's C standard or feature-test macros.
- */
-#ifdef __cplusplus
-#define VFU_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#else
-#define VFU_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#endif
+#include "static_assert.h"
 
 #ifdef __cplusplus
 extern "C" {

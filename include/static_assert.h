@@ -1,9 +1,7 @@
 /*
- * Copyright (c) 2019 Nutanix Inc. All rights reserved.
+ * Copyright (c) 2026 Nutanix Inc. All rights reserved.
  *
- * Authors: Thanos Makatos <thanos@nutanix.com>
- *          Swapnil Ingle <swapnil.ingle@nutanix.com>
- *          Felipe Franciosi <felipe@nutanix.com>
+ * Authors: Jihyeon Gim <potatogim@potatogim.net>
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
@@ -31,30 +29,22 @@
  */
 
 /*
- * Device Serial Number (PCIE 7.12).
+ * Common definitions shared by the installed libvfio-user headers.
  */
 
-#ifndef LIB_VFIO_USER_PCI_CAPS_DSN_H
-#define LIB_VFIO_USER_PCI_CAPS_DSN_H
+#ifndef LIB_VFIO_USER_STATIC_ASSERT_H
+#define LIB_VFIO_USER_STATIC_ASSERT_H
 
-#include "common.h"
-
+/*
+ * C++ has no _Static_assert; static_assert is the C++11 spelling.  This
+ * lets the layout assertions in the installed headers compile in both
+ * languages without depending on the consumer's C standard or
+ * feature-test macros.
+ */
 #ifdef __cplusplus
-extern "C" {
+#define VFU_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+#else
+#define VFU_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
 #endif
 
-struct dsncap {
-    struct pcie_ext_cap_hdr hdr;
-    uint32_t sn_lo;
-    uint32_t sn_hi;
-} __attribute__((packed));
-VFU_STATIC_ASSERT(sizeof(struct dsncap) == PCI_EXT_CAP_DSN_SIZEOF,
-                 "bad DSN Capability size");
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* LIB_VFIO_USER_PCI_CAPS_DSN_H */
-
-/* ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
+#endif /* LIB_VFIO_USER_STATIC_ASSERT_H */
