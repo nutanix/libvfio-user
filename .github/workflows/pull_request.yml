@@ -47,19 +47,6 @@ jobs:
               diffutils valgrind python3-pytest python3-flake8 which \
               meson ninja-build
           make pre-push
-  debian-11:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    container: debian:11
-    steps:
-      - uses: actions/checkout@v4
-      - name: pre-push
-        run: |
-          apt-get update
-          apt-get -y install build-essential cmake pkg-config libjson-c-dev \
-            libcmocka-dev clang clang-tools valgrind python3-pytest \
-            debianutils flake8 meson ninja-build
-          make pre-push
   debian-12:
     timeout-minutes: 10
     runs-on: ubuntu-22.04
