@@ -35,7 +35,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../static_assert.h"
+#include "../compiler.h"
 
 #ifdef __cplusplus
 extern "C" {

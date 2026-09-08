@@ -37,7 +37,7 @@
 #include <stdbool.h>
 #include <linux/pci_regs.h>
 
-#include "static_assert.h"
+#include "compiler.h"
 
 #ifdef __cplusplus
 extern "C" {

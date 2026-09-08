@@ -29,11 +29,11 @@
  */
 
 /*
- * Common definitions shared by the installed libvfio-user headers.
+ * Compiler compatibility helpers shared by the installed libvfio-user headers.
  */
 
-#ifndef LIB_VFIO_USER_STATIC_ASSERT_H
-#define LIB_VFIO_USER_STATIC_ASSERT_H
+#ifndef LIB_VFIO_USER_COMPILER_H
+#define LIB_VFIO_USER_COMPILER_H
 
 /*
  * C++ has no _Static_assert; static_assert is the C++11 spelling.  This
@@ -47,4 +47,4 @@
 #define VFU_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
 #endif
 
-#endif /* LIB_VFIO_USER_STATIC_ASSERT_H */
+#endif /* LIB_VFIO_USER_COMPILER_H */

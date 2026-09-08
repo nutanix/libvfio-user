@@ -4,7 +4,7 @@ public_include_dir = [include_directories('.')]
 libvfio_user_includes = files(
     'libvfio-user.h',
     'pci_defs.h',
-    'static_assert.h',
+    'compiler.h',
     'vfio-user.h'
 )
 

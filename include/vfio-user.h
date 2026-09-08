@@ -46,7 +46,7 @@
 #include <linux/vfio.h>
 #include <linux/version.h>
 
-#include "static_assert.h"
+#include "compiler.h"
 
 #ifdef __cplusplus
 extern "C" {
