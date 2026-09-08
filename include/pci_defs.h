@@ -37,6 +37,8 @@
 #include <stdbool.h>
 #include <linux/pci_regs.h>
 
+#include "compiler.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,12 +61,12 @@ typedef union {
         uint16_t sid;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_ss_t;
-_Static_assert(sizeof(vfu_pci_hdr_ss_t) == 0x4, "bad SS size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_ss_t) == 0x4, "bad SS size");
 
 typedef union {
     uint8_t raw;
 } __attribute__ ((packed)) vfu_pci_hdr_bist_t;
-_Static_assert(sizeof(vfu_pci_hdr_bist_t) == 0x1, "bad BIST size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_bist_t) == 0x1, "bad BIST size");
 
 typedef union {
     uint32_t raw;
@@ -82,12 +84,12 @@ typedef union {
         } __attribute__ ((packed)) io;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_bar_t;
-_Static_assert(sizeof(vfu_bar_t) == 0x4, "bad BAR size");
+VFU_STATIC_ASSERT(sizeof(vfu_bar_t) == 0x4, "bad BAR size");
 
 typedef union {
     uint8_t raw;
 } __attribute__ ((packed)) vfu_pci_hdr_htype_t;
-_Static_assert(sizeof(vfu_pci_hdr_htype_t) == 0x1, "bad HTYPE size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_htype_t) == 0x1, "bad HTYPE size");
 
 typedef union {
     uint8_t raw[3];
@@ -97,7 +99,7 @@ typedef union {
         uint8_t bcc;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_cc_t;
-_Static_assert(sizeof(vfu_pci_hdr_cc_t) == 0x3, "bad CC size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_cc_t) == 0x3, "bad CC size");
 
 /* device status */
 typedef union {
@@ -118,7 +120,7 @@ typedef union {
         unsigned int dpe:1;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_sts_t;
-_Static_assert(sizeof(vfu_pci_hdr_sts_t) == 0x2, "bad STS size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_sts_t) == 0x2, "bad STS size");
 
 typedef union {
     uint16_t raw;
@@ -137,7 +139,7 @@ typedef union {
         uint8_t res1:5;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_cmd_t;
-_Static_assert(sizeof(vfu_pci_hdr_cmd_t) == 0x2, "bad CMD size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_cmd_t) == 0x2, "bad CMD size");
 
 typedef union {
     uint32_t raw;
@@ -146,7 +148,7 @@ typedef union {
         uint16_t did;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_id_t;
-_Static_assert(sizeof(vfu_pci_hdr_id_t) == 0x4, "bad ID size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_id_t) == 0x4, "bad ID size");
 
 typedef union {
     uint16_t raw;
@@ -155,7 +157,7 @@ typedef union {
         uint8_t ipin;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_intr_t;
-_Static_assert(sizeof(vfu_pci_hdr_intr_t) == 0x2, "bad INTR size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_intr_t) == 0x2, "bad INTR size");
 
 typedef union {
     uint8_t raw[PCI_STD_HEADER_SIZEOF];
@@ -181,7 +183,7 @@ typedef union {
         uint8_t mlat;
     } __attribute__ ((packed));
 } __attribute__ ((packed)) vfu_pci_hdr_t;
-_Static_assert(sizeof(vfu_pci_hdr_t) == 0x40, "bad PCI header size");
+VFU_STATIC_ASSERT(sizeof(vfu_pci_hdr_t) == 0x40, "bad PCI header size");
 
 /*
  * Note that extended config space is 4096 bytes.
@@ -193,7 +195,7 @@ typedef struct {
     } __attribute__ ((packed));
     uint8_t extended[];
 } __attribute__ ((packed)) vfu_pci_config_space_t;
-_Static_assert(sizeof(vfu_pci_config_space_t) == 0x100,
+VFU_STATIC_ASSERT(sizeof(vfu_pci_config_space_t) == 0x100,
                "bad PCI configuration space size");
 
 #ifdef __cplusplus

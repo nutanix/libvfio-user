@@ -50,7 +50,7 @@ struct pxcaps {
     uint16_t imn:5;
     uint16_t res1:2;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxcaps) == 0x2, "bad PXCAPS size");
+VFU_STATIC_ASSERT(sizeof(struct pxcaps) == 0x2, "bad PXCAPS size");
 
 struct pxdcap {
     uint32_t mps:3;
@@ -66,7 +66,7 @@ struct pxdcap {
     uint32_t flrc:1;
     uint32_t res3:3;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxdcap) == 0x4, "bad PXDCAP size");
+VFU_STATIC_ASSERT(sizeof(struct pxdcap) == 0x4, "bad PXDCAP size");
 
 union pxdc {
     uint16_t raw;
@@ -85,18 +85,18 @@ union pxdc {
         uint16_t iflr:1;
      } __attribute__((packed));
 } __attribute__((packed));
-_Static_assert(sizeof(union pxdc) == 0x2, "bad PXDC size");
+VFU_STATIC_ASSERT(sizeof(union pxdc) == 0x2, "bad PXDC size");
 
 /* TODO not defining for now since all values are 0 for reset */
 struct pxds {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxds) == 0x2, "bad PXDS size");
+VFU_STATIC_ASSERT(sizeof(struct pxds) == 0x2, "bad PXDS size");
 
 struct pxlcap {
     uint32_t stuff:32;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxlcap) == 0x4, "bad PXLCAP size");
+VFU_STATIC_ASSERT(sizeof(struct pxlcap) == 0x4, "bad PXLCAP size");
 
 union pxlc {
     uint16_t raw;
@@ -115,42 +115,42 @@ union pxlc {
         uint16_t rsvdp2:4;
     };
 } __attribute__((packed));
-_Static_assert(sizeof(union pxlc) == 0x2, "bad PXLC size");
+VFU_STATIC_ASSERT(sizeof(union pxlc) == 0x2, "bad PXLC size");
 
 struct pxls {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxls) == 0x2, "bad PXLS size");
+VFU_STATIC_ASSERT(sizeof(struct pxls) == 0x2, "bad PXLS size");
 
 struct pxscap {
     uint32_t stuff:32;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxscap) == 0x4, "bad PXSCAP size");
+VFU_STATIC_ASSERT(sizeof(struct pxscap) == 0x4, "bad PXSCAP size");
 
 struct pxsc {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxsc) == 0x2, "bad PXSC size");
+VFU_STATIC_ASSERT(sizeof(struct pxsc) == 0x2, "bad PXSC size");
 
 struct pxss {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxss) == 0x2, "bad PXSS size");
+VFU_STATIC_ASSERT(sizeof(struct pxss) == 0x2, "bad PXSS size");
 
 struct pxrc {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxrc) == 0x2, "bad PXRC size");
+VFU_STATIC_ASSERT(sizeof(struct pxrc) == 0x2, "bad PXRC size");
 
 struct pxrcap {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxrcap) == 0x2, "bad PXRCAP size");
+VFU_STATIC_ASSERT(sizeof(struct pxrcap) == 0x2, "bad PXRCAP size");
 
 struct pxrs {
     uint32_t stuff:32;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxrs) == 0x4, "bad PXRS size");
+VFU_STATIC_ASSERT(sizeof(struct pxrs) == 0x4, "bad PXRS size");
 
 /*
  * Device Capabilities 2 Register
@@ -184,7 +184,7 @@ struct pxdcap2 {
     uint32_t dmwls:2;
     uint32_t frss:1;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxdcap2) == 0x4, "bad PXDCAP2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxdcap2) == 0x4, "bad PXDCAP2 size");
 
 union pxdc2 {
     uint16_t raw;
@@ -201,42 +201,42 @@ union pxdc2 {
         uint32_t end_end_tlp_prefix_block:1;
     } __attribute__((packed));
 } __attribute__((packed));
-_Static_assert(sizeof(union pxdc2) == 0x2, "bad PXDC2 size");
+VFU_STATIC_ASSERT(sizeof(union pxdc2) == 0x2, "bad PXDC2 size");
 
 struct pxds2 {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxds2) == 0x2, "bad PXDS2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxds2) == 0x2, "bad PXDS2 size");
 
 struct pxlcap2 {
     uint32_t stuff:32;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxlcap2) == 0x4, "bad PXLCAP2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxlcap2) == 0x4, "bad PXLCAP2 size");
 
 struct pxlc2 {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxlc2) == 0x2, "bad PXLC2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxlc2) == 0x2, "bad PXLC2 size");
 
 struct pxls2 {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxls2) == 0x2, "bad PXLS2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxls2) == 0x2, "bad PXLS2 size");
 
 struct pxscap2 {
     uint32_t stuff:32;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxscap2) == 0x4, "bad PXSCAP2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxscap2) == 0x4, "bad PXSCAP2 size");
 
 struct pxsc2 {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxsc2) == 0x2, "bad PXSC2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxsc2) == 0x2, "bad PXSC2 size");
 
 struct pxss2 {
     uint16_t stuff:16;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxss2) == 0x2, "bad PXSS2 size");
+VFU_STATIC_ASSERT(sizeof(struct pxss2) == 0x2, "bad PXSS2 size");
 
 /*
  * PCI_CAP_EXP_ENDPOINT_SIZEOF_V2 from pci_regs.h is a false friend: earlier
@@ -302,9 +302,9 @@ struct pxcap {
     /* Slot Status 2 */
     struct pxss2 pxss2;
 } __attribute__((packed));
-_Static_assert(sizeof(struct pxcap) == VFIO_USER_PCI_CAP_EXP_SIZEOF,
+VFU_STATIC_ASSERT(sizeof(struct pxcap) == VFIO_USER_PCI_CAP_EXP_SIZEOF,
 		"bad PCI Express Capability size");
-_Static_assert(offsetof(struct pxcap, hdr) == 0, "bad offset");
+VFU_STATIC_ASSERT(offsetof(struct pxcap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus
 }

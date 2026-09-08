@@ -46,6 +46,8 @@
 #include <linux/vfio.h>
 #include <linux/version.h>
 
+#include "compiler.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -264,7 +266,7 @@ struct vfio_user_device_feature_migration {
 #ifndef VFIO_REGION_TYPE_MIGRATION_DEPRECATED
 #define VFIO_DEVICE_FEATURE_MIGRATION 1
 #endif
-_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+VFU_STATIC_ASSERT(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_migration size");
 
 /* Analogous to struct vfio_device_feature_mig_state */
@@ -275,7 +277,7 @@ struct vfio_user_device_feature_mig_state {
 #ifndef VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE
 #define VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE 2
 #endif
-_Static_assert(sizeof(struct vfio_user_device_feature_migration) == 8,
+VFU_STATIC_ASSERT(sizeof(struct vfio_user_device_feature_migration) == 8,
                "bad vfio_user_device_feature_mig_state size");
 
 /* Analogous to enum vfio_device_mig_state */

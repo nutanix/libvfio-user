@@ -48,14 +48,14 @@ struct mc {
     unsigned int pvm:1;     /* RO */
     unsigned int res1:7;    /* not implemented, extended message data control */
 } __attribute__ ((packed));
-_Static_assert(sizeof(struct mc) == 0x2, "bad MC size");
+VFU_STATIC_ASSERT(sizeof(struct mc) == 0x2, "bad MC size");
 
 /* Message Address for MSI */
 struct ma {
     unsigned int res1:2;    /* read must return 0, write has no effect */
     unsigned int addr:30;   /* RW */
 } __attribute__ ((packed));
-_Static_assert(sizeof(struct ma) == 0x4, "bad MA size");
+VFU_STATIC_ASSERT(sizeof(struct ma) == 0x4, "bad MA size");
 
 #define VFIO_USER_PCI_CAP_MSI_SIZEOF (0x18)
 
@@ -69,9 +69,9 @@ struct msicap {
     uint32_t mmask;         /* RW */
     uint32_t mpend;         /* RO */
 }  __attribute__ ((packed));
-_Static_assert(sizeof(struct msicap) == VFIO_USER_PCI_CAP_MSI_SIZEOF,
+VFU_STATIC_ASSERT(sizeof(struct msicap) == VFIO_USER_PCI_CAP_MSI_SIZEOF,
         "bad MSICAP size");
-_Static_assert(offsetof(struct msicap, hdr) == 0, "bad offset");
+VFU_STATIC_ASSERT(offsetof(struct msicap, hdr) == 0, "bad offset");
 
 #ifdef __cplusplus
 }
