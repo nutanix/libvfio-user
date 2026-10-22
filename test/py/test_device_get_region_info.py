@@ -467,4 +467,32 @@ def test_64bit_bar_size_detection_protocol():
     vfu_destroy_ctx(ctx)
 
 
+def test_small_64bit_bar_size_and_upper_address():
+    ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
+    assert ctx is not None
+
+    assert setup_bar_region(ctx, 0, 0x1000, is_64b=True) == 0
+    vfu_pci_init(ctx)
+    assert vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
+                            size=PCI_CFG_SPACE_EXP_SIZE,
+                            flags=VFU_REGION_FLAG_RW) == 0
+    assert vfu_realize_ctx(ctx) == 0
+
+    client = connect_client(ctx)
+
+    # A small 64-bit BAR must accept a high address and report its full
+    # 64-bit sizing mask when probed through PCI config space.
+    upper = struct.pack("<I", 0x12345678)
+    write_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                 offset=PCI_BASE_ADDRESS_1, count=4, data=upper)
+    assert read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                       offset=PCI_BASE_ADDRESS_1, count=4) == upper
+    assert detect_bar_sizes(ctx, client) == [0x1000, 0, 0, 0, 0, 0]
+    assert read_region(ctx, client.sock, VFU_PCI_DEV_CFG_REGION_IDX,
+                       offset=PCI_BASE_ADDRESS_1, count=4) == upper
+
+    client.disconnect(ctx)
+    vfu_destroy_ctx(ctx)
+
+
 # ex: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: #
