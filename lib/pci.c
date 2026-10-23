@@ -45,19 +45,25 @@
 
 
 /*
- * Return "effective" size of the bar.
- * For even-indexed BARs (0, 2, 4), return the size of the bar and flag.
- * For odd-indexed BARs (1, 3, 5), if lower bar is configured as 64-bit,
- * return the upper 32 bits of the 64b bar size and 0.
- * Otherwise, return the size of the bar and flag.
+ * Return the BAR size used to calculate the config write address mask.
+ * For the upper half of a 64-bit BAR, return the upper 32 bits of the lower
+ * BAR's size, or 1 for a nonzero size below 4 GiB so that all upper address
+ * bits remain writable. For other BARs, return the configured size.
  */
 static inline uint64_t
-get_bar_eff_size(vfu_ctx_t *vfu_ctx, uint16_t bar_index)
+get_bar_size_for_mask(vfu_ctx_t *vfu_ctx, uint16_t bar_index)
 {
     assert(vfu_ctx != NULL);
     if (bar_index % 2 == 1) {
         if (vfu_ctx->reg_info[bar_index - 1].flags & VFU_REGION_FLAG_64_BITS) {
-            return vfu_ctx->reg_info[bar_index - 1].size >> 32;
+            uint64_t size = vfu_ctx->reg_info[bar_index - 1].size;
+
+            /* A sub-4GiB 64-bit BAR still has a fully writable upper
+             * address register. Zero would mask every high address bit. */
+            if (size > 0 && size < (1ULL << 32)) {
+                return 1;
+            }
+            return size >> 32;
         }
     }
     return vfu_ctx->reg_info[bar_index].size;
@@ -101,7 +107,7 @@ pci_hdr_write_bar(vfu_ctx_t *vfu_ctx, uint16_t bar_index, const char *buf)
 
     cfg_addr = *(uint32_t *) buf;
 
-    effective_size = get_bar_eff_size(vfu_ctx, bar_index);
+    effective_size = get_bar_size_for_mask(vfu_ctx, bar_index);
     flag_mask = get_bar_flag_mask(vfu_ctx, bar_index);
 
     mask = 0;
