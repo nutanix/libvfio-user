@@ -74,8 +74,32 @@ struct client_dma_region {
 #define CLIENT_DIRTY_PAGE_TRACKING_ENABLED (1 << 0)
 #define CLIENT_DIRTY_DMA_REGION (1 << 1)
     uint32_t flags;
+    bool mapped;
     struct vfio_user_dma_map map;
     int fd;
+};
+
+/*
+ * State shared between the main thread and the thread serving server-to-client
+ * DMA commands in twin-socket mode. The mutex protects the regions' flags and
+ * mapped fields, the counters, and peer_closed.
+ */
+struct dma_ctx {
+    struct client_dma_region *regions;
+    int nr_regions;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    unsigned int nr_reads;
+    unsigned int nr_writes;
+    unsigned int nr_errors;
+    bool peer_closed;
+    int twin_sock;
+    pthread_t thread;
+};
+
+enum serve_result {
+    SERVE_OK,
+    SERVE_PEER_CLOSED
 };
 
 void
@@ -111,7 +135,7 @@ init_sock(const char *path)
 }
 
 static void
-send_version(int sock)
+send_version(int sock, bool twin_socket)
 {
     struct vfio_user_version cversion;
     struct iovec iovecs[3] = { { 0 } };
@@ -125,8 +149,10 @@ send_version(int sock)
             "\"capabilities\":{"
                 "\"max_msg_fds\":%u,"
                 "\"max_data_xfer_size\":%u"
+                "%s"
             "}"
-         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE);
+         "}", CLIENT_MAX_FDS, CLIENT_MAX_DATA_XFER_SIZE,
+         twin_socket ? ",\"twin_socket\":{\"supported\":true}" : "");
 
     cversion.major = LIB_VFIO_USER_MAJOR;
     cversion.minor = LIB_VFIO_USER_MINOR;
@@ -147,16 +173,35 @@ send_version(int sock)
 }
 
 static void
-recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
-             size_t *pgsize)
+close_fds(int *fds, size_t nr_fds)
+{
+    size_t i;
+
+    for (i = 0; i < nr_fds; i++) {
+        if (fds[i] != -1) {
+            close(fds[i]);
+            fds[i] = -1;
+        }
+    }
+}
+
+static int
+recv_version(int sock, bool twin_socket, int *server_max_fds,
+             size_t *server_max_data_xfer_size, size_t *pgsize)
 {
     struct vfio_user_version *sversion = NULL;
     struct vfio_user_header hdr;
+    int fds[CLIENT_MAX_FDS];
+    size_t nr_fds = ARRAY_SIZE(fds);
+    bool twin_socket_supported = false;
+    int twin_socket_fd_index = -1;
+    int twin_sock = -1;
+    struct stat sb;
     size_t vlen;
     int ret;
 
-    ret = tran_sock_recv_alloc(sock, &hdr, true, NULL,
-                               (void **)&sversion, &vlen);
+    ret = tran_sock_recv_alloc_fds(sock, &hdr, true, NULL,
+                                   (void **)&sversion, &vlen, fds, &nr_fds);
 
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to receive version");
@@ -197,7 +242,9 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
         }
 
         ret = tran_parse_version_json(json_str, server_max_fds,
-                                      server_max_data_xfer_size, pgsize, NULL);
+                                      server_max_data_xfer_size, pgsize,
+                                      &twin_socket_supported,
+                                      &twin_socket_fd_index);
 
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to parse server JSON \"%s\"", json_str);
@@ -205,14 +252,50 @@ recv_version(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
     }
 
     free(sversion);
+
+    if (twin_socket_supported) {
+        /* The server's capabilities must be a subset of ours. */
+        if (!twin_socket) {
+            errx(EXIT_FAILURE, "server enabled twin-socket mode but we "
+                 "didn't request it");
+        }
+
+        if (twin_socket_fd_index < 0 || (size_t)twin_socket_fd_index >= nr_fds) {
+            errx(EXIT_FAILURE, "invalid twin-socket fd_index %d (%zu fds)",
+                 twin_socket_fd_index, nr_fds);
+        }
+
+        twin_sock = fds[twin_socket_fd_index];
+
+        if (fstat(twin_sock, &sb) == -1) {
+            err(EXIT_FAILURE, "failed to fstat twin socket");
+        }
+
+        if (!S_ISSOCK(sb.st_mode)) {
+            errx(EXIT_FAILURE, "twin-socket fd is not a socket");
+        }
+
+        fds[twin_socket_fd_index] = -1;
+        printf("client: using twin-socket mode\n");
+    } else {
+        printf("client: using single-socket mode\n");
+    }
+
+    close_fds(fds, nr_fds);
+
+    return twin_sock;
 }
 
-static void
-negotiate(int sock, int *server_max_fds, size_t *server_max_data_xfer_size,
-          size_t *pgsize)
+/*
+ * Returns the twin socket if the server enabled twin-socket mode, -1 otherwise.
+ */
+static int
+negotiate(int sock, bool twin_socket, int *server_max_fds,
+          size_t *server_max_data_xfer_size, size_t *pgsize)
 {
-    send_version(sock);
-    recv_version(sock, server_max_fds, server_max_data_xfer_size, pgsize);
+    send_version(sock, twin_socket);
+    return recv_version(sock, twin_socket, server_max_fds,
+                        server_max_data_xfer_size, pgsize);
 }
 
 static void
@@ -680,145 +763,308 @@ wait_for_irq(int irq_fd)
     printf("client: INTx triggered!\n");
 }
 
-static void
-handle_dma_write(int sock, struct client_dma_region *dma_regions,
-                 int nr_dma_regions)
+/*
+ * Returns the mapped region that entirely contains [addr, addr + count) and
+ * allows @prot, or NULL. Must be called with ctx->lock held.
+ */
+static struct client_dma_region *
+find_dma_region(struct dma_ctx *ctx, uint64_t addr, uint64_t count,
+                uint32_t prot)
 {
-    struct vfio_user_dma_region_access dma_access;
-    struct vfio_user_header hdr;
-    int ret, i;
-    size_t size = sizeof(dma_access);
-    uint16_t msg_id = 0xcafe;
-    void *data;
+    int i;
 
-    ret = tran_sock_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to receive DMA read");
-    }
+    for (i = 0; i < ctx->nr_regions; i++) {
+        struct client_dma_region *r = &ctx->regions[i];
 
-    data = calloc(dma_access.count, 1);
-    if (data == NULL) {
-        err(EXIT_FAILURE, NULL);
-    }
-
-    if (recv(sock, data, dma_access.count, 0) == -1) {
-        err(EXIT_FAILURE, "failed to receive DMA read data");
-    }
-
-    for (i = 0; i < nr_dma_regions; i++) {
-        off_t offset;
-        ssize_t c;
-
-        if (dma_access.addr < dma_regions[i].map.addr ||
-            dma_access.addr >= dma_regions[i].map.addr + dma_regions[i].map.size) {
+        if (!r->mapped || addr < r->map.addr ||
+            addr - r->map.addr > r->map.size ||
+            count > r->map.size - (addr - r->map.addr)) {
             continue;
         }
 
-        offset = dma_regions[i].map.offset + dma_access.addr;
+        return (r->map.flags & prot) == prot ? r : NULL;
+    }
 
-        c = pwrite(dma_regions[i].fd, data, dma_access.count, offset);
+    return NULL;
+}
 
-        if (c != (ssize_t)dma_access.count) {
-            err(EXIT_FAILURE, "failed to write to fd=%d at [%#llx-%#llx)",
-                    dma_regions[i].fd, (ull_t)offset,
-                    (ull_t)(offset + dma_access.count));
+/*
+ * Receives and serves one VFIO_USER_DMA_READ or VFIO_USER_DMA_WRITE command
+ * from the server. Invalid commands get an error reply.
+ */
+static enum serve_result
+serve_dma_cmd(int sock, struct dma_ctx *ctx)
+{
+    struct vfio_user_dma_region_access *access = NULL;
+    struct vfio_user_dma_region_access *response = NULL;
+    struct client_dma_region *region;
+    struct vfio_user_header hdr;
+    struct iovec iovecs[2] = { { 0 } };
+    size_t nr_iovecs = ARRAY_SIZE(iovecs);
+    bool is_write = false;
+    uint16_t msg_id;
+    void *data = NULL;
+    size_t len = 0;
+    int error = 0;
+    int ret;
+
+    ret = tran_sock_recv_alloc(sock, &hdr, false, &msg_id, &data, &len);
+    if (ret < 0) {
+        if (errno == ENOMSG || errno == ECONNRESET) {
+            return SERVE_PEER_CLOSED;
+        }
+        err(EXIT_FAILURE, "failed to receive DMA command");
+    }
+
+    switch (hdr.cmd) {
+        case VFIO_USER_DMA_WRITE:
+            is_write = true;
+            break;
+        case VFIO_USER_DMA_READ:
+            break;
+        default:
+            warnx("msg%#hx: unexpected command %hu from server", msg_id,
+                  hdr.cmd);
+            error = ENOTSUP;
+            goto reply;
+    }
+
+    access = data;
+
+    if (len < sizeof(*access) || access->count > CLIENT_MAX_DATA_XFER_SIZE ||
+        len != sizeof(*access) + (is_write ? access->count : 0)) {
+        warnx("msg%#hx: invalid DMA %s of size %zu", msg_id,
+              is_write ? "write" : "read", len);
+        error = EINVAL;
+        goto reply;
+    }
+
+    if (!is_write) {
+        response = calloc(1, sizeof(*response) + access->count);
+        if (response == NULL) {
+            err(EXIT_FAILURE, NULL);
+        }
+        response->addr = access->addr;
+        response->count = access->count;
+    }
+
+    pthread_mutex_lock(&ctx->lock);
+
+    region = find_dma_region(ctx, access->addr, access->count,
+                             is_write ? VFIO_USER_F_DMA_REGION_WRITE
+                                      : VFIO_USER_F_DMA_REGION_READ);
+    if (region != NULL) {
+        off_t offset = region->map.offset + (access->addr - region->map.addr);
+        ssize_t c;
+
+        if (is_write) {
+            c = pwrite(region->fd, access->data, access->count, offset);
+        } else {
+            c = pread(region->fd, response->data, access->count, offset);
+        }
+
+        if (c != (ssize_t)access->count) {
+            err(EXIT_FAILURE, "failed to %s fd=%d at [%#llx-%#llx)",
+                is_write ? "write to" : "read from", region->fd,
+                (ull_t)offset, (ull_t)(offset + access->count));
         }
 
         /*
          * DMA regions in this example are one page in size so we use one bit
          * to mark the newly-dirtied page as dirty.
          */
-        if (dma_regions[i].flags & CLIENT_DIRTY_PAGE_TRACKING_ENABLED) {
-            assert(dma_regions[i].map.size == PAGE_SIZE);
-            dma_regions[i].flags |= CLIENT_DIRTY_DMA_REGION;
+        if (is_write &&
+            (region->flags & CLIENT_DIRTY_PAGE_TRACKING_ENABLED)) {
+            assert(region->map.size == PAGE_SIZE);
+            region->flags |= CLIENT_DIRTY_DMA_REGION;
         }
-
-        break;
     }
 
-    assert(i != nr_dma_regions);
+    pthread_mutex_unlock(&ctx->lock);
 
-    ret = tran_sock_send(sock, msg_id, true, VFIO_USER_DMA_WRITE,
-                         &dma_access, sizeof(dma_access));
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to send reply of DMA write");
-    }
-    free(data);
-}
-
-static void
-handle_dma_read(int sock, struct client_dma_region *dma_regions,
-                int nr_dma_regions)
-{
-    struct vfio_user_dma_region_access dma_access, *response;
-    struct vfio_user_header hdr;
-    int ret, i, response_sz;
-    size_t size = sizeof(dma_access);
-    uint16_t msg_id = 0xcafe;
-    void *data;
-
-    ret = tran_sock_recv(sock, &hdr, false, &msg_id, &dma_access, &size);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to receive DMA read");
+    if (region == NULL) {
+        warnx("msg%#hx: DMA %s of unmapped range [%#llx-%#llx)", msg_id,
+              is_write ? "write" : "read", (ull_t)access->addr,
+              (ull_t)(access->addr + access->count));
+        error = EFAULT;
+        goto reply;
     }
 
-    response_sz = sizeof(dma_access) + dma_access.count;
-    response = calloc(response_sz, 1);
-    if (response == NULL) {
-        err(EXIT_FAILURE, NULL);
-    }
-    response->addr = dma_access.addr;
-    response->count = dma_access.count;
-    data = (char *)response->data;
-
-    for (i = 0; i < nr_dma_regions; i++) {
-        off_t offset;
-        ssize_t c;
-
-        if (dma_access.addr < dma_regions[i].map.addr ||
-            dma_access.addr >= dma_regions[i].map.addr + dma_regions[i].map.size) {
-            continue;
-        }
-
-        offset = dma_regions[i].map.offset + dma_access.addr;
-
-        c = pread(dma_regions[i].fd, data, dma_access.count, offset);
-
-        if (c != (ssize_t)dma_access.count) {
-            err(EXIT_FAILURE, "failed to read from fd=%d at [%#llx-%#llx)",
-                    dma_regions[i].fd, (ull_t)offset,
-                    (ull_t)offset + dma_access.count);
-        }
-        break;
+    if (is_write) {
+        iovecs[1].iov_base = access;
+        iovecs[1].iov_len = sizeof(*access);
+    } else {
+        iovecs[1].iov_base = response;
+        iovecs[1].iov_len = sizeof(*response) + response->count;
     }
 
-    assert(i != nr_dma_regions);
+reply:
+    if (error != 0) {
+        nr_iovecs = 0;
+    }
 
-    ret = tran_sock_send(sock, msg_id, true, VFIO_USER_DMA_READ,
-                         response, response_sz);
-    if (ret < 0) {
-        err(EXIT_FAILURE, "failed to send reply of DMA read");
+    ret = 0;
+    if (!(hdr.flags & VFIO_USER_F_NO_REPLY)) {
+        ret = tran_sock_send_iovec(sock, msg_id, true, hdr.cmd,
+                                   nr_iovecs != 0 ? iovecs : NULL, nr_iovecs,
+                                   NULL, 0, error);
     }
     free(response);
+    free(data);
+
+    if (ret < 0) {
+        if (errno == ECONNRESET) {
+            return SERVE_PEER_CLOSED;
+        }
+        err(EXIT_FAILURE, "failed to send reply of DMA command");
+    }
+
+    pthread_mutex_lock(&ctx->lock);
+    if (error != 0) {
+        ctx->nr_errors++;
+    } else if (is_write) {
+        ctx->nr_writes++;
+    } else {
+        ctx->nr_reads++;
+    }
+    pthread_cond_broadcast(&ctx->cond);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return SERVE_OK;
 }
 
+/*
+ * The sample server does DMA via messages by writing a page in chunks of
+ * CLIENT_MAX_DATA_XFER_SIZE and then reading it back.
+ */
+#define DMA_IO_NR_CMDS (4096 / CLIENT_MAX_DATA_XFER_SIZE)
+
+/*
+ * In single-socket mode server commands arrive on the main socket, which only
+ * the main thread reads, so serve them in lockstep with the server.
+ */
 static void
-handle_dma_io(int sock, struct client_dma_region *dma_regions,
-              int nr_dma_regions)
+handle_dma_io(int sock, struct dma_ctx *ctx)
 {
     size_t i;
 
-    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
-        handle_dma_write(sock, dma_regions, nr_dma_regions);
+    for (i = 0; i < 2 * DMA_IO_NR_CMDS; i++) {
+        if (serve_dma_cmd(sock, ctx) == SERVE_PEER_CLOSED) {
+            errx(EXIT_FAILURE, "server closed the connection during DMA");
+        }
     }
-    for (i = 0; i < 4096 / CLIENT_MAX_DATA_XFER_SIZE; i++) {
-        handle_dma_read(sock, dma_regions, nr_dma_regions);
+}
+
+static void *
+dma_thread(void *arg)
+{
+    struct dma_ctx *ctx = arg;
+
+    while (serve_dma_cmd(ctx->twin_sock, ctx) == SERVE_OK) { }
+
+    pthread_mutex_lock(&ctx->lock);
+    ctx->peer_closed = true;
+    pthread_cond_broadcast(&ctx->cond);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return NULL;
+}
+
+static void
+start_dma_thread(struct dma_ctx *ctx, int twin_sock)
+{
+    int ret;
+
+    assert(ctx->twin_sock == -1);
+
+    ctx->twin_sock = twin_sock;
+    ctx->peer_closed = false;
+    ctx->nr_reads = 0;
+    ctx->nr_writes = 0;
+    ctx->nr_errors = 0;
+
+    ret = pthread_create(&ctx->thread, NULL, dma_thread, ctx);
+    if (ret != 0) {
+        errno = ret;
+        err(EXIT_FAILURE, "failed to create DMA pthread");
     }
 }
 
 static void
-get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
-                 bool expect_dirty)
+stop_dma_thread(struct dma_ctx *ctx)
+{
+    int ret;
+
+    if (ctx->twin_sock == -1) {
+        return;
+    }
+
+    /* Unblocks the thread's recv(). */
+    if (shutdown(ctx->twin_sock, SHUT_RDWR) == -1 && errno != ENOTCONN) {
+        err(EXIT_FAILURE, "failed to shut down twin socket");
+    }
+
+    ret = pthread_join(ctx->thread, NULL);
+    if (ret != 0) {
+        errno = ret;
+        err(EXIT_FAILURE, "failed to join DMA pthread");
+    }
+
+    close(ctx->twin_sock);
+    ctx->twin_sock = -1;
+}
+
+/*
+ * Waits until the server's DMA writes and reads triggered by do_dma_io() in
+ * server.c have been served.
+ */
+static void
+wait_for_dma_io(struct dma_ctx *ctx, int sock)
+{
+    bool single_socket = ctx->twin_sock == -1;
+
+    if (single_socket) {
+        handle_dma_io(sock, ctx);
+    }
+
+    pthread_mutex_lock(&ctx->lock);
+    /* In single-socket mode everything has been served already. */
+    while (!single_socket && ctx->nr_errors == 0 &&
+           (ctx->nr_writes < DMA_IO_NR_CMDS || ctx->nr_reads < DMA_IO_NR_CMDS)) {
+        if (ctx->peer_closed) {
+            errx(EXIT_FAILURE, "server closed the twin socket during DMA");
+        }
+        pthread_cond_wait(&ctx->cond, &ctx->lock);
+    }
+    if (ctx->nr_errors != 0 || ctx->nr_writes != DMA_IO_NR_CMDS ||
+        ctx->nr_reads != DMA_IO_NR_CMDS) {
+        errx(EXIT_FAILURE, "unexpected DMA commands: %u writes, %u reads, "
+             "%u failed", ctx->nr_writes, ctx->nr_reads, ctx->nr_errors);
+    }
+    ctx->nr_writes = 0;
+    ctx->nr_reads = 0;
+    pthread_mutex_unlock(&ctx->lock);
+}
+
+static void
+set_dirty_tracking(struct dma_ctx *ctx, bool enable)
+{
+    int i;
+
+    pthread_mutex_lock(&ctx->lock);
+    for (i = 0; i < ctx->nr_regions; i++) {
+        if (enable) {
+            ctx->regions[i].flags |= CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
+        } else {
+            ctx->regions[i].flags &= ~CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
+        }
+    }
+    pthread_mutex_unlock(&ctx->lock);
+}
+
+static void
+get_dirty_bitmap(int sock, struct dma_ctx *ctx,
+                 struct client_dma_region *dma_region, bool expect_dirty)
 {
     struct vfio_user_device_feature *res;
     struct vfio_user_device_feature_dma_logging_report *report;
@@ -856,7 +1102,9 @@ get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
     }
 
     char dirtied_by_server = bitmap[0];
+    pthread_mutex_lock(&ctx->lock);
     char dirtied_by_client = (dma_region->flags & CLIENT_DIRTY_DMA_REGION) != 0;
+    pthread_mutex_unlock(&ctx->lock);
     char dirtied = dirtied_by_server | dirtied_by_client;
 
     if (expect_dirty) {
@@ -873,7 +1121,8 @@ get_dirty_bitmap(int sock, struct client_dma_region *dma_region,
 static void
 usage(char *argv0)
 {
-    fprintf(stderr, "Usage: %s [-h] [-m src|dst] /path/to/socket\n",
+    fprintf(stderr, "Usage: %s [-h] [-S] [-m src|dst] /path/to/socket\n"
+            "  -S  disable twin-socket mode\n",
             basename(argv0));
 }
 
@@ -1042,10 +1291,10 @@ migrate_from(int sock, size_t *nr_iters, struct iovec **migr_iters,
 }
 
 static int
-migrate_to(char *old_sock_path, int *server_max_fds,
-           size_t *server_max_data_xfer_size, size_t *pgsize, size_t nr_iters,
-           struct iovec *migr_iters, char *path_to_server,
-           uint32_t src_crc, size_t bar1_size)
+migrate_to(char *old_sock_path, bool twin_socket, int *twin_sockp,
+           int *server_max_fds, size_t *server_max_data_xfer_size,
+           size_t *pgsize, size_t nr_iters, struct iovec *migr_iters,
+           char *path_to_server, uint32_t src_crc, size_t bar1_size)
 {
     ssize_t ret;
     int sock;
@@ -1099,7 +1348,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
     sock = init_sock(sock_path);
     free(sock_path);
 
-    negotiate(sock, server_max_fds, server_max_data_xfer_size, pgsize);
+    *twin_sockp = negotiate(sock, twin_socket, server_max_fds,
+                            server_max_data_xfer_size, pgsize);
 
     device_state = VFIO_USER_DEVICE_STATE_RESUMING;
     ret = set_migration_state(sock, device_state);
@@ -1147,8 +1397,8 @@ migrate_to(char *old_sock_path, int *server_max_fds,
 }
 
 static void
-map_dma_regions(int sock, struct client_dma_region *dma_regions,
-                int nr_dma_regions)
+map_dma_regions(int sock, struct dma_ctx *ctx,
+                struct client_dma_region *dma_regions, int nr_dma_regions)
 {
     int i, ret;
 
@@ -1160,6 +1410,12 @@ map_dma_regions(int sock, struct client_dma_region *dma_regions,
                 .iov_len = sizeof(struct vfio_user_dma_map)
             }
         };
+
+        /* The server may access the region as soon as it has processed this. */
+        pthread_mutex_lock(&ctx->lock);
+        dma_regions[i].mapped = true;
+        pthread_mutex_unlock(&ctx->lock);
+
         ret = tran_sock_msg_iovec(sock, 0x1234 + i, VFIO_USER_DMA_MAP,
                                   iovecs, ARRAY_SIZE(iovecs),
                                   &dma_regions[i].fd, 1,
@@ -1190,6 +1446,13 @@ int main(int argc, char *argv[])
     size_t nr_iters;
     uint32_t crc;
     size_t bar1_size;
+    bool twin_socket = true;
+    int twin_sock;
+    struct dma_ctx dma_ctx = {
+        .lock = PTHREAD_MUTEX_INITIALIZER,
+        .cond = PTHREAD_COND_INITIALIZER,
+        .twin_sock = -1
+    };
 
     struct vfio_user_device_feature *dirty_pages_feature;
     struct vfio_user_device_feature_dma_logging_control *dirty_pages_control;
@@ -1199,11 +1462,14 @@ int main(int argc, char *argv[])
     dirty_pages_feature = dirty_pages;
     dirty_pages_control = (void *)(dirty_pages_feature + 1);
 
-    while ((opt = getopt(argc, argv, "h")) != -1) {
+    while ((opt = getopt(argc, argv, "hS")) != -1) {
         switch (opt) {
             case 'h':
                 usage(argv[0]);
                 exit(EXIT_SUCCESS);
+            case 'S':
+                twin_socket = false;
+                break;
             default:
                 usage(argv[0]);
                 exit(EXIT_FAILURE);
@@ -1222,7 +1488,17 @@ int main(int argc, char *argv[])
      *
      * Do initial negotiation with the server, and discover parameters.
      */
-    negotiate(sock, &server_max_fds, &server_max_data_xfer_size, &pgsize);
+    twin_sock = negotiate(sock, twin_socket, &server_max_fds,
+                          &server_max_data_xfer_size, &pgsize);
+
+    /*
+     * In twin-socket mode, server-to-client commands arrive on the twin socket
+     * and are served by a separate thread, so they can't get stuck behind our
+     * commands on the main socket.
+     */
+    if (twin_sock != -1) {
+        start_dma_thread(&dma_ctx, twin_sock);
+    }
 
     /* try to access a bogus region, we should get an error */
     ret = access_region(sock, 0xdeadbeef, false, 0, &ret, sizeof(ret));
@@ -1285,7 +1561,12 @@ int main(int argc, char *argv[])
         dma_regions[i].fd = tmpfd;
     }
 
-    map_dma_regions(sock, dma_regions, nr_dma_regions);
+    pthread_mutex_lock(&dma_ctx.lock);
+    dma_ctx.regions = dma_regions;
+    dma_ctx.nr_regions = nr_dma_regions;
+    pthread_mutex_unlock(&dma_ctx.lock);
+
+    map_dma_regions(sock, &dma_ctx, dma_regions, nr_dma_regions);
 
     /*
      * XXX VFIO_USER_DEVICE_GET_IRQ_INFO and VFIO_IRQ_SET_ACTION_TRIGGER
@@ -1309,11 +1590,9 @@ int main(int argc, char *argv[])
 
     /*
      * Start client-side dirty page tracking (which happens in
-     * `handle_dma_write` when writes are successful).
+     * `serve_dma_cmd` when writes are successful).
      */
-    for (i = 0; i < nr_dma_regions; i++) {
-        dma_regions[i].flags |= CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
-    }
+    set_dirty_tracking(&dma_ctx, true);
 
     /*
      * XXX VFIO_USER_REGION_READ and VFIO_USER_REGION_WRITE
@@ -1328,7 +1607,7 @@ int main(int argc, char *argv[])
 
     /* FIXME check that above took at least 1s */
 
-    handle_dma_io(sock, dma_regions, nr_dma_regions);
+    wait_for_dma_io(&dma_ctx, sock);
 
     for (i = 0; i < nr_dma_regions; i++) {
         /*
@@ -1336,7 +1615,7 @@ int main(int argc, char *argv[])
          * marked by the client) and 1 directly (so marked by the server). See
          * the bottom of the main function of server.c.
          */
-        get_dirty_bitmap(sock, &dma_regions[i], i < 2);
+        get_dirty_bitmap(sock, &dma_ctx, &dma_regions[i], i < 2);
     }
 
     /* stop logging dirty pages */
@@ -1354,9 +1633,7 @@ int main(int argc, char *argv[])
     }
 
     /* Stop client-side dirty page tracking */
-    for (i = 0; i < nr_dma_regions; i++) {
-        dma_regions[i].flags &= ~CLIENT_DIRTY_PAGE_TRACKING_ENABLED;
-    }
+    set_dirty_tracking(&dma_ctx, false);
 
     /* BAR1 can be memory mapped and read directly */
 
@@ -1376,6 +1653,14 @@ int main(int argc, char *argv[])
         if (ret < 0) {
             err(EXIT_FAILURE, "failed to unmap DMA region");
         }
+
+        /*
+         * The server may still access the region until it replies, as it has
+         * to complete any in-flight DMA first.
+         */
+        pthread_mutex_lock(&dma_ctx.lock);
+        dma_regions[i].mapped = false;
+        pthread_mutex_unlock(&dma_ctx.lock);
     }
 
     /*
@@ -1403,10 +1688,27 @@ int main(int argc, char *argv[])
         err(EXIT_FAILURE, "failed to asprintf");
     }
 
-    sock = migrate_to(argv[optind], &server_max_fds, &server_max_data_xfer_size,
-                      &pgsize, nr_iters, migr_iters, path_to_server,
-                      crc, bar1_size);
+    /*
+     * The source server stopped its timer when entering stop-and-copy, so it
+     * won't send any more DMA commands.
+     */
+    stop_dma_thread(&dma_ctx);
+
+    /* The destination server starts with no DMA mappings. */
+    pthread_mutex_lock(&dma_ctx.lock);
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].mapped = false;
+    }
+    pthread_mutex_unlock(&dma_ctx.lock);
+
+    sock = migrate_to(argv[optind], twin_socket, &twin_sock, &server_max_fds,
+                      &server_max_data_xfer_size, &pgsize, nr_iters,
+                      migr_iters, path_to_server, crc, bar1_size);
     free(path_to_server);
+
+    if (twin_sock != -1) {
+        start_dma_thread(&dma_ctx, twin_sock);
+    }
     for (i = 0; i < (int)nr_iters; i++) {
         free(migr_iters[i].iov_base);
     }
@@ -1420,7 +1722,7 @@ int main(int argc, char *argv[])
      * XXX reconfigure DMA regions, note that the first half of the has been
      * unmapped.
      */
-    map_dma_regions(sock, dma_regions + server_max_fds,
+    map_dma_regions(sock, &dma_ctx, dma_regions + server_max_fds,
                     nr_dma_regions - server_max_fds);
 
     /*
@@ -1433,8 +1735,7 @@ int main(int argc, char *argv[])
 
     wait_for_irq(irq_fd);
 
-    handle_dma_io(sock, dma_regions + server_max_fds,
-                  nr_dma_regions - server_max_fds);
+    wait_for_dma_io(&dma_ctx, sock);
 
     struct vfio_user_dma_unmap r = {
         .argsz = sizeof(r),
@@ -1447,6 +1748,14 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         err(EXIT_FAILURE, "failed to unmap all DMA regions");
     }
+
+    pthread_mutex_lock(&dma_ctx.lock);
+    for (i = 0; i < nr_dma_regions; i++) {
+        dma_regions[i].mapped = false;
+    }
+    pthread_mutex_unlock(&dma_ctx.lock);
+
+    stop_dma_thread(&dma_ctx);
 
     free(dma_regions);
     free(dirty_pages);

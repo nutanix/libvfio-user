@@ -80,6 +80,18 @@ tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
                      uint16_t *msg_id, void **datap, size_t *lenp);
 
 /*
+ * Same as tran_sock_recv_alloc() except that file descriptors can be received.
+ * If @nr_fds is NULL then @fds is ignored and no file descriptors are
+ * received. Otherwise *@nr_fds is the capacity of @fds on entry, and the
+ * number of file descriptors received on return. File descriptors may have
+ * been received even if an error is returned, and the caller must close them.
+ */
+int
+tran_sock_recv_alloc_fds(int sock, struct vfio_user_header *hdr,
+                         bool is_reply, uint16_t *msg_id, void **datap,
+                         size_t *lenp, int *fds, size_t *nr_fds);
+
+/*
  * Send and receive a message to the other end, using iovecs for the send. The
  * iovecs array should leave the first entry empty, as it will be used for the
  * header.

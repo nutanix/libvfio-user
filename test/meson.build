@@ -156,6 +156,15 @@ if get_option('client-server-test')
         args: [client, server],
         timeout: 90,
     )
+
+    test(
+        'test-client-server-single-socket',
+        find_program('test-client-server.sh'),
+        env: csenv,
+        suite: 'functional',
+        args: [client, server, '-S'],
+        timeout: 90,
+    )
 endif
 
 if opt_sanitizers == 'none' and meson.version().version_compare('>=0.56.0')

@@ -31,6 +31,7 @@
  */
 
 #include <assert.h>
+#include <limits.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -70,7 +71,8 @@
 int
 tran_parse_version_json(const char *json_str, int *client_max_fdsp,
                         size_t *client_max_data_xfer_sizep, size_t *pgsizep,
-                        bool *twin_socket_supportedp)
+                        bool *twin_socket_supportedp,
+                        int *twin_socket_fd_indexp)
 {
     struct json_object *jo_caps = NULL;
     struct json_object *jo_top = NULL;
@@ -144,16 +146,40 @@ tran_parse_version_json(const char *json_str, int *client_max_fdsp,
         }
 
         if (json_object_object_get_ex(jo, "supported", &jo2)) {
+            bool supported;
+
             if (json_object_get_type(jo2) != json_type_boolean) {
                 goto out;
             }
 
             errno = 0;
-            *twin_socket_supportedp = json_object_get_boolean(jo2);
+            supported = json_object_get_boolean(jo2);
 
             if (errno != 0) {
                 goto out;
             }
+
+            if (twin_socket_supportedp != NULL) {
+                *twin_socket_supportedp = supported;
+            }
+        }
+
+        if (twin_socket_fd_indexp != NULL &&
+            json_object_object_get_ex(jo, "fd_index", &jo2)) {
+            int64_t fd_index;
+
+            if (json_object_get_type(jo2) != json_type_int) {
+                goto out;
+            }
+
+            errno = 0;
+            fd_index = json_object_get_int64(jo2);
+
+            if (errno != 0 || fd_index < INT_MIN || fd_index > INT_MAX) {
+                goto out;
+            }
+
+            *twin_socket_fd_indexp = (int)fd_index;
         }
     }
 
@@ -235,7 +261,7 @@ recv_version(vfu_ctx_t *vfu_ctx, uint16_t *msg_idp,
 
         ret = tran_parse_version_json(json_str, &vfu_ctx->client_max_fds,
                                       &vfu_ctx->client_max_data_xfer_size,
-                                      &pgsize, twin_socket_supportedp);
+                                      &pgsize, twin_socket_supportedp, NULL);
 
         if (ret < 0) {
             /* No client-supplied strings in the log for release build. */
