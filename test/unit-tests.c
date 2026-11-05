@@ -555,6 +555,33 @@ test_dma_addr_to_sgl(void **state UNUSED)
 }
 
 static void
+test_dma_controller_add_region_unaligned_offset(void **state UNUSED)
+{
+    char template[] = "libvfio_user_unit_tests_dma_mapping_XXXXXX";
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    vfu_dma_addr_t dma_addr = (void *)0x1000;
+    dma_memory_region_t *r;
+    int fd = -1;
+
+    assert_true(page_size > 0);
+
+    fd = mkstemp(template);
+    assert_int_not_equal(-1, fd);
+    assert_int_equal(0, unlink(template));
+    assert_int_equal(0, ftruncate(fd, page_size * 3));
+
+    r = dma_controller_add_region(vfu_ctx.dma, dma_addr, page_size, &fd, 1,
+                                  PROT_READ, REGION_ACCESS_MODE_MMAP);
+    assert_non_null(r);
+    assert_ptr_equal(r->info.mapping.iov_base + 1, r->info.vaddr);
+    /* The whole region, starting at its unaligned offset, must lie
+     * within the mapping. */
+    assert_true((uintptr_t)r->info.vaddr + page_size <=
+                (uintptr_t)r->info.mapping.iov_base +
+                r->info.mapping.iov_len);
+}
+
+static void
 test_vfu_setup_device_dma(void **state UNUSED)
 {
     vfu_ctx_t vfu_ctx = { 0 };
@@ -675,6 +702,7 @@ main(void)
         CM_TEST_ENTRY(test_dma_controller_remove_region_mapped),
         CM_TEST_ENTRY(test_dma_controller_remove_region_unmapped),
         CM_TEST_ENTRY(test_dma_addr_to_sgl),
+        CM_TEST_ENTRY(test_dma_controller_add_region_unaligned_offset),
         CM_TEST_ENTRY(test_vfu_setup_device_dma),
         CM_TEST_ENTRY(test_device_is_stopped_and_copying),
         CM_TEST_ENTRY(test_cmd_allowed_when_stopped_and_copying),

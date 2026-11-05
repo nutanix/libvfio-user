@@ -264,7 +264,8 @@ dma_map_region(dma_controller_t *dma, dma_memory_region_t *region)
     off_t offset;
 
     offset = ROUND_DOWN(region->offset, region->info.page_size);
-    mmap_len = ROUND_UP(region->info.iova.iov_len, region->info.page_size);
+    mmap_len = ROUND_UP(region->info.iova.iov_len + (region->offset - offset),
+                        region->info.page_size);
 
     mmap_base = mmap(NULL, mmap_len, region->info.prot, MAP_SHARED,
                      region->fd, offset);
