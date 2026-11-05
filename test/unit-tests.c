@@ -558,8 +558,8 @@ static void
 test_dma_controller_add_region_unaligned_offset(void **state UNUSED)
 {
     char template[] = "libvfio_user_unit_tests_dma_mapping_XXXXXX";
-    long page_size = sysconf(_SC_PAGE_SIZE);
     vfu_dma_addr_t dma_addr = (void *)0x1000;
+    long page_size = sysconf(_SC_PAGE_SIZE);
     dma_memory_region_t *r;
     int fd = -1;
 
