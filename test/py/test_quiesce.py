@@ -39,7 +39,7 @@ client = None
 
 def setup_function(function):
     global ctx, client
-    ctx = prepare_ctx_for_dma(migration_callbacks=True)
+    ctx = prepare_ctx_for_dma(migration_callbacks=True, flr=function is test_flr)
     assert ctx is not None
     client = connect_client(ctx)
 
@@ -253,8 +253,6 @@ def test_flr(mock_quiesce, mock_reset):
     global ctx, client
 
     _map_dma_region(ctx, client.sock)
-
-    setup_flrc(ctx)
 
     # iflr
     offset = PCI_STD_HEADER_SIZEOF + 8

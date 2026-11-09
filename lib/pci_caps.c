@@ -671,6 +671,10 @@ vfu_pci_add_capability(vfu_ctx_t *vfu_ctx, size_t pos, int flags, void *data)
 
     assert(vfu_ctx != NULL);
 
+    if (vfu_ctx->realized) {
+        return ERROR_INT(EINVAL);
+    }
+
     if (flags & ~(VFU_CAP_FLAG_EXTENDED | VFU_CAP_FLAG_CALLBACK |
         VFU_CAP_FLAG_READONLY)) {
         vfu_log(vfu_ctx, LOG_DEBUG, "bad flags %#x", flags);
