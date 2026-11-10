@@ -31,6 +31,7 @@ from unittest.mock import patch
 from libvfio_user import *
 import ctypes as c
 import errno
+import pytest
 
 ctx = None
 
@@ -98,16 +99,23 @@ def test_pci_cap_bad_pos():
     assert c.get_errno() == errno.EINVAL
 
 
-def test_pci_cap_add_after_realize():
+@pytest.mark.parametrize(
+    "realize, expected_pos",
+    [(False, PCI_STD_HEADER_SIZEOF), (True, -1)],
+    ids=["before-realize", "after-realize"],
+)
+def test_pci_cap_add_after_realize(realize, expected_pos):
     setup_pci_dev()
-    ret = vfu_realize_ctx(ctx)
-    assert ret == 0
+    if realize:
+        ret = vfu_realize_ctx(ctx)
+        assert ret == 0
 
     cap = struct.pack("ccHHBB", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0, 0, 0)
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=cap)
 
-    assert pos == -1
-    assert c.get_errno() == errno.EINVAL
+    assert pos == expected_pos
+    if realize:
+        assert c.get_errno() == errno.EINVAL
 
 
 def __pci_region_cb(ctx, buf, count, offset, is_write):
