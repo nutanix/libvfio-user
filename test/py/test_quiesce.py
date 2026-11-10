@@ -39,7 +39,8 @@ client = None
 
 def setup_function(function):
     global ctx, client
-    ctx = prepare_ctx_for_dma(migration_callbacks=True, flr=function is test_flr)
+    ctx = prepare_ctx_for_dma(migration_callbacks=True,
+                              flr=function is test_flr)
     assert ctx is not None
     client = connect_client(ctx)
 

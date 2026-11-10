@@ -49,7 +49,7 @@ def teardown_function(function):
     vfu_destroy_ctx(ctx)
 
 
-def setup_pci_dev(config_space=True, realize=False):
+def setup_pci_dev(config_space=True):
     global ctx
     ret = vfu_pci_init(ctx, pci_type=VFU_PCI_TYPE_CONVENTIONAL)
     assert ret == 0
@@ -57,9 +57,6 @@ def setup_pci_dev(config_space=True, realize=False):
         ret = vfu_setup_region(ctx, index=VFU_PCI_DEV_CFG_REGION_IDX,
                                size=PCI_CFG_SPACE_SIZE,
                                flags=VFU_REGION_FLAG_RW)
-        assert ret == 0
-    if realize:
-        ret = vfu_realize_ctx(ctx)
         assert ret == 0
 
 
@@ -102,7 +99,9 @@ def test_pci_cap_bad_pos():
 
 
 def test_pci_cap_add_after_realize():
-    setup_pci_dev(realize=True)
+    setup_pci_dev()
+    ret = vfu_realize_ctx(ctx)
+    assert ret == 0
 
     cap = struct.pack("ccHHBB", to_byte(PCI_CAP_ID_PM), b'\0', 0, 0, 0, 0)
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=cap)
@@ -370,7 +369,7 @@ def test_pci_cap_write_px_no_reset_cb(mock_quiesce):
 
     vfu_setup_device_quiesce_cb(ctx)
 
-    setup_pci_dev(realize=False)
+    setup_pci_dev()
     setup_flrc(ctx)
     ret = vfu_realize_ctx(ctx)
     assert ret == -1
