@@ -1042,8 +1042,6 @@ def setup_flrc(ctx):
     # flrc
     cap = struct.pack("ccHHcc52c", to_byte(PCI_CAP_ID_EXP), b'\0', 0, 0, b'\0',
                       b'\x10', *[b'\0' for _ in range(52)])
-    # FIXME adding capability after we've realized the device only works
-    # because of bug #618.
     pos = vfu_pci_add_capability(ctx, pos=0, flags=0, data=cap)
     assert pos == PCI_STD_HEADER_SIZEOF
 
@@ -1080,7 +1078,8 @@ def vfu_setup_device_reset_cb(ctx, cb=_reset_cb):
 
 def prepare_ctx_for_dma(dma_register=__dma_register,
                         dma_unregister=__dma_unregister, quiesce=_quiesce_cb,
-                        reset=_reset_cb, migration_callbacks=False):
+                        reset=_reset_cb, migration_callbacks=False,
+                        flr=False):
     ctx = vfu_create_ctx(flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx is not None
 
@@ -1101,6 +1100,9 @@ def prepare_ctx_for_dma(dma_register=__dma_register,
     if migration_callbacks:
         ret = vfu_setup_device_migration_callbacks(ctx)
         assert ret == 0
+
+    if flr:
+        setup_flrc(ctx)
 
     ret = vfu_realize_ctx(ctx)
     assert ret == 0

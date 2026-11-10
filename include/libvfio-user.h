@@ -895,6 +895,8 @@ vfu_pci_get_config_space(vfu_ctx_t *vfu_ctx);
 /**
  * Add a PCI capability to PCI config space.
  *
+ * Calling this after successful vfu_realize_ctx() fails with EINVAL.
+ *
  * Certain standard capabilities are handled entirely within the library:
  *
  * PCI_CAP_ID_EXP (pxcap)
