@@ -171,7 +171,7 @@ def test_dma_unmap_all():
         assert mock_unregister.call_count == len(dma_regions)
         reported_regions = []
         for callback_call in mock_unregister.call_args_list:
-            callback_ctx, info = callback_call.args
+            callback_ctx, info = callback_call[0]
             assert callback_ctx == ctx
             reported_regions.append(
                 (info.iova.iov_base or 0, info.iova.iov_len))
