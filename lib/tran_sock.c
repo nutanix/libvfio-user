@@ -499,7 +499,7 @@ tran_sock_get_request_header(vfu_ctx_t *vfu_ctx, struct vfio_user_header *hdr,
      * faster (?). I tried that and get short reads, so we need to store the
      * partially received buffer somewhere and retry.
      */
-    if (vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB) {
+    if (!vfu_is_blocking(vfu_ctx)) {
         sock_flags = MSG_DONTWAIT | MSG_WAITALL;
     }
     return get_msg(hdr, sizeof(*hdr), fds, nr_fds, ts->conn_fd, sock_flags);
