@@ -108,8 +108,12 @@ Dissabling the ROM BAR is useful for avoiding QEMU running the cards BIOS
 on start.
 Pass `-v` for more verbose output (up to `-vvvv` for full debug logging).
 
-**Limitations:** only INTx interrupt forwarding is currently implemented.
-MSI/MSI-X vectors are not forwarded.
+**Limitations:**
+ - Many PCI capabilities are not reported as they are not copied.
+ - No DMA support
+ - No ERR_IRQ or REQ_IRQ support
+ - No migration state support
+ - No memory mapping support
 
 
 shadow_ioeventfd_server
