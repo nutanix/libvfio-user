@@ -268,11 +268,21 @@ int
 tran_sock_recv_alloc(int sock, struct vfio_user_header *hdr, bool is_reply,
                      uint16_t *msg_id, void **datap, size_t *lenp)
 {
+    return tran_sock_recv_alloc_fds(sock, hdr, is_reply, msg_id, datap, lenp,
+                                    NULL, NULL);
+}
+
+int
+tran_sock_recv_alloc_fds(int sock, struct vfio_user_header *hdr,
+                         bool is_reply, uint16_t *msg_id, void **datap,
+                         size_t *lenp, int *fds, size_t *nr_fds)
+{
     void *data;
     size_t len;
     int ret;
 
-    ret = tran_sock_recv(sock, hdr, is_reply, msg_id, NULL, NULL);
+    ret = tran_sock_recv_fds(sock, hdr, is_reply, msg_id, NULL, NULL,
+                             fds, nr_fds);
 
     if (ret != 0) {
         return ret;
