@@ -165,7 +165,17 @@ def test_dma_unmap_all():
     setup_dma_regions(dma_regions)
     payload = vfio_user_dma_unmap(argsz=len(vfio_user_dma_unmap()),
         flags=VFIO_DMA_UNMAP_FLAG_ALL, addr=0, size=0)
-    msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
+    with patch('libvfio_user.dma_unregister') as mock_unregister:
+        msg(ctx, client.sock, VFIO_USER_DMA_UNMAP, payload)
+
+        assert mock_unregister.call_count == len(dma_regions)
+        reported_regions = []
+        for callback_call in mock_unregister.call_args_list:
+            callback_ctx, info = callback_call[0]
+            assert callback_ctx == ctx
+            reported_regions.append(
+                (info.iova.iov_base or 0, info.iova.iov_len))
+        assert sorted(reported_regions) == sorted(dma_regions)
 
 
 def test_dma_unmap_all_invalid_addr():
