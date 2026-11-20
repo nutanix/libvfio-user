@@ -162,7 +162,7 @@ def forward_dma(sock, pipe, errors):
 
 
 @pytest.fixture(autouse=True)
-def peers(monkeypatch):
+def peers(monkeypatch, request):
     global ctx_a, ctx_b, client_a, client_b, bar2_file, bar2
     global dma_message_count
 
@@ -212,20 +212,21 @@ def peers(monkeypatch):
     thread = threading.Thread(target=forward_dma, args=[sock, pipe_r, errors])
     thread.start()
 
-    yield
+    def teardown():
+        os.close(pipe_w)
+        thread.join()
+        os.close(pipe_r)
+        client_a.disconnect(ctx_a)
+        vfu_destroy_ctx(ctx_a)
+        client_b.disconnect(ctx_b)
+        vfu_destroy_ctx(ctx_b)
+        if os.path.exists(B_SOCK_PATH):
+            os.remove(B_SOCK_PATH)
+        bar2.close()
+        bar2_file.close()
+        assert not errors
 
-    os.close(pipe_w)
-    thread.join()
-    os.close(pipe_r)
-    client_a.disconnect(ctx_a)
-    vfu_destroy_ctx(ctx_a)
-    client_b.disconnect(ctx_b)
-    vfu_destroy_ctx(ctx_b)
-    if os.path.exists(B_SOCK_PATH):
-        os.remove(B_SOCK_PATH)
-    bar2.close()
-    bar2_file.close()
-    assert not errors
+    request.addfinalizer(teardown)
 
 
 def announce_bar(index, addr):
