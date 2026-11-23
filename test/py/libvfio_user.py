@@ -774,9 +774,9 @@ def eventfd(initval=0, flags=0):
     return libc.eventfd(initval, flags)
 
 
-def connect_sock():
+def connect_sock(sock_path=SOCK_PATH):
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(SOCK_PATH)
+    sock.connect(sock_path)
     return sock
 
 
@@ -787,8 +787,8 @@ class Client:
         self.sock = sock
         self.client_cmd_socket = None
 
-    def connect(self, ctx, capabilities={}):
-        self.sock = connect_sock()
+    def connect(self, ctx, capabilities={}, sock_path=SOCK_PATH):
+        self.sock = connect_sock(sock_path)
 
         client_caps = {
             "capabilities": {
