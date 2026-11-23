@@ -1677,7 +1677,7 @@ vfu_run_ctx(vfu_ctx_t *vfu_ctx)
         return ERROR_INT(EINVAL);
     }
 
-    blocking = !(vfu_ctx->flags & LIBVFIO_USER_FLAG_ATTACH_NB);
+    blocking = vfu_is_blocking(vfu_ctx);
 
     do {
         vfu_msg_t *msg;
@@ -1919,7 +1919,7 @@ vfu_create_ctx(vfu_trans_t trans, const char *path, int flags, void *pvt,
     int err = 0;
     size_t i;
 
-    if ((flags & ~(LIBVFIO_USER_FLAG_ATTACH_NB)) != 0) {
+    if ((flags & ~(LIBVFIO_USER_FLAG_ATTACH_NB | LIBVFIO_USER_FLAG_RUN_CTX_NB)) != 0) {
         return ERROR_PTR(EINVAL);
     }
 
