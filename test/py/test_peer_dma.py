@@ -226,8 +226,6 @@ def setup_peers(request):
     bar2_file.truncate(BAR_SIZE)
     bar2 = mmap.mmap(bar2_file.fileno(), 0)
 
-    # TARGET: a device with two BARs that are DMA'd to by INITIATOR: BAR0 with
-    # a callback, and BAR2 backed by a file and with a callback
     ctx_target = vfu_create_ctx(sock_path=TARGET_SOCK_PATH,
                                 flags=LIBVFIO_USER_FLAG_ATTACH_NB)
     assert ctx_target is not None
@@ -242,9 +240,6 @@ def setup_peers(request):
     assert vfu_realize_ctx(ctx_target) == 0
     client_target = connect_client(ctx_target, sock_path=TARGET_SOCK_PATH)
 
-    # INITIATOR: a device that does DMA. The twin socket carries its DMA, so
-    # that the forwarding thread can answer while the test thread waits in the
-    # library.
     ctx_initiator = prepare_ctx_for_dma()
     caps = {
         "capabilities": {
