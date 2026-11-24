@@ -27,27 +27,29 @@
 #  DAMAGE.
 #
 
-"""
-Peer DMA: one vfio-user server reaching another vfio-user by sending DMA
-requests via the client
 
+"""
+Peer DMA test: one vfio-user server reaching another vfio-user via DMA.
+
+Components of the test:
 - 2 servers:
     - INITIATOR: a device that issues DMAs via vfu_sgl_{read,write}
-    - TARGET: a device being DMA'd to
-- The TARGET has 2 BARs:
-    - BAR0 has an access callback and is not mmap-able, so INITIATOR gets no
+    - TARGET: a device with 2 BARs that can be DMA'd to
+- Client:
+    - Acts as an intermediary by "forwarding" DMA requests from the INITIATOR
+      to the TARGET. When INITIATOR sends a DMA_READ/DMA_WRITE message, the
+      client constructs a REGION_READ/REGION_WRITE message to the TARGET, and
+      then sends the result back to the INITIATOR to complete the DMA request.
+    - Asks TARGET how each BAR is accessed (DEVICE_GET_REGION_INFO) and
+      DMA_MAPs it into INITIATOR, so INITIATOR can access it with
+      vfu_addr_to_sgl().
+- The TARGET's BARs:
+    - BAR0: has an access callback and is not mmap-able, so INITIATOR gets no
       file descriptor to reach it. INITIATOR's vfu_sgl_write() and
-      vfu_sgl_read() on it become DMA_WRITE and DMA_READ messages to the
-      client, which carries them out on TARGET as REGION_WRITE and
-      REGION_READ.
-    - BAR2 is backed by a file and is mmap-able, so INITIATOR gets TARGET's
-      file descriptor and maps it. INITIATOR's accesses go straight into the
-      mapping and the client sees no DMA message. BAR2 also has an access
-      callback on the same file, so a client that does not map it can still
-      use the socket.
-- The client asks TARGET how each BAR is accessed (DEVICE_GET_REGION_INFO) and
-  DMA_MAPs it into INITIATOR, so INITIATOR can name it with
-  vfu_addr_to_sgl().
+      vfu_sgl_read() on it become DMA_WRITE and DMA_READ messages.
+    - BAR2: backed by a file and is mmap-able, so INITIATOR gets TARGET's
+      file descriptor and maps it. INITIATOR's "direct" accesses go straight
+      into the mapping, without a DMA message.
 """
 
 from libvfio_user import *
@@ -102,9 +104,31 @@ def bar2_cb(ctx, buf, count, offset, is_write):
 
 class DMAForwarder:
     """
-    A helper to service the INITIATOR's DMA accesses arriving over a socket by
-    carrying them out on TARGET's BARs. DMA request processing takes place on
-    a separate thread so as to not block the test code.
+    Runs the vfio-user client's side of INITIATOR's DMA commands.
+
+    In a real setup the client (e.g. QEMU) and the server (libvfio-user plus
+    the device emulation code using it) are separate processes. In these
+    tests one Python thread plays all of them. It acts as the client when it
+    sends messages and reads replies, and as the device emulation when it
+    calls vfu_run_ctx(), as a server's main loop would, or vfu_sgl_*(), as the
+    device would to DMA.
+
+    vfu_sgl_read()/vfu_sgl_write() may produce DMA_READ/DMA_WRITE socket
+    commands to the client, and *block until the client produces a reply*.
+    With a real client in another process that is fine. Here the client runs
+    in the same thread, so the fact that vfu_sgl_{read,write} block waiting
+    for the reply means that the client code is never able to run to generate
+    that reply.
+
+    We address this by spawning a separate thread in this DMAForwarder object,
+    whose responsibility it is to process the DMA_READ/DMA_WRITE messages and
+    generate replies to the server. Any test where vfu_sgl_{read,write} sends
+    a DMA message must do something similar; i.e., on regions with no fd, and
+    for accesses without VFU_SGL_DIRECT_ACCESS.
+
+    Note specific to this test: for peer-DMA, the way the client handles
+    DMA_READ/DMA_WRITE messages is to forward them to the TARGET server. It
+    does so by constructing REGION_READ/REGION_WRITE commands.
     """
 
     def __handle_requests(self):
@@ -176,9 +200,21 @@ class DMAForwarder:
 @pytest.fixture(autouse=True)
 def setup_peers(request):
     """
-    pytest fixtures are setup functions that execute before a test.
-    'autouse=True' means that all tests in this file run the fixture
-    without explicitly naming it.
+    setup_peers() is run for every peer-DMA test in this file. It sets up the
+    two servers (INITIATOR and TARGET), creates connections to the client,
+    and tears them down after each test.
+
+    For the TARGET, we create 2 BARs. BAR0 has an access callback and no fd,
+    so it cannot be mmap'd. BAR2 is backed by a file and is mmap-able. It also
+    has a callback, allowing it to handle accesses made without
+    VFU_SGL_DIRECT_ACCESS.
+
+    This function also sets up the DMAForwarder thread to process the
+    DMA_READ/DMA_WRITE commands issued by the INITIATOR. See the description
+    in the DMAForwarder class for details on why this thread is needed.
+
+    Teardown stops the forwarder, disconnects and destroys both contexts, and
+    checks that the forwarder hit no errors.
     """
 
     global ctx_initiator, ctx_target, client_initiator, client_target
@@ -239,11 +275,17 @@ def setup_peers(request):
     request.addfinalizer(teardown)
 
 
-def announce_bar(index, addr):
+def dma_map_target_bar(index, addr):
     """
-    Ask TARGET how the BAR is accessed. If it's mmap'able, get the file
-    descriptor for it and advertise it to INITIATOR. Otherwise advertise it
-    with no fd.
+    DMA_MAP one of the TARGET's BARs as a DMA region in the INITIATOR. This is
+    needed so that the INITIATOR can DMA to it, as vfu_addr_to_sgl() cannot
+    resolve addresses outside of a DMA_MAP'd region.
+
+    Ask TARGET how the BAR is accessed (DEVICE_GET_REGION_INFO). If it is
+    mmap-able (BAR2), TARGET returns an fd, which is passed along in the
+    DMA_MAP so INITIATOR can map it and, with VFU_SGL_DIRECT_ACCESS, access it
+    directly. Otherwise (BAR0) the DMA_MAP carries no fd, so INITIATOR's
+    accesses become DMA_READ/DMA_WRITE messages to the client.
     """
     payload = vfio_region_info(argsz=80, flags=0, index=index, cap_offset=0,
                                size=0, offset=0)
@@ -274,62 +316,75 @@ def announce_bar(index, addr):
 
 
 def test_peer_dma_write():
-    announce_bar(VFU_PCI_DEV_BAR0_REGION_IDX, BAR0_ADDR)
+    """
+    INITIATOR writes to TARGET's BAR0, which has no fd. Every write becomes a
+    DMA_WRITE that the client carries out on TARGET's BAR0 callback, with or
+    without VFU_SGL_DIRECT_ACCESS.
+    """
+    dma_map_target_bar(VFU_PCI_DEV_BAR0_REGION_IDX, BAR0_ADDR)
 
     ret, sg = vfu_addr_to_sgl(ctx_initiator, dma_addr=BAR0_ADDR + 0x10,
                               length=8, max_nr_sgs=1, prot=mmap.PROT_WRITE)
     assert ret == 1
 
-    # BAR0 has no file descriptor, so INITIATOR has nothing to access directly:
-    # it sends a DMA message whether or not it asks for direct access.
+    # direct access case - sends a message since BAR is not mmap-able
     data = bytearray(range(1, 9))
-    assert vfu_sgl_write(ctx_initiator, sg, 1, data, 0) == 0
+    assert vfu_sgl_write(ctx_initiator, sg, 1, data,
+                         VFU_SGL_DIRECT_ACCESS) == 0
     assert bar0[0x10:0x18] == data
     assert dma_forwarder.msg_count == 1
 
+    # non direct access case
     data = bytearray(range(0x11, 0x19))
-    assert vfu_sgl_write(ctx_initiator, sg, 1, data,
-                         VFU_SGL_DIRECT_ACCESS) == 0
+    assert vfu_sgl_write(ctx_initiator, sg, 1, data, 0) == 0
     assert bar0[0x10:0x18] == data
     assert dma_forwarder.msg_count == 2
 
 
 def test_peer_dma_read():
-    announce_bar(VFU_PCI_DEV_BAR0_REGION_IDX, BAR0_ADDR)
+    """
+    As per test_peer_dma_write(), for reads.
+    """
+    dma_map_target_bar(VFU_PCI_DEV_BAR0_REGION_IDX, BAR0_ADDR)
 
     ret, sg = vfu_addr_to_sgl(ctx_initiator, dma_addr=BAR0_ADDR + 0x20,
                               length=8, max_nr_sgs=1, prot=mmap.PROT_READ)
     assert ret == 1
 
-    # As for writes: a DMA message either way.
+    # direct access case - sends a message since BAR is not mmap-able
     bar0[0x20:0x28] = bytes(range(0x80, 0x88))
-    assert vfu_sgl_read(ctx_initiator, sg, 1, 0) == \
+    assert vfu_sgl_read(ctx_initiator, sg, 1, VFU_SGL_DIRECT_ACCESS) == \
         (0, bytearray(range(0x80, 0x88)))
     assert dma_forwarder.msg_count == 1
 
+    # non direct access case
     bar0[0x20:0x28] = bytes(range(0x90, 0x98))
-    assert vfu_sgl_read(ctx_initiator, sg, 1, VFU_SGL_DIRECT_ACCESS) == \
+    assert vfu_sgl_read(ctx_initiator, sg, 1, 0) == \
         (0, bytearray(range(0x90, 0x98)))
     assert dma_forwarder.msg_count == 2
 
 
 def test_peer_dma_mmap_write():
-    announce_bar(VFU_PCI_DEV_BAR2_REGION_IDX, BAR2_ADDR)
+    """
+    INITIATOR writes to TARGET's BAR2, which is mmap-able. With
+    VFU_SGL_DIRECT_ACCESS, the write goes straight into the shared file.
+    Without it, the write is a DMA_WRITE, which the client carries out on
+    TARGET's BAR2 callback.
+    """
+    dma_map_target_bar(VFU_PCI_DEV_BAR2_REGION_IDX, BAR2_ADDR)
 
     ret, sg = vfu_addr_to_sgl(ctx_initiator, dma_addr=BAR2_ADDR + 0x30,
                               length=8, max_nr_sgs=1, prot=mmap.PROT_WRITE)
     assert ret == 1
 
-    # It goes into the shared file, and the client is not involved.
+    # direct access case
     data = bytearray(range(1, 9))
     assert vfu_sgl_write(ctx_initiator, sg, 1, data,
                          VFU_SGL_DIRECT_ACCESS) == 0
     assert bar2[0x30:0x38] == data
     assert dma_forwarder.msg_count == 0
 
-    # Without VFU_SGL_DIRECT_ACCESS, INITIATOR does not use its mapping of
-    # BAR2. It sends the access to the client as a DMA message, as it does for
-    # BAR0, and the client carries it out on TARGET's BAR2 callback.
+    # non direct access case
     data = bytearray(range(0x11, 0x19))
     assert vfu_sgl_write(ctx_initiator, sg, 1, data, 0) == 0
     assert bar2[0x30:0x38] == data
@@ -337,29 +392,33 @@ def test_peer_dma_mmap_write():
 
 
 def test_peer_dma_mmap_read():
-    announce_bar(VFU_PCI_DEV_BAR2_REGION_IDX, BAR2_ADDR)
+    """
+    As per test_peer_dma_mmap_write(), for reads.
+    """
+    dma_map_target_bar(VFU_PCI_DEV_BAR2_REGION_IDX, BAR2_ADDR)
 
     ret, sg = vfu_addr_to_sgl(ctx_initiator, dma_addr=BAR2_ADDR + 0x40,
                               length=8, max_nr_sgs=1, prot=mmap.PROT_READ)
     assert ret == 1
 
-    # It comes from the shared file, and the client is not involved.
+    # direct access case
     bar2[0x40:0x48] = bytes(range(0x80, 0x88))
     assert vfu_sgl_read(ctx_initiator, sg, 1, VFU_SGL_DIRECT_ACCESS) == \
         (0, bytearray(range(0x80, 0x88)))
     assert dma_forwarder.msg_count == 0
 
-    # Without VFU_SGL_DIRECT_ACCESS, INITIATOR does not use its mapping of
-    # BAR2. It sends the access to the client as a DMA message, and the client
-    # carries it out on TARGET's BAR2 callback.
+    # non direct access case
     bar2[0x40:0x48] = bytes(range(0x90, 0x98))
     assert vfu_sgl_read(ctx_initiator, sg, 1, 0) == \
         (0, bytearray(range(0x90, 0x98)))
     assert dma_forwarder.msg_count == 1
 
 
-def test_peer_dma_not_announced():
-    # Without the DMA_MAP, INITIATOR has no way to name TARGET's BARs.
+def test_peer_dma_not_mapped():
+    """
+    Without a DMA_MAP, vfu_addr_to_sgl() cannot resolve addresses in TARGET's
+    BARs.
+    """
     for addr in (BAR0_ADDR, BAR2_ADDR):
         ret, _ = vfu_addr_to_sgl(ctx_initiator, dma_addr=addr, length=8,
                                  max_nr_sgs=1, prot=mmap.PROT_WRITE)
