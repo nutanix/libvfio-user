@@ -82,6 +82,8 @@ test(
     'btree_unit_tests',
     btree_unit_tests,
     suite: 'unit',
+    # Allow for Valgrind overhead when checking the tree after each insertion.
+    timeout: 60,
 )
 
 fd_cache_unit_tests = executable(
