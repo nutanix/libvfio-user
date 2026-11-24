@@ -41,6 +41,7 @@ python_tests = [
     'test_negotiate.py',
     'test_pci_caps.py',
     'test_pci_ext_caps.py',
+    'test_peer_dma.py',
     'test_quiesce.py',
     'test_request_errors.py',
     'test_setup_region.py',
