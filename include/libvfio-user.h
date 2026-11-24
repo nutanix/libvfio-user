@@ -88,6 +88,13 @@ dma_sg_size(void);
  */
 #define LIBVFIO_USER_FLAG_ATTACH_NB  (1 << 0)
 
+/*
+ * Makes vfu_run_ctx() non-blocking without affecting vfu_attach_ctx().
+ * Use when attach should block until a client connects but the main loop
+ * needs to poll alongside other file descriptors.
+ */
+#define LIBVFIO_USER_FLAG_RUN_CTX_NB (1 << 1)
+
 typedef enum {
     VFU_TRANS_SOCK,
     // For internal testing only

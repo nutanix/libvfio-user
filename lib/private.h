@@ -217,6 +217,14 @@ call_reset_cb(vfu_ctx_t *vfu_ctx, vfu_reset_type_t reason);
 int
 handle_device_get_region_info(vfu_ctx_t *vfu_ctx, vfu_msg_t *msg);
 
+static inline bool vfu_is_blocking(vfu_ctx_t *vfu_ctx)
+{
+    assert(vfu_ctx != NULL);
+
+    return !(vfu_ctx->flags & (LIBVFIO_USER_FLAG_ATTACH_NB |
+                               LIBVFIO_USER_FLAG_RUN_CTX_NB));
+}
+
 MOCK_DECLARE(bool, cmd_allowed_when_stopped_and_copying, uint16_t cmd);
 
 MOCK_DECLARE(bool, should_exec_command, vfu_ctx_t *vfu_ctx, uint16_t cmd);
