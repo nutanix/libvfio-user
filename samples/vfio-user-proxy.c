@@ -390,8 +390,33 @@ setup_vfio(struct proxy_data *p, int group_num, const char *bdf)
 }
 
 /*
+ * Because INTx irqs are level-triggered, the kernel will
+ * automatically mask the interrupt after it is fired.
+ * The vfio-user client will then unmask already unmask
+ * irqs.
+ */
+static void
+vfio_intx_unmask(struct proxy_data *p)
+{
+    struct vfio_irq_set unmask = {
+        .argsz = sizeof(unmask),
+        .flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_UNMASK,
+        .index = VFIO_PCI_INTX_IRQ_INDEX,
+        .start = 0,
+        .count = 1,
+    };
+
+    if (ioctl(p->device_fd, VFIO_DEVICE_SET_IRQS, &unmask) < 0) {
+        vfu_log(p->vfu_ctx, LOG_ERR, "INTx kernel unmask failed: %m");
+    }
+}
+
+/*
  * Common callback function for vfu_setup_irq_state_callback.
  * allows using the same function for all IRQ types.
+ * Callback assumes VFIO_IRQ_SET_DATA_NONE is set as it is
+ * not possible to check.
+ * Qemu will always set this flag when unmasking an IRQ.
  */
 static void
 proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
@@ -401,16 +426,16 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
     size_t set_sz;
     struct vfio_irq_set *irq_set;
     int *fds;
-    uint32_t i, k;
+    size_t i, k;
 
     /*
-     * Subtract 1 from poll_fds_count to account for the first element
-     * which is used for the vfu_ctx fd.
+     * Kernel VFIO only supports unmasking with.
+     * (flags & VFIO_IRQ_SET_DATA_NONE && start == 0 || count == 1)
      */
-    if (start + count > (p->poll_fds_count - 1)) {
+    if (start != 0 || count != 1) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "IRQ type %s start %u count %u exceeds poll_fds size %zu",
-                vfu_irq_idx_to_str(index), start, count, (p->poll_fds_count - 1));
+                "IRQ type %s: start=%u count=%u not supported",
+                vfu_irq_idx_to_str(index), start, count);
         return;
     }
 
@@ -422,14 +447,16 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
             return;
         }
 
-        for (i = 0; i < count; i++) {
-            close_safely(&p->poll_fds[1 + start + i].fd);
-            p->poll_fds[1 + start + i].fd = -1;
+        /*
+         * Start at 1 to account for the first element
+         * which is used for the vfu_ctx fd.
+         */
+        for (i = 1; i < p->poll_fds_count; i++) {
+            close_safely(&p->poll_fds[i].fd);
+            p->poll_fds[i].fd = -1;
         }
 
-        vfu_log(vfu_ctx, LOG_DEBUG,
-                "IRQ type %s masked (start %u count %u)",
-                vfu_irq_idx_to_str(index), start, count);
+        vfu_log(vfu_ctx, LOG_DEBUG, "IRQ type %s masked.", vfu_irq_idx_to_str(index));
         return;
     }
 
@@ -449,7 +476,21 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
 
     p->active_irq_type = index;
 
-    set_sz = sizeof(*irq_set) + count * sizeof(int);
+    /*
+     * INTx allows unmasking already unmasking irqs.
+     * to avoid closing thenb recreating the eventfd. Call vfio_intx_unmask()
+     * if any INTx irqs are any unmasked (fd > 0).
+     */
+    if (index == VFU_INTX_IRQ) {
+        for (i = 1; i < p->poll_fds_count; i++) {
+            if (p->poll_fds[i].fd > 0) {
+                vfio_intx_unmask(p);
+                return;
+            }
+        }
+    }
+
+    set_sz = sizeof(*irq_set) + p->irq_count[index] * sizeof(int);
     irq_set = calloc(1, set_sz);
     if (irq_set == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "IRQ type %s calloc failed: %m", vfu_irq_idx_to_str(index));
@@ -460,23 +501,23 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
     irq_set->argsz = set_sz;
     irq_set->flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
     irq_set->index = index;
-    irq_set->start = start;
-    irq_set->count = count;
+    irq_set->start = 0;
+    irq_set->count = p->irq_count[index];
     fds = (int *)(irq_set->data);
 
-    for (i = 0; i < count; i++) {
-        k = 1 + start + i;
+    for (i = 0; i < p->irq_count[index]; i++) {
+        k = i + 1; /* account for first element which is vfu_ctx fd */
         if (p->poll_fds[k].fd > 0) {
             vfu_log(vfu_ctx, LOG_WARNING,
-                    "IRQ type %s vec %u already unmasked (fd=%d)",
+                    "IRQ type %s vec %zu already unmasked (fd=%d)",
                     vfu_irq_idx_to_str(index), i, p->poll_fds[k].fd);
             goto out_free;
         }
         p->poll_fds[k].fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
         if (p->poll_fds[k].fd < 0) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "eventfd creation failed for IRQ type %s vec %u: %m",
-                    vfu_irq_idx_to_str(index), start + i);
+                    "eventfd creation failed for IRQ type %s vec %zu: %m",
+                    vfu_irq_idx_to_str(index), i);
             goto out_free;
         }
         p->poll_fds[k].events = POLLIN;
@@ -487,8 +528,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
         vfu_log(vfu_ctx, LOG_ERR,
                 "VFIO_DEVICE_SET_IRQS type %s failed: %m", vfu_irq_idx_to_str(index));
     } else {
-        vfu_log(vfu_ctx, LOG_INFO, "IRQ type %s unmasked (start %u count %u)",
-                vfu_irq_idx_to_str(index), start, count);
+        vfu_log(vfu_ctx, LOG_DEBUG, "IRQ type %s unmasked", vfu_irq_idx_to_str(index));
     }
 
 out_free:
@@ -548,7 +588,6 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index)
 
     return 0;
 }
-
 
 static int
 setup_irqs(vfu_ctx_t *vfu_ctx)
@@ -777,6 +816,12 @@ proxy_run(vfu_ctx_t *vfu_ctx)
                 if (ret < 0) {
                     vfu_log(vfu_ctx, LOG_ERR, "vfu_irq_trigger: %m");
                     return -1;
+                }
+                /*
+                 * Unmask the interrupt if it's an INTx  (level triggered) interrupt.
+                 */
+                if (p->active_irq_type == VFU_INTX_IRQ) {
+                    vfio_intx_unmask(p);
                 }
             } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 vfu_log(vfu_ctx, LOG_ERR, "IRQ eventfd read: %m");
