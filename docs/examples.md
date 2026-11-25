@@ -84,7 +84,7 @@ vfio-user-proxy
 [vfio-user-proxy](../samples/vfio-user-proxy.c) exposes a real kernel VFIO PCI
 device as a vfio-user server, so that a vfio-user client (e.g. QEMU) can drive
 the physical device over a Unix socket. It proxies all region accesses (config
-space, BARs, ROM) and forwards INTx interrupts.
+space, BARs, ROM) and forwards interrupts.
 
 The device must first be bound to `vfio-pci`:
 

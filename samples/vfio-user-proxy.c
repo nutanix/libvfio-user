@@ -31,9 +31,10 @@
  * vfio-user proxy: exposes a kernel VFIO device as a vfio-user server.
  *
  * Opens a real PCI device via the kernel VFIO interface and proxies all
- * region accesses (config space, BARs, ROM) and INTx interrupts over a
+ * region accesses (config space, BARs, ROM) and interrupts over a
  * vfio-user socket so that a vfio-user client (e.g. QEMU) can drive the
- * physical device.
+ * physical device. This allows for the possibility of using PCI devices
+ * across the network.
  *
  * The device must be bound to vfio-pci before running this program.
  *
