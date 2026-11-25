@@ -81,7 +81,7 @@
 #define SUPPORTED_DEV_NUM_IRQS (VFU_DEV_MSIX_IRQ + 1)
 
 enum vfu_irq_type {
-    VFU_INVALID_IRQS = -1,
+    VFU_INVALID_IRQ = -1,
     VFU_INTX_IRQ,
     VFU_MSI_IRQ,
     VFU_MSIX_IRQ,
@@ -120,7 +120,7 @@ static const char *
 vfu_irq_idx_to_str(enum vfu_irq_type index)
 {
     switch (index) {
-    case VFU_INVALID_IRQS: return "INVALID";
+    case VFU_INVALID_IRQ: return "INVALID";
     case VFU_INTX_IRQ: return "INTx";
     case VFU_MSI_IRQ: return "MSI";
     case VFU_MSIX_IRQ: return "MSI-X";
@@ -417,7 +417,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
     }
 
     if (mask) {
-	if (p->active_irq_type == VFU_INVALID_IRQS) {
+	if (p->active_irq_type == VFU_INVALID_IRQ) {
 		vfu_log(vfu_ctx, LOG_ERR,
 			"IRQ type %s cannot be masked because no IRQ type is active",
 			vfu_irq_idx_to_str(index));
@@ -438,7 +438,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
     /*
      * Ensure all IRQs are masked before changing to a new IRQ type.
      */
-    if (p->active_irq_type != VFU_INVALID_IRQS && p->active_irq_type != index) {
+    if (p->active_irq_type != VFU_INVALID_IRQ && p->active_irq_type != index) {
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd > 0) {
                 vfu_log(vfu_ctx, LOG_ERR,
@@ -889,7 +889,7 @@ main(int argc, char *argv[])
         .container_fd = -1,
         .group_fd = -1,
         .device_fd = -1,
-        .active_irq_type = VFU_INVALID_IRQS,
+        .active_irq_type = VFU_INVALID_IRQ,
         .log_level = LOG_ERR,
     };
     struct proxy_opts opts;
