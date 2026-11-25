@@ -58,6 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -72,6 +73,10 @@
 #include "libvfio-user.h"
 #include "pci_defs.h"
 
+/*
+ * ERR and REQ IRQs are not supported. Omit them from
+ * the supported IRQ count.
+ */
 #define SUPPORTED_DEV_NUM_IRQS (VFU_DEV_MSIX_IRQ + 1)
 
 struct proxy_data {
@@ -90,10 +95,13 @@ struct proxy_data {
         uint32_t flags;
     } regions[VFIO_PCI_NUM_REGIONS];
 
-    int active_irq_type;
+    enum vfu_dev_irq_type active_irq_type;
     uint32_t irq_count[SUPPORTED_DEV_NUM_IRQS];
 
     size_t poll_fds_count;
+    /*
+     * Index 0 is the VFU context fd, the rest are IRQs.
+     */
     struct pollfd *poll_fds;
 };
 
@@ -379,12 +387,15 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
             p->poll_fds[1 + start + i].fd = -1;
         }
 
-        vfu_log(vfu_ctx, LOG_INFO,
+        vfu_log(vfu_ctx, LOG_DEBUG,
                 "IRQ type %u masked (start %u count %u)",
                 index, start, count);
         return;
     }
 
+    /*
+     * Ensure all IRQs are masked before changing to a new IRQ type.
+     */
     if (p->active_irq_type >= 0 && (uint32_t)p->active_irq_type != index) {
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd > 0) {
@@ -403,6 +414,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
     irq_set = calloc(1, set_sz);
     if (irq_set == NULL) {
         vfu_log(vfu_ctx, LOG_ERR, "IRQ type %u calloc failed: %m", index);
+	assert(0 && "IRQ type calloc failed");
         return;
     }
 
@@ -470,7 +482,7 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, uint32_t index)
     };
 
     if (ioctl(p->device_fd, VFIO_DEVICE_GET_IRQ_INFO, &irq) < 0) {
-        vfu_log(vfu_ctx, LOG_INFO, "IRQ info query failed for type %u: %m", index);
+        vfu_log(vfu_ctx, LOG_WARNING, "IRQ info query failed for type %u: %m", index);
         return -1;
     }
 
@@ -557,7 +569,7 @@ pci_flags_to_vfu_flags(uint32_t bar_val)
     return vfu_flags;
 }
 
-static void
+static int
 setup_bars(vfu_ctx_t *vfu_ctx)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
@@ -573,7 +585,7 @@ setup_bars(vfu_ctx_t *vfu_ctx)
 
         if (pread(p->device_fd, &bar_val, 4,
                   cfg_off + PCI_BASE_ADDRESS_0 + i * 4) != 4) {
-            vfu_log(vfu_ctx, LOG_ERR, "failed to read BAR%d config: %m", i);
+            vfu_log(vfu_ctx, LOG_WARNING, "failed to read BAR%d config: %m", i);
             continue;
         }
 
@@ -584,7 +596,7 @@ setup_bars(vfu_ctx_t *vfu_ctx)
                                NULL, 0, -1, 0);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_ERR, "failed to setup BAR%d: %m", i);
-            continue;
+            return -1;
         }
 
         vfu_log(vfu_ctx, LOG_DEBUG, "BAR%d size=%#llx flags=%#x",
@@ -595,6 +607,7 @@ setup_bars(vfu_ctx_t *vfu_ctx)
             i++;
         }
     }
+    return 0;
 }
 
 static int
@@ -642,6 +655,7 @@ setup_device(vfu_ctx_t *vfu_ctx, bool no_rom)
                                NULL, 0, -1, 0);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_WARNING, "ROM region setup failed: %m");
+	    return -1;
         }
     }
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_CFG_REGION_IDX,
@@ -706,22 +720,33 @@ proxy_run(vfu_ctx_t *vfu_ctx)
             return -1;
         }
 
+	/*
+	 * First trigger any IRQs by looping through
+	 * all the IRQ file descriptors.
+	 */
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd < 0 || !(p->poll_fds[i].revents & POLLIN)) {
                 continue;
             }
             n = read(p->poll_fds[i].fd, &val, sizeof(val));
             if (n == (ssize_t)sizeof(val)) {
-                vfu_log(vfu_ctx, LOG_INFO,
+                vfu_log(vfu_ctx, LOG_DEBUG,
                         "IRQ type %d vec %zu fired (count=%llu)",
                         p->active_irq_type, i - 1, (unsigned long long)val);
-                vfu_irq_trigger(vfu_ctx, (uint32_t)(i - 1));
+                ret = vfu_irq_trigger(vfu_ctx, (uint32_t)(i - 1));
+		if (ret < 0) {
+		    vfu_log(vfu_ctx, LOG_ERR, "vfu_irq_trigger: %m");
+		    return -1;
+		}
             } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 vfu_log(vfu_ctx, LOG_ERR, "IRQ eventfd read: %m");
                 return -1;
             }
         }
 
+	/*
+	 * Let device proccess ant incoming messages.
+	 */
         if (p->poll_fds[0].revents & POLLIN) {
             ret = vfu_run_ctx(vfu_ctx);
             if (ret < 0) {
@@ -737,8 +762,12 @@ proxy_run(vfu_ctx_t *vfu_ctx)
             }
         }
 
-        if (p->poll_fds[0].revents & (POLLHUP | POLLERR)) {
-            vfu_log(vfu_ctx, LOG_INFO, "poll fd error/hangup");
+        if (p->poll_fds[0].revents & POLLHUP) {
+            vfu_log(vfu_ctx, LOG_INFO, "poll fd hangup");
+            return 0;
+        }
+        if (p->poll_fds[0].revents & POLLERR) {
+            vfu_log(vfu_ctx, LOG_INFO, "poll fd error");
             return 0;
         }
     }
@@ -867,7 +896,10 @@ main(int argc, char *argv[])
         goto cleanup;
     }
 
-    setup_bars(proxy.vfu_ctx);
+    ret = setup_bars(proxy.vfu_ctx);
+    if (ret < 0) {
+	goto cleanup;
+    }
 
     ret = setup_device(proxy.vfu_ctx, opts.no_rom);
     if (ret < 0) {
