@@ -106,6 +106,20 @@ struct proxy_data {
 };
 
 static const char *
+vfu_irq_idx_to_str(enum vfu_dev_irq_type index)
+{
+    switch (index) {
+    case VFU_DEV_INTX_IRQ: return "INTx";
+    case VFU_DEV_MSI_IRQ: return "MSI";
+    case VFU_DEV_MSIX_IRQ: return "MSI-X";
+    case VFU_DEV_ERR_IRQ: return "ERR";
+    case VFU_DEV_REQ_IRQ: return "REQ";
+    default:
+        abort();
+    }
+}
+
+static const char *
 log_level_str(int level)
 {
     switch (level) {
@@ -364,8 +378,12 @@ setup_vfio(struct proxy_data *p, int group_num, const char *bdf)
     return 0;
 }
 
+/*
+ * Common callback function for vfu_setup_irq_state_callback.
+ * allows using the same function for all IRQ types.
+ */
 static void
-proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
+proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index, uint32_t start,
                     uint32_t count, bool mask)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
@@ -374,10 +392,14 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
     int *fds;
     uint32_t i, k;
 
-    if (1 + start + count > p->poll_fds_count) {
+    /*
+     * Subtract 1 from poll_fds_count to account for the first element
+     * which is used for the vfu_ctx fd.
+     */
+    if (start + count > (p->poll_fds_count - 1)) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "IRQ type %u start %u count %u exceeds poll_fds size %zu",
-                index, start, count, p->poll_fds_count);
+                "IRQ type %s start %u count %u exceeds poll_fds size %zu",
+                vfu_irq_idx_to_str(index), start, count, (p->poll_fds_count - 1));
         return;
     }
 
@@ -388,20 +410,20 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
         }
 
         vfu_log(vfu_ctx, LOG_DEBUG,
-                "IRQ type %u masked (start %u count %u)",
-                index, start, count);
+                "IRQ type %s masked (start %u count %u)",
+                vfu_irq_idx_to_str(index), start, count);
         return;
     }
 
     /*
      * Ensure all IRQs are masked before changing to a new IRQ type.
      */
-    if (p->active_irq_type >= 0 && (uint32_t)p->active_irq_type != index) {
+    if (p->active_irq_type >= 0 && p->active_irq_type != index) {
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd > 0) {
                 vfu_log(vfu_ctx, LOG_ERR,
-                        "IRQ type %u unmasked while type %d is still active",
-                        index, p->active_irq_type);
+                        "IRQ type %s unmasked while type %s is still active",
+                        vfu_irq_idx_to_str(index), vfu_irq_idx_to_str(p->active_irq_type));
                 return;
             }
         }
@@ -409,12 +431,11 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
 
     p->active_irq_type = index;
 
-    //FIXME: must be C sizeof.
     set_sz = sizeof(*irq_set) + count * sizeof(int);
     irq_set = calloc(1, set_sz);
     if (irq_set == NULL) {
-        vfu_log(vfu_ctx, LOG_ERR, "IRQ type %u calloc failed: %m", index);
-	assert(0 && "IRQ type calloc failed");
+        vfu_log(vfu_ctx, LOG_ERR, "IRQ type %s calloc failed: %m", vfu_irq_idx_to_str(index));
+        assert(0 && "IRQ type calloc failed");
         return;
     }
 
@@ -429,15 +450,15 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
         k = 1 + start + i;
         if (p->poll_fds[k].fd > 0) {
             vfu_log(vfu_ctx, LOG_WARNING,
-                    "IRQ type %u vec %u already unmasked (fd=%d)",
-                    index, i, p->poll_fds[k].fd);
+                    "IRQ type %s vec %u already unmasked (fd=%d)",
+                    vfu_irq_idx_to_str(index), i, p->poll_fds[k].fd);
             goto out_free;
         }
         p->poll_fds[k].fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
         if (p->poll_fds[k].fd < 0) {
             vfu_log(vfu_ctx, LOG_ERR,
-                    "eventfd creation failed for IRQ type %u vec %u: %m",
-                    index, start + i);
+                    "eventfd creation failed for IRQ type %s vec %u: %m",
+                    vfu_irq_idx_to_str(index), start + i);
             goto out_free;
         }
         p->poll_fds[k].events = POLLIN;
@@ -446,10 +467,10 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start,
 
     if (ioctl(p->device_fd, VFIO_DEVICE_SET_IRQS, irq_set) < 0) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "VFIO_DEVICE_SET_IRQS type %u failed: %m", index);
+                "VFIO_DEVICE_SET_IRQS type %s failed: %m", vfu_irq_idx_to_str(index));
     } else {
-        vfu_log(vfu_ctx, LOG_INFO, "IRQ type %u unmasked (start %u count %u)",
-                index, start, count);
+        vfu_log(vfu_ctx, LOG_INFO, "IRQ type %s unmasked (start %u count %u)",
+                vfu_irq_idx_to_str(index), start, count);
     }
 
 out_free:
@@ -473,7 +494,7 @@ static vfu_dev_irq_state_cb_t *irq_state_cbs[SUPPORTED_DEV_NUM_IRQS] = {
 };
 
 static int
-setup_irq_type(vfu_ctx_t *vfu_ctx, uint32_t index)
+setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
     struct vfio_irq_info irq = {
@@ -482,21 +503,21 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, uint32_t index)
     };
 
     if (ioctl(p->device_fd, VFIO_DEVICE_GET_IRQ_INFO, &irq) < 0) {
-        vfu_log(vfu_ctx, LOG_WARNING, "IRQ info query failed for type %u: %m", index);
+        vfu_log(vfu_ctx, LOG_WARNING, "IRQ info query failed for type %s: %m", vfu_irq_idx_to_str(index));
         return -1;
     }
 
     if (irq.count == 0) {
-        vfu_log(vfu_ctx, LOG_INFO, "IRQ type %u not available (count=0)", index);
+        vfu_log(vfu_ctx, LOG_INFO, "IRQ type %s not available (count=0)", vfu_irq_idx_to_str(index));
         return 0;
     }
 
-    vfu_log(vfu_ctx, LOG_DEBUG, "IRQ type %u info: count=%u flags=%#x",
-            index, irq.count, irq.flags);
+    vfu_log(vfu_ctx, LOG_DEBUG, "IRQ type %s info: count=%u flags=%#x",
+            vfu_irq_idx_to_str(index), irq.count, irq.flags);
 
     if (vfu_setup_device_nr_irqs(vfu_ctx, index, irq.count) < 0) {
         vfu_log(vfu_ctx, LOG_ERR,
-                "IRQ type %u vfu_setup_device_nr_irqs: %m", index);
+                "IRQ type %s vfu_setup_device_nr_irqs: %m", vfu_irq_idx_to_str(index));
         return -1;
     }
 
@@ -504,8 +525,8 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, uint32_t index)
 
     vfu_setup_irq_state_callback(vfu_ctx, index, irq_state_cbs[index]);
 
-    vfu_log(vfu_ctx, LOG_INFO, "IRQ type %u registered (count=%u)",
-            index, irq.count);
+    vfu_log(vfu_ctx, LOG_INFO, "IRQ type %s registered (count=%u)",
+            vfu_irq_idx_to_str(index), irq.count);
 
     return 0;
 }
@@ -515,15 +536,15 @@ static int
 setup_irqs(vfu_ctx_t *vfu_ctx)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
-    uint32_t max_count = 0;
-    uint32_t i;
+    uint32_t i, max_count = 0;
+    enum vfu_dev_irq_type irq;
 
-    for (i = 0; i < SUPPORTED_DEV_NUM_IRQS; i++) {
-        if (setup_irq_type(vfu_ctx, i) < 0) {
+    for (irq = 0; irq < SUPPORTED_DEV_NUM_IRQS; irq++) {
+        if (setup_irq_type(vfu_ctx, irq) < 0) {
             return -1;
         }
-        if (p->irq_count[i] > max_count) {
-            max_count = p->irq_count[i];
+        if (p->irq_count[irq] > max_count) {
+            max_count = p->irq_count[irq];
         }
     }
 
@@ -538,9 +559,9 @@ setup_irqs(vfu_ctx_t *vfu_ctx)
         p->poll_fds[i].fd = -1;
     }
 
-    for (i = 0; i < SUPPORTED_DEV_NUM_IRQS; i++) {
-        if (p->irq_count[i] > 0) {
-            p->active_irq_type = i;
+    for (irq = 0; irq < SUPPORTED_DEV_NUM_IRQS; irq++) {
+        if (p->irq_count[irq] > 0) {
+            p->active_irq_type = irq;
             break;
         }
     }
@@ -655,7 +676,7 @@ setup_device(vfu_ctx_t *vfu_ctx, bool no_rom)
                                NULL, 0, -1, 0);
         if (ret < 0) {
             vfu_log(vfu_ctx, LOG_WARNING, "ROM region setup failed: %m");
-	    return -1;
+            return -1;
         }
     }
     ret = vfu_setup_region(vfu_ctx, VFU_PCI_DEV_CFG_REGION_IDX,
@@ -720,10 +741,10 @@ proxy_run(vfu_ctx_t *vfu_ctx)
             return -1;
         }
 
-	/*
-	 * First trigger any IRQs by looping through
-	 * all the IRQ file descriptors.
-	 */
+        /*
+         * First trigger any IRQs by looping through
+         * all the IRQ file descriptors.
+         */
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd < 0 || !(p->poll_fds[i].revents & POLLIN)) {
                 continue;
@@ -731,22 +752,23 @@ proxy_run(vfu_ctx_t *vfu_ctx)
             n = read(p->poll_fds[i].fd, &val, sizeof(val));
             if (n == (ssize_t)sizeof(val)) {
                 vfu_log(vfu_ctx, LOG_DEBUG,
-                        "IRQ type %d vec %zu fired (count=%llu)",
-                        p->active_irq_type, i - 1, (unsigned long long)val);
+                        "IRQ type %s vec %zu fired (count=%llu)",
+                        vfu_irq_idx_to_str(p->active_irq_type),
+                        i - 1, (unsigned long long)val);
                 ret = vfu_irq_trigger(vfu_ctx, (uint32_t)(i - 1));
-		if (ret < 0) {
-		    vfu_log(vfu_ctx, LOG_ERR, "vfu_irq_trigger: %m");
-		    return -1;
-		}
+                if (ret < 0) {
+                    vfu_log(vfu_ctx, LOG_ERR, "vfu_irq_trigger: %m");
+                    return -1;
+                }
             } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 vfu_log(vfu_ctx, LOG_ERR, "IRQ eventfd read: %m");
                 return -1;
             }
         }
 
-	/*
-	 * Let device proccess ant incoming messages.
-	 */
+        /*
+         * Let device proccess ant incoming messages.
+         */
         if (p->poll_fds[0].revents & POLLIN) {
             ret = vfu_run_ctx(vfu_ctx);
             if (ret < 0) {
@@ -898,7 +920,7 @@ main(int argc, char *argv[])
 
     ret = setup_bars(proxy.vfu_ctx);
     if (ret < 0) {
-	goto cleanup;
+        goto cleanup;
     }
 
     ret = setup_device(proxy.vfu_ctx, opts.no_rom);
