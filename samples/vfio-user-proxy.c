@@ -175,11 +175,9 @@ static ssize_t access_common(vfu_ctx_t *vfu_ctx, char *buf, size_t count,
     }
 
     if (ret < 0) {
-        ret = errno;
         vfu_log(vfu_ctx, LOG_ERR, "%s %s %zu bytes at %#llx (vfio_off %#llx): %m",
             region_name, is_write ? "write" : "read",
             count, (unsigned long long)offset, (unsigned long long)vfio_off);
-        errno = ret;
         return -1;
     }
 
