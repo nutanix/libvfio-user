@@ -79,6 +79,16 @@
  */
 #define SUPPORTED_DEV_NUM_IRQS (VFU_DEV_MSIX_IRQ + 1)
 
+enum vfu_irq_type {
+    VFU_INVALID_IRQS = -1,
+    VFU_INTX_IRQ,
+    VFU_MSI_IRQ,
+    VFU_MSIX_IRQ,
+    VFU_ERR_IRQ,
+    VFU_REQ_IRQ,
+    VFU_NUM_IRQS,
+};
+
 struct proxy_data {
     vfu_ctx_t *vfu_ctx;
 
@@ -95,7 +105,7 @@ struct proxy_data {
         uint32_t flags;
     } regions[VFIO_PCI_NUM_REGIONS];
 
-    enum vfu_dev_irq_type active_irq_type;
+    enum vfu_irq_type active_irq_type;
     uint32_t irq_count[SUPPORTED_DEV_NUM_IRQS];
 
     size_t poll_fds_count;
@@ -106,14 +116,16 @@ struct proxy_data {
 };
 
 static const char *
-vfu_irq_idx_to_str(enum vfu_dev_irq_type index)
+vfu_irq_idx_to_str(enum vfu_irq_type index)
 {
     switch (index) {
-    case VFU_DEV_INTX_IRQ: return "INTx";
-    case VFU_DEV_MSI_IRQ: return "MSI";
-    case VFU_DEV_MSIX_IRQ: return "MSI-X";
-    case VFU_DEV_ERR_IRQ: return "ERR";
-    case VFU_DEV_REQ_IRQ: return "REQ";
+    case VFU_INVALID_IRQS: return "INVALID";
+    case VFU_INTX_IRQ: return "INTx";
+    case VFU_MSI_IRQ: return "MSI";
+    case VFU_MSIX_IRQ: return "MSI-X";
+    case VFU_ERR_IRQ: return "ERR";
+    case VFU_REQ_IRQ: return "REQ";
+    case VFU_NUM_IRQS:
     default:
         abort();
     }
@@ -383,7 +395,7 @@ setup_vfio(struct proxy_data *p, int group_num, const char *bdf)
  * allows using the same function for all IRQ types.
  */
 static void
-proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index, uint32_t start,
+proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
                     uint32_t count, bool mask)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
@@ -404,7 +416,14 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index, uint32_t st
     }
 
     if (mask) {
-        for (i = 0; i < count; i++) {
+	if (p->active_irq_type == VFU_INVALID_IRQS) {
+		vfu_log(vfu_ctx, LOG_ERR,
+			"IRQ type %s cannot be masked because no IRQ type is active",
+			vfu_irq_idx_to_str(index));
+		return;
+	}
+
+	for (i = 0; i < count; i++) {
             close_safely(&p->poll_fds[1 + start + i].fd);
             p->poll_fds[1 + start + i].fd = -1;
         }
@@ -418,7 +437,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index, uint32_t st
     /*
      * Ensure all IRQs are masked before changing to a new IRQ type.
      */
-    if (p->active_irq_type >= 0 && p->active_irq_type != index) {
+    if (p->active_irq_type != VFU_INVALID_IRQS && p->active_irq_type != index) {
         for (i = 1; i < p->poll_fds_count; i++) {
             if (p->poll_fds[i].fd > 0) {
                 vfu_log(vfu_ctx, LOG_ERR,
@@ -485,16 +504,16 @@ name##_state_cb(vfu_ctx_t *vfu_ctx, uint32_t start, \
     proxy_irq_set_state(vfu_ctx, irq_type, start, count, mask); \
 }
 
-DEFINE_IRQ_STATE_CB(intx, VFU_DEV_INTX_IRQ)
-DEFINE_IRQ_STATE_CB(msi, VFU_DEV_MSI_IRQ)
-DEFINE_IRQ_STATE_CB(msix, VFU_DEV_MSIX_IRQ)
+DEFINE_IRQ_STATE_CB(intx, VFU_INTX_IRQ)
+DEFINE_IRQ_STATE_CB(msi, VFU_MSI_IRQ)
+DEFINE_IRQ_STATE_CB(msix, VFU_MSIX_IRQ)
 
 static vfu_dev_irq_state_cb_t *irq_state_cbs[SUPPORTED_DEV_NUM_IRQS] = {
     intx_state_cb, msi_state_cb, msix_state_cb,
 };
 
 static int
-setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index)
+setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
     struct vfio_irq_info irq = {
@@ -515,7 +534,7 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index)
     vfu_log(vfu_ctx, LOG_DEBUG, "IRQ type %s info: count=%u flags=%#x",
             vfu_irq_idx_to_str(index), irq.count, irq.flags);
 
-    if (vfu_setup_device_nr_irqs(vfu_ctx, index, irq.count) < 0) {
+    if (vfu_setup_device_nr_irqs(vfu_ctx, (enum vfu_dev_irq_type)index, irq.count) < 0) {
         vfu_log(vfu_ctx, LOG_ERR,
                 "IRQ type %s vfu_setup_device_nr_irqs: %m", vfu_irq_idx_to_str(index));
         return -1;
@@ -523,7 +542,7 @@ setup_irq_type(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type index)
 
     p->irq_count[index] = irq.count;
 
-    vfu_setup_irq_state_callback(vfu_ctx, index, irq_state_cbs[index]);
+    vfu_setup_irq_state_callback(vfu_ctx, (enum vfu_dev_irq_type)index, irq_state_cbs[index]);
 
     vfu_log(vfu_ctx, LOG_INFO, "IRQ type %s registered (count=%u)",
             vfu_irq_idx_to_str(index), irq.count);
@@ -537,7 +556,7 @@ setup_irqs(vfu_ctx_t *vfu_ctx)
 {
     struct proxy_data *p = vfu_get_private(vfu_ctx);
     uint32_t i, max_count = 0;
-    enum vfu_dev_irq_type irq;
+    enum vfu_irq_type irq;
 
     for (irq = 0; irq < SUPPORTED_DEV_NUM_IRQS; irq++) {
         if (setup_irq_type(vfu_ctx, irq) < 0) {
@@ -869,7 +888,7 @@ main(int argc, char *argv[])
         .container_fd = -1,
         .group_fd = -1,
         .device_fd = -1,
-        .active_irq_type = -1,
+        .active_irq_type = VFU_INVALID_IRQS,
         .log_level = LOG_ERR,
     };
     struct proxy_opts opts;
