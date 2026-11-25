@@ -415,14 +415,14 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
     }
 
     if (mask) {
-	if (p->active_irq_type == VFU_INVALID_IRQ) {
-		vfu_log(vfu_ctx, LOG_ERR,
-			"IRQ type %s cannot be masked because no IRQ type is active",
-			vfu_irq_idx_to_str(index));
-		return;
-	}
+        if (p->active_irq_type == VFU_INVALID_IRQ) {
+            vfu_log(vfu_ctx, LOG_ERR,
+                    "IRQ type %s cannot be masked because no IRQ type is active",
+                    vfu_irq_idx_to_str(index));
+            return;
+        }
 
-	for (i = 0; i < count; i++) {
+        for (i = 0; i < count; i++) {
             close_safely(&p->poll_fds[1 + start + i].fd);
             p->poll_fds[1 + start + i].fd = -1;
         }
