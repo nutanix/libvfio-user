@@ -430,7 +430,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
 
     /*
      * Kernel VFIO only supports unmasking with.
-     * (flags & VFIO_IRQ_SET_DATA_NONE && start == 0 || count == 1)
+     * (flags & VFIO_IRQ_SET_DATA_NONE && start == 0 && count == 1)
      */
     if (start != 0 || count != 1) {
         vfu_log(vfu_ctx, LOG_ERR,
@@ -478,7 +478,7 @@ proxy_irq_set_state(vfu_ctx_t *vfu_ctx, enum vfu_irq_type index, uint32_t start,
 
     /*
      * INTx allows unmasking already unmasking irqs.
-     * to avoid closing thenb recreating the eventfd. Call vfio_intx_unmask()
+     * to avoid closing then recreating the eventfd. Call vfio_intx_unmask()
      * if any INTx irqs are any unmasked (fd > 0).
      */
     if (index == VFU_INTX_IRQ) {
