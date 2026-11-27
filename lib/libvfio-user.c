@@ -2284,16 +2284,12 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
         return ERROR_INT(EINVAL);
     }
 
-    // MSI vectors come in powers of two, and zero means no MSI at all.
-    if (type == VFU_DEV_MSI_IRQ &&
-        (count > 32 || (count & (count - 1)) != 0)) {
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid MSI IRQ count %u", count);
-        return ERROR_INT(EINVAL);
-    }
-
-    // The MSI-X Table Size field can't describe more than 2048 vectors.
-    if (type == VFU_DEV_MSIX_IRQ && count > 2048) {
-        vfu_log(vfu_ctx, LOG_ERR, "Invalid MSI-X IRQ count %u", count);
+    // PCI spec limits. A count of 0 (no IRQs) passes the power-of-two test.
+    if ((type == VFU_DEV_MSI_IRQ &&
+         (count > 32 || (count & (count - 1)) != 0)) ||
+        (type == VFU_DEV_MSIX_IRQ && count > 2048)) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ count %u for type index %u",
+                count, type);
         return ERROR_INT(EINVAL);
     }
 
