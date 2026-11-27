@@ -78,6 +78,44 @@ After a couple of seconds the client will start live migration. The source
 server will exit and the destination server will start, watch the client
 terminal for destination server messages.
 
+vfio-user-proxy
+---------------
+
+[vfio-user-proxy](../samples/vfio-user-proxy.c) exposes a real kernel VFIO PCI
+device as a vfio-user server, so that a vfio-user client (e.g. QEMU) can drive
+the physical device over a Unix socket. It proxies all region accesses (config
+space, BARs, ROM) and forwards interrupts.
+
+The device must first be bound to `vfio-pci`:
+
+```
+echo 0000:03:00.0 > /sys/bus/pci/drivers/<current-driver>/unbind
+echo vfio-pci > /sys/bus/pci/devices/0000:03:00.0/driver_override
+echo 0000:03:00.0 > /sys/bus/pci/drivers/vfio-pci/bind
+```
+
+Then start the proxy (replace the BDF with your device):
+
+```
+build/samples/vfio-user-proxy /tmp/proxy.sock 0000:03:00.0
+```
+
+Usage:
+  vfio-user-proxy [-vv] [-R] <socketpath> <device-bdf>
+    -R  disable ROM BAR
+
+Dissabling the ROM BAR is useful for avoiding QEMU running the cards BIOS
+on start.
+Pass `-v` for more verbose output (up to `-vvvv` for full debug logging).
+
+**Limitations:**
+ - Many PCI capabilities are not reported as they are not copied.
+ - No DMA support
+ - No ERR_IRQ or REQ_IRQ support
+ - No migration state support
+ - No memory mapping support
+
+
 shadow_ioeventfd_server
 -----------------------
 
