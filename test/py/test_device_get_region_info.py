@@ -39,6 +39,9 @@ argsz = len(vfio_region_info())
 # argsz large enough to also hold the sparse mmap capability and its two areas
 argsz_caps = (argsz + len(vfio_region_info_cap_sparse_mmap()) +
               2 * len(vfio_region_sparse_mmap_area()))
+# 32 (region info) + 16 (sparse mmap cap) + 2 * 16 (areas). Hardcoded so that
+# an accidental struct size change fails here, as it could break clients.
+assert argsz_caps == 80
 migr_region_size = 2 << PAGE_SHIFT
 migr_mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
