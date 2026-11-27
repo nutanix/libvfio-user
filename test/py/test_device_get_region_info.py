@@ -36,6 +36,12 @@ ctx = None
 client = None
 
 argsz = len(vfio_region_info())
+# argsz large enough to also hold the sparse mmap capability and its two areas
+argsz_caps = (argsz + len(vfio_region_info_cap_sparse_mmap()) +
+              2 * len(vfio_region_sparse_mmap_area()))
+# 32 (region info) + 16 (sparse mmap cap) + 2 * 16 (areas). Hardcoded so that
+# an accidental struct size change fails here, as it could break clients.
+assert argsz_caps == 80
 migr_region_size = 2 << PAGE_SHIFT
 migr_mmap_areas = [(PAGE_SIZE, PAGE_SIZE)]
 
@@ -181,7 +187,7 @@ def test_device_get_region_info_small_argsz_caps():
 
     info, _ = vfio_region_info.pop_from_buffer(result)
 
-    assert info.argsz == 80
+    assert info.argsz == argsz_caps
 
     '''
     There are capabilites but we do not expect VFIO_REGION_INFO_FLAG_CAPS
@@ -204,10 +210,10 @@ def test_device_get_region_info_caps():
 
     client = connect_client(ctx)
 
-    payload = vfio_region_info(argsz=80, flags=0,
+    payload = vfio_region_info(argsz=argsz_caps, flags=0,
                           index=VFU_PCI_DEV_BAR2_REGION_IDX, cap_offset=0,
                           size=0, offset=0)
-    payload = bytes(payload) + b'\0' * (80 - 32)
+    payload = bytes(payload) + b'\0' * (argsz_caps - argsz)
 
     fds, result = msg_fds(ctx, client.sock, VFIO_USER_DEVICE_GET_REGION_INFO,
                           payload)
@@ -217,7 +223,7 @@ def test_device_get_region_info_caps():
     area1, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
     area2, result = vfio_region_sparse_mmap_area.pop_from_buffer(result)
 
-    assert info.argsz == 80
+    assert info.argsz == argsz_caps
     assert info.cap_offset == 32
     assert info.size == 0x8000
     assert info.offset == 0x8000
