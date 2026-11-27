@@ -1765,11 +1765,6 @@ vfu_realize_ctx(vfu_ctx_t *vfu_ctx)
     }
 
     if (vfu_ctx->irqs == NULL) {
-        /*
-         * FIXME need to check that the number of MSI and MSI-X IRQs are valid
-         * (1, 2, 4, 8, 16 or 32 for MSI and up to 2048 for MSI-X).
-         */
-
         // Work out highest count of irq vectors.
         for (i = 0; i < VFU_DEV_NUM_IRQS; i++) {
             if (max_ivs < vfu_ctx->irq_count[i]) {
@@ -2286,6 +2281,19 @@ vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
 
     if (type >= VFU_DEV_NUM_IRQS) {
         vfu_log(vfu_ctx, LOG_ERR, "Invalid IRQ type index %u", type);
+        return ERROR_INT(EINVAL);
+    }
+
+    // MSI vectors come in powers of two, and zero means no MSI at all.
+    if (type == VFU_DEV_MSI_IRQ &&
+        (count > 32 || (count & (count - 1)) != 0)) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid MSI IRQ count %u", count);
+        return ERROR_INT(EINVAL);
+    }
+
+    // The MSI-X Table Size field can't describe more than 2048 vectors.
+    if (type == VFU_DEV_MSIX_IRQ && count > 2048) {
+        vfu_log(vfu_ctx, LOG_ERR, "Invalid MSI-X IRQ count %u", count);
         return ERROR_INT(EINVAL);
     }
 

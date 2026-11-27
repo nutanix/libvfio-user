@@ -577,7 +577,10 @@ enum vfu_dev_irq_type {
  * Set up device IRQ counts.
  * @vfu_ctx: the libvfio-user context
  * @type: IRQ type (VFU_DEV_INTX_IRQ ... VFU_DEV_REQ_IRQ)
- * @count: number of irqs
+ * @count: number of irqs. For VFU_DEV_MSI_IRQ this must be 0 or a power of two
+ *         up to 32, and for VFU_DEV_MSIX_IRQ at most 2048.
+ *
+ * Returns 0 on success, -1 on error with errno set.
  */
 int
 vfu_setup_device_nr_irqs(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
