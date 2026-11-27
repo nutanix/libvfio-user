@@ -118,6 +118,35 @@ def test_vfu_realize_ctx_irqs():
     vfu_destroy_ctx(ctx)
 
 
+def test_vfu_setup_device_nr_irqs_msi():
+    ctx = vfu_create_ctx()
+    assert ctx is not None
+
+    for count in [0, 1, 2, 4, 8, 16, 32]:
+        assert vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSI_IRQ, count) == 0
+
+    for count in [3, 31, 33, 64]:
+        assert vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSI_IRQ, count) == -1
+        assert c.get_errno() == errno.EINVAL
+
+    vfu_destroy_ctx(ctx)
+
+
+def test_vfu_setup_device_nr_irqs_msix():
+    ctx = vfu_create_ctx()
+    assert ctx is not None
+
+    # unlike MSI, the count doesn't have to be a power of two
+    for count in [0, 1, 3, 2048]:
+        assert vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, count) == 0
+
+    for count in [2049, 100000]:
+        assert vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, count) == -1
+        assert c.get_errno() == errno.EINVAL
+
+    vfu_destroy_ctx(ctx)
+
+
 def test_vfu_realize_ctx_caps():
     ctx = vfu_create_ctx()
     assert ctx is not None
