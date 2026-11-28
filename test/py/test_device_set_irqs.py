@@ -56,7 +56,7 @@ def test_device_set_irqs_setup():
     ret = vfu_setup_device_nr_irqs(ctx, VFU_DEV_MSIX_IRQ, 2048)
     assert ret == 0
 
-    vfu_setup_irq_state_callback(ctx, VFU_DEV_MSIX_IRQ)
+    ret = vfu_setup_irq_state_callback(ctx, VFU_DEV_MSIX_IRQ)
     assert ret == 0
 
     ret = vfu_realize_ctx(ctx)
@@ -355,6 +355,44 @@ def test_irq_state(mock_irq_state):
     mock_irq_state.assert_called_with(ANY, 0, 1, True)
 
     assert mock_irq_state.call_count == 1
+
+
+@patch('libvfio_user.irq_state')
+def test_irq_eventfd_callback(mock_irq_state):
+    calls = []
+
+    @vfu_dev_irq_eventfd_cb_t
+    def notify(cb_ctx, start, count):
+        calls.append((cb_ctx, start, count,
+                      vfu_irq_trigger(cb_ctx, start + count - 1)))
+
+    setup = lib.vfu_setup_irq_eventfd_callback
+    assert setup(ctx, VFU_DEV_NUM_IRQS, notify) == -1
+    assert c.get_errno() == errno.EINVAL
+    assert setup(ctx, VFU_DEV_MSIX_IRQ, notify) == 0
+    flags = VFIO_IRQ_SET_ACTION_TRIGGER | VFIO_IRQ_SET_DATA_EVENTFD
+    payload = vfio_irq_set(argsz=argsz, flags=flags, index=VFU_DEV_MSIX_IRQ,
+                           start=3, count=2)
+    fds = [eventfd(initval=1), eventfd(initval=1)]
+    try:
+        for pair in (fds, fds[::-1]):
+            msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=pair)
+            assert struct.unpack('Q', os.read(pair[-1], 8))[0] == 2
+        mock_irq_state.assert_not_called()
+        msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload,
+            fds=fds[:1], expect=errno.EINVAL)
+        msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload)  # disable
+        payload.index, payload.start, payload.count = VFU_DEV_REQ_IRQ, 0, 1
+        msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=fds[:1])
+        payload.index = VFU_DEV_MSIX_IRQ
+        payload.flags = VFIO_IRQ_SET_ACTION_UNMASK | VFIO_IRQ_SET_DATA_NONE
+        msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload)
+        mock_irq_state.assert_called_once_with(ctx, 0, 1, False)
+        assert calls == [(ctx, 3, 2, 0)] * 2
+    finally:
+        assert setup(ctx, VFU_DEV_MSIX_IRQ, vfu_dev_irq_eventfd_cb_t()) == 0
+        for fd in fds:
+            os.close(fd)
 
 
 def test_device_set_irqs_cleanup():

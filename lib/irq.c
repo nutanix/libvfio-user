@@ -263,6 +263,10 @@ irqs_set_data_eventfd(vfu_ctx_t *vfu_ctx, struct vfio_irq_set *irq_set,
         }
     }
 
+    if (vfu_ctx->irq_eventfd_cbs[irq_set->index] != NULL) {
+        vfu_ctx->irq_eventfd_cbs[irq_set->index](vfu_ctx, irq_set->start,
+                                                irq_set->count);
+    }
     return 0;
 }
 

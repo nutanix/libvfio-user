@@ -747,6 +747,11 @@ vfu_dev_irq_state_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.c_uint32,
 lib.vfu_setup_irq_state_callback.argtypes = (c.c_void_p, c.c_int,
                                              vfu_dev_irq_state_cb_t)
 
+vfu_dev_irq_eventfd_cb_t = c.CFUNCTYPE(None, c.c_void_p, c.c_uint32,
+                                       c.c_uint32, use_errno=True)
+lib.vfu_setup_irq_eventfd_callback.argtypes = (c.c_void_p, c.c_int,
+                                               vfu_dev_irq_eventfd_cb_t)
+
 
 def to_byte(val):
     """Cast an int to a byte value."""

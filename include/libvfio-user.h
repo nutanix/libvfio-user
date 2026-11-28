@@ -609,6 +609,29 @@ int
 vfu_setup_irq_state_callback(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
                              vfu_dev_irq_state_cb_t *cb);
 
+/*
+ * Called once after all trigger eventfds in the vector range have been
+ * installed or replaced. Disabling vectors does not invoke this callback.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @start: first IRQ vector in the range
+ * @count: number of consecutive vectors in the range
+ */
+typedef void (vfu_dev_irq_eventfd_cb_t)(vfu_ctx_t *vfu_ctx, uint32_t start,
+                                        uint32_t count);
+
+/**
+ * Set up the trigger eventfd callback for an IRQ type.
+ *
+ * @vfu_ctx: the libvfio-user context
+ * @type: IRQ type for which to receive notifications
+ * @cb: callback, or NULL to remove it for this type
+ * @returns 0 on success, or -1 with errno set to EINVAL for an invalid type.
+ */
+int
+vfu_setup_irq_eventfd_callback(vfu_ctx_t *vfu_ctx, enum vfu_dev_irq_type type,
+                               vfu_dev_irq_eventfd_cb_t *cb);
+
 typedef enum {
     VFU_MIGR_STATE_STOP,
     VFU_MIGR_STATE_RUNNING,
