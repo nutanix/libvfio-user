@@ -36,8 +36,8 @@ Our client in this case will be a Linux image with the pci-idio-16 kernel
 driver. Let's grab the images:
 
 ```
-curl https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/bzImage
-curl https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/rootfs.ext2
+curl -L -O https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/bzImage
+curl -L -O https://github.com/mcayland-ntx/libvfio-user-test/raw/refs/heads/main/images/rootfs.ext2
 ```
 
 Now use the qemu you've built to start the VM as follows:
@@ -52,7 +52,7 @@ Now use the qemu you've built to start the VM as follows:
     -kernel ./bzImage \
     -hda ./rootfs.ext2 \
     -append "console=ttyS0 root=/dev/sda" \
-    -device '{"driver":"vfio-user-pci","socket":{"path": "/tmp/vfio-user.sock", "type": "unix"}'
+    -device '{"driver":"vfio-user-pci","socket":{"path": "/tmp/vfio-user.sock", "type": "unix"}}'
 ```
 
 Log in to this VM as root (no password). We should be able to interact with the
