@@ -20,6 +20,6 @@ You can configure `vfio-user` devices in a `libvirt` domain configuration:
 ```xml
 <qemu:commandline>
   <qemu:arg value='-device'/>
-  <qemu:arg value='{"driver":"vfio-user-pci","socket":{"path": "/tmp/vfio-user.sock", "type": "unix"}'/>
+  <qemu:arg value='{"driver":"vfio-user-pci","socket":{"path": "/tmp/vfio-user.sock", "type": "unix"}}'/>
 </qemu:commandline>
 ```
