@@ -121,7 +121,7 @@ irqs_disable(vfu_ctx_t *vfu_ctx, uint32_t index, uint32_t start, uint32_t count)
         break;
     }
 
-    for (i = start; i < count; i++) {
+    for (i = start; i < start + count; i++) {
         close_safely(&efds[i]);
     }
 }
