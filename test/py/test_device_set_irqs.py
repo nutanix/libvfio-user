@@ -31,6 +31,7 @@ from unittest.mock import patch
 from unittest.mock import ANY
 
 from libvfio_user import *
+import ctypes as c
 import errno
 import os
 
@@ -339,6 +340,38 @@ def test_device_set_irqs_enable_trigger_bool():
 
     assert struct.unpack("Q", os.read(fd1, 8))[0] == 4
     assert struct.unpack("Q", os.read(fd2, 8))[0] == 9
+
+
+def test_device_set_irqs_disable_range():
+    """
+    Checks that disabling a range of IRQs that does not start at 0 releases
+    exactly the eventfds in [start, start + count).
+    """
+
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=0, count=5)
+
+    fds = [eventfd() for _ in range(5)]
+
+    msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload, fds=fds)
+
+    payload = vfio_irq_set(argsz=argsz, flags=VFIO_IRQ_SET_ACTION_TRIGGER |
+                           VFIO_IRQ_SET_DATA_EVENTFD, index=VFU_DEV_MSIX_IRQ,
+                           start=2, count=2)
+
+    msg(ctx, client.sock, VFIO_USER_DEVICE_SET_IRQS, payload)
+
+    for i in (0, 1, 4):
+        assert vfu_irq_trigger(ctx, i) == 0
+        assert struct.unpack("Q", os.read(fds[i], 8))[0] == 1
+
+    for i in (2, 3):
+        assert vfu_irq_trigger(ctx, i) == -1
+        assert c.get_errno() == errno.ENOENT
+
+    for fd in fds:
+        os.close(fd)
 
 
 @patch('libvfio_user.irq_state')
